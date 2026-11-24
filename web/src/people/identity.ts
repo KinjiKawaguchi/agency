@@ -7,7 +7,7 @@ export function hueOf(name: string): number {
   return (hash % HUE_COUNT) + 1
 }
 
-/** One or two characters for inside a face: Build1 → B1, TechLead → TL, Alice → Al, 河口 → 河. */
+/** One or two characters for inside a face: Build1 → B1, TechLead → TL, Alice → Al, 花子 → 花. */
 export function initials(label: string): string {
   const first = label.codePointAt(0)
   if (first === undefined) return ''

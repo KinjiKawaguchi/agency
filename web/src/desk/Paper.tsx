@@ -2,8 +2,11 @@ import { canDecide, blockedPeople, personOf, type DeskItem } from './items'
 import { type Draft } from './drafts'
 import { ChoiceCards } from './ChoiceCards'
 import { StampRoute } from './StampRoute'
-import { Markdown } from '../markdown/Markdown'
+import { Suspense, lazy } from 'react'
 import { useI18n } from '../i18n'
+
+/** The Markdown renderer is large and only needed once a document body is opened. */
+const Markdown = lazy(() => import('../markdown/Markdown').then((module) => ({ default: module.Markdown })))
 
 export interface PaperProps {
   item: DeskItem
@@ -97,7 +100,9 @@ export function Paper(props: PaperProps) {
       {request.document === undefined ? null : (
         <details className="doc-body">
           <summary>{t.desk.paper.readDocument(fmt.integer(request.document.length))}</summary>
-          <Markdown source={request.document} />
+          <Suspense fallback={<p className="muted">{t.app.loading}</p>}>
+            <Markdown source={request.document} />
+          </Suspense>
         </details>
       )}
     </article>

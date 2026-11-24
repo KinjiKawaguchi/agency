@@ -2,7 +2,7 @@
 // `testdata/` (the sample TeamView the Rust tests, the web client, and the harness share).
 // Never edit the bindings by hand; regenerate them from Rust.
 import type { TeamView } from '../../../bindings/TeamView'
-import sample from '../../../testdata/teamview.sample.json'
+import sample from '../../../testdata/teamview.sample.json' with { type: 'json' }
 
 export type { AnswerWith } from '../../../bindings/AnswerWith'
 export type { Blocked } from '../../../bindings/Blocked'

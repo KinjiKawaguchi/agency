@@ -1,7 +1,7 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
 import type { DecisionAnswer, Me } from '../api/clientApi'
-import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview'
+import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 
 export interface MockNode {
   /** Answers a request the way the real node would. */

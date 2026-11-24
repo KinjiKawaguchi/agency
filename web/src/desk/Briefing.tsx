@@ -4,7 +4,8 @@ import type { TeamView } from '../api/teamview'
 import type { Around } from '../i18n/en'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
-import { OWNER_NAME, presenceOf, type Presence } from '../people/state'
+import { presenceOf, type Presence } from '../people/state'
+import { viewerNameOf } from '../people/viewer'
 import type { DeskItem, Situation } from './items'
 
 interface BriefingProps {
@@ -20,13 +21,12 @@ const RING_ORDER: readonly Presence[] = ['needs-you', 'working', 'waiting', 'idl
 function FaceRow({ views }: { views: readonly TeamView[] }) {
   const { t } = useI18n()
   const people = views
-    .flatMap((view) => view.people)
-    .filter((person) => person.id !== OWNER_NAME)
-    .toSorted((a, b) => RING_ORDER.indexOf(presenceOf(a)) - RING_ORDER.indexOf(presenceOf(b)))
+    .flatMap((view) => view.people.filter((person) => person.id !== viewerNameOf(view)).map((person) => ({ person, presence: presenceOf(person, viewerNameOf(view)) })))
+    .toSorted((a, b) => RING_ORDER.indexOf(a.presence) - RING_ORDER.indexOf(b.presence))
   return (
     <Link className="face-row" to="/people" aria-label={t.desk.briefing.seePeople}>
-      {people.map((person) => (
-        <Face key={person.id} label={person.label} kind={person.kind} state={presenceOf(person)} title={`${person.label}: ${t.person.states[presenceOf(person)]}`} />
+      {people.map(({ person, presence }) => (
+        <Face key={person.id} label={person.label} kind={person.kind} state={presence} title={`${person.label}: ${t.person.states[presence]}`} />
       ))}
     </Link>
   )

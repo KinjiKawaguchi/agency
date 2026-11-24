@@ -140,7 +140,7 @@ describe('decision desk', () => {
     const user = userEvent.setup()
     renderApp()
     await user.click(await screen.findByText(/Read the document/))
-    expect(screen.getByRole('heading', { level: 4, name: 'Proposal' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 4, name: 'Proposal' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 4, name: 'Cost' })).toBeInTheDocument()
   })
 

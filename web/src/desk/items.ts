@@ -1,5 +1,6 @@
 import type { PersonStatus, RequestKind, TeamRequest, TeamView } from '../api/teamview'
-import { OWNER_NAME, presenceOf } from '../people/state'
+import { presenceOf } from '../people/state'
+import { viewerNameOf } from '../people/viewer'
 
 export type GroupId = RequestKind | 'others'
 
@@ -28,8 +29,9 @@ export const personOf = (view: TeamView, name: string): PersonStatus | undefined
 export const itemKey = (view: TeamView, request: TeamRequest): string => `${view.org}:${view.team}:${request.id}`
 
 function toItem(view: TeamView, request: TeamRequest): DeskItem {
-  const to = request.to ?? OWNER_NAME
-  const isMine = to === OWNER_NAME
+  const viewerName = viewerNameOf(view)
+  const to = request.to ?? viewerName
+  const isMine = to === viewerName
   return {
     key: itemKey(view, request),
     group: isMine ? request.kind : 'others',
@@ -70,10 +72,10 @@ export interface Situation {
 
 /** The numbers behind the one-line summary. The owner is the viewer and is not counted among the people. */
 export function situationOf(views: readonly TeamView[], items: readonly DeskItem[]): Situation {
-  const others = views.flatMap((view) => view.people).filter((person) => person.id !== OWNER_NAME)
+  const others = views.flatMap((view) => view.people.filter((person) => person.id !== viewerNameOf(view)).map((person) => ({ person, view })))
   return {
-    waitingOnYou: others.filter((person) => presenceOf(person) === 'needs-you').length,
-    working: others.filter((person) => person.state === 'working').length,
+    waitingOnYou: others.filter(({ person, view }) => presenceOf(person, viewerNameOf(view)) === 'needs-you').length,
+    working: others.filter(({ person }) => person.state === 'working').length,
     total: others.length,
     mine: items.filter((item) => item.isMine).length,
   }

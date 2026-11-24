@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
-import { createMockNode } from '../src/mock/node'
+import { createMockNode } from '../src/mock/node.ts'
 
 async function readBody(message: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = []

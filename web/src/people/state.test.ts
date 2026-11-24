@@ -14,21 +14,21 @@ const person = (change: Partial<PersonStatus>): PersonStatus => ({
 
 describe('presenceOf', () => {
   it('needs you when only the owner can unblock them, even while the session is working', () => {
-    expect(presenceOf(person({ state: 'working', waitingOn: { kind: 'person', person: 'owner' } }))).toBe('needs-you')
+    expect(presenceOf(person({ state: 'working', waitingOn: { kind: 'person', person: 'owner' } }), 'owner')).toBe('needs-you')
   })
 
   it('waits on someone else when the lead or another person has to act', () => {
-    expect(presenceOf(person({ state: 'idle', waitingOn: { kind: 'lead' } }))).toBe('waiting')
-    expect(presenceOf(person({ waitingOn: { kind: 'person', person: 'frontend' } }))).toBe('waiting')
+    expect(presenceOf(person({ state: 'idle', waitingOn: { kind: 'lead' } }), 'owner')).toBe('waiting')
+    expect(presenceOf(person({ waitingOn: { kind: 'person', person: 'frontend' } }), 'owner')).toBe('waiting')
   })
 
   it('reports away before anything else that is not the owner', () => {
-    expect(presenceOf(person({ state: 'away' }))).toBe('away')
+    expect(presenceOf(person({ state: 'away' }), 'owner')).toBe('away')
   })
 
   it('treats working as working and unknown as idle', () => {
-    expect(presenceOf(person({ state: 'working' }))).toBe('working')
-    expect(presenceOf(person({ state: 'unknown' }))).toBe('idle')
-    expect(presenceOf(person({ state: 'idle' }))).toBe('idle')
+    expect(presenceOf(person({ state: 'working' }), 'owner')).toBe('working')
+    expect(presenceOf(person({ state: 'unknown' }), 'owner')).toBe('idle')
+    expect(presenceOf(person({ state: 'idle' }), 'owner')).toBe('idle')
   })
 })
