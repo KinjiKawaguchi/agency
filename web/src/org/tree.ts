@@ -1,4 +1,4 @@
-import type { OrgDefinition, OrgDepartment, OrgPerson, OrgTeam } from '../api/clientApi'
+import type { OrgDefinition, Department, Person, TeamPlace } from '../api/clientApi'
 import type { Team } from '../api/teams'
 import type { PersonStatus, TeamView } from '../api/teamview'
 import { presenceOf, type Presence } from '../people/state'
@@ -11,7 +11,7 @@ export interface AgentNode {
 
 export interface TeamNode {
   kind: 'team'
-  team: OrgTeam
+  team: TeamPlace
   /** Absent when the node could not read the team. */
   view: TeamView | undefined
   agents: AgentNode[]
@@ -21,14 +21,14 @@ export interface TeamNode {
 
 export interface PersonNode {
   kind: 'person'
-  person: OrgPerson
+  person: Person
   isYou: boolean
 }
 
 export interface DepartmentNode {
   kind: 'department'
-  department: OrgDepartment
-  head: OrgPerson | undefined
+  department: Department
+  head: Person | undefined
   children: UnitChild[]
   /** Agents waiting for the viewer anywhere below. */
   waiting: number
@@ -44,7 +44,7 @@ export interface OrgTree {
   waiting: number
 }
 
-function teamNode(place: OrgTeam, teams: readonly Team[], orgId: string): TeamNode {
+function teamNode(place: TeamPlace, teams: readonly Team[], orgId: string): TeamNode {
   const found = teams.find((one) => one.view.org === orgId && one.view.team === place.id)
   if (found === undefined) return { kind: 'team', team: place, view: undefined, agents: [], working: 0, waiting: 0 }
   const { view, viewer } = found
@@ -64,8 +64,8 @@ function teamNode(place: OrgTeam, teams: readonly Team[], orgId: string): TeamNo
 const waitingOf = (children: readonly UnitChild[]): number =>
   children.reduce((sum, child) => sum + (child.kind === 'person' ? 0 : child.waiting), 0)
 
-/** A department's departments, teams, and people, in that order. */
-function childrenOf(parent: string | undefined, definition: OrgDefinition, teams: readonly Team[], viewerAccount: string): UnitChild[] {
+/** A department's departments, teams, and people, in that order. `null` is the top of the organization. */
+function childrenOf(parent: string | null, definition: OrgDefinition, teams: readonly Team[], viewerAccount: string): UnitChild[] {
   const departments = definition.departments
     .filter((department) => department.parent === parent)
     .map((department): DepartmentNode => {
@@ -91,7 +91,7 @@ function findDepartment(children: readonly UnitChild[], id: string): DepartmentN
 
 /** The chart of an organization, optionally focused on one department and everything below it. */
 export function buildOrgTree(definition: OrgDefinition, teams: readonly Team[], viewerAccount: string, focusId?: string): OrgTree {
-  const whole = childrenOf(undefined, definition, teams, viewerAccount)
+  const whole = childrenOf(null, definition, teams, viewerAccount)
   const focus = focusId === undefined ? undefined : findDepartment(whole, focusId)
   const children = focus === undefined ? whole : focus.children
   return { focus, children, waiting: waitingOf(children) }

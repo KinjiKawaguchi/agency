@@ -26,8 +26,9 @@ Writes must carry the page's token: the served `index.html` has `<meta name="age
 ## Types and data
 
 - TeamView types come from `../bindings`, generated from the Rust types. `src/api/teamview.ts` is the only module that imports them or the sample fixture.
-- The Client API (`src/api/clientApi.ts`: the signed-in person and funding, a team snapshot, the org definition, a decision) follows what the node will serve and is replaced by generated bindings when they exist. Token use is served by the mock node only, and only when asked: `AGENCY_MOCK_USAGE=1 npm run dev`. Without it the node answers 404, as the real one does, and the costs screen says token use is not available yet.
-- Funding forecasts (`src/costs/forecast.ts`) are worked out in the client from each window's use and reset time.
+- The Client API types (`Me`, `TeamSnapshot`, `DecisionInput`, `DecisionResult`, `Funding`, `OrgDefinition`, ...) also come from `../bindings`, through `src/api/clientApi.ts`, which is the only other module that imports them. Errors from the node are `{ "error": text }` with the status: 404 for something that is gone or not served, 409 for a refusal by the team's node, and a runtime's own 400 and 404 pass through.
+- Token use is not in the node's contract yet (agency#22). The mock node serves it only when asked: `AGENCY_MOCK_USAGE=1 npm run dev`. Without it the node answers 404, as the real one does, and the costs screen says token use is not available yet.
+- Funding forecasts (`src/costs/forecast.ts`) are worked out in the client from each window's use, reset time, and `lengthHours`.
 
 ## Language and theme
 
@@ -43,6 +44,7 @@ Files are grouped by feature: `api/`, `desk/`, `people/`, `markdown/`, `i18n/`, 
 
 `e2e/` runs the built client (`vite preview` with the mock node) in headless Chromium with Playwright. It covers the decision flow, the other screens, language and theme, and takes a screenshot of every screen in light and dark at desktop and phone width into `e2e-screenshots/`. CI runs it on every pull request and keeps the screenshots as the `web-screenshots` artifact.
 
+- The preview server sends the same security headers as the node (a Content-Security-Policy with `script-src 'self'` and `style-src 'self'`), so a change that needs an inline script or style fails here instead of in the owner's browser.
 - The mock node keeps its state in memory, so each test starts it over with `POST /__mock/reset` (options: `usage=1`, `siteError=<reason>`, `outcome=queued`).
 - Locally, `npx playwright install chromium-headless-shell` fetches the browser. If a headless Chromium is already on the machine, set `AGENCY_CHROMIUM_PATH` to its executable instead. No browser window opens either way.
 

@@ -1,6 +1,6 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionResult, Me, TeamSnapshot, TeamSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
 
@@ -27,6 +27,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** Makes the team's node refuse every decision for this reason (HTTP 409). */
+  refuseDecisionsWith?: string
   /** What the node reports for an accepted decision. */
   outcome?: DecisionResult['outcome']
 }
@@ -75,7 +77,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     funding: fundingSources(now),
   }
 
-  const sourceOf = (view: TeamView): TeamSource =>
+  const sourceOf = (view: TeamView): SnapshotSource =>
     view.team === 'site'
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
@@ -85,12 +87,14 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (request.headers.get('x-agency-token') !== MOCK_TOKEN) return failure(403, 'The request token is missing or wrong.')
     if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the decision as application/json.')
     const body: unknown = await request.json().catch(() => null)
+    if (options.refuseDecisionsWith !== undefined) return failure(409, options.refuseDecisionsWith)
     if (!isAnswerWith(body)) return failure(400, 'The decision body is malformed.')
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
     received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }) }]
     views = new Map([...views, [teamKey(view.org, view.team), { ...view, requests: view.requests.filter((one) => one !== target) }]])
-    return json({ outcome: options.outcome ?? 'applied' } satisfies DecisionResult)
+    const outcome = options.outcome ?? 'applied'
+    return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
   }
 
   const handleTeam = async (request: Request, url: URL, [, org = '', team = '', action = '']: RegExpExecArray): Promise<Response> => {

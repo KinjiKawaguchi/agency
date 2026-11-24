@@ -1,13 +1,13 @@
-import type { FundingSource, FundingWindowReading } from '../api/clientApi'
+import type { Funding, UsageWindow } from '../api/clientApi'
 import { useI18n } from '../i18n'
 import { forecastWindow } from './forecast'
 
-type WindowName = FundingWindowReading['name']
+type WindowName = UsageWindow['name']
 
 /** Weekly first: it is the one that decides how much work fits. */
 const WINDOW_ORDER: readonly WindowName[] = ['sevenDay', 'fiveHour']
 
-function WindowBlock({ name, reading, now }: { name: WindowName; reading: FundingWindowReading | undefined; now: number }) {
+function WindowBlock({ name, reading, now }: { name: WindowName; reading: UsageWindow | undefined; now: number }) {
   const { t, fmt } = useI18n()
   const label = t.costs.windows[name]
   if (reading === undefined) return <p className="fund-quiet">{t.costs.notStarted(label)}</p>
@@ -35,7 +35,7 @@ function WindowBlock({ name, reading, now }: { name: WindowName; reading: Fundin
 }
 
 /** One funding source: its weekly and five-hour windows, each projected to its reset. */
-export function FundingCard({ source, now }: { source: FundingSource; now: number }) {
+export function FundingCard({ source, now }: { source: Funding; now: number }) {
   const { t, fmt } = useI18n()
   return (
     <article className="fund">
@@ -43,9 +43,11 @@ export function FundingCard({ source, now }: { source: FundingSource; now: numbe
         <h3>{source.label}</h3>
         <span className="fund-kind">{t.costs.kinds[source.kind]}</span>
       </header>
-      {WINDOW_ORDER.map((name) => (
-        <WindowBlock key={name} name={name} reading={source.windows.find((one) => one.name === name)} now={now} />
-      ))}
+      {source.windows.length === 0 ? (
+        <p className="fund-quiet">{t.costs.unknownUsage}</p>
+      ) : (
+        WINDOW_ORDER.map((name) => <WindowBlock key={name} name={name} reading={source.windows.find((one) => one.name === name)} now={now} />)
+      )}
       {source.readAt === undefined ? null : <p className="fund-teams">{t.costs.readAt(fmt.dateTime(source.readAt))}</p>}
     </article>
   )

@@ -60,8 +60,8 @@ describe('buildOrgTree', () => {
     const looping: OrgDefinition = {
       ...ORG_DEFINITION,
       departments: [
-        { id: 'a', label: 'A', parent: 'b' },
-        { id: 'b', label: 'B', parent: 'a' },
+        { id: 'a', label: 'A', parent: 'b', head: null },
+        { id: 'b', label: 'B', parent: 'a', head: null },
       ],
       people: [],
       teams: [],

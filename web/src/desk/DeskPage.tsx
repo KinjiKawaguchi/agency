@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
 import { TEAM_KEY, useTeams } from '../api/queries'
 import { useI18n } from '../i18n'
@@ -50,10 +51,11 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
         const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
-        toast(result.outcome === 'queued' ? t.desk.paper.queued : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
+        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
         timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {
-        toast(t.desk.paper.sendFailed(failure instanceof Error ? failure.message : String(failure)), 'error')
+        const reason = failure instanceof Error ? failure.message : String(failure)
+        toast(failure instanceof ApiError && failure.status === 409 ? t.desk.paper.refused(reason) : t.desk.paper.sendFailed(reason), 'error')
       } finally {
         setSending((keys) => new Set([...keys].filter((key) => key !== item.key)))
       }

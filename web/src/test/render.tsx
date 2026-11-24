@@ -14,12 +14,13 @@ interface Options {
   siteError?: string
   usage?: boolean
   usageFailsWith?: number
+  refuseDecisionsWith?: string
   outcome?: 'applied' | 'delivered' | 'queued'
 }
 
 /** Renders the whole app against a fresh mock node. */
 export function renderApp(options: Options = {}): RenderResult & { node: MockNode } {
-  const node = createMockNode({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }) })
+  const node = createMockNode({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }) })
   const history = createMemoryHistory({ initialEntries: [options.path ?? '/desk'] })
   const result = render(<App client={createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} />)
   return { ...result, node }
