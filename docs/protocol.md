@@ -86,21 +86,82 @@ Agency は、AI エージェントと人が一緒に働く組織を、複数の�
 | GET | `/fed/v1/orgs/<組織>/definition` | 所属する人の読み出しの署名、または有効な招待の合言葉 |
 | POST | `/fed/v1/orgs/<組織>/definition` | 次の版であること (根の鍵の署名) |
 | POST | `/fed/v1/orgs/<組織>/join` | 参加の申し込みの署名と招待 |
-| GET | `/fed/v1/teams/<組織>/<チーム>/view` | 読み出しの署名と所属 |
+| GET | `/fed/v1/teams/<組織>/<チーム>/view` | 読み出しの署名と所属 (返すのは TeamView) |
 | POST | `/fed/v1/teams/<組織>/<チーム>/envelopes` | 封筒の署名、所属、期限、2 度目でないこと |
 
-## ハーネスとの境目
+## TeamView
 
-ノードはハーネスのファイルを直接読み書きしない。
-ハーネスの CLI だけを呼ぶ。
+A TeamView is what a team runtime reports about its team: its people, the requests waiting for a decision, its work items, and its epic forecasts.
+The node reads it from the team runtime (`view` in agency-runtime/1), returns it from `GET /fed/v1/teams/<org>/<team>/view`, and serves it to clients.
+A node that reads another node's TeamView parses it into these types before keeping a replica, and drops it if it does not parse.
 
-- `scrum state --json`: チームの今 (人、要求、判断待ち、進み)
-- `scrum request answer <id> --by <人> --json`: 標準入力の JSON `{ "text": <文>, "choice": <選択肢> }` で答える
-- `scrum request judge <repo#番号> --by <人> --json`: 同じ形で、ボードの判断待ちに答える
+The Rust types in `agency-proto` (`view.rs`, `runtime.rs`, `timestamp.rs`) are the source of truth.
+The TypeScript types in `bindings/` are generated from them with ts-rs and are never edited by hand; `scripts/check-bindings.sh` regenerates them and fails on any difference.
+`testdata/teamview.sample.json` is the shared sample: the Rust tests, the web client, and the harness all read it.
 
-答えの文は引数に載せず標準入力で渡す (`--` で始まる文を取り違えないため)。
-ハーネスは `{"ok":true}` か `{"ok":false,"status":<HTTP の状態>,"message":"..."}` を出し、失敗のときは終わりの番号を 1 にする。
-ノードは 404 と 400 を「断り」(送り直さない)、それ以外を「届かない」(送り直す) として扱う。
+Conventions:
+
+- Keys are camelCase. Numbers are non-negative integers.
+- `Timestamp`: RFC 3339 in UTC, ending in `Z` (`2026-11-24T12:00:00Z`; fractional seconds are allowed). `Date`: a calendar date, `YYYY-MM-DD`. They are different types.
+- An optional field is omitted when absent. It is never written as `null`.
+- People and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org person ids. The team runtime does not know org person ids.
+- Unknown fields are ignored, so a team runtime may add fields before the contract names them.
+
+```
+TeamView      { org: Id, team: Id, label, generatedAt: Timestamp,
+                people: PersonStatus[], requests: Request[], work: WorkItem[], epics: EpicForecast[] }
+PersonStatus  { id, label, kind: "agent" | "human", role: "lead" | "member",
+                state: "working" | "idle" | "away" | "unknown", since?: Timestamp,
+                waitingOn?: { kind: "person", person } | { kind: "lead" },
+                status /* one line */, holding: string[] /* work item refs */ }
+Request       { id, kind: "question" | "proposal" | "pendingDecision", title, context /* plain text */,
+                document?: string /* Markdown, proposals */, from, to?, createdAt: Timestamp,
+                issue?: string, blocks: string[], options: RequestOption[], thread?: ThreadMessage[],
+                answerWith: { kind: "answer" | "judge", target } }
+RequestOption { key, text, isRecommended: boolean, detail?: string }
+ThreadMessage { from, text, choice?: string, at: Timestamp }
+WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
+                assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
+                points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
+BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
+EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
+                forecast?: { days, at: Timestamp }, basis }
+```
+
+People:
+
+- `state` says whether the person is active; `waitingOn` says who has to act before they can continue. A person can be `working` and still wait on someone, for example on a permission prompt: then `waitingOn` names the person who answers the prompt and `status` says it is a permission prompt.
+- `waitingOn.person` uses the same names as `Request.to`.
+
+Requests:
+
+- `question`: the team asks something. `proposal`: the team asks for approval of a document (`document`) with options. `pendingDecision`: a board item is blocked until someone decides.
+- `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
+- `to` absent means the team's owner. The node maps runtime names to org people through its hosted-team configuration: `owner` is the org person id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org person id>" }`). A `to` that is not in `people` goes to the owner.
+- `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
+- `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
+
+## agency-runtime/1
+
+The node does not read or write a team runtime's files. For each hosted team it runs a configured command (argv and environment) once per call:
+
+1. It writes one JSON request to the command's stdin and closes stdin.
+2. It reads one JSON response from stdout. Text in a decision travels only on stdin, never in arguments.
+3. The command exits with 0 when the response is a result and 1 when it is an error. The node stops the command after 20 seconds and treats that as unreachable.
+
+Request: `{ "runtime": "agency-runtime/1", "org": <Id>, "team": <Id>, "op": <op>, ...input }`.
+Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "message": <text> } }`.
+
+| op | input | result |
+|---|---|---|
+| `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text> }` |
+| `view` | none | TeamView |
+| `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org person id>, "payload": { "text", "choice"? } }` | `{}` |
+
+- The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
+- The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay). `by` is the org person who decided.
+- Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
+- `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## 試験の値
 

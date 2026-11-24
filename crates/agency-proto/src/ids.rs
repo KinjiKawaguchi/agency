@@ -1,14 +1,16 @@
 //! 識別子。台の境目で形を確かめ、形の違う値は型にしない。
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use std::fmt;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 #[error("{0}")]
 pub struct IdError(pub String);
 
-/// アカウント、組織、チーム、部署、人の id: `[a-z0-9][a-z0-9-]{0,39}`
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+/// The id of an account, org, team, department, or person: `[a-z0-9][a-z0-9-]{0,39}`
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[serde(try_from = "String", into = "String")]
+#[ts(export, type = "string")]
 pub struct Id(String);
 
 impl Id {
