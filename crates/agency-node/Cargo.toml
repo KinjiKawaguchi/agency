@@ -15,18 +15,15 @@ name = "agency"
 path = "src/main.rs"
 
 [dependencies]
+agency-adapters.workspace = true
+agency-core.workspace = true
 agency-proto.workspace = true
 anyhow.workspace = true
 axum.workspace = true
-base64.workspace = true
 clap.workspace = true
-rand_core.workspace = true
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
-time.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+reqwest.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true

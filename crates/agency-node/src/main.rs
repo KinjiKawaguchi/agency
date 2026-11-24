@@ -1,11 +1,14 @@
 //! `agency`: Agency のノードの CLI。台を作り、組織を作り、招待し、参加し、動かす。
-use agency_node::client::{decide, join, refresh, Decided};
-use agency_node::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
-use agency_node::node::Node;
-use agency_node::orgs;
-use agency_node::outbox::{deliver_due, pending};
-use agency_node::server::router;
-use agency_node::store::DataDir;
+use agency_adapters::files::DataDir;
+use agency_adapters::server::router;
+use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
+use agency_core::decisions::{decide, Decided};
+use agency_core::invites::join;
+use agency_core::outbox::{deliver_due, pending};
+use agency_core::ports::ConfigStore;
+use agency_core::views::refresh;
+use agency_core::{invites, orgs, Node};
+use agency_node::Overrides;
 use agency_proto::org::{is_node_origin, TeamPlace};
 use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
@@ -164,10 +167,10 @@ fn status(node: &Node) {
         "アカウント: {} ({}) 鍵の指紋 {}",
         config.account.id,
         config.account.label,
-        node.key.public().fingerprint()
+        node.key().public().fingerprint()
     );
     println!("この台: {} (待ち受け {})", config.url, config.listen);
-    for doc in node.data.orgs() {
+    for doc in node.store().orgs() {
         let role = if orgs::is_root(node, &doc) {
             "根の鍵"
         } else if doc.body.member(&config.account.id).is_some() {
@@ -262,7 +265,7 @@ async fn run(cli: Cli) -> Result<()> {
     {
         return init(&data, account, label, url, listen, scrum.clone());
     }
-    let node = Node::open(data, None)?;
+    let node = agency_node::open(data, Overrides::default())?;
     match cli.command {
         Command::Init { .. } => unreachable!(),
         Command::OrgCreate { org, label } => {
@@ -270,7 +273,7 @@ async fn run(cli: Cli) -> Result<()> {
             println!(
                 "組織 {} を作った。根の鍵の指紋: {}",
                 doc.body.org,
-                node.key.public().fingerprint()
+                node.key().public().fingerprint()
             );
         }
         Command::TeamAdd {
@@ -333,7 +336,7 @@ async fn run(cli: Cli) -> Result<()> {
                 _ => bail!("--role は member か answerer"),
             };
             let department = department.as_deref().map(id).transpose()?;
-            println!("{}", orgs::invite(&node, &id(&org)?, department, role)?);
+            println!("{}", invites::invite(&node, &id(&org)?, department, role)?);
         }
         Command::Join { link, yes } => {
             let doc = join(&node, &link, |definition| yes || confirm_join(definition)).await?;

@@ -22,7 +22,9 @@ AI エージェントと人が一緒に働く組織を、複数の機械にま�
 
 ```
 crates/agency-proto   約束: 決まった順の JSON、Ed25519 の署名、封筒、組織の定義の版、招待と参加
-crates/agency-node    ノード (コマンド agency): 台どうしの道、写し、送り箱、ハーネスとの境目
+crates/agency-core     Domain, use cases, and ports; no async runtime, network, filesystem, wall clock, or randomness
+crates/agency-adapters Port adapters: data directory, HTTP in and out, team runtime commands, system clock, test doubles
+crates/agency-node     Wiring and the `agency` CLI
 docs/protocol.md      約束の文書
 testdata/vectors.json 言語に依らない試験の値 (決まった種の鍵、決まった順の JSON、署名)
 ```

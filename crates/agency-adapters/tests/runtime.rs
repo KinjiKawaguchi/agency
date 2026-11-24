@@ -1,7 +1,8 @@
 //! The command runtime against a fake agency-runtime/1 runtime: a shell script that records each request
 //! and answers with the response file prepared for that op.
-use agency_node::config::{HostedTeam, RuntimeCommand};
-use agency_node::runtime::Runtimes;
+use agency_adapters::runtime::CommandRuntime;
+use agency_core::config::{HostedTeam, RuntimeCommand};
+use agency_core::ports::TeamRuntime;
 use agency_proto::{EnvelopeKind, Id, Payload, RuntimeDecision};
 use std::collections::BTreeMap;
 use std::fs;
@@ -85,7 +86,7 @@ fn decision(text: &str) -> RuntimeDecision {
 #[tokio::test]
 async fn views_and_decides_over_stdin_and_stdout() {
     let fake = Fake::new();
-    let runtimes = Runtimes::command();
+    let runtimes = CommandRuntime::default();
     let team = fake.team("app");
 
     let view = runtimes.view(&team).await.unwrap();
@@ -120,7 +121,7 @@ async fn refuses_a_runtime_that_does_not_speak_agency_runtime_1() {
         r#"{"result":{"runtimes":["agency-runtime/2"],"ops":["view"],"label":"App"}}"#,
         0,
     );
-    let error = Runtimes::command()
+    let error = CommandRuntime::default()
         .view(&fake.team("app"))
         .await
         .unwrap_err();
@@ -134,7 +135,7 @@ async fn refuses_a_runtime_that_does_not_speak_agency_runtime_1() {
 #[tokio::test]
 async fn refuses_a_view_of_another_team() {
     let fake = Fake::new();
-    let error = Runtimes::command()
+    let error = CommandRuntime::default()
         .view(&fake.team("other"))
         .await
         .unwrap_err();
@@ -145,7 +146,7 @@ async fn refuses_a_view_of_another_team() {
 #[tokio::test]
 async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
     let fake = Fake::new();
-    let runtimes = Runtimes::command();
+    let runtimes = CommandRuntime::default();
     let team = fake.team("app");
     fake.answer(
         "decide",
@@ -176,7 +177,11 @@ async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
         ..team
     };
     assert_eq!(
-        Runtimes::command().view(&missing).await.unwrap_err().status,
+        CommandRuntime::default()
+            .view(&missing)
+            .await
+            .unwrap_err()
+            .status,
         503
     );
 }

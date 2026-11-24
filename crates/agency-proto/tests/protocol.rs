@@ -110,7 +110,7 @@ fn org_shape_is_checked() {
 
 fn envelope(at: &str) -> Envelope {
     Envelope {
-        id: EnvelopeId::random(),
+        id: EnvelopeId::from_bytes([1; 16]),
         kind: EnvelopeKind::Answer,
         org: id("acme"),
         team: id("app"),

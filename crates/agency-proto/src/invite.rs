@@ -19,10 +19,8 @@ pub struct Invite {
 
 const SCHEME: &str = "agency:join?";
 
-/// 招待の合言葉。台には SHA-256 だけを残す
-pub fn new_code() -> String {
-    let mut bytes = [0u8; 16];
-    rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+/// An invite code from 16 random bytes supplied by the caller. Nodes keep only its SHA-256.
+pub fn code_from_bytes(bytes: [u8; 16]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
@@ -132,7 +130,7 @@ mod tests {
             node: "https://node.example:8443".into(),
             org: Id::parse("acme").unwrap(),
             fp: "0123456789abcdef0123456789abcdef".into(),
-            code: new_code(),
+            code: code_from_bytes([7; 16]),
         };
         assert_eq!(Invite::parse(&invite.to_link()).unwrap(), invite);
         let bad_node = invite.to_link().replace(
