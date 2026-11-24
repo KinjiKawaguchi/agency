@@ -1,10 +1,11 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
 use agency_core::config::NodeConfig;
+use agency_core::decisions::DecisionRecord;
 use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::ports::{
-    AppliedLog, ConfigStore, InviteStore, OrgStore, OutboxStore, ReplicaStore,
+    AppliedLog, ConfigStore, DecisionLogStore, InviteStore, OrgStore, OutboxStore, ReplicaStore,
 };
 use agency_core::views::Replica;
 use agency_core::{Error, Result};
@@ -24,7 +25,7 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
     serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
 }
 
-pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| io_error(path, "no parent directory"))?;
@@ -192,6 +193,10 @@ impl OutboxStore for DataDir {
             parcel,
         )
     }
+
+    fn refused_parcels(&self) -> Vec<Parcel> {
+        read_all(&self.dir("refused"))
+    }
 }
 
 impl ReplicaStore for DataDir {
@@ -212,5 +217,24 @@ impl ReplicaStore for DataDir {
                 .join(format!("{team}.json")),
             replica,
         )
+    }
+}
+
+/// How many decisions the log keeps; older ones are dropped.
+const DECISION_LOG_SIZE: usize = 500;
+
+impl DecisionLogStore for DataDir {
+    fn append_decision(&self, record: &DecisionRecord) -> Result<()> {
+        let path = self.0.join("decisions.json");
+        let mut records: Vec<DecisionRecord> = read_json(&path).unwrap_or_default();
+        records.push(record.clone());
+        let keep = records.len().saturating_sub(DECISION_LOG_SIZE);
+        write_json(&path, &records[keep..])
+    }
+
+    fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord> {
+        let records: Vec<DecisionRecord> =
+            read_json(&self.0.join("decisions.json")).unwrap_or_default();
+        records.into_iter().rev().take(limit).collect()
     }
 }

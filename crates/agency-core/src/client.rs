@@ -1,14 +1,16 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
 use crate::config::HostedTeam;
-use crate::decisions::{decide, Decided};
+use crate::decisions::{decide_titled, Decided, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::is_root;
+use crate::outbox::Parcel;
 use crate::views::{runtime_view, viewer_name};
 use agency_proto::client::{
-    AccountRef, DecisionInput, DecisionOutcome, DecisionResult, Funding, Me, OrgRef,
-    SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
+    AccountRef, DecisionEntry, DecisionInput, DecisionLog, DecisionOutcome, DecisionResult,
+    DecisionState, Funding, Me, OrgRef, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
+    MAX_TITLE,
 };
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Id, OrgDefinition, Payload, Person, Timestamp};
@@ -151,11 +153,23 @@ pub async fn submit_decision(
     input: DecisionInput,
 ) -> Result<DecisionResult> {
     membership(node, org)?;
+    let title = input
+        .title
+        .map(|title| title.trim().to_owned())
+        .filter(|title| !title.is_empty());
+    if title
+        .as_ref()
+        .is_some_and(|title| title.chars().count() > MAX_TITLE)
+    {
+        return Err(Error::bad_request(format!(
+            "the title is at most {MAX_TITLE} characters"
+        )));
+    }
     let payload = Payload {
         text: input.text,
         choice: input.choice,
     };
-    let decided = decide(node, org, team, input.kind, input.target, payload).await?;
+    let decided = decide_titled(node, org, team, input.kind, input.target, payload, title).await?;
     let (outcome, message) = match decided {
         Decided::Applied => (DecisionOutcome::Applied, None),
         Decided::Delivered => (DecisionOutcome::Delivered, None),
@@ -168,4 +182,68 @@ pub async fn submit_decision(
         }
     };
     Ok(DecisionResult { outcome, message })
+}
+
+/// Where a logged decision is now: applied locally, waiting in the outbox, refused, or delivered.
+fn state_of(
+    record: &DecisionRecord,
+    decided_at: &Timestamp,
+    pending: &[Parcel],
+    refused: &[Parcel],
+) -> DecisionState {
+    if record.is_local {
+        return DecisionState::Applied;
+    }
+    let id = record.id.as_str();
+    if let Some(parcel) = pending.iter().find(|parcel| parcel.id == id) {
+        let next_at = timestamp(Some(&parcel.next_at)).unwrap_or_else(|| decided_at.clone());
+        return DecisionState::Queued {
+            attempts: parcel.attempts,
+            next_at,
+            last_error: parcel.last_error.clone(),
+        };
+    }
+    match refused.iter().find(|parcel| parcel.id == id) {
+        Some(parcel) => DecisionState::Refused {
+            message: parcel.last_error.clone().unwrap_or_default(),
+        },
+        None => DecisionState::Delivered,
+    }
+}
+
+/// Default and largest number of entries `decision_log` returns.
+pub const DEFAULT_LOG_LIMIT: usize = 50;
+pub const MAX_LOG_LIMIT: usize = 200;
+
+/// The account's recent decisions in orgs it still belongs to, newest first, with where each one went.
+pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
+    let limit = limit.unwrap_or(DEFAULT_LOG_LIMIT).clamp(1, MAX_LOG_LIMIT);
+    let (pending, refused) = (
+        node.store().pending_parcels(),
+        node.store().refused_parcels(),
+    );
+    let visible = node
+        .store()
+        .recent_decisions(limit)
+        .into_iter()
+        .filter(|record| membership(node, &record.org).is_ok());
+    let entries = visible.filter_map(|record| {
+        let decided_at = timestamp(Some(&record.at))?;
+        let state = state_of(&record, &decided_at, &pending, &refused);
+        Some(DecisionEntry {
+            id: record.id.as_str().to_owned(),
+            org: record.org,
+            team: record.team,
+            kind: record.kind,
+            target: record.target,
+            title: record.title,
+            text: record.payload.text,
+            choice: record.payload.choice,
+            decided_at,
+            state,
+        })
+    });
+    DecisionLog {
+        entries: entries.collect(),
+    }
 }

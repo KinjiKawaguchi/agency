@@ -102,7 +102,12 @@ pub struct DecisionInput {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice: Option<String>,
+    /// The request's title, kept in the decision log for people to read (at most 200 characters).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
+
+pub const MAX_TITLE: usize = 200;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -175,4 +180,54 @@ impl UsageWindowName {
             Self::SevenDay => 7 * 24,
         }
     }
+}
+
+/// The decisions the node's account made recently, newest first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DecisionLog {
+    pub entries: Vec<DecisionEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct DecisionEntry {
+    /// The decision envelope's id.
+    pub id: String,
+    pub org: Id,
+    pub team: Id,
+    pub kind: EnvelopeKind,
+    /// The request id or work item ref (`repo#N`) it answered.
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice: Option<String>,
+    pub decided_at: Timestamp,
+    pub state: DecisionState,
+}
+
+/// Where a decision went.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum DecisionState {
+    /// Applied to a team on this node.
+    Applied,
+    /// Delivered to the team's node, which applied it.
+    Delivered,
+    /// Waiting in the outbox; the team's node has not been reached yet.
+    #[serde(rename_all = "camelCase")]
+    Queued {
+        attempts: u32,
+        next_at: Timestamp,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        last_error: Option<String>,
+    },
+    /// The team's node refused it; it will not be retried.
+    Refused { message: String },
 }
