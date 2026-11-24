@@ -10,10 +10,32 @@ async function readBody(message: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
+const RESET_PATH = '/__mock/reset'
+
+/**
+ * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
+ * the mock numbers on; `POST /__mock/reset?usage=1&siteError=...&outcome=queued` starts a node with the given ones.
+ */
+function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof createMockNode>[0] {
+  const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
+  const siteError = query?.get('siteError')
+  const outcome = query?.get('outcome')
+  return {
+    usage: usage === '1',
+    ...(siteError === null || siteError === undefined ? {} : { siteError }),
+    ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),
+  }
+}
+
 function apiMiddleware(): Connect.NextHandleFunction {
-  // The real node does not serve token use yet. AGENCY_MOCK_USAGE=1 turns the mock numbers on.
-  const node = createMockNode({ usage: process.env.AGENCY_MOCK_USAGE === '1' })
+  let node = createMockNode(nodeOptions(undefined))
   return async (message: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => {
+    const url = new URL(message.url ?? '/', 'http://localhost')
+    if (message.method === 'POST' && url.pathname === RESET_PATH) {
+      node = createMockNode(nodeOptions(url.searchParams))
+      response.statusCode = 204
+      return response.end()
+    }
     if (!message.url?.startsWith('/api/')) return next()
     const method = message.method ?? 'GET'
     const hasBody = method !== 'GET' && method !== 'HEAD'
