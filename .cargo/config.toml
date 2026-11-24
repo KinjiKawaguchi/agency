@@ -1,3 +1,5 @@
 [env]
 # ts-rs writes the TypeScript types generated from agency-proto here (`cargo test -p agency-proto export_bindings`).
 TS_RS_EXPORT_DIR = { value = "bindings", relative = true }
+# Relative imports end in `.js`, so the bindings type-check under `moduleResolution: NodeNext`.
+TS_RS_IMPORT_EXTENSION = "js"
