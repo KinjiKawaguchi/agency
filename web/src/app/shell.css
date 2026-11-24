@@ -1,0 +1,140 @@
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.appbar-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 24px;
+  max-width: var(--page-width);
+  min-height: 56px;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.brand-seal {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--seal);
+  border-radius: 50%;
+  transform: rotate(-9deg);
+}
+
+.brand-seal::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--seal);
+}
+
+.mainnav {
+  display: flex;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.mainnav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mainnav a:hover,
+.mainnav a[aria-current='page'] {
+  color: var(--ink);
+}
+
+.mainnav a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.nav-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--seal);
+  color: var(--on-seal);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.appbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.appbar-right select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12.5px;
+}
+
+.page-soon {
+  padding: 48px 0;
+  color: var(--ink-3);
+}
+
+@media (max-width: 720px) {
+  .appbar-in {
+    gap: 0 12px;
+    padding-top: 8px;
+  }
+
+  .mainnav {
+    order: 3;
+    width: 100%;
+    margin: 0 -12px;
+    overflow-x: auto;
+    min-height: 40px;
+  }
+
+  .mainnav a {
+    flex: none;
+    padding: 0 7px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .mainnav a[aria-current='page']::after {
+    right: 7px;
+    left: 7px;
+  }
+}

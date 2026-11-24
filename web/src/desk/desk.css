@@ -1,0 +1,475 @@
+/* ── Briefing: one line about the situation ── */
+.briefing {
+  margin-bottom: 32px;
+}
+
+.briefing-date {
+  margin-bottom: 8px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.briefing-line {
+  max-width: 32em;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.inline-link {
+  text-decoration: underline;
+  text-decoration-color: var(--seal);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+}
+
+.inline-link:hover {
+  background: var(--seal-soft);
+}
+
+.briefing-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin-top: 20px;
+}
+
+.face-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px;
+}
+
+.briefing-sub {
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+/* ── Desk: the pile on the left, the open paper on the right ── */
+.desk {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.desk-left {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.empty {
+  padding: 28px 0;
+  color: var(--ink-3);
+}
+
+.pile-group {
+  margin-bottom: 18px;
+}
+
+.pile-head {
+  display: flex;
+  align-items: baseline;
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.pile-item {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  text-align: left;
+}
+
+.pile-item:hover {
+  background: var(--hover);
+}
+
+.pile-item[aria-selected='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--seal);
+}
+
+.pile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pile-kind {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.pile-kind.kind-proposal {
+  color: var(--seal);
+}
+
+.pile-title {
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.pile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.pile-blocks {
+  color: var(--hold);
+  font-weight: 600;
+}
+
+.pile-more {
+  width: 100%;
+  height: 34px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* ── Trays ── */
+.tray {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.tray summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.tray-row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tray-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+.tray-sub {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ── The open paper ── */
+.paper {
+  position: sticky;
+  top: 72px;
+  min-width: 0;
+  padding: 28px 32px 32px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.paper.blank {
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.doc-type {
+  color: var(--seal);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.doc-title {
+  margin: 4px 0 8px;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.stamps {
+  display: flex;
+  gap: 8px;
+}
+
+.stamp-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 84px;
+  padding: 6px 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.stamp-box.open {
+  border-style: dashed;
+}
+
+.stamp-role {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stamp-empty {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seal {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--seal);
+  border-radius: 50%;
+  color: var(--seal);
+  line-height: 1;
+  transform: rotate(-8deg);
+}
+
+.seal b {
+  font-size: 15px;
+}
+
+.stamp-time {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.seal.drafter {
+  border-color: var(--ink-3);
+  color: var(--ink-2);
+}
+
+.seal.just {
+  animation: press 0.35s ease-out;
+}
+
+.seal.tiny {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-width: 1.5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@keyframes press {
+  from { opacity: 0; transform: rotate(-8deg) scale(1.7); }
+  to { opacity: 1; transform: rotate(-8deg) scale(1); }
+}
+
+.doc-context {
+  margin-top: 20px;
+  color: var(--ink-2);
+}
+
+.doc-thread {
+  margin-top: 16px;
+}
+
+.doc-msg {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+
+.doc-done {
+  margin-top: 24px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--ink-2);
+}
+
+.is-sealed .doc-done {
+  background: var(--seal-soft);
+  color: var(--ink);
+}
+
+/* ── Deciding ── */
+.doc-decide {
+  margin-top: 24px;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.choice:hover {
+  background: var(--hover);
+}
+
+.choice:has(input:checked) {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.choice-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.choice-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.choice-rec {
+  color: var(--seal);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.choice-name {
+  font-weight: 600;
+}
+
+.choice-detail {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.answer-note {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-top: 14px;
+}
+
+.hint {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.doc-body {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.doc-body summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* ── Phone and tablet: the paper opens below the pile ── */
+@media (max-width: 960px) {
+  .desk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .briefing-line {
+    font-size: 22px;
+  }
+
+  .paper {
+    padding: 20px 16px 24px;
+  }
+
+  .doc-head {
+    flex-direction: column;
+  }
+
+  .doc-actions .btn {
+    width: 100%;
+  }
+}
