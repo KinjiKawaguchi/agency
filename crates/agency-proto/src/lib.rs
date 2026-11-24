@@ -1,5 +1,5 @@
-//! Agency の台どうしの約束 (docs/protocol.md)。
-//! どのデータも書き手は 1 つ。書き手は署名し、ほかの台は署名を確かめてから写しを持つ。
+//! Agency's protocol between nodes (docs/protocol.md).
+//! Every piece of data has one writer. The writer signs it; other nodes keep a replica only after checking the signature.
 
 pub mod canonical;
 pub mod client;

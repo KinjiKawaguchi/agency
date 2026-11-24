@@ -1,4 +1,4 @@
-//! 鍵 (Ed25519)。秘密鍵は持ち主の台から出さない。公開鍵と指紋を、組織の定義と招待のリンクに書く。
+//! Keys (Ed25519). A private key never leaves its owner's node; public keys and fingerprints go in org definitions and invite links.
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
@@ -14,7 +14,7 @@ use ts_rs::TS;
 pub struct PublicKey(VerifyingKey);
 
 impl PublicKey {
-    /// 指紋: 公開鍵の SHA-256 の先頭 16 バイトの 16 進 (32 文字)
+    /// Fingerprint: the first 16 bytes of the public key's SHA-256, as hex (32 characters).
     pub fn fingerprint(&self) -> String {
         Sha256::digest(self.0.as_bytes())[..16]
             .iter()
@@ -42,13 +42,13 @@ impl TryFrom<String> for PublicKey {
     fn try_from(raw: String) -> Result<Self, Self::Error> {
         let bytes = STANDARD
             .decode(raw.as_bytes())
-            .map_err(|_| "公開鍵が base64 でない".to_owned())?;
+            .map_err(|_| "the public key is not base64".to_owned())?;
         let array: [u8; 32] = bytes
             .try_into()
-            .map_err(|_| "公開鍵は 32 バイト".to_owned())?;
+            .map_err(|_| "a public key is 32 bytes".to_owned())?;
         VerifyingKey::from_bytes(&array)
             .map(Self)
-            .map_err(|_| "公開鍵として読めない".to_owned())
+            .map_err(|_| "not a valid public key".to_owned())
     }
 }
 
@@ -64,7 +64,7 @@ impl fmt::Debug for PublicKey {
     }
 }
 
-/// アカウントの秘密鍵。保存するときは 32 バイトの種を base64 で書く (ファイルの権限は呼ぶ側が 0600 にする)
+/// An account's private key. It is stored as its 32-byte seed in base64 (the caller makes the file mode 0600).
 pub struct AccountKey(SigningKey);
 
 impl AccountKey {
@@ -72,7 +72,7 @@ impl AccountKey {
         Self(SigningKey::generate(&mut rand_core::OsRng))
     }
 
-    /// 決まった種から作る (試験の値のため)
+    /// From a fixed seed (for test vectors).
     pub fn from_seed(seed: [u8; 32]) -> Self {
         Self(SigningKey::from_bytes(&seed))
     }
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn round_trips_and_rejects_other_keys() {
         let key = AccountKey::generate();
-        let restored = AccountKey::from_encoded(&key.encoded()).expect("読める");
+        let restored = AccountKey::from_encoded(&key.encoded()).expect("readable");
         let signature = restored.sign(b"hello");
         assert!(key.public().verify(b"hello", &signature));
         assert!(!key.public().verify(b"hellO", &signature));
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn public_key_text_is_validated() {
         let key = AccountKey::generate().public();
-        assert_eq!(PublicKey::try_from(key.encoded()).expect("読める"), key);
+        assert_eq!(PublicKey::try_from(key.encoded()).expect("readable"), key);
         assert!(PublicKey::try_from("AAAA".to_owned()).is_err());
         assert_eq!(key.fingerprint().len(), 32);
     }

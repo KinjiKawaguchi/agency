@@ -1,6 +1,6 @@
 [package]
 name = "agency-proto"
-description = "Agency の台どうしの約束: 決まった順の JSON、署名、封筒、組織の定義、招待と参加"
+description = "Agency's protocol between nodes: canonical JSON, signatures, envelopes, org definitions, invites and joining"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

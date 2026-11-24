@@ -1,4 +1,5 @@
-//! 約束の決める行の試験: 組織の定義の版のつながり (書き手は根の鍵 1 つ)、封筒の形と期限、試験の値。
+//! Tests of the protocol's deciding rules: the chain of org definition versions (one writer, the root key), envelope shape and expiry, and the test vectors.
+//! The non-ASCII sample values ("開発", "ア") are on purpose: the test vectors pin UTF-8 in canonical JSON.
 use agency_proto::canonical::canonical_of;
 use agency_proto::org::{verify_genesis, verify_successor, Department, Root, SignedOrg, TeamPlace};
 use agency_proto::{
@@ -76,7 +77,7 @@ fn org_chain_accepts_only_the_next_version_signed_by_the_root() {
     });
     assert_eq!(verify_successor(&v1, &v2), Ok(()));
     assert!(v2.body.member(&id("bob")).is_some());
-    // 根でない鍵の署名、版を飛ばしたもの、前の版の指紋が違うもの、2 度目の同じ版は受け取らない
+    // Refused: signed by a key that is not the root, a skipped version, a wrong previous fingerprint, and the same version twice.
     assert!(verify_successor(&v1, &successor(&v1, &bob, |_| ())).is_err());
     assert!(verify_successor(&v1, &successor(&v2, &root, |_| ())).is_err());
     assert!(verify_successor(
@@ -131,11 +132,11 @@ fn envelope_shape_and_freshness() {
     assert!(envelope("2026-11-18T12:00:00Z").is_fresh(now));
     assert!(
         !envelope("2026-11-16T12:00:00Z").is_fresh(now),
-        "8 日前は期限切れ"
+        "8 days old is expired"
     );
     assert!(
         !envelope("2026-11-24T12:10:00Z").is_fresh(now),
-        "10 分先は時計のずれの幅の外"
+        "10 minutes ahead is beyond the allowed clock skew"
     );
     let mut empty = envelope(AT);
     empty.payload.choice = None;
@@ -152,11 +153,11 @@ fn signature_is_bound_to_its_kind() {
     assert!(signed.verify(Kind::Envelope, &key.public()));
     assert!(
         !signed.verify(Kind::Org, &key.public()),
-        "封筒の署名を組織の定義の署名として使えない"
+        "an envelope signature cannot be used as an org definition signature"
     );
 }
 
-/// 試験の値: 決まった種の鍵で、決まった本体の決まった順の JSON と署名。別の言語で作り直しても同じ値になる
+/// Test vectors: canonical JSON and signatures of fixed bodies with a key from a fixed seed. Another implementation must produce the same values.
 #[test]
 fn vectors_match_testdata() {
     let key = AccountKey::from_seed([7u8; 32]);
@@ -177,7 +178,7 @@ fn vectors_match_testdata() {
     }
     let expected: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(path)
-            .expect("testdata/vectors.json が無い (AGENCY_WRITE_VECTORS=1 で作る)"),
+            .expect("testdata/vectors.json is missing (write it with AGENCY_WRITE_VECTORS=1)"),
     )
     .unwrap();
     assert_eq!(actual, expected);

@@ -1,4 +1,4 @@
-//! 招待のリンクと参加の申し込み。リンクには組織の根の鍵の指紋を入れ、招かれた側が偽の台を見分けられるようにする。
+//! Invite links and join requests. A link carries the fingerprint of the org's root key, so the invited node can tell a fake node.
 use crate::ids::Id;
 use crate::keys::PublicKey;
 use crate::org::is_node_origin;
@@ -11,9 +11,9 @@ use sha2::{Digest, Sha256};
 pub struct Invite {
     pub node: String,
     pub org: Id,
-    /// 組織の根の鍵の指紋 (32 文字の 16 進)
+    /// Fingerprint of the org's root key (32 hex characters).
     pub fp: String,
-    /// 合言葉 (16 バイトの乱数の base64url)
+    /// The invite code (16 random bytes as base64url).
     pub code: String,
 }
 
@@ -75,7 +75,7 @@ impl Invite {
         let query = link
             .trim()
             .strip_prefix(SCHEME)
-            .ok_or("招待のリンクの形が違う (agency:join? で始まる)")?;
+            .ok_or("malformed invite link (it starts with agency:join?)")?;
         let field = |name: &str| {
             query
                 .split('&')
@@ -84,13 +84,13 @@ impl Invite {
         };
         let node = field("node")
             .filter(|one| is_node_origin(one))
-            .ok_or("台の URL の形が違う")?;
+            .ok_or("malformed node URL")?;
         let org = field("org")
             .and_then(|one| Id::parse(&one).ok())
-            .ok_or("組織の id の形が違う")?;
+            .ok_or("malformed org id")?;
         let fp = field("fp")
             .filter(|one| one.len() == 32 && one.bytes().all(|b| b.is_ascii_hexdigit()))
-            .ok_or("鍵の指紋の形が違う")?;
+            .ok_or("malformed key fingerprint")?;
         let code = field("code")
             .filter(|one| {
                 (16..=64).contains(&one.len())
@@ -98,7 +98,7 @@ impl Invite {
                         .bytes()
                         .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
             })
-            .ok_or("合言葉の形が違う")?;
+            .ok_or("malformed invite code")?;
         Ok(Self {
             node,
             org,
@@ -108,7 +108,7 @@ impl Invite {
     }
 }
 
-/// 参加の申し込み (種類 join)。署名は本体の publicKey で確かめる
+/// A join request (kind `join`). Its signature is checked with the body's `publicKey`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JoinRequest {
