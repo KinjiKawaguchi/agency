@@ -26,17 +26,19 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('web/package.json') != '' }}
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - id: web
+        name: Check for the web client
+        run: echo "present=$([ -f web/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.web.outputs.present == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: corepack enable
-      - run: |
+      - if: steps.web.outputs.present == 'true'
+        working-directory: web
+        run: |
+          corepack enable
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else npm ci; fi
-      - run: npm test
-      - run: npm run build
+          npm test
+          npm run build
