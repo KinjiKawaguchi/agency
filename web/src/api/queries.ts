@@ -35,3 +35,11 @@ export function useTeamViews(): TeamViews {
     error: me.error ?? failed,
   }
 }
+
+export const orgDefinitionQuery = (api: ApiClient, org: string) =>
+  queryOptions({ queryKey: ['org-definition', org], queryFn: () => api.orgDefinition(org), staleTime: POLL_MS })
+
+export const fundingQuery = (api: ApiClient) => queryOptions({ queryKey: ['funding'], queryFn: () => api.funding(), refetchInterval: 2 * POLL_MS })
+
+export const usageQuery = (api: ApiClient, org: string, team: string, days: number) =>
+  queryOptions({ queryKey: ['usage', org, team, days], queryFn: () => api.usage(org, team, days), staleTime: 2 * POLL_MS })

@@ -1,4 +1,4 @@
-import type { DecisionAnswer, Me } from './clientApi'
+import type { DecisionAnswer, FundingSource, Me, OrgDefinition, UsageReport } from './clientApi'
 import type { TeamView } from './teamview'
 
 export type FetchLike = (input: Request) => Promise<Response>
@@ -18,6 +18,9 @@ export interface ApiClient {
   me: () => Promise<Me>
   teamView: (org: string, team: string) => Promise<TeamView>
   decide: (answer: DecisionAnswer) => Promise<void>
+  orgDefinition: (org: string) => Promise<OrgDefinition>
+  funding: () => Promise<FundingSource[]>
+  usage: (org: string, team: string, days: number) => Promise<UsageReport>
 }
 
 const segment = encodeURIComponent
@@ -39,6 +42,9 @@ export function createApiClient(send: FetchLike = (request) => fetch(request)): 
   return {
     me: () => get<Me>('/api/me'),
     teamView: (org, team) => get<TeamView>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
+    orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}/definition`),
+    funding: () => get<FundingSource[]>('/api/funding'),
+    usage: (org, team, days) => get<UsageReport>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decide: ({ org, team, answerWith, choice, text }) =>
       send(
         new Request(new URL(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`, window.location.origin), {
