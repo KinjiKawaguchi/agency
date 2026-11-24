@@ -11,7 +11,8 @@ async function readBody(message: IncomingMessage): Promise<Buffer> {
 }
 
 function apiMiddleware(): Connect.NextHandleFunction {
-  const node = createMockNode()
+  // The real node does not serve token use yet. AGENCY_MOCK_USAGE=1 turns the mock numbers on.
+  const node = createMockNode({ usage: process.env.AGENCY_MOCK_USAGE === '1' })
   return async (message: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) => {
     if (!message.url?.startsWith('/api/')) return next()
     const method = message.method ?? 'GET'

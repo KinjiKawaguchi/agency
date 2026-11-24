@@ -13,8 +13,8 @@ const reading = (name: FundingWindowReading['name'], elapsed: number, utilizatio
 
 describe('forecastWindow', () => {
   it('extrapolates the pace so far to the reset', () => {
-    const forecast = forecastWindow(reading('fiveHour', 2.5 * HOUR, 40), NOW)
-    expect(forecast?.projectedAtReset).toBeCloseTo(80)
+    const forecast = forecastWindow(reading('fiveHour', 2.5 * HOUR, 45), NOW)
+    expect(forecast?.projectedAtReset).toBeCloseTo(90)
     expect(forecast?.status).toBe('ok')
     expect(forecast?.hitAt).toBeUndefined()
   })
@@ -29,6 +29,13 @@ describe('forecastWindow', () => {
 
   it('calls a window that will end well short of full unused', () => {
     expect(forecastWindow(reading('sevenDay', 4 * 24 * HOUR, 30), NOW)?.status).toBe('waste')
+  })
+
+  it('calls a window unused only when it is projected to end under 85%', () => {
+    // Half of the weekly window gone, so the projection is twice the use so far.
+    const half = (utilization: number) => forecastWindow(reading('sevenDay', 3.5 * 24 * HOUR, utilization), NOW)
+    expect(half(42)?.status).toBe('waste')
+    expect(half(43)?.status).toBe('ok')
   })
 
   it('treats a full window as run out, with nothing left to predict', () => {
