@@ -1,5 +1,5 @@
-//! 2 つの台を同じプロセスで動かし、招待 → 参加 → 写し → 署名した決裁 → ため置き → 起きた後の届け を通す。
-//! 断る側 (所属していない人、書き換えた封筒、使った招待、偽の台、根でない鍵の版) も確かめる。
+//! Runs two nodes in one process through invite -> join -> replica -> signed decision -> outbox -> delivery after waking up.
+//! Also checks the refusals: non-members, tampered envelopes, used invites, fake nodes, and versions not signed by the root key.
 mod common;
 
 use agency_adapters::peers::read_headers;
@@ -17,7 +17,7 @@ use common::{alice, answer, id, joined_bob, memory_runtime, node};
 async fn invite_join_replica_and_signed_decision() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
-    // alice の台も、bob を書き足した版を持っている (書き手は alice の根の鍵 1 つ)
+    // alice's node also has the version with bob added (its one writer is alice's root key)
     assert!(alice
         .node
         .store()
@@ -42,7 +42,7 @@ async fn invite_join_replica_and_signed_decision() {
         &id("app"),
         EnvelopeKind::Answer,
         "r-1".into(),
-        answer("ア"),
+        answer("a"),
     )
     .await
     .unwrap();
@@ -51,8 +51,8 @@ async fn invite_join_replica_and_signed_decision() {
     assert_eq!(applied.len(), 1);
     assert_eq!(
         (applied[0].by.as_str(), applied[0].payload.choice.as_deref()),
-        ("bob", Some("ア")),
-        "答えた人は封筒のアカウントの人"
+        ("bob", Some("a")),
+        "the decider is the envelope's account"
     );
 
     // A request the team runtime does not know is a refusal: not retried, not queued
@@ -62,7 +62,7 @@ async fn invite_join_replica_and_signed_decision() {
         &id("app"),
         EnvelopeKind::Answer,
         "r-404".into(),
-        answer("ア"),
+        answer("a"),
     )
     .await
     .unwrap();
@@ -81,7 +81,7 @@ async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
         &id("app"),
         EnvelopeKind::Answer,
         "r-1".into(),
-        answer("イ"),
+        answer("b"),
     )
     .await
     .unwrap();
@@ -93,21 +93,24 @@ async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
         .store()
         .load_replica(&id("acme"), &id("app"))
         .unwrap_or_default();
-    assert!(replica.error.is_some(), "寝ている台の写しは失敗を書く");
+    assert!(
+        replica.error.is_some(),
+        "a replica of a sleeping node records the failure"
+    );
 
     alice.start().await;
     assert!(
         deliver_due(&bob.node).await.unwrap().is_empty(),
-        "送り直しの時刻の前には届けに行かない"
+        "no delivery before the retry is due"
     );
     let parcel = pending(&bob.node).remove(0);
     deliver(&bob.node, &parcel).await.unwrap();
     assert!(pending(&bob.node).is_empty());
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
 
-    // 同じ封筒の 2 度目は当てない (送り直しで 2 回届いた写し)
+    // The same envelope is not applied twice (a copy delivered again by a retry)
     let ParcelBody::Envelope(signed) = parcel.body else {
-        panic!("封筒のはず")
+        panic!("expected an envelope")
     };
     let signed = *signed;
     let again = reqwest::Client::new()
@@ -129,7 +132,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let bob = joined_bob(&alice).await;
     let http = reqwest::Client::new();
 
-    // 所属していない人の署名つきの読み出しは 404 (組織があることも見せない)
+    // A non-member's signed read gets 404 (the org's existence is not revealed)
     let carol = node("carol", memory_runtime().0).await;
     carol
         .node
@@ -155,14 +158,14 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     }
     assert_eq!(request.send().await.unwrap().status(), 404);
 
-    // 書き換えた封筒は 401 で、当てない
+    // A tampered envelope gets 401 and is not applied
     decide(
         &bob.node,
         &id("acme"),
         &id("app"),
         EnvelopeKind::Answer,
         "r-1".into(),
-        answer("ア"),
+        answer("a"),
     )
     .await
     .unwrap();
@@ -174,7 +177,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
             org: id("acme"),
             team: id("app"),
             target: "r-1".into(),
-            payload: answer("ア"),
+            payload: answer("a"),
             account: id("bob"),
             at: alice.node.now_text(),
         },
@@ -182,7 +185,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
         bob.node.key(),
     )
     .unwrap();
-    tampered.body.payload = answer("イ");
+    tampered.body.payload = answer("b");
     let response = http
         .post(format!("{}/fed/v1/teams/acme/app/envelopes", alice.url()))
         .json(&tampered)
@@ -192,13 +195,13 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     assert_eq!(response.status(), 401);
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
 
-    // 使った招待では、もう入れない
+    // A used invite cannot be used again
     let link = invites::invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
     join(&carol.node, &link, |_| true).await.unwrap();
     let dave = node("dave", memory_runtime().0).await;
     assert!(join(&dave.node, &link, |_| true).await.is_err());
 
-    // 指紋の合わない招待のリンク (偽の台) では申し込まない
+    // No join request through a link whose fingerprint does not match (a fake node)
     let mut fake =
         Invite::parse(&invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap())
             .unwrap();
@@ -208,10 +211,10 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
         .unwrap_err();
     assert!(error.to_string().contains("fingerprint"), "{error}");
 
-    // 根でない鍵で署名した次の版は、受け取らない
+    // A next version signed by a key that is not the root is refused
     let current = alice.node.store().load_org(&id("acme")).unwrap();
     let mut body = OrgDefinition::successor_of(&current, alice.node.now_text());
-    body.label = "乗っ取り".into();
+    body.label = "Taken over".into();
     let forged: SignedOrg = Signed::sign(Kind::Org, body, id("alice"), bob.node.key()).unwrap();
     let response = http
         .post(format!("{}/fed/v1/orgs/acme/definition", alice.url()))

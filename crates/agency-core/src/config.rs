@@ -1,4 +1,4 @@
-//! ノードの設定 (データのディレクトリの config.json)。この台のアカウント、この台の URL、この台に置くチーム、信じる組織。
+//! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -57,7 +57,7 @@ impl RuntimeCommand {
     }
 }
 
-/// 信じる組織と、その根の鍵の指紋。ほかの台から届く組織の定義は、ここにある組織のものだけ受け取る
+/// A trusted org and its root key's fingerprint. A first copy of an org definition from another node is accepted only for these orgs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrustedOrg {
@@ -68,9 +68,9 @@ pub struct TrustedOrg {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NodeConfig {
-    /// この台の頭の URL (ほかの台からの届け先)
+    /// This node's origin, where other nodes send to.
     pub url: String,
-    /// 待ち受けるアドレス
+    /// The address to listen on.
     pub listen: String,
     pub account: Account,
     /// The scrum harness CLI, used by `team-add --state-dir` to build a team's runtime command.
@@ -128,7 +128,7 @@ impl NodeConfig {
             .map(|one| one.root_fingerprint.as_str())
     }
 
-    /// 信じる組織を足す (同じ組織は指紋を置き換える)
+    /// Trusts an org (replacing the fingerprint of an org already trusted).
     pub fn trust(&mut self, org: Id, root_fingerprint: String) {
         self.trusted.retain(|one| one.org != org);
         self.trusted.push(TrustedOrg {
