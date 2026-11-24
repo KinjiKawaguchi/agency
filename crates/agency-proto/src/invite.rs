@@ -27,11 +27,22 @@ pub fn new_code() -> String {
 }
 
 pub fn code_digest(code: &str) -> String {
-    Sha256::digest(code.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(code.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn encode(raw: &str) -> String {
-    raw.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+    raw.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 fn decode(raw: &str) -> Option<String> {
@@ -53,17 +64,49 @@ fn decode(raw: &str) -> Option<String> {
 
 impl Invite {
     pub fn to_link(&self) -> String {
-        format!("{SCHEME}node={}&org={}&fp={}&code={}", encode(&self.node), self.org, self.fp, self.code)
+        format!(
+            "{SCHEME}node={}&org={}&fp={}&code={}",
+            encode(&self.node),
+            self.org,
+            self.fp,
+            self.code
+        )
     }
 
     pub fn parse(link: &str) -> Result<Self, String> {
-        let query = link.trim().strip_prefix(SCHEME).ok_or("招待のリンクの形が違う (agency:join? で始まる)")?;
-        let field = |name: &str| query.split('&').find_map(|pair| pair.strip_prefix(&format!("{name}="))).and_then(decode);
-        let node = field("node").filter(|one| is_node_origin(one)).ok_or("台の URL の形が違う")?;
-        let org = field("org").and_then(|one| Id::parse(&one).ok()).ok_or("組織の id の形が違う")?;
-        let fp = field("fp").filter(|one| one.len() == 32 && one.bytes().all(|b| b.is_ascii_hexdigit())).ok_or("鍵の指紋の形が違う")?;
-        let code = field("code").filter(|one| (16..=64).contains(&one.len()) && one.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))).ok_or("合言葉の形が違う")?;
-        Ok(Self { node, org, fp, code })
+        let query = link
+            .trim()
+            .strip_prefix(SCHEME)
+            .ok_or("招待のリンクの形が違う (agency:join? で始まる)")?;
+        let field = |name: &str| {
+            query
+                .split('&')
+                .find_map(|pair| pair.strip_prefix(&format!("{name}=")))
+                .and_then(decode)
+        };
+        let node = field("node")
+            .filter(|one| is_node_origin(one))
+            .ok_or("台の URL の形が違う")?;
+        let org = field("org")
+            .and_then(|one| Id::parse(&one).ok())
+            .ok_or("組織の id の形が違う")?;
+        let fp = field("fp")
+            .filter(|one| one.len() == 32 && one.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or("鍵の指紋の形が違う")?;
+        let code = field("code")
+            .filter(|one| {
+                (16..=64).contains(&one.len())
+                    && one
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
+            })
+            .ok_or("合言葉の形が違う")?;
+        Ok(Self {
+            node,
+            org,
+            fp,
+            code,
+        })
     }
 }
 
@@ -85,9 +128,17 @@ mod tests {
 
     #[test]
     fn link_round_trips_and_rejects_bad_parts() {
-        let invite = Invite { node: "https://node.example:8443".into(), org: Id::parse("acme").unwrap(), fp: "0123456789abcdef0123456789abcdef".into(), code: new_code() };
+        let invite = Invite {
+            node: "https://node.example:8443".into(),
+            org: Id::parse("acme").unwrap(),
+            fp: "0123456789abcdef0123456789abcdef".into(),
+            code: new_code(),
+        };
         assert_eq!(Invite::parse(&invite.to_link()).unwrap(), invite);
-        let bad_node = invite.to_link().replace("node=https%3A%2F%2Fnode.example%3A8443", "node=ftp%3A%2F%2Fx");
+        let bad_node = invite.to_link().replace(
+            "node=https%3A%2F%2Fnode.example%3A8443",
+            "node=ftp%3A%2F%2Fx",
+        );
         assert!(Invite::parse(&bad_node).is_err());
         assert!(Invite::parse("https://example.com/?org=acme").is_err());
     }

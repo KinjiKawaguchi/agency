@@ -1,7 +1,7 @@
 //! 識別子。台の境目で形を確かめ、形の違う値は型にしない。
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use std::fmt;
+use ts_rs::TS;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 #[error("{0}")]
@@ -17,11 +17,16 @@ impl Id {
     pub fn parse(raw: &str) -> Result<Self, IdError> {
         let bytes = raw.as_bytes();
         let is_head = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit();
-        let is_valid = !bytes.is_empty() && bytes.len() <= 40 && is_head(bytes[0]) && bytes.iter().all(|&b| is_head(b) || b == b'-');
+        let is_valid = !bytes.is_empty()
+            && bytes.len() <= 40
+            && is_head(bytes[0])
+            && bytes.iter().all(|&b| is_head(b) || b == b'-');
         if is_valid {
             Ok(Self(raw.to_owned()))
         } else {
-            Err(IdError(format!("id の形が違う (英小文字、数字、- で 40 文字まで): {raw}")))
+            Err(IdError(format!(
+                "id の形が違う (英小文字、数字、- で 40 文字まで): {raw}"
+            )))
         }
     }
 
@@ -69,7 +74,10 @@ impl EnvelopeId {
 impl TryFrom<String> for EnvelopeId {
     type Error = IdError;
     fn try_from(raw: String) -> Result<Self, Self::Error> {
-        let is_valid = raw.len() == 32 && raw.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        let is_valid = raw.len() == 32
+            && raw
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
         if is_valid {
             Ok(Self(raw))
         } else {

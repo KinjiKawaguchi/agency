@@ -76,8 +76,16 @@ pub type SignedOrg = Signed<OrgDefinition>;
 
 /// 台の頭の URL か (http か https で、ホストとポートだけ)
 pub fn is_node_origin(raw: &str) -> bool {
-    let rest = raw.strip_prefix("https://").or_else(|| raw.strip_prefix("http://"));
-    rest.is_some_and(|host| !host.is_empty() && host.len() <= 253 && host.bytes().all(|b| b.is_ascii_alphanumeric() || b".-:[]".contains(&b)))
+    let rest = raw
+        .strip_prefix("https://")
+        .or_else(|| raw.strip_prefix("http://"));
+    rest.is_some_and(|host| {
+        !host.is_empty()
+            && host.len() <= 253
+            && host
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b".-:[]".contains(&b))
+    })
 }
 
 fn label_ok(label: &str) -> bool {
@@ -93,7 +101,9 @@ fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {
 impl OrgDefinition {
     /// 所属する人: 組織の定義にあり、鍵が取り消されていない
     pub fn member(&self, account: &Id) -> Option<&Person> {
-        self.people.iter().find(|one| &one.account == account && !self.revoked.contains(&one.public_key))
+        self.people
+            .iter()
+            .find(|one| &one.account == account && !self.revoked.contains(&one.public_key))
     }
 
     pub fn team(&self, id: &Id) -> Option<&TeamPlace> {
@@ -102,22 +112,38 @@ impl OrgDefinition {
 
     /// 形の確かめ: 名前の長さ、id の重なり、部署と長と人と置き場所のつながり
     pub fn validate(&self) -> Result<(), String> {
-        if !label_ok(&self.label) || self.version == 0 || (self.version == 1) != self.prev.is_none() {
+        if !label_ok(&self.label) || self.version == 0 || (self.version == 1) != self.prev.is_none()
+        {
             return Err("組織の名前か版の形が違う".into());
         }
-        if !unique(self.departments.iter().map(|d| &d.id)) || !unique(self.people.iter().map(|p| &p.id)) || !unique(self.teams.iter().map(|t| &t.id)) || !unique(self.people.iter().map(|p| &p.account)) {
+        if !unique(self.departments.iter().map(|d| &d.id))
+            || !unique(self.people.iter().map(|p| &p.id))
+            || !unique(self.teams.iter().map(|t| &t.id))
+            || !unique(self.people.iter().map(|p| &p.account))
+        {
             return Err("部署、人、チーム、アカウントのどれかが重なっている".into());
         }
         let departments: HashSet<_> = self.departments.iter().map(|d| &d.id).collect();
         let people: HashSet<_> = self.people.iter().map(|p| &p.id).collect();
-        let is_known_department = |id: &Option<Id>| id.as_ref().is_none_or(|one| departments.contains(one));
-        if !self.departments.iter().all(|d| label_ok(&d.label) && is_known_department(&d.parent) && d.head.as_ref().is_none_or(|h| people.contains(h))) {
+        let is_known_department =
+            |id: &Option<Id>| id.as_ref().is_none_or(|one| departments.contains(one));
+        if !self.departments.iter().all(|d| {
+            label_ok(&d.label)
+                && is_known_department(&d.parent)
+                && d.head.as_ref().is_none_or(|h| people.contains(h))
+        }) {
             return Err("部署の名前か、親か長が見つからない".into());
         }
-        if !self.people.iter().all(|p| label_ok(&p.label) && is_known_department(&p.department)) {
+        if !self
+            .people
+            .iter()
+            .all(|p| label_ok(&p.label) && is_known_department(&p.department))
+        {
             return Err("人の名前か部署が見つからない".into());
         }
-        if !self.teams.iter().all(|t| label_ok(&t.label) && is_known_department(&t.department) && is_node_origin(&t.node)) {
+        if !self.teams.iter().all(|t| {
+            label_ok(&t.label) && is_known_department(&t.department) && is_node_origin(&t.node)
+        }) {
             return Err("チームの名前か、部署か台の URL の形が違う".into());
         }
         Ok(())
@@ -125,14 +151,22 @@ impl OrgDefinition {
 
     /// 次の版の下書き: 版を 1 つ進め、前の版の指紋でつなぐ。中身は呼ぶ側が書き換える
     pub fn successor_of(current: &SignedOrg, at: String) -> Self {
-        Self { version: current.body.version + 1, prev: Some(current.digest()), at, ..current.body.clone() }
+        Self {
+            version: current.body.version + 1,
+            prev: Some(current.digest()),
+            at,
+            ..current.body.clone()
+        }
     }
 }
 
 /// 1 版目: 根の鍵で署名してあり、形が合う
 pub fn verify_genesis(doc: &SignedOrg) -> Result<(), String> {
     let body = &doc.body;
-    if body.version != 1 || doc.signer != body.root.account || !doc.verify(Kind::Org, &body.root.public_key) {
+    if body.version != 1
+        || doc.signer != body.root.account
+        || !doc.verify(Kind::Org, &body.root.public_key)
+    {
         return Err("1 版目の署名が合わない".into());
     }
     body.validate()
@@ -141,7 +175,10 @@ pub fn verify_genesis(doc: &SignedOrg) -> Result<(), String> {
 /// 今の版の次の版か: 版が 1 大きく、前の版の指紋でつながり、今の根の鍵で署名してある
 pub fn verify_successor(current: &SignedOrg, next: &SignedOrg) -> Result<(), String> {
     let (now, body) = (&current.body, &next.body);
-    if body.org != now.org || body.version != now.version + 1 || body.prev.as_deref() != Some(current.digest().as_str()) {
+    if body.org != now.org
+        || body.version != now.version + 1
+        || body.prev.as_deref() != Some(current.digest().as_str())
+    {
         return Err(format!("{} の {} 版の次の版ではない", now.org, now.version));
     }
     if next.signer != now.root.account || !next.verify(Kind::Org, &now.root.public_key) {

@@ -16,7 +16,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Parser)]
-#[command(name = "agency", about = "Agency のノード: AI エージェントと人の組織を、複数の機械にまたがって動かす")]
+#[command(
+    name = "agency",
+    about = "Agency のノード: AI エージェントと人の組織を、複数の機械にまたがって動かす"
+)]
 struct Cli {
     /// データのディレクトリ (既定は $AGENCY_DIR か ~/.agency)
     #[arg(long, global = true)]
@@ -107,7 +110,13 @@ enum Command {
 }
 
 fn data_dir(cli: &Cli) -> DataDir {
-    let root = cli.dir.clone().or_else(|| std::env::var_os("AGENCY_DIR").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".agency"));
+    let root = cli
+        .dir
+        .clone()
+        .or_else(|| std::env::var_os("AGENCY_DIR").map(PathBuf::from))
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".agency")
+        });
     DataDir::new(root)
 }
 
@@ -115,7 +124,14 @@ fn id(raw: &str) -> Result<Id> {
     Id::parse(raw).map_err(anyhow::Error::msg)
 }
 
-fn init(data: &DataDir, account: &str, label: &str, url: &str, listen: &str, scrum: PathBuf) -> Result<()> {
+fn init(
+    data: &DataDir,
+    account: &str,
+    label: &str,
+    url: &str,
+    listen: &str,
+    scrum: PathBuf,
+) -> Result<()> {
     if data.config_path().exists() {
         bail!("{} はもうある", data.config_path().display());
     }
@@ -123,29 +139,82 @@ fn init(data: &DataDir, account: &str, label: &str, url: &str, listen: &str, scr
         bail!("--url は http(s)://ホスト[:ポート] の形");
     }
     let key = data.create_key()?;
-    data.save_config(&NodeConfig { url: url.to_owned(), listen: listen.to_owned(), account: Account { id: id(account)?, label: label.to_owned() }, scrum, teams: vec![], trusted: vec![] })?;
-    println!("台を作った: {}\nアカウント {account} の鍵の指紋: {}", data.root().display(), key.public().fingerprint());
+    data.save_config(&NodeConfig {
+        url: url.to_owned(),
+        listen: listen.to_owned(),
+        account: Account {
+            id: id(account)?,
+            label: label.to_owned(),
+        },
+        scrum,
+        teams: vec![],
+        trusted: vec![],
+    })?;
+    println!(
+        "台を作った: {}\nアカウント {account} の鍵の指紋: {}",
+        data.root().display(),
+        key.public().fingerprint()
+    );
     Ok(())
 }
 
 fn status(node: &Node) {
     let config = node.config();
-    println!("アカウント: {} ({}) 鍵の指紋 {}", config.account.id, config.account.label, node.key.public().fingerprint());
+    println!(
+        "アカウント: {} ({}) 鍵の指紋 {}",
+        config.account.id,
+        config.account.label,
+        node.key.public().fingerprint()
+    );
     println!("この台: {} (待ち受け {})", config.url, config.listen);
     for doc in node.data.orgs() {
-        let role = if orgs::is_root(node, &doc) { "根の鍵" } else if doc.body.member(&config.account.id).is_some() { "所属" } else { "写し" };
-        println!("組織 {} ({}) {} 版、{}、人 {} 人、チーム {}", doc.body.org, doc.body.label, doc.body.version, role, doc.body.people.len(), doc.body.teams.iter().map(|t| format!("{}@{}", t.id, t.node)).collect::<Vec<_>>().join(", "));
+        let role = if orgs::is_root(node, &doc) {
+            "根の鍵"
+        } else if doc.body.member(&config.account.id).is_some() {
+            "所属"
+        } else {
+            "写し"
+        };
+        println!(
+            "組織 {} ({}) {} 版、{}、人 {} 人、チーム {}",
+            doc.body.org,
+            doc.body.label,
+            doc.body.version,
+            role,
+            doc.body.people.len(),
+            doc.body
+                .teams
+                .iter()
+                .map(|t| format!("{}@{}", t.id, t.node))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     for team in &config.teams {
-        println!("Team on this node: {}/{} (owner {}) runs {}", team.org, team.team, team.owner, team.runtime.command.join(" "));
+        println!(
+            "Team on this node: {}/{} (owner {}) runs {}",
+            team.org,
+            team.team,
+            team.owner,
+            team.runtime.command.join(" ")
+        );
     }
     for parcel in pending(node) {
-        println!("送り箱: {} → {} ({} 回、{})", parcel.id, parcel.to, parcel.attempts, parcel.last_error.unwrap_or_default());
+        println!(
+            "送り箱: {} → {} ({} 回、{})",
+            parcel.id,
+            parcel.to,
+            parcel.attempts,
+            parcel.last_error.unwrap_or_default()
+        );
     }
 }
 
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
-    print!("組織「{}」({}) に参加しますか。根の鍵 {} の指紋はリンクと合っています [y/N] ", definition.label, definition.org, definition.root.account);
+    print!(
+        "組織「{}」({}) に参加しますか。根の鍵 {} の指紋はリンクと合っています [y/N] ",
+        definition.label, definition.org, definition.root.account
+    );
     let _ = std::io::stdout().flush();
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("y")
@@ -153,7 +222,9 @@ fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
 
 async fn serve(node: Arc<Node>) -> Result<()> {
     let listen = node.config().listen;
-    let listener = tokio::net::TcpListener::bind(&listen).await.with_context(|| format!("{listen} で待ち受けられない"))?;
+    let listener = tokio::net::TcpListener::bind(&listen)
+        .await
+        .with_context(|| format!("{listen} で待ち受けられない"))?;
     println!("台を動かした: {} (待ち受け {listen})", node.url());
     let background = node.clone();
     tokio::spawn(async move {
@@ -171,16 +242,24 @@ async fn serve(node: Arc<Node>) -> Result<()> {
             tokio::time::sleep(Duration::from_secs(15)).await;
         }
     });
-    axum::serve(listener, router(node)).with_graceful_shutdown(async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
-    .await?;
+    axum::serve(listener, router(node))
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await?;
     Ok(())
 }
 
 async fn run(cli: Cli) -> Result<()> {
     let data = data_dir(&cli);
-    if let Command::Init { account, label, url, listen, scrum } = &cli.command {
+    if let Command::Init {
+        account,
+        label,
+        url,
+        listen,
+        scrum,
+    } = &cli.command
+    {
         return init(&data, account, label, url, listen, scrum.clone());
     }
     let node = Node::open(data, None)?;
@@ -188,9 +267,20 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Init { .. } => unreachable!(),
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
-            println!("組織 {} を作った。根の鍵の指紋: {}", doc.body.org, node.key.public().fingerprint());
+            println!(
+                "組織 {} を作った。根の鍵の指紋: {}",
+                doc.body.org,
+                node.key.public().fingerprint()
+            );
         }
-        Command::TeamAdd { org, team, label, state_dir, owner, node: place } => {
+        Command::TeamAdd {
+            org,
+            team,
+            label,
+            state_dir,
+            owner,
+            node: place,
+        } => {
             let (org, team) = (id(&org)?, id(&team)?);
             let place_url = place.unwrap_or_else(|| node.url());
             if !is_node_origin(&place_url) {
@@ -200,15 +290,43 @@ async fn run(cli: Cli) -> Result<()> {
             if is_here && state_dir.is_none() {
                 bail!("この台に置くチームは --state-dir が要る");
             }
-            let doc = orgs::add_team(&node, &org, TeamPlace { id: team.clone(), label, department: None, node: place_url })?;
+            let doc = orgs::add_team(
+                &node,
+                &org,
+                TeamPlace {
+                    id: team.clone(),
+                    label,
+                    department: None,
+                    node: place_url,
+                },
+            )?;
             if let (true, Some(state_dir)) = (is_here, state_dir) {
-                let owner = owner.as_deref().map(id).transpose()?.unwrap_or_else(|| node.account());
+                let owner = owner
+                    .as_deref()
+                    .map(id)
+                    .transpose()?
+                    .unwrap_or_else(|| node.account());
                 let runtime = RuntimeCommand::scrum(&node.config().scrum, &state_dir);
-                node.update_config(|config| config.teams.push(HostedTeam { org: org.clone(), team: team.clone(), owner, people: Default::default(), runtime }))?;
+                node.update_config(|config| {
+                    config.teams.push(HostedTeam {
+                        org: org.clone(),
+                        team: team.clone(),
+                        owner,
+                        people: Default::default(),
+                        runtime,
+                    })
+                })?;
             }
-            println!("組織 {org} にチーム {team} を足した ({} 版)", doc.body.version);
+            println!(
+                "組織 {org} にチーム {team} を足した ({} 版)",
+                doc.body.version
+            );
         }
-        Command::Invite { org, department, role } => {
+        Command::Invite {
+            org,
+            department,
+            role,
+        } => {
             let role = match role.as_str() {
                 "member" => Role::Member,
                 "answerer" => Role::Answerer,
@@ -219,16 +337,34 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Join { link, yes } => {
             let doc = join(&node, &link, |definition| yes || confirm_join(definition)).await?;
-            println!("組織 {} ({}) に参加した ({} 版)", doc.body.org, doc.body.label, doc.body.version);
+            println!(
+                "組織 {} ({}) に参加した ({} 版)",
+                doc.body.org, doc.body.label, doc.body.version
+            );
         }
-        Command::Decide { org, team, request, choice, text } => {
-            let outcome = decide(&node, &id(&org)?, &id(&team)?, EnvelopeKind::Answer, request, Payload { text, choice }).await?;
+        Command::Decide {
+            org,
+            team,
+            request,
+            choice,
+            text,
+        } => {
+            let outcome = decide(
+                &node,
+                &id(&org)?,
+                &id(&team)?,
+                EnvelopeKind::Answer,
+                request,
+                Payload { text, choice },
+            )
+            .await?;
             println!(
                 "{}",
                 match outcome {
                     Decided::Applied => "この台のチームに当てた".to_owned(),
                     Decided::Delivered => "署名して、チームの台に届けた".to_owned(),
-                    Decided::Queued(why) => format!("チームの台に届かないので、送り箱にため置いた ({why})"),
+                    Decided::Queued(why) =>
+                        format!("チームの台に届かないので、送り箱にため置いた ({why})"),
                     Decided::Refused(why) => format!("チームの台が断った: {why}"),
                 }
             );
