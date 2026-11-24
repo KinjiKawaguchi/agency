@@ -1,0 +1,32 @@
+[package]
+name = "agency-node"
+description = "Agency のノード: 機械ごとに 1 つ。チームの様子を配り、署名した決裁を受け取り、ほかの台の写しと送り箱を持つ"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "agency_node"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agency"
+path = "src/main.rs"
+
+[dependencies]
+agency-proto.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+clap.workspace = true
+rand_core.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+time.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,14 @@
+{
+  "envelope": {
+    "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"id\":\"00112233445566778899aabbccddeeff\",\"kind\":\"answer\",\"org\":\"acme\",\"payload\":{\"choice\":\"ア\",\"text\":\"\"},\"target\":\"r-20260101-000000-abcd\",\"team\":\"app\"}",
+    "signature": "bv8UynvNjlWhS1JWv4KMnWW7V3zvaLnFJsW3T9j6fyAdL6Pw9n0uZnaHMALVeCJrrXJzfkYKcYgejFQDcUQtDQ=="
+  },
+  "fingerprint": "fe812c12f3ab4ce6ac5db69ac352f906",
+  "org": {
+    "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":1}",
+    "digest": "4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4",
+    "signature": "H/brmJtPumtrLHcvjdB26ERB+v3wceMYcSGQ8QEGLqdlAlZ+68nJuZPWMe/a3/prmxFt6xJMeMapmbG9vOe3DA=="
+  },
+  "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
+  "seed": "0707070707070707070707070707070707070707070707070707070707070707"
+}

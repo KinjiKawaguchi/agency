@@ -1,0 +1,17 @@
+[package]
+name = "agency-proto"
+description = "Agency の台どうしの約束: 決まった順の JSON、署名、封筒、組織の定義、招待と参加"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+time.workspace = true
