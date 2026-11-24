@@ -1,0 +1,38 @@
+.face {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  background: var(--idle);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  user-select: none;
+}
+
+.face.agent {
+  border-radius: 28%;
+}
+
+.face.human {
+  border-radius: 50%;
+}
+
+.face.size-xs { width: 20px; height: 20px; font-size: 9px; }
+.face.size-sm { width: 28px; height: 28px; font-size: 11px; }
+.face.size-md { width: 36px; height: 36px; font-size: 13px; }
+.face.size-lg { width: 46px; height: 46px; font-size: 15px; }
+
+.face.hue-1 { background: var(--hue-1); }
+.face.hue-2 { background: var(--hue-2); }
+.face.hue-3 { background: var(--hue-3); }
+.face.hue-4 { background: var(--hue-4); }
+.face.hue-5 { background: var(--hue-5); }
+.face.hue-6 { background: var(--hue-6); }
+.face.hue-7 { background: var(--hue-7); }
+.face.hue-8 { background: var(--hue-8); }
+
+.face.ring-needs-you { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--seal); }
+
+.face.ring-working { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ok); }
+.face.ring-waiting { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--hold); }
+.face.ring-away { opacity: 0.45; outline: 1.5px dashed var(--ink-3); outline-offset: 2px; }

@@ -1,0 +1,67 @@
+/*
+ * Design tokens. Every color in the app comes from here; components never write a raw color.
+ * Each token is a `light-dark()` pair, resolved by `color-scheme`: the system preference by default,
+ * or the explicit choice stored on <html data-theme="light|dark">.
+ *
+ * Color carries meaning in two places only: the seal red (your turn, approval) and green (working).
+ * Everything else is neutral; the face hues only tell people apart.
+ */
+:root {
+  color-scheme: light dark;
+
+  --bg: light-dark(#eceef1, #0c0d10);
+  --panel: light-dark(#ffffff, #15171b);
+  --raised: light-dark(#f5f6f8, #1c1e23);
+  --hover: light-dark(#e4e7eb, #23262c);
+  --border: light-dark(#dcdfe5, #262930);
+  --border-strong: light-dark(#c3c8d1, #3a3e48);
+
+  --ink: light-dark(#121418, #eef0f3);
+  --ink-2: light-dark(#424853, #b0b6c1);
+  --ink-3: light-dark(#5b6170, #8b919d);
+  --accent: light-dark(#121418, #eef0f3);
+  --on-accent: light-dark(#ffffff, #0c0d10);
+  --accent-soft: light-dark(rgb(18 20 24 / 0.07), rgb(238 240 243 / 0.1));
+
+  --seal: light-dark(#cf3a2a, #f0604a);
+  --seal-soft: light-dark(rgb(207 58 42 / 0.09), rgb(240 96 74 / 0.14));
+  --on-seal: #ffffff;
+  --ok: light-dark(#148a4f, #3ccf82);
+  --ok-soft: light-dark(rgb(20 138 79 / 0.1), rgb(60 207 130 / 0.13));
+  --hold: light-dark(#a8690a, #e0a23c);
+  --flow: light-dark(#2a7fc0, #5aa9e6);
+  --track: light-dark(#e3e6ea, #22252b);
+  --idle: light-dark(#8f95a1, #4a4e58);
+
+  --hue-1: #4a5ad0;
+  --hue-2: #0b7d70;
+  --hue-3: #9a5f06;
+  --hue-4: #8445bd;
+  --hue-5: #2272ad;
+  --hue-6: #b0436a;
+  --hue-7: #4c7323;
+  --hue-8: #6f5f4c;
+
+  --shadow: light-dark(0 1px 2px rgb(16 18 24 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4)),
+    light-dark(0 10px 30px rgb(16 18 24 / 0.08), 0 12px 32px rgb(0 0 0 / 0.35));
+
+  --font: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --radius: 8px;
+  --page-width: 1280px;
+  --gutter: 24px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+  }
+}
