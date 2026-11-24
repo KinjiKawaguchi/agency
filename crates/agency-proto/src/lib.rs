@@ -2,6 +2,7 @@
 //! どのデータも書き手は 1 つ。書き手は署名し、ほかの台は署名を確かめてから写しを持つ。
 
 pub mod canonical;
+pub mod client;
 pub mod clock;
 pub mod digest;
 pub mod envelope;

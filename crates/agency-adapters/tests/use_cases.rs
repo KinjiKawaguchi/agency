@@ -2,6 +2,7 @@
 //! 7 days, the signed read's 5 minutes, the join request's 10 minutes, the outbox backoff) and the
 //! checks that decide whether a signed document is accepted.
 use agency_adapters::files::DataDir;
+use agency_adapters::funding::UsageFiles;
 use agency_adapters::memory::{CountingRandom, ManualClock, MemoryRuntime};
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::system::TokioWriteLock;
@@ -74,6 +75,8 @@ fn bare(account: &str) -> Fixture {
         scrum: "scrum".into(),
         teams: vec![],
         trusted: vec![],
+        funding: vec![],
+        access: None,
     })
     .unwrap();
     let clock = ManualClock::at(T0);
@@ -91,6 +94,7 @@ fn bare(account: &str) -> Fixture {
         clock: Arc::new(clock.clone()),
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
+        funding: Arc::new(UsageFiles::new(Arc::new(clock.clone()))),
     };
     let node = Node::open(ports, key).unwrap();
     Fixture {

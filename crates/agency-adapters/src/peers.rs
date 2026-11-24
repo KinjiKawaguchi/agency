@@ -2,7 +2,8 @@
 use agency_core::ports::{DefinitionAccess, PeerError, Peers};
 use agency_core::read_auth::ReadAuth;
 use agency_proto::org::SignedOrg;
-use agency_proto::{Envelope, JoinRequest, Signed, TeamView};
+use agency_proto::view::FederatedView;
+use agency_proto::{Envelope, JoinRequest, Signed};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -98,7 +99,7 @@ impl Peers for HttpPeers {
         node: &str,
         path: &str,
         auth: &ReadAuth,
-    ) -> Result<TeamView, PeerError> {
+    ) -> Result<FederatedView, PeerError> {
         self.get_signed(node, path, auth).await
     }
 

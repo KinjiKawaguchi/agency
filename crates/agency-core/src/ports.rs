@@ -1,14 +1,18 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
-use crate::config::{HostedTeam, NodeConfig};
+use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::error::Result;
 use crate::invites::InviteRecord;
 use crate::outbox::Parcel;
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
+use agency_proto::client::UsageWindow;
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
-use agency_proto::{Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView};
+use agency_proto::view::FederatedView;
+use agency_proto::{
+    Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp,
+};
 use async_trait::async_trait;
 
 pub trait Clock: Send + Sync {
@@ -115,7 +119,7 @@ pub trait Peers: Send + Sync {
         node: &str,
         path: &str,
         auth: &ReadAuth,
-    ) -> Result<TeamView, PeerError>;
+    ) -> Result<FederatedView, PeerError>;
     async fn get_definition(
         &self,
         node: &str,
@@ -151,4 +155,10 @@ pub trait TeamRuntime: Send + Sync {
         team: &HostedTeam,
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError>;
+}
+
+/// Reads how much of a funding source has been used.
+pub trait FundingSource: Send + Sync {
+    /// The windows that could be read and when; nothing when the usage is unknown.
+    fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
 }

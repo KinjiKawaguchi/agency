@@ -1,4 +1,5 @@
 //! TeamViews: served for the teams this node hosts, and kept as replicas for teams on other nodes.
+use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
@@ -6,6 +7,7 @@ use crate::ports::DefinitionAccess;
 use crate::read_auth::{sign_read, verify_read, ReadAuth};
 use crate::routes;
 use agency_proto::org::{SignedOrg, TeamPlace};
+use agency_proto::view::FederatedView;
 use agency_proto::{Id, TeamView};
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +19,20 @@ pub struct Replica {
     pub tried_at: String,
     pub error: Option<String>,
     pub view: Option<TeamView>,
+    /// This node's account's name in the team runtime, as the team's node reported it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<String>,
+}
+
+/// A person's name in a hosted team's runtime: their entry in `people`, or `owner` for the team's owner.
+/// `None` when the team does not address them.
+pub fn viewer_name(hosted: &HostedTeam, person: &Id) -> Option<String> {
+    let mapped = hosted
+        .people
+        .iter()
+        .find(|(_, id)| *id == person)
+        .map(|(name, _)| name.clone());
+    mapped.or_else(|| (&hosted.owner == person).then(|| "owner".to_owned()))
 }
 
 /// A view is kept only if it is a view of the team that was asked for.
@@ -30,37 +46,50 @@ pub fn check_view(view: TeamView, org: &Id, team: &Id) -> Result<TeamView, Strin
     Ok(view)
 }
 
-/// The TeamView of a team this node hosts, for a signed read by a member of its org.
-/// `path` is the path the request was made to, which the signature covers.
+/// The TeamView of a team this node hosts, read from its runtime.
+pub(crate) async fn runtime_view(node: &Node, hosted: &HostedTeam) -> Result<TeamView> {
+    node.runtime()
+        .view(hosted)
+        .await
+        .map_err(|error| Error::new(ErrorKind::Unavailable, error.message))
+}
+
+/// The TeamView of a team this node hosts, for a signed read by a member of its org, with the reader's
+/// name in the team. `path` is the path the request was made to, which the signature covers.
 pub async fn hosted_view(
     node: &Node,
     org: &Id,
     team: &Id,
     auth: &ReadAuth,
     path: &str,
-) -> Result<TeamView> {
+) -> Result<FederatedView> {
     let hosted = node
         .config()
         .hosted(org, team)
         .cloned()
         .ok_or_else(|| Error::not_found("not found"))?;
     let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
-    verify_read(&doc.body, auth, "GET", path, node.now())?;
-    node.runtime()
-        .view(&hosted)
-        .await
-        .map_err(|error| Error::new(ErrorKind::Unavailable, error.message))
+    let reader = verify_read(&doc.body, auth, "GET", path, node.now())?;
+    let view = runtime_view(node, &hosted).await?;
+    Ok(FederatedView {
+        view,
+        viewer: viewer_name(&hosted, &reader.id),
+    })
 }
 
-async fn fetch_view(node: &Node, org: &Id, place: &TeamPlace) -> Result<TeamView, String> {
+async fn fetch_view(node: &Node, org: &Id, place: &TeamPlace) -> Result<FederatedView, String> {
     let path = routes::view(org, &place.id);
     let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
-    let view = node
+    let fetched = node
         .peers()
         .get_view(&place.node, &path, &auth)
         .await
         .map_err(|error| error.to_string())?;
-    check_view(view, org, &place.id)
+    let view = check_view(fetched.view, org, &place.id)?;
+    Ok(FederatedView {
+        view,
+        viewer: fetched.viewer,
+    })
 }
 
 async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()> {
@@ -70,11 +99,12 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
         .unwrap_or_default();
     let now = node.now_text();
     let next = match fetch_view(node, org, place).await {
-        Ok(view) => Replica {
+        Ok(fetched) => Replica {
             fetched_at: Some(now.clone()),
             tried_at: now,
             error: None,
-            view: Some(view),
+            view: Some(fetched.view),
+            viewer: fetched.viewer,
         },
         Err(error) => Replica {
             tried_at: now,
@@ -147,6 +177,36 @@ mod tests {
             work: vec![],
             epics: vec![],
         }
+    }
+
+    #[test]
+    fn viewers_are_named_by_the_people_map_then_as_owner() {
+        use crate::config::RuntimeCommand;
+        let hosted = HostedTeam {
+            org: id("acme"),
+            team: id("app"),
+            owner: id("alice"),
+            people: [("reviewer".to_owned(), id("bob"))].into(),
+            runtime: RuntimeCommand {
+                command: vec![],
+                env: Default::default(),
+            },
+        };
+        assert_eq!(viewer_name(&hosted, &id("alice")).as_deref(), Some("owner"));
+        assert_eq!(
+            viewer_name(&hosted, &id("bob")).as_deref(),
+            Some("reviewer")
+        );
+        assert_eq!(viewer_name(&hosted, &id("carol")), None);
+        let renamed = HostedTeam {
+            people: [("kin".to_owned(), id("alice"))].into(),
+            ..hosted
+        };
+        assert_eq!(
+            viewer_name(&renamed, &id("alice")).as_deref(),
+            Some("kin"),
+            "a mapped name wins over owner"
+        );
     }
 
     #[test]

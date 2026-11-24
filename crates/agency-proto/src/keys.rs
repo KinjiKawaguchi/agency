@@ -5,10 +5,12 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
+use ts_rs::TS;
 
-/// 公開鍵: 32 バイトを base64 (標準、= つき)
-#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// An Ed25519 public key: 32 bytes in standard base64 with padding.
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(try_from = "String", into = "String")]
+#[ts(export, type = "string")]
 pub struct PublicKey(VerifyingKey);
 
 impl PublicKey {

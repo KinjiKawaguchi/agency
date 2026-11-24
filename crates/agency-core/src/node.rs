@@ -1,7 +1,7 @@
 //! A node's shared state: its configuration, its account key, and the ports its use cases use.
 use crate::config::NodeConfig;
 use crate::error::Result;
-use crate::ports::{Clock, Peers, Random, Store, TeamRuntime, WriteLock};
+use crate::ports::{Clock, FundingSource, Peers, Random, Store, TeamRuntime, WriteLock};
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
 use std::sync::{Arc, RwLock};
@@ -13,6 +13,7 @@ pub struct Ports {
     pub clock: Arc<dyn Clock>,
     pub random: Arc<dyn Random>,
     pub lock: Arc<dyn WriteLock>,
+    pub funding: Arc<dyn FundingSource>,
 }
 
 pub struct Node {
@@ -46,6 +47,10 @@ impl Node {
 
     pub(crate) fn random(&self) -> [u8; 16] {
         self.ports.random.bytes16()
+    }
+
+    pub(crate) fn funding(&self) -> &dyn FundingSource {
+        self.ports.funding.as_ref()
     }
 
     pub(crate) fn write_lock(&self) -> &dyn WriteLock {

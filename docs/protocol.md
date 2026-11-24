@@ -71,6 +71,7 @@ Agency は、AI エージェントと人が一緒に働く組織を、複数の�
 - `kind`: `answer` (要求に答える、`target` は要求の id) または `judge` (ボードの判断待ちに答える、`target` は `repo#番号`)。
 - 受け取る台 (チームの台) は、署名、所属、期限 (作ってから 7 日)、届け先のチームと封筒の組織とチームが合うこと、同じ id の 2 度目でないことを確かめてから当てる。2 度目は当てずに受け取ったと答える。
 - 送る台は、届かなければ送り箱に残し、間を空けて送り直す (15 秒、30 秒、1 分、2 分、5 分、以後 5 分)。相手が 4xx で断ったら送り直さない (408 と 429 は送り直す)。
+- Who signs: today the home node signs envelopes for its owner with the account key, including decisions made through the Client API. agency#19 moves signing to device keys held by clients before other people join an org or the iOS client ships.
 
 ## 招待と参加 (種類 `join`)
 
@@ -86,13 +87,14 @@ Agency は、AI エージェントと人が一緒に働く組織を、複数の�
 | GET | `/fed/v1/orgs/<組織>/definition` | 所属する人の読み出しの署名、または有効な招待の合言葉 |
 | POST | `/fed/v1/orgs/<組織>/definition` | 次の版であること (根の鍵の署名) |
 | POST | `/fed/v1/orgs/<組織>/join` | 参加の申し込みの署名と招待 |
-| GET | `/fed/v1/teams/<組織>/<チーム>/view` | 読み出しの署名と所属 (返すのは TeamView) |
+| GET | `/fed/v1/teams/<組織>/<チーム>/view` | 読み出しの署名と所属 (返すのは `{ "view": TeamView, "viewer"?: <名前> }`) |
 | POST | `/fed/v1/teams/<組織>/<チーム>/envelopes` | 封筒の署名、所属、期限、2 度目でないこと |
 
 ## TeamView
 
 A TeamView is what a team runtime reports about its team: its people, the requests waiting for a decision, its work items, and its epic forecasts.
-The node reads it from the team runtime (`view` in agency-runtime/1), returns it from `GET /fed/v1/teams/<org>/<team>/view`, and serves it to clients.
+The node reads it from the team runtime (`view` in agency-runtime/1), returns it from `GET /fed/v1/teams/<org>/<team>/view` as `{ "view": TeamView, "viewer"?: <runtime name> }`, and serves it to clients.
+`viewer` is the signed reader's name in the team runtime (see "Requests" below for the mapping); it is absent when the team does not address the reader.
 A node that reads another node's TeamView parses it into these types before keeping a replica, and drops it if it does not parse.
 
 The Rust types in `agency-proto` (`view.rs`, `runtime.rs`, `timestamp.rs`) are the source of truth.
@@ -138,6 +140,7 @@ Requests:
 - `question`: the team asks something. `proposal`: the team asks for approval of a document (`document`) with options. `pendingDecision`: a board item is blocked until someone decides.
 - `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
 - `to` absent means the team's owner. The node maps runtime names to org people through its hosted-team configuration: `owner` is the org person id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org person id>" }`). A `to` that is not in `people` goes to the owner.
+- In the other direction, an org person's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
 - `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
 - `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
 
@@ -162,6 +165,38 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 - The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay). `by` is the org person who decided.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
+
+## Client API
+
+A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
+The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
+
+| Method | Path | Answer |
+|---|---|---|
+| GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
+| GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
+| GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
+| POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
+
+Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+
+Funding: each configured source (`id`, `label`, `kind` `subscription` or `apiKey`, optional `usageFile`) is reported with the usage windows its file holds (`fiveHour` and `sevenDay`, each with `lengthHours`, `utilization` as a rounded percent, and `resetsAt`). A missing or malformed file reports no windows. The node never reads or stores a token.
+
+### Who is let in
+
+The node serves the federation routes, the Client API, and the web client on one port. The federation routes are checked only by signatures. The Client API and the web client admit a request only when:
+
+1. it is direct and local: the TCP peer is a loopback address, `Host` is `127.0.0.1:<port>` or `localhost:<port>`, and there is no `cf-ray` or `cf-connecting-ip` header. Any other `Host` gets 421, and a peer beyond loopback gets 403. The peer check is needed because the node may listen beyond loopback for federation, and the sender chooses `Host`; or
+2. it comes through Cloudflare (those headers) or names the configured public host, and carries a valid Cloudflare Access JWT in `Cf-Access-Jwt-Assertion`: RS256 only, signed by a key from `https://<team domain>/cdn-cgi/access/certs` (fetched again for an unknown key id, at most once a minute), the configured audience, issuer `https://<team domain>`, and `exp`/`nbf` within 60 seconds. Without an `access` setting, or with a malformed one, these requests get 403.
+
+Writes (any method but GET and HEAD) also need:
+
+- the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
+- `Content-Type: application/json` and a body of at most 64 KiB;
+- through Access, the signed-in email must equal the configured `ownerEmail`, because the node signs decisions with its owner's account key.
+
+The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
+If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.
 
 ## 試験の値
 

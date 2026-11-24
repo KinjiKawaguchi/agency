@@ -4,35 +4,40 @@ use crate::keys::PublicKey;
 use crate::signed::{Kind, Signed};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use ts_rs::TS;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct Root {
     pub account: Id,
     pub public_key: PublicKey,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct Department {
     pub id: Id,
     pub label: String,
     pub parent: Option<Id>,
-    /// 長: 人の id
+    /// The head of the department: a person id.
     pub head: Option<Id>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum Role {
-    /// 読む、答える
+    /// Reads and answers.
     Member,
-    /// 答えるだけの人
+    /// Only answers.
     Answerer,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct Person {
     pub id: Id,
     pub label: String,
@@ -42,22 +47,25 @@ pub struct Person {
     pub role: Role,
 }
 
-/// チームと、それが動いている台
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// A team and the node it runs on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct TeamPlace {
     pub id: Id,
     pub label: String,
     pub department: Option<Id>,
-    /// 台の頭の URL (http か https、パスなし)
+    /// The node's origin (http or https, no path).
     pub node: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
 pub struct OrgDefinition {
     pub org: Id,
     pub label: String,
+    #[ts(type = "number")]
     pub version: u64,
     pub prev: Option<String>,
     pub root: Root,

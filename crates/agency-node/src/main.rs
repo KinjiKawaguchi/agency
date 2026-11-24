@@ -1,6 +1,5 @@
 //! `agency`: Agency のノードの CLI。台を作り、組織を作り、招待し、参加し、動かす。
 use agency_adapters::files::DataDir;
-use agency_adapters::server::router;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::{decide, Decided};
 use agency_core::invites::join;
@@ -15,7 +14,6 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -152,6 +150,8 @@ fn init(
         scrum,
         teams: vec![],
         trusted: vec![],
+        funding: vec![],
+        access: None,
     })?;
     println!(
         "台を作った: {}\nアカウント {account} の鍵の指紋: {}",
@@ -223,12 +223,16 @@ fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("y")
 }
 
-async fn serve(node: Arc<Node>) -> Result<()> {
+async fn serve(opened: agency_node::Opened) -> Result<()> {
+    let node = opened.node.clone();
     let listen = node.config().listen;
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
         .with_context(|| format!("{listen} で待ち受けられない"))?;
+    let port = listener.local_addr()?.port();
+    let app = opened.app(port)?;
     println!("台を動かした: {} (待ち受け {listen})", node.url());
+    println!("Web client: http://127.0.0.1:{port}/");
     let background = node.clone();
     tokio::spawn(async move {
         let mut tick = 0u64;
@@ -245,11 +249,14 @@ async fn serve(node: Arc<Node>) -> Result<()> {
             tokio::time::sleep(Duration::from_secs(15)).await;
         }
     });
-    axum::serve(listener, router(node))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await?;
     Ok(())
 }
 
@@ -265,7 +272,8 @@ async fn run(cli: Cli) -> Result<()> {
     {
         return init(&data, account, label, url, listen, scrum.clone());
     }
-    let node = agency_node::open(data, Overrides::default())?;
+    let opened = agency_node::open(data, Overrides::default())?;
+    let node = opened.node.clone();
     match cli.command {
         Command::Init { .. } => unreachable!(),
         Command::OrgCreate { org, label } => {
@@ -378,7 +386,7 @@ async fn run(cli: Cli) -> Result<()> {
             println!("写しを読み直し、送り箱を {} 件届けに行った", outcomes.len());
         }
         Command::Status => status(&node),
-        Command::Serve => serve(node).await?,
+        Command::Serve => serve(opened).await?,
     }
     Ok(())
 }
