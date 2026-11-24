@@ -1,94 +1,94 @@
-# Agency の台どうしの約束 (v1)
+# Agency protocol between nodes (v1)
 
-Agency は、AI エージェントと人が一緒に働く組織を、複数の機械にまたがって扱う。
-中央のサーバーは置かない。
-中央にあるのは権限 (組織の決める人の鍵) だけで、データは機械ごとに分かれる。
+Agency runs organizations in which AI agents and people work together, across many machines.
+There is no central server.
+The only central thing is authority (the key of the person who decides for the org); the data is split across machines.
 
-## 単位と書き手
+## Units and writers
 
-| 種類 | 単位 | 書き手 | 置き場所 |
+| Kind | Unit | Writer | Where it lives |
 |---|---|---|---|
-| 実行 (稼働、要求、決裁、ボード) | チーム (ハーネス 1 つ) | そのハーネスが動いている台 | チームの台 |
-| 統治 (部署、人、チームの置き場所、取り消した鍵) | 組織 | 組織の根の鍵 (決める人) | 組織のチームのある台と、所属する人の台に写す |
-| 人 (鍵、所属) | アカウント | その人 | その人の家の台 |
+| Execution (activity, requests, decisions, board) | Team (one harness) | The node the harness runs on | The team's node |
+| Governance (departments, people, where teams run, revoked keys) | Org | The org's root key (the person who decides) | Copied to the nodes of the org's teams and of its members |
+| Person (key, memberships) | Account | That person | Their home node |
 
-どのデータも書き手は 1 つ。
-ほかの台は写しを持つだけで、写しを書き換えない。
-書き換えたいときは、書き手へ署名した封筒を届ける。
+Every piece of data has exactly one writer.
+Other nodes only keep replicas and never change them.
+To change something, send a signed envelope to its writer.
 
-## 識別子
+## Identifiers
 
-- アカウント、組織、チーム、部署、人の id: `[a-z0-9][a-z0-9-]{0,39}`
-- 封筒の id: 16 バイトの乱数の 16 進 (32 文字)
-- 時刻: RFC 3339 の UTC (`2026-11-24T12:00:00Z`)
+- Ids of accounts, orgs, teams, departments, and people: `[a-z0-9][a-z0-9-]{0,39}`
+- Envelope id: 16 random bytes as hex (32 characters)
+- Time: RFC 3339 in UTC (`2026-11-24T12:00:00Z`)
 
-## 鍵と署名
+## Keys and signatures
 
-- 鍵は Ed25519。公開鍵は 32 バイトを base64 (標準、`=` つき) で書く。
-- 鍵の指紋: 公開鍵の 32 バイトの SHA-256 の先頭 16 バイトを 16 進で書く (32 文字)。招待のリンクに入れ、組織の根の鍵が本物かを確かめる。
-- 署名する文字列は「種類の行 + 決まった順の JSON」: `agency/v1/<種類>\n` に、本体の決まった順の JSON を続ける。種類は `envelope`、`org`、`join`、`read`。種類の行があるので、ある種類の署名を別の種類に流用できない。
-- 決まった順の JSON: オブジェクトのキーをバイト順に並べ、空白を入れない。文字列の書き方は JSON の標準。数は整数だけを使う。値が null の項目は書かない。
-- 署名したもの: `{ "body": <本体>, "signer": <アカウント id>, "signature": <base64> }`
+- Keys are Ed25519. A public key is written as its 32 bytes in standard base64 with `=` padding.
+- Fingerprint: the first 16 bytes of the SHA-256 of the public key's 32 bytes, as hex (32 characters). Invite links carry it, so the invited node can check that the org's root key is genuine.
+- The signed text is a kind line followed by canonical JSON: `agency/v1/<kind>\n` and then the body's canonical JSON. The kinds are `envelope`, `org`, `join`, and `read`. Because of the kind line, a signature for one kind cannot be reused for another.
+- Canonical JSON: object keys sorted by bytes, no whitespace, strings escaped as standard JSON, integers only, and fields whose value is null left out.
+- A signed document: `{ "body": <body>, "signer": <account id>, "signature": <base64> }`
 
-## 組織の定義 (種類 `org`)
+## Org definition (kind `org`)
 
 ```json
 {
-  "org": "acme", "label": "Acme", "version": 3, "prev": "<前の版の指紋>",
+  "org": "acme", "label": "Acme", "version": 3, "prev": "<fingerprint of the previous version>",
   "root": { "account": "alice", "publicKey": "..." },
-  "departments": [{ "id": "dev", "label": "開発", "parent": null, "head": "owner" }],
+  "departments": [{ "id": "dev", "label": "Development", "parent": null, "head": "owner" }],
   "people": [{ "id": "owner", "label": "Alice", "account": "alice", "publicKey": "...", "department": "dev", "role": "member" }],
   "teams": [{ "id": "app", "label": "app", "department": "dev", "node": "https://alice.example" }],
-  "revoked": ["<取り消した公開鍵>"],
+  "revoked": ["<revoked public key>"],
   "at": "2026-11-24T12:00:00Z"
 }
 ```
 
-- 根の鍵 (`root`) だけが署名できる。`signer` は `root.account`。
-- 版は 1 から始まり、1 ずつ増える。`prev` は前の版の署名したものの決まった順の JSON の SHA-256 の 16 進 (64 文字)。1 版は `prev` を書かない。
-- 台は、今の版の次の版 (版が 1 大きく、`prev` が今の版の指紋で、今の根の鍵で署名してある) だけを受け取る。根を替えるときも、前の根の鍵で署名する。
-- 所属: `people` にあり、その `publicKey` が `revoked` に無いアカウント。
-- `role`: `member` (読む、答える) または `answerer` (答えるだけの人。v1 では読む範囲は member と同じ)。
+- Only the root key (`root`) can sign it. `signer` is `root.account`.
+- Versions start at 1 and grow by 1. `prev` is the hex SHA-256 (64 characters) of the canonical JSON of the previous signed version. Version 1 has no `prev`.
+- A node accepts only the next version of the one it has: the version is one higher, `prev` is the current version's fingerprint, and it is signed by the current root key. A new root is also signed by the previous root key.
+- Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
+- `role`: `member` (reads and answers) or `answerer` (only answers; in v1 it can read the same as a member).
 
-## 読み出し (種類 `read`)
+## Signed reads (kind `read`)
 
-ほかの台のチームの様子を読むとき、見出しを付ける。
+A node that reads a team on another node adds these headers:
 
-- `x-agency-account`: アカウント id
-- `x-agency-date`: 時刻
-- `x-agency-signature`: `agency/v1/read\n` + `<方法>\n<パス>\n<時刻>\n<アカウント>` の署名
+- `x-agency-account`: the account id
+- `x-agency-date`: the time
+- `x-agency-signature`: the signature of `agency/v1/read\n` + `<method>\n<path>\n<time>\n<account>`
 
-受け取る台は、時刻が前後 5 分の内で、署名がそのアカウントの (組織の定義にある) 公開鍵で合い、そのアカウントがチームの組織に所属しているときだけ返す。
-所属していなければ 404 (チームがあることも見せない)。
+The receiving node answers only when the time is within 5 minutes either way, the signature matches the account's public key in the org definition, and the account is a member of the team's org.
+A non-member gets 404, so it cannot tell whether the team exists.
 
-## 決裁の封筒 (種類 `envelope`)
+## Decision envelope (kind `envelope`)
 
 ```json
-{ "id": "<32 文字>", "kind": "answer", "org": "acme", "team": "app", "target": "r-20260101-000000-abcd",
-  "payload": { "text": "", "choice": "ア" }, "account": "alice", "at": "2026-11-24T12:00:00Z" }
+{ "id": "<32 characters>", "kind": "answer", "org": "acme", "team": "app", "target": "r-20260101-000000-abcd",
+  "payload": { "text": "", "choice": "a" }, "account": "alice", "at": "2026-11-24T12:00:00Z" }
 ```
 
-- `kind`: `answer` (要求に答える、`target` は要求の id) または `judge` (ボードの判断待ちに答える、`target` は `repo#番号`)。
-- 受け取る台 (チームの台) は、署名、所属、期限 (作ってから 7 日)、届け先のチームと封筒の組織とチームが合うこと、同じ id の 2 度目でないことを確かめてから当てる。2 度目は当てずに受け取ったと答える。
-- 送る台は、届かなければ送り箱に残し、間を空けて送り直す (15 秒、30 秒、1 分、2 分、5 分、以後 5 分)。相手が 4xx で断ったら送り直さない (408 と 429 は送り直す)。
+- `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is `repo#N`).
+- The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, and that its id has not been applied before. A repeated envelope is not applied again; the node answers that it received it.
+- The sending node keeps an envelope it could not deliver in its outbox and retries with backoff (15 s, 30 s, 1 min, 2 min, 5 min, then every 5 min). It does not retry when the receiver refuses with a 4xx (408 and 429 are retried).
 - Who signs: today the home node signs envelopes for its owner with the account key, including decisions made through the Client API. agency#19 moves signing to device keys held by clients before other people join an org or the iOS client ships.
 
-## 招待と参加 (種類 `join`)
+## Invites and joining (kind `join`)
 
-1. 根の鍵の台で招待を作る。招待のリンク: `agency:join?node=<台の頭の URL>&org=<組織>&fp=<根の鍵の指紋>&code=<合言葉>`。合言葉は 16 バイトの乱数の base64url。台には合言葉の SHA-256 だけを残す。期限は 7 日、使えるのは 1 回。
-2. 招かれた人の台が `GET <台>/fed/v1/orgs/<組織>/definition?code=<合言葉>` で組織の定義を読み、根の鍵の指紋がリンクの `fp` と合うかを確かめる。合わなければ止める (偽の台)。
-3. 招かれた人が受けると、参加の申し込みを署名して `POST <台>/fed/v1/orgs/<組織>/join` に送る。本体: `{ "org", "code", "account", "label", "publicKey", "at" }`。署名は本体の `publicKey` で確かめる。
-4. 根の鍵の台は、合言葉、期限、使った回数を確かめ、招待で決めた位置 (部署、役) にその人を書き足した次の版に署名し、申し込んだ台に返す。新しい版は、組織のチームのある台へ送り箱で配る。
+1. The root key's node creates an invite. Invite link: `agency:join?node=<node origin>&org=<org>&fp=<root key fingerprint>&code=<code>`. The code is 16 random bytes as base64url. The node keeps only the code's SHA-256. An invite expires after 7 days and can be used once.
+2. The invited person's node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
+3. When the invited person accepts, their node signs a join request and sends it to `POST <node>/fed/v1/orgs/<org>/join`. Body: `{ "org", "code", "account", "label", "publicKey", "at" }`. The signature is checked with the body's `publicKey`, and `at` must be within 10 minutes of the root node's clock.
+4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the person added at the place the invite set (department, role), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox.
 
-## 台の道
+## Federation routes
 
-| 方法 | パス | 確かめ |
+| Method | Path | Checked |
 |---|---|---|
-| GET | `/fed/v1/orgs/<組織>/definition` | 所属する人の読み出しの署名、または有効な招待の合言葉 |
-| POST | `/fed/v1/orgs/<組織>/definition` | 次の版であること (根の鍵の署名) |
-| POST | `/fed/v1/orgs/<組織>/join` | 参加の申し込みの署名と招待 |
-| GET | `/fed/v1/teams/<組織>/<チーム>/view` | 読み出しの署名と所属 (返すのは `{ "view": TeamView, "viewer"?: <名前> }`) |
-| POST | `/fed/v1/teams/<組織>/<チーム>/envelopes` | 封筒の署名、所属、期限、2 度目でないこと |
+| GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
+| POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
+| POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
+| GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
+| POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
 
 ## TeamView
 
@@ -198,7 +198,7 @@ Writes (any method but GET and HEAD) also need:
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.
 
-## 試験の値
+## Test vectors
 
-`testdata/vectors.json` に、決まった種の鍵、本体、決まった順の JSON、署名を置く。
-別の言語で作り直すときも、同じ値になることを確かめる。
+`testdata/vectors.json` holds a key from a fixed seed, a body, its canonical JSON, and its signature.
+An implementation in another language must produce the same values.
