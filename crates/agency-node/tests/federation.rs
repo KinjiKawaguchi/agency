@@ -1,13 +1,18 @@
 //! 2 つの台を同じプロセスで動かし、招待 → 参加 → 写し → 署名した決裁 → ため置き → 起きた後の届け を通す。
 //! 断る側 (所属していない人、書き換えた封筒、使った招待、偽の台、根でない鍵の版) も確かめる。
-use agency_node::client::{decide, join, refresh, replica_path, Decided, Replica};
-use agency_node::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
-use agency_node::node::Node;
-use agency_node::orgs;
-use agency_node::outbox::{deliver, deliver_due, pending, ParcelBody};
-use agency_node::runtime::{MemoryRuntime, Runtimes};
-use agency_node::server::router;
-use agency_node::store::{read_json, DataDir};
+use agency_adapters::files::DataDir;
+use agency_adapters::memory::{ManualClock, MemoryRuntime, MemoryRuntimeState};
+use agency_adapters::peers::read_headers;
+use agency_adapters::server::router;
+use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
+use agency_core::decisions::{decide, Decided};
+use agency_core::invites::{self, join};
+use agency_core::outbox::{deliver, deliver_due, pending, ParcelBody};
+use agency_core::ports::{ConfigStore, TeamRuntime};
+use agency_core::read_auth::sign_read;
+use agency_core::views::{refresh, Replica};
+use agency_core::{orgs, Node};
+use agency_node::Overrides;
 use agency_proto::invite::Invite;
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{EnvelopeKind, Id, Kind, OrgDefinition, Payload, Role, Signed};
@@ -15,6 +20,15 @@ use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+
+/// Every node in these tests reads this time; nothing depends on the wall clock.
+const T0: &str = "2026-11-24T12:00:00Z";
+
+fn memory_runtime() -> (Arc<dyn TeamRuntime>, Arc<Mutex<MemoryRuntimeState>>) {
+    let runtime = MemoryRuntime::default();
+    let state = runtime.0.clone();
+    (Arc::new(runtime), state)
+}
 
 fn id(raw: &str) -> Id {
     Id::parse(raw).unwrap()
@@ -48,7 +62,7 @@ impl Running {
     }
 }
 
-async fn node(account: &str, runtimes: Runtimes) -> Running {
+async fn node(account: &str, runtime: Arc<dyn TeamRuntime>) -> Running {
     let dir = TempDir::new().unwrap();
     let port = TcpListener::bind("127.0.0.1:0")
         .await
@@ -72,7 +86,15 @@ async fn node(account: &str, runtimes: Runtimes) -> Running {
     })
     .unwrap();
     let mut running = Running {
-        node: Node::open(data, Some(runtimes)).unwrap(),
+        node: agency_node::open(
+            data,
+            Overrides {
+                runtime: Some(runtime),
+                clock: Some(Arc::new(ManualClock::at(T0))),
+                random: None,
+            },
+        )
+        .unwrap(),
         port,
         server: None,
         _dir: dir,
@@ -82,14 +104,14 @@ async fn node(account: &str, runtimes: Runtimes) -> Running {
 }
 
 /// alice の台: 組織 acme の根の鍵を持ち、チーム app を置く。チームには答え待ちの要求 r-1 がある
-async fn alice() -> (Running, Arc<Mutex<MemoryRuntime>>) {
-    let (runtimes, memory) = Runtimes::memory();
+async fn alice() -> (Running, Arc<Mutex<MemoryRuntimeState>>) {
+    let (runtime, memory) = memory_runtime();
     memory
         .lock()
         .unwrap()
         .requests
         .push(("r-1".into(), "鍵を作るか".into()));
-    let running = node("alice", runtimes).await;
+    let running = node("alice", runtime).await;
     let node = &running.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     orgs::add_team(
@@ -120,8 +142,8 @@ async fn alice() -> (Running, Arc<Mutex<MemoryRuntime>>) {
 }
 
 async fn joined_bob(alice: &Running) -> Running {
-    let bob = node("bob", Runtimes::memory().0).await;
-    let link = orgs::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
+    let bob = node("bob", memory_runtime().0).await;
+    let link = invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
     let doc = join(&bob.node, &link, |definition| definition.label == "Acme")
         .await
         .unwrap();
@@ -143,7 +165,7 @@ async fn invite_join_replica_and_signed_decision() {
     // alice の台も、bob を書き足した版を持っている (書き手は alice の根の鍵 1 つ)
     assert!(alice
         .node
-        .data
+        .store()
         .load_org(&id("acme"))
         .unwrap()
         .body
@@ -151,7 +173,11 @@ async fn invite_join_replica_and_signed_decision() {
         .is_some());
 
     refresh(&bob.node).await.unwrap();
-    let replica: Replica = read_json(&replica_path(&bob.node, &id("acme"), &id("app"))).unwrap();
+    let replica: Replica = bob
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("app"))
+        .unwrap();
     assert_eq!(replica.error, None);
     assert_eq!(replica.view.unwrap().requests[0].id, "r-1");
 
@@ -207,8 +233,11 @@ async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
     assert!(matches!(outcome, Decided::Queued(_)), "{outcome:?}");
     assert_eq!(pending(&bob.node).len(), 1);
     refresh(&bob.node).await.unwrap();
-    let replica: Replica =
-        read_json(&replica_path(&bob.node, &id("acme"), &id("app"))).unwrap_or_default();
+    let replica: Replica = bob
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("app"))
+        .unwrap_or_default();
     assert!(replica.error.is_some(), "寝ている台の写しは失敗を書く");
 
     alice.start().await;
@@ -246,21 +275,27 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let http = reqwest::Client::new();
 
     // 所属していない人の署名つきの読み出しは 404 (組織があることも見せない)
-    let carol = node("carol", Runtimes::memory().0).await;
+    let carol = node("carol", memory_runtime().0).await;
     carol
         .node
-        .data
-        .save_org(&alice.node.data.load_org(&id("acme")).unwrap())
+        .store()
+        .save_org(&alice.node.store().load_org(&id("acme")).unwrap())
         .unwrap();
     refresh(&carol.node).await.unwrap();
-    assert!(read_json::<Replica>(&replica_path(&carol.node, &id("acme"), &id("app"))).is_none());
+    assert!(carol
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("app"))
+        .is_none());
     let mut request = http.get(format!("{}/fed/v1/teams/acme/app/view", alice.url()));
-    for (name, value) in agency_node::auth::signed_headers(
-        &carol.node.key,
+    let auth = sign_read(
+        carol.node.key(),
         &id("carol"),
         "GET",
         "/fed/v1/teams/acme/app/view",
-    ) {
+        carol.node.now(),
+    );
+    for (name, value) in read_headers(&auth) {
         request = request.header(name, value);
     }
     assert_eq!(request.send().await.unwrap().status(), 404);
@@ -279,17 +314,17 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let mut tampered: Signed<agency_proto::Envelope> = Signed::sign(
         Kind::Envelope,
         agency_proto::Envelope {
-            id: agency_proto::EnvelopeId::random(),
+            id: agency_proto::EnvelopeId::from_bytes([9; 16]),
             kind: EnvelopeKind::Answer,
             org: id("acme"),
             team: id("app"),
             target: "r-1".into(),
             payload: answer("ア"),
             account: id("bob"),
-            at: agency_proto::clock::format(agency_proto::clock::now()),
+            at: alice.node.now_text(),
         },
         id("bob"),
-        &bob.node.key,
+        bob.node.key(),
     )
     .unwrap();
     tampered.body.payload = answer("イ");
@@ -303,29 +338,26 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
 
     // 使った招待では、もう入れない
-    let link = orgs::invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
+    let link = invites::invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
     join(&carol.node, &link, |_| true).await.unwrap();
-    let dave = node("dave", Runtimes::memory().0).await;
+    let dave = node("dave", memory_runtime().0).await;
     assert!(join(&dave.node, &link, |_| true).await.is_err());
 
     // 指紋の合わない招待のリンク (偽の台) では申し込まない
     let mut fake =
-        Invite::parse(&orgs::invite(&alice.node, &id("acme"), None, Role::Member).unwrap())
+        Invite::parse(&invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap())
             .unwrap();
     fake.fp = "0".repeat(32);
     let error = join(&dave.node, &fake.to_link(), |_| true)
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("指紋"), "{error}");
+    assert!(error.to_string().contains("fingerprint"), "{error}");
 
     // 根でない鍵で署名した次の版は、受け取らない
-    let current = alice.node.data.load_org(&id("acme")).unwrap();
-    let mut body = OrgDefinition::successor_of(
-        &current,
-        agency_proto::clock::format(agency_proto::clock::now()),
-    );
+    let current = alice.node.store().load_org(&id("acme")).unwrap();
+    let mut body = OrgDefinition::successor_of(&current, alice.node.now_text());
     body.label = "乗っ取り".into();
-    let forged: SignedOrg = Signed::sign(Kind::Org, body, id("alice"), &bob.node.key).unwrap();
+    let forged: SignedOrg = Signed::sign(Kind::Org, body, id("alice"), bob.node.key()).unwrap();
     let response = http
         .post(format!("{}/fed/v1/orgs/acme/definition", alice.url()))
         .json(&forged)
@@ -334,7 +366,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
         .unwrap();
     assert_eq!(response.status(), 400);
     assert_eq!(
-        alice.node.data.load_org(&id("acme")).unwrap().body.label,
+        alice.node.store().load_org(&id("acme")).unwrap().body.label,
         "Acme"
     );
 }

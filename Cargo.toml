@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/agency-proto", "crates/agency-node"]
+members = ["crates/agency-proto", "crates/agency-core", "crates/agency-adapters", "crates/agency-node"]
 
 [workspace.package]
 edition = "2021"
@@ -10,6 +10,7 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
@@ -26,3 +27,5 @@ time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 ts-rs = { version = "12", features = ["no-serde-warnings"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "fs", "process", "signal"] }
 agency-proto = { path = "crates/agency-proto" }
+agency-core = { path = "crates/agency-core" }
+agency-adapters = { path = "crates/agency-adapters" }

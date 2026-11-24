@@ -3,6 +3,7 @@
 
 pub mod canonical;
 pub mod clock;
+pub mod digest;
 pub mod envelope;
 pub mod ids;
 pub mod invite;

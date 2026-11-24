@@ -60,9 +60,8 @@ impl fmt::Display for Id {
 pub struct EnvelopeId(String);
 
 impl EnvelopeId {
-    pub fn random() -> Self {
-        let mut bytes = [0u8; 16];
-        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+    /// From 16 random bytes supplied by the caller (a randomness port).
+    pub fn from_bytes(bytes: [u8; 16]) -> Self {
         Self(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
 
@@ -107,7 +106,7 @@ mod tests {
 
     #[test]
     fn envelope_id_is_32_lower_hex() {
-        assert_eq!(EnvelopeId::random().as_str().len(), 32);
+        assert_eq!(EnvelopeId::from_bytes([0xab; 16]).as_str(), "ab".repeat(16));
         assert!(EnvelopeId::try_from("A".repeat(32)).is_err());
         assert!(EnvelopeId::try_from("ab".to_owned()).is_err());
     }
