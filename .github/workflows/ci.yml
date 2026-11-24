@@ -23,6 +23,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Check that generated TypeScript bindings match the Rust types
+        run: scripts/check-bindings.sh
 
   web:
     runs-on: ubuntu-latest
