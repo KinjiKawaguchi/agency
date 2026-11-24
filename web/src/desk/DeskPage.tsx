@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../api/context'
-import { TEAM_VIEW_KEY, useTeamViews } from '../api/queries'
+import { TEAM_KEY, useTeams } from '../api/queries'
 import { useI18n } from '../i18n'
+import { ReplicaNotice } from '../shared/ReplicaNotice'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
 import { draftOf, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
@@ -24,7 +25,7 @@ interface DeskPageProps {
 
 export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD_MS }: DeskPageProps) {
   const { t } = useI18n()
-  const { me, views, isLoading, error } = useTeamViews()
+  const { me, teams, isLoading, error } = useTeams()
   const api = useApi()
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -34,7 +35,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
 
-  const items = useMemo(() => openItems(views), [views])
+  const items = useMemo(() => openItems(teams), [teams])
   const selectedKey = resolveSelection(items, requested)
   const current = items.find((item) => item.key === selectedKey)
 
@@ -46,11 +47,11 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
+        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
-        toast(t.desk.paper.sent(item.drafter?.label ?? item.request.from))
-        timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_VIEW_KEY }), sealHoldMs))
+        toast(result.outcome === 'queued' ? t.desk.paper.queued : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
+        timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {
         toast(t.desk.paper.sendFailed(failure instanceof Error ? failure.message : String(failure)), 'error')
       } finally {
@@ -79,11 +80,14 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   }
 
   const orgLabelOf = (id: string): string => me.orgs.find((org) => org.id === id)?.label ?? id
-  const situation = situationOf(views, items)
+  const situation = situationOf(teams, items)
   return (
     <>
       {error === null ? null : <p className="empty" role="alert">{t.app.unreachable(error.message)}</p>}
-      <Briefing me={me} views={views} items={items} situation={situation} now={new Date()} />
+      {teams.map((team) => (
+        <ReplicaNotice key={`${team.view.org}/${team.view.team}`} source={team.source} />
+      ))}
+      <Briefing me={me} teams={teams} items={items} situation={situation} now={new Date()} />
       <div className="desk">
         <div className="desk-left">
           {isLoading && items.length === 0 ? <p className="muted">{t.app.loading}</p> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={onSelect} />}

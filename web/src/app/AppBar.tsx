@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { useTeamViews } from '../api/queries'
+import { useTeams } from '../api/queries'
 import { openItems } from '../desk/items'
 import { useI18n } from '../i18n'
 import { LOCALES, LOCALE_NAMES, isLocale } from '../i18n/locale'
@@ -17,8 +17,8 @@ const THEME_LABELS = (t: ReturnType<typeof useI18n>['t']): Record<Theme, string>
 export function AppBar() {
   const { t, locale, setLocale } = useI18n()
   const { theme, setTheme } = useTheme()
-  const { me, views } = useTeamViews()
-  const waiting = me === undefined ? 0 : openItems(views).filter((item) => item.isMine).length
+  const { me, teams } = useTeams()
+  const waiting = me === undefined ? 0 : openItems(teams).filter((item) => item.isMine).length
   const themeLabels = THEME_LABELS(t)
 
   useEffect(() => {

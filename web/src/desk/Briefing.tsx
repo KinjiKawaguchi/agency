@@ -1,16 +1,15 @@
 import { Link } from '@tanstack/react-router'
 import type { Me } from '../api/clientApi'
-import type { TeamView } from '../api/teamview'
+import type { Team } from '../api/teams'
 import type { Around } from '../i18n/en'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
 import { presenceOf, type Presence } from '../people/state'
-import { viewerNameOf } from '../people/viewer'
 import type { DeskItem, Situation } from './items'
 
 interface BriefingProps {
   me: Me
-  views: readonly TeamView[]
+  teams: readonly Team[]
   items: readonly DeskItem[]
   situation: Situation
   now: Date
@@ -18,10 +17,10 @@ interface BriefingProps {
 
 const RING_ORDER: readonly Presence[] = ['needs-you', 'working', 'waiting', 'idle', 'away']
 
-function FaceRow({ views }: { views: readonly TeamView[] }) {
+function FaceRow({ teams }: { teams: readonly Team[] }) {
   const { t } = useI18n()
-  const people = views
-    .flatMap((view) => view.people.filter((person) => person.id !== viewerNameOf(view)).map((person) => ({ person, presence: presenceOf(person, viewerNameOf(view)) })))
+  const people = teams
+    .flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, presence: presenceOf(person, team.viewer) })))
     .toSorted((a, b) => RING_ORDER.indexOf(a.presence) - RING_ORDER.indexOf(b.presence))
   return (
     <Link className="face-row" to="/people" aria-label={t.desk.briefing.seePeople}>
@@ -56,7 +55,7 @@ function Next({ top }: { top: DeskItem }) {
 }
 
 /** The one-line summary at the top: who is waiting for the viewer, and what to decide first. */
-export function Briefing({ me, views, items, situation, now }: BriefingProps) {
+export function Briefing({ me, teams, items, situation, now }: BriefingProps) {
   const { t, fmt } = useI18n()
   const { desk } = t
   const top = items.find((item) => item.isMine)
@@ -75,7 +74,7 @@ export function Briefing({ me, views, items, situation, now }: BriefingProps) {
         {top === undefined ? null : <Next top={top} />}
       </h1>
       <div className="briefing-foot">
-        <FaceRow views={views} />
+        <FaceRow teams={teams} />
         <span className="briefing-sub">
           {desk.briefing.peopleWorking(situation.working, situation.total)}
           {situation.mine > 1 ? ` ${desk.briefing.allOnDesk(situation.mine)}` : ''}

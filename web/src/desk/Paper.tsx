@@ -1,4 +1,5 @@
-import { canDecide, blockedPeople, personOf, type DeskItem } from './items'
+import { canDecide, blockedPeople, type DeskItem } from './items'
+import { personOf } from '../people/viewer'
 import { type Draft } from './drafts'
 import { ChoiceCards } from './ChoiceCards'
 import { StampRoute } from './StampRoute'

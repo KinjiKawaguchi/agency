@@ -15,6 +15,14 @@ export interface Formatters {
   day: (iso: string) => string
   /** 12,345 */
   integer: (value: number) => string
+  /** $1,234, $12, or $0.42 */
+  money: (usd: number) => string
+  /** 1.2K, 3.4M, or 5.67B */
+  compact: (value: number) => string
+  /** "62%" from 62 */
+  percent: (value: number) => string
+  /** "Nov 25" from `YYYY-MM-DD` */
+  shortDate: (date: string) => string
 }
 
 export function createFormatters(locale: Locale, now: () => number = Date.now): Formatters {
@@ -23,6 +31,7 @@ export function createFormatters(locale: Locale, now: () => number = Date.now): 
   const clockFormat = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' })
   const dayFormat = new Intl.DateTimeFormat(locale, { weekday: 'short', month: 'short', day: 'numeric' })
   const numberFormat = new Intl.NumberFormat(locale)
+  const shortDateFormat = new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
   return {
     relative: (iso, justNow) => {
@@ -37,5 +46,10 @@ export function createFormatters(locale: Locale, now: () => number = Date.now): 
     clock: (iso) => clockFormat.format(new Date(iso)),
     day: (iso) => dayFormat.format(new Date(iso)),
     integer: (value) => numberFormat.format(value),
+    money: (usd) => `$${usd >= 1000 ? numberFormat.format(Math.round(usd)) : usd >= 10 ? usd.toFixed(0) : usd.toFixed(2)}`,
+    compact: (value) =>
+      value >= 1e9 ? `${(value / 1e9).toFixed(2)}B` : value >= 1e6 ? `${(value / 1e6).toFixed(1)}M` : value >= 1e3 ? `${(value / 1e3).toFixed(1)}K` : String(Math.round(value)),
+    percent: (value) => `${Math.round(value)}%`,
+    shortDate: (date) => shortDateFormat.format(new Date(`${date}T00:00:00Z`)),
   }
 }

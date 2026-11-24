@@ -17,9 +17,9 @@ export const ORG_DEFINITION: OrgDefinition = {
     { id: 'design', label: 'Design', head: 'carol' },
   ],
   people: [
-    { id: 'owner', label: 'Alice', department: 'engineering', role: 'member' },
-    { id: 'bob', label: 'Bob', department: 'platform', role: 'member' },
-    { id: 'carol', label: 'Carol', department: 'design', role: 'answerer' },
+    { id: 'owner', label: 'Alice', account: 'alice', department: 'engineering', role: 'member' },
+    { id: 'bob', label: 'Bob', account: 'bob', department: 'platform', role: 'member' },
+    { id: 'carol', label: 'Carol', account: 'carol', department: 'design', role: 'answerer' },
   ],
   teams: [
     { id: 'app', label: 'App', department: 'engineering' },
@@ -46,21 +46,26 @@ export function siteTeamView(base: TeamView): TeamView {
 
 export function fundingSources(now: Date): FundingSource[] {
   const at = (ms: number) => new Date(now.getTime() + ms).toISOString()
+  const readAt = at(-3 * MINUTE)
   return [
     {
       id: 'personal',
       label: 'Personal plan',
       kind: 'subscription',
-      sevenDay: { utilization: 62, resetsAt: at(3 * DAY), projectedAtReset: 96, status: 'ok' },
-      fiveHour: { utilization: 74, resetsAt: at(2 * HOUR), projectedAtReset: 118, hitAt: at(80 * MINUTE), status: 'overrun' },
-      teams: [{ org: 'acme', team: 'app' }],
+      // Four of seven days in at 52%: on pace. Three of five hours in at 74%: it will run out.
+      windows: [
+        { name: 'sevenDay', utilization: 52, resetsAt: at(3 * DAY) },
+        { name: 'fiveHour', utilization: 74, resetsAt: at(2 * HOUR) },
+      ],
+      readAt,
     },
     {
       id: 'lab',
       label: 'Lab plan',
       kind: 'subscription',
-      sevenDay: { utilization: 21, resetsAt: at(5 * DAY), projectedAtReset: 44, status: 'waste' },
-      teams: [{ org: 'acme', team: 'site' }],
+      // Two of seven days in at 21%: it will not be used up. No five-hour window is running.
+      windows: [{ name: 'sevenDay', utilization: 21, resetsAt: at(5 * DAY) }],
+      readAt,
     },
   ]
 }

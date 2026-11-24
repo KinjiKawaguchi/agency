@@ -33,6 +33,17 @@
   --track: light-dark(#e3e6ea, #22252b);
   --idle: light-dark(#8f95a1, #4a4e58);
 
+  /* Chart series, in fixed order. Validated as a set against the panel surface in both themes. */
+  --series-1: light-dark(#2a78d6, #3987e5);
+  --series-2: light-dark(#eb6834, #d95926);
+  --series-3: light-dark(#1baf7a, #199e70);
+  --series-4: light-dark(#eda100, #c98500);
+  --series-5: light-dark(#e87ba4, #d55181);
+  --series-6: light-dark(#008300, #0ca30c);
+  --series-7: light-dark(#6250d6, #9085e9);
+  --series-8: light-dark(#e34948, #e66767);
+  --series-other: light-dark(#8f95a1, #6b717d);
+
   --hue-1: #4a5ad0;
   --hue-2: #0b7d70;
   --hue-3: #9a5f06;

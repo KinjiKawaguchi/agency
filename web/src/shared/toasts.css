@@ -25,3 +25,13 @@
   border-color: var(--seal);
   color: var(--seal);
 }
+
+.replica-notice {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--hold);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--ink-2);
+  font-size: 13.5px;
+}

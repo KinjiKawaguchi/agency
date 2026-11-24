@@ -1,5 +1,4 @@
-import type { DecisionAnswer, FundingSource, Me, OrgDefinition, UsageReport } from './clientApi'
-import type { TeamView } from './teamview'
+import type { DecisionAnswer, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -16,14 +15,18 @@ export class ApiError extends Error {
 
 export interface ApiClient {
   me: () => Promise<Me>
-  teamView: (org: string, team: string) => Promise<TeamView>
-  decide: (answer: DecisionAnswer) => Promise<void>
+  teamSnapshot: (org: string, team: string) => Promise<TeamSnapshot>
+  decide: (answer: DecisionAnswer) => Promise<DecisionResult>
   orgDefinition: (org: string) => Promise<OrgDefinition>
-  funding: () => Promise<FundingSource[]>
   usage: (org: string, team: string, days: number) => Promise<UsageReport>
 }
 
 const segment = encodeURIComponent
+
+/** The node puts a token for this page in its served index.html; every write sends it back. */
+function readToken(): string {
+  return document.querySelector('meta[name="agency-token"]')?.getAttribute('content') ?? ''
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   const body: unknown = await response.json().catch(() => ({}))
@@ -36,22 +39,21 @@ async function readJson<T>(response: Response): Promise<T> {
 
 /** Talks to the home node. `send` is injectable so tests can route calls to the mock node. */
 export function createApiClient(send: FetchLike = (request) => fetch(request)): ApiClient {
-  const get = <T>(path: string): Promise<T> =>
-    send(new Request(new URL(path, window.location.origin), { headers: { accept: 'application/json' } })).then(readJson<T>)
+  const url = (path: string): URL => new URL(path, window.location.origin)
+  const get = <T>(path: string): Promise<T> => send(new Request(url(path), { headers: { accept: 'application/json' } })).then(readJson<T>)
 
   return {
     me: () => get<Me>('/api/me'),
-    teamView: (org, team) => get<TeamView>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
-    orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}/definition`),
-    funding: () => get<FundingSource[]>('/api/funding'),
+    teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
+    orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<UsageReport>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decide: ({ org, team, answerWith, choice, text }) =>
       send(
-        new Request(new URL(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`, window.location.origin), {
+        new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-agency-token': readToken() },
           body: JSON.stringify({ ...answerWith, text, ...(choice === undefined ? {} : { choice }) }),
         }),
-      ).then(readJson<unknown>).then(() => undefined),
+      ).then(readJson<DecisionResult>),
   }
 }

@@ -1,6 +1,7 @@
+import type { Team } from '../api/teams'
 import type { PersonStatus, RequestKind, TeamRequest, TeamView } from '../api/teamview'
 import { presenceOf } from '../people/state'
-import { viewerNameOf } from '../people/viewer'
+import { personOf } from '../people/viewer'
 
 export type GroupId = RequestKind | 'others'
 
@@ -15,23 +16,20 @@ export interface DeskItem {
   view: TeamView
   /** Absent when the request comes from something that is not a person on the team, such as the board. */
   drafter: PersonStatus | undefined
-  /** The person it is addressed to. Absent `to` means the owner. */
+  /** The person it is addressed to. Absent `to` means the viewer. */
   decider: PersonStatus | undefined
-  /** True when the viewer, as the team's owner, is the one who has to decide. */
+  /** True when the request is addressed to the viewer. */
   isMine: boolean
 }
 
-/** Only the owner a request is addressed to can decide it. */
+/** Only the person a request is addressed to can decide it. */
 export const canDecide = (item: DeskItem): boolean => item.isMine
-
-export const personOf = (view: TeamView, name: string): PersonStatus | undefined => view.people.find((person) => person.id === name)
 
 export const itemKey = (view: TeamView, request: TeamRequest): string => `${view.org}:${view.team}:${request.id}`
 
-function toItem(view: TeamView, request: TeamRequest): DeskItem {
-  const viewerName = viewerNameOf(view)
-  const to = request.to ?? viewerName
-  const isMine = to === viewerName
+function toItem({ view, viewer }: Team, request: TeamRequest): DeskItem {
+  const to = request.to ?? viewer
+  const isMine = to === viewer
   return {
     key: itemKey(view, request),
     group: isMine ? request.kind : 'others',
@@ -59,8 +57,8 @@ function compareItems(a: DeskItem, b: DeskItem): number {
 }
 
 /** Requests from every team, grouped, with the ones that stop the most people first and oldest first within that. */
-export function openItems(views: readonly TeamView[]): DeskItem[] {
-  return views.flatMap((view) => view.requests.map((request) => toItem(view, request))).toSorted(compareItems)
+export function openItems(teams: readonly Team[]): DeskItem[] {
+  return teams.flatMap((team) => team.view.requests.map((request) => toItem(team, request))).toSorted(compareItems)
 }
 
 export interface Situation {
@@ -70,11 +68,11 @@ export interface Situation {
   mine: number
 }
 
-/** The numbers behind the one-line summary. The owner is the viewer and is not counted among the people. */
-export function situationOf(views: readonly TeamView[], items: readonly DeskItem[]): Situation {
-  const others = views.flatMap((view) => view.people.filter((person) => person.id !== viewerNameOf(view)).map((person) => ({ person, view })))
+/** The numbers behind the one-line summary. The viewer is not counted among the people. */
+export function situationOf(teams: readonly Team[], items: readonly DeskItem[]): Situation {
+  const others = teams.flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, viewer: team.viewer })))
   return {
-    waitingOnYou: others.filter(({ person, view }) => presenceOf(person, viewerNameOf(view)) === 'needs-you').length,
+    waitingOnYou: others.filter(({ person, viewer }) => presenceOf(person, viewer) === 'needs-you').length,
     working: others.filter(({ person }) => person.state === 'working').length,
     total: others.length,
     mine: items.filter((item) => item.isMine).length,
