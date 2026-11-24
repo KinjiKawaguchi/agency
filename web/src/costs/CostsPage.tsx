@@ -3,10 +3,8 @@ import { useTeams } from '../api/queries'
 import { teamKey } from '../api/teams'
 import { useI18n } from '../i18n'
 import { FundingCard } from './FundingCard'
-import { TokenUsage } from './TokenUsage'
+import { TokenSection } from './TokenUsage'
 import './costs.css'
-
-const PERIODS = [7, 14, 30] as const
 
 export function CostsPage() {
   const { t } = useI18n()
@@ -31,18 +29,7 @@ export function CostsPage() {
         </div>
       )}
       {teams.map((team) => (
-        <section key={teamKey(team)}>
-          <h2 className="sub-head">{t.costs.tokens.title(team.view.label)}</h2>
-          <div className="period" role="group" aria-label={t.costs.tokens.period}>
-            {PERIODS.map((period) => (
-              <button key={period} className={`btn small${period === days ? ' primary' : ''}`} type="button" aria-pressed={period === days} onClick={() => setDays(period)}>
-                {t.costs.tokens.days(period)}
-              </button>
-            ))}
-            <span className="muted">{t.costs.tokens.estimate}</span>
-          </div>
-          <TokenUsage view={team.view} days={days} />
-        </section>
+        <TokenSection key={teamKey(team)} team={team} days={days} onDaysChange={setDays} />
       ))}
     </>
   )

@@ -23,6 +23,10 @@ interface MockNodeOptions {
   failWith?: number
   /** Makes the `site` team a stale copy that could not be refreshed for this reason. */
   siteError?: string
+  /** Serves token use. Off by default, as the real node does not serve it yet and answers 404. */
+  usage?: boolean
+  /** Makes only the token use calls fail with this status. */
+  usageFailsWith?: number
   /** What the node reports for an accepted decision. */
   outcome?: DecisionResult['outcome']
 }
@@ -94,6 +98,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (view === undefined) return failure(404, 'No such team.')
     if (request.method === 'GET' && action === 'view') return json(snapshotOf(view))
     if (request.method === 'GET' && action === 'usage') {
+      if (options.usageFailsWith !== undefined) return failure(options.usageFailsWith, 'Token usage could not be read.')
+      if (options.usage !== true) return failure(404, 'Token usage is not available.')
       const days = Number(url.searchParams.get('days') ?? 14)
       return Number.isInteger(days) && days >= 1 && days <= 90 ? json(usageReport(view, days, now)) : failure(400, 'days must be between 1 and 90.')
     }

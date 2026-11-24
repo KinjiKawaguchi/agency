@@ -11,7 +11,7 @@ export const WINDOW_MS: Record<FundingWindowReading['name'], number> = { fiveHou
 const MIN_ELAPSED_SHARE = 0.02
 
 /** A window projected to end below this percent counts as going unused. */
-export const WASTE_BELOW_PERCENT = 80
+export const WASTE_BELOW_PERCENT = 85
 
 export interface WindowForecast {
   utilization: number

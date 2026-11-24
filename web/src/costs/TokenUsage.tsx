@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { ApiError } from '../api/client'
+import type { UsageReport } from '../api/clientApi'
 import { useApi } from '../api/context'
 import { usageQuery } from '../api/queries'
+import type { Team } from '../api/teams'
 import type { TeamView } from '../api/teamview'
 import { useI18n } from '../i18n'
 import { Legend, StackedColumns } from './StackedColumns'
@@ -16,15 +19,11 @@ function Tile({ label, value, note }: { label: string; value: string; note: stri
   )
 }
 
-/** Token use of one team: totals, cost by day, and a table by person. */
-export function TokenUsage({ view, days }: { view: TeamView; days: number }) {
+const PERIODS = [7, 14, 30] as const
+
+/** Totals, cost by day, and a table by person, from one usage report. */
+function TokenReport({ view, days, report }: { view: TeamView; days: number; report: UsageReport }) {
   const { t, fmt } = useI18n()
-  const api = useApi()
-  const usage = useQuery(usageQuery(api, view.org, view.team, days))
-  if (usage.data === undefined) {
-    return <p className={usage.error === null ? 'muted' : 'empty'} role={usage.error === null ? undefined : 'alert'}>{usage.error === null ? t.costs.tokens.loading : t.app.unreachable(usage.error.message)}</p>
-  }
-  const report = usage.data
   const labelOf = (person: string): string => view.people.find((one) => one.id === person)?.label ?? person
   const series = seriesFor(report, view.people.map((one) => one.id), labelOf, t.costs.tokens.other)
   const totals = totalsOf(report)
@@ -69,5 +68,49 @@ export function TokenUsage({ view, days }: { view: TeamView; days: number }) {
         </table>
       </div>
     </>
+  )
+}
+
+interface TokenSectionProps {
+  team: Team
+  days: number
+  onDaysChange: (days: number) => void
+}
+
+/**
+ * One team's token use under its heading. A node that does not serve token use yet answers 404, and
+ * the section then says so instead of showing numbers.
+ */
+export function TokenSection({ team, days, onDaysChange }: TokenSectionProps) {
+  const { t } = useI18n()
+  const api = useApi()
+  const { view } = team
+  const usage = useQuery(usageQuery(api, view.org, view.team, days))
+  const isUnavailable = usage.error instanceof ApiError && usage.error.status === 404
+  return (
+    <section>
+      <h2 className="sub-head">{t.costs.tokens.title(view.label)}</h2>
+      {isUnavailable ? (
+        <p className="empty">{t.costs.tokens.unavailable}</p>
+      ) : (
+        <>
+          <div className="period" role="group" aria-label={t.costs.tokens.period}>
+            {PERIODS.map((period) => (
+              <button key={period} className={`btn small${period === days ? ' primary' : ''}`} type="button" aria-pressed={period === days} onClick={() => onDaysChange(period)}>
+                {t.costs.tokens.days(period)}
+              </button>
+            ))}
+            <span className="muted">{t.costs.tokens.estimate}</span>
+          </div>
+          {usage.data !== undefined ? (
+            <TokenReport view={view} days={days} report={usage.data} />
+          ) : (
+            <p className={usage.error === null ? 'muted' : 'empty'} role={usage.error === null ? undefined : 'alert'}>
+              {usage.error === null ? t.costs.tokens.loading : t.app.unreachable(usage.error.message)}
+            </p>
+          )}
+        </>
+      )}
+    </section>
   )
 }

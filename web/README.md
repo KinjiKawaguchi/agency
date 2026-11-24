@@ -25,7 +25,7 @@ Writes must carry the page's token: the served `index.html` has `<meta name="age
 ## Types and data
 
 - TeamView types come from `../bindings`, generated from the Rust types. `src/api/teamview.ts` is the only module that imports them or the sample fixture.
-- The Client API (`src/api/clientApi.ts`: the signed-in person and funding, a team snapshot, the org definition, a decision) follows what the node will serve and is replaced by generated bindings when they exist. Token use is served by the mock node only.
+- The Client API (`src/api/clientApi.ts`: the signed-in person and funding, a team snapshot, the org definition, a decision) follows what the node will serve and is replaced by generated bindings when they exist. Token use is served by the mock node only, and only when asked: `AGENCY_MOCK_USAGE=1 npm run dev`. Without it the node answers 404, as the real one does, and the costs screen says token use is not available yet.
 - Funding forecasts (`src/costs/forecast.ts`) are worked out in the client from each window's use and reset time.
 
 ## Language and theme

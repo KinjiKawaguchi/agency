@@ -128,6 +128,7 @@ export const en = {
       columns: { person: 'Person', cost: 'API-priced', output: 'Output', cacheRead: 'Cache read', inputWrite: 'Input and cache write' },
       other: 'Other',
       loading: 'Loading token use…',
+      unavailable: 'Token usage is not available yet.',
     },
   },
   desk: {
