@@ -22,17 +22,32 @@ impl Node {
         let config = data.load_config()?;
         let key = data.load_key()?;
         let runtimes = runtimes.unwrap_or_else(Runtimes::command);
-        let http = reqwest::Client::builder().timeout(Duration::from_secs(8)).build()?;
-        Ok(Arc::new(Self { data, config: RwLock::new(config), key, runtimes, http, writes: tokio::sync::Mutex::new(()) }))
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .build()?;
+        Ok(Arc::new(Self {
+            data,
+            config: RwLock::new(config),
+            key,
+            runtimes,
+            http,
+            writes: tokio::sync::Mutex::new(()),
+        }))
     }
 
     pub fn config(&self) -> NodeConfig {
-        self.config.read().map(|one| one.clone()).unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+        self.config
+            .read()
+            .map(|one| one.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
     }
 
     /// 設定を書き換えて保存する
     pub fn update_config(&self, edit: impl FnOnce(&mut NodeConfig)) -> Result<()> {
-        let mut guard = self.config.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut guard = self
+            .config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         edit(&mut guard);
         self.data.save_config(&guard)
     }

@@ -41,7 +41,10 @@ pub struct Envelope {
 }
 
 fn is_target(raw: &str) -> bool {
-    (1..=120).contains(&raw.len()) && raw.bytes().all(|b| b.is_ascii_alphanumeric() || b"._#-".contains(&b))
+    (1..=120).contains(&raw.len())
+        && raw
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._#-".contains(&b))
 }
 
 impl Envelope {
@@ -61,7 +64,9 @@ impl Envelope {
         if self.payload.text.trim().is_empty() && self.payload.choice.is_none() {
             return Err("選択肢か答えの文が要る".into());
         }
-        clock::parse(&self.at).map(|_| ()).ok_or_else(|| "時刻の形が違う".into())
+        clock::parse(&self.at)
+            .map(|_| ())
+            .ok_or_else(|| "時刻の形が違う".into())
     }
 
     /// 作ってからの長さが受け取りの期限の内か (先の時刻は、時計のずれの 5 分まで)

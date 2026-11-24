@@ -48,8 +48,17 @@ impl Fake {
 
     fn team(&self, team: &str) -> HostedTeam {
         let env = BTreeMap::from([("FAKE_DIR".to_owned(), self.dir.path().display().to_string())]);
-        let runtime = RuntimeCommand { command: vec![self.dir.path().join("runtime.sh").display().to_string()], env };
-        HostedTeam { org: id("acme"), team: id(team), owner: id("alice"), people: BTreeMap::new(), runtime }
+        let runtime = RuntimeCommand {
+            command: vec![self.dir.path().join("runtime.sh").display().to_string()],
+            env,
+        };
+        HostedTeam {
+            org: id("acme"),
+            team: id(team),
+            owner: id("alice"),
+            people: BTreeMap::new(),
+            runtime,
+        }
     }
 
     fn read(&self, name: &str) -> String {
@@ -62,7 +71,15 @@ impl Fake {
 }
 
 fn decision(text: &str) -> RuntimeDecision {
-    RuntimeDecision { kind: EnvelopeKind::Answer, target: "r-20261124-110000-a1b2".into(), by: id("bob"), payload: Payload { text: text.into(), choice: Some("a".into()) } }
+    RuntimeDecision {
+        kind: EnvelopeKind::Answer,
+        target: "r-20261124-110000-a1b2".into(),
+        by: id("bob"),
+        payload: Payload {
+            text: text.into(),
+            choice: Some("a".into()),
+        },
+    }
 }
 
 #[tokio::test]
@@ -73,28 +90,54 @@ async fn views_and_decides_over_stdin_and_stdout() {
 
     let view = runtimes.view(&team).await.unwrap();
     assert_eq!(view.requests.len(), 3);
-    runtimes.decide(&team, decision("--not-a-flag")).await.unwrap();
+    runtimes
+        .decide(&team, decision("--not-a-flag"))
+        .await
+        .unwrap();
 
-    assert_eq!(fake.read("calls"), "describe\nview\ndecide\n", "describe once per team, before anything else");
+    assert_eq!(
+        fake.read("calls"),
+        "describe\nview\ndecide\n",
+        "describe once per team, before anything else"
+    );
     let request: serde_json::Value = serde_json::from_str(&fake.read("last-decide.json")).unwrap();
     assert_eq!(request["runtime"], "agency-runtime/1");
-    assert_eq!((request["org"].as_str(), request["team"].as_str()), (Some("acme"), Some("app")));
-    assert_eq!(request["decision"]["payload"]["text"], "--not-a-flag", "decision text travels on stdin");
+    assert_eq!(
+        (request["org"].as_str(), request["team"].as_str()),
+        (Some("acme"), Some("app"))
+    );
+    assert_eq!(
+        request["decision"]["payload"]["text"], "--not-a-flag",
+        "decision text travels on stdin"
+    );
 }
 
 #[tokio::test]
 async fn refuses_a_runtime_that_does_not_speak_agency_runtime_1() {
     let fake = Fake::new();
-    fake.answer("describe", r#"{"result":{"runtimes":["agency-runtime/2"],"ops":["view"],"label":"App"}}"#, 0);
-    let error = Runtimes::command().view(&fake.team("app")).await.unwrap_err();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/2"],"ops":["view"],"label":"App"}}"#,
+        0,
+    );
+    let error = Runtimes::command()
+        .view(&fake.team("app"))
+        .await
+        .unwrap_err();
     assert_eq!(error.status, 503);
-    assert!(!fake.read("calls").contains("view"), "no view call to a runtime of another version");
+    assert!(
+        !fake.read("calls").contains("view"),
+        "no view call to a runtime of another version"
+    );
 }
 
 #[tokio::test]
 async fn refuses_a_view_of_another_team() {
     let fake = Fake::new();
-    let error = Runtimes::command().view(&fake.team("other")).await.unwrap_err();
+    let error = Runtimes::command()
+        .view(&fake.team("other"))
+        .await
+        .unwrap_err();
     assert_eq!(error.status, 503);
     assert!(error.message.contains("acme/app"), "{}", error.message);
 }
@@ -104,13 +147,36 @@ async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
     let fake = Fake::new();
     let runtimes = Runtimes::command();
     let team = fake.team("app");
-    fake.answer("decide", r#"{"error":{"status":404,"message":"no such request"}}"#, 1);
+    fake.answer(
+        "decide",
+        r#"{"error":{"status":404,"message":"no such request"}}"#,
+        1,
+    );
     let error = runtimes.decide(&team, decision("")).await.unwrap_err();
-    assert_eq!((error.status, error.message.as_str()), (404, "no such request"));
+    assert_eq!(
+        (error.status, error.message.as_str()),
+        (404, "no such request")
+    );
 
     fake.answer("decide", "Traceback: something broke", 1);
-    assert_eq!(runtimes.decide(&team, decision("")).await.unwrap_err().status, 503);
+    assert_eq!(
+        runtimes
+            .decide(&team, decision(""))
+            .await
+            .unwrap_err()
+            .status,
+        503
+    );
 
-    let missing = HostedTeam { runtime: RuntimeCommand { command: vec![fake.path().join("missing").display().to_string()], env: BTreeMap::new() }, ..team };
-    assert_eq!(Runtimes::command().view(&missing).await.unwrap_err().status, 503);
+    let missing = HostedTeam {
+        runtime: RuntimeCommand {
+            command: vec![fake.path().join("missing").display().to_string()],
+            env: BTreeMap::new(),
+        },
+        ..team
+    };
+    assert_eq!(
+        Runtimes::command().view(&missing).await.unwrap_err().status,
+        503
+    );
 }

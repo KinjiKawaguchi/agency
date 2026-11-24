@@ -25,7 +25,12 @@ pub struct RuntimeRequest {
 
 impl RuntimeRequest {
     pub fn new(org: Id, team: Id, call: RuntimeCall) -> Self {
-        Self { runtime: RUNTIME_VERSION.to_owned(), org, team, call }
+        Self {
+            runtime: RUNTIME_VERSION.to_owned(),
+            org,
+            team,
+            call,
+        }
     }
 }
 

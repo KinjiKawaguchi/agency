@@ -14,12 +14,19 @@ pub struct PublicKey(VerifyingKey);
 impl PublicKey {
     /// 指紋: 公開鍵の SHA-256 の先頭 16 バイトの 16 進 (32 文字)
     pub fn fingerprint(&self) -> String {
-        Sha256::digest(self.0.as_bytes())[..16].iter().map(|b| format!("{b:02x}")).collect()
+        Sha256::digest(self.0.as_bytes())[..16]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
     pub fn verify(&self, message: &[u8], signature: &str) -> bool {
-        let Ok(bytes) = STANDARD.decode(signature) else { return false };
-        let Ok(signature) = Signature::from_slice(&bytes) else { return false };
+        let Ok(bytes) = STANDARD.decode(signature) else {
+            return false;
+        };
+        let Ok(signature) = Signature::from_slice(&bytes) else {
+            return false;
+        };
         self.0.verify(message, &signature).is_ok()
     }
 
@@ -31,9 +38,15 @@ impl PublicKey {
 impl TryFrom<String> for PublicKey {
     type Error = String;
     fn try_from(raw: String) -> Result<Self, Self::Error> {
-        let bytes = STANDARD.decode(raw.as_bytes()).map_err(|_| "公開鍵が base64 でない".to_owned())?;
-        let array: [u8; 32] = bytes.try_into().map_err(|_| "公開鍵は 32 バイト".to_owned())?;
-        VerifyingKey::from_bytes(&array).map(Self).map_err(|_| "公開鍵として読めない".to_owned())
+        let bytes = STANDARD
+            .decode(raw.as_bytes())
+            .map_err(|_| "公開鍵が base64 でない".to_owned())?;
+        let array: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| "公開鍵は 32 バイト".to_owned())?;
+        VerifyingKey::from_bytes(&array)
+            .map(Self)
+            .map_err(|_| "公開鍵として読めない".to_owned())
     }
 }
 

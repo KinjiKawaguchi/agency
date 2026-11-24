@@ -55,6 +55,9 @@ mod tests {
 
     #[test]
     fn same_text_regardless_of_input_order() {
-        assert_eq!(canonical(&json!({ "x": 1, "y": 2 })), canonical(&json!({ "y": 2, "x": 1 })));
+        assert_eq!(
+            canonical(&json!({ "x": 1, "y": 2 })),
+            canonical(&json!({ "y": 2, "x": 1 }))
+        );
     }
 }

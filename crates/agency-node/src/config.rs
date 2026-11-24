@@ -28,7 +28,8 @@ pub struct HostedTeam {
 impl HostedTeam {
     /// The org person a request is addressed to: `to` from the `people` map, otherwise the owner.
     pub fn addressee(&self, to: Option<&str>) -> &Id {
-        to.and_then(|name| self.people.get(name)).unwrap_or(&self.owner)
+        to.and_then(|name| self.people.get(name))
+            .unwrap_or(&self.owner)
     }
 }
 
@@ -44,8 +45,14 @@ pub struct RuntimeCommand {
 impl RuntimeCommand {
     /// The scrum harness's runtime for the team whose state lives in `state_dir`.
     pub fn scrum(scrum: &std::path::Path, state_dir: &std::path::Path) -> Self {
-        let env = BTreeMap::from([("SCRUM_STATE_DIR".to_owned(), state_dir.display().to_string())]);
-        Self { command: vec![scrum.display().to_string(), "runtime".to_owned()], env }
+        let env = BTreeMap::from([(
+            "SCRUM_STATE_DIR".to_owned(),
+            state_dir.display().to_string(),
+        )]);
+        Self {
+            command: vec![scrum.display().to_string(), "runtime".to_owned()],
+            env,
+        }
     }
 }
 
@@ -75,17 +82,25 @@ pub struct NodeConfig {
 
 impl NodeConfig {
     pub fn hosted(&self, org: &Id, team: &Id) -> Option<&HostedTeam> {
-        self.teams.iter().find(|one| &one.org == org && &one.team == team)
+        self.teams
+            .iter()
+            .find(|one| &one.org == org && &one.team == team)
     }
 
     pub fn trusted_fingerprint(&self, org: &Id) -> Option<&str> {
-        self.trusted.iter().find(|one| &one.org == org).map(|one| one.root_fingerprint.as_str())
+        self.trusted
+            .iter()
+            .find(|one| &one.org == org)
+            .map(|one| one.root_fingerprint.as_str())
     }
 
     /// 信じる組織を足す (同じ組織は指紋を置き換える)
     pub fn trust(&mut self, org: Id, root_fingerprint: String) {
         self.trusted.retain(|one| one.org != org);
-        self.trusted.push(TrustedOrg { org, root_fingerprint });
+        self.trusted.push(TrustedOrg {
+            org,
+            root_fingerprint,
+        });
     }
 }
 
@@ -99,7 +114,16 @@ mod tests {
 
     #[test]
     fn requests_go_to_mapped_people_and_otherwise_to_the_owner() {
-        let team = HostedTeam { org: id("acme"), team: id("app"), owner: id("alice"), people: BTreeMap::from([("reviewer".to_owned(), id("bob"))]), runtime: RuntimeCommand { command: vec!["true".into()], env: BTreeMap::new() } };
+        let team = HostedTeam {
+            org: id("acme"),
+            team: id("app"),
+            owner: id("alice"),
+            people: BTreeMap::from([("reviewer".to_owned(), id("bob"))]),
+            runtime: RuntimeCommand {
+                command: vec!["true".into()],
+                env: BTreeMap::new(),
+            },
+        };
         assert_eq!(team.addressee(None), &id("alice"));
         assert_eq!(team.addressee(Some("reviewer")), &id("bob"));
         assert_eq!(team.addressee(Some("someone-else")), &id("alice"));

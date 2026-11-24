@@ -42,15 +42,32 @@ impl Parcel {
     pub fn new(to: String, body: ParcelBody) -> Self {
         let id = match &body {
             ParcelBody::Envelope(signed) => signed.body.id.as_str().to_owned(),
-            ParcelBody::Org(doc) => Sha256::digest(format!("{to}\n{}\n{}", doc.body.org, doc.body.version)).iter().take(16).map(|b| format!("{b:02x}")).collect(),
+            ParcelBody::Org(doc) => {
+                Sha256::digest(format!("{to}\n{}\n{}", doc.body.org, doc.body.version))
+                    .iter()
+                    .take(16)
+                    .map(|b| format!("{b:02x}"))
+                    .collect()
+            }
         };
         let now = clock::format(clock::now());
-        Self { id, to, body, queued_at: now.clone(), attempts: 0, next_at: now, last_error: None }
+        Self {
+            id,
+            to,
+            body,
+            queued_at: now.clone(),
+            attempts: 0,
+            next_at: now,
+            last_error: None,
+        }
     }
 
     fn url(&self) -> String {
         match &self.body {
-            ParcelBody::Envelope(signed) => format!("{}/fed/v1/teams/{}/{}/envelopes", self.to, signed.body.org, signed.body.team),
+            ParcelBody::Envelope(signed) => format!(
+                "{}/fed/v1/teams/{}/{}/envelopes",
+                self.to, signed.body.org, signed.body.team
+            ),
             ParcelBody::Org(doc) => format!("{}/fed/v1/orgs/{}/definition", self.to, doc.body.org),
         }
     }
@@ -65,7 +82,10 @@ impl Parcel {
 }
 
 pub fn enqueue(node: &Node, parcel: &Parcel) -> Result<()> {
-    write_json(&node.data.dir("outbox").join(format!("{}.json", parcel.id)), parcel)
+    write_json(
+        &node.data.dir("outbox").join(format!("{}.json", parcel.id)),
+        parcel,
+    )
 }
 
 pub fn pending(node: &Node) -> Vec<Parcel> {
@@ -73,7 +93,13 @@ pub fn pending(node: &Node) -> Vec<Parcel> {
 }
 
 async fn post(node: &Node, parcel: &Parcel) -> Outcome {
-    let response = match node.http.post(parcel.url()).json(&parcel.doc()).send().await {
+    let response = match node
+        .http
+        .post(parcel.url())
+        .json(&parcel.doc())
+        .send()
+        .await
+    {
         Ok(response) => response,
         Err(error) => return Outcome::Unreachable(error.to_string()),
     };
@@ -81,7 +107,12 @@ async fn post(node: &Node, parcel: &Parcel) -> Outcome {
     if status.is_success() {
         return Outcome::Delivered;
     }
-    let message = response.json::<serde_json::Value>().await.ok().and_then(|body| body["error"].as_str().map(str::to_owned)).unwrap_or_else(|| status.to_string());
+    let message = response
+        .json::<serde_json::Value>()
+        .await
+        .ok()
+        .and_then(|body| body["error"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| status.to_string());
     let is_retryable = status.as_u16() == 408 || status.as_u16() == 429 || status.is_server_error();
     if is_retryable {
         Outcome::Unreachable(message)
@@ -99,13 +130,27 @@ pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
             let _ = fs::remove_file(&path);
         }
         Outcome::Refused(message) => {
-            write_json(&node.data.dir("refused").join(format!("{}.json", parcel.id)), &Parcel { last_error: Some(message.clone()), ..parcel.clone() })?;
+            write_json(
+                &node.data.dir("refused").join(format!("{}.json", parcel.id)),
+                &Parcel {
+                    last_error: Some(message.clone()),
+                    ..parcel.clone()
+                },
+            )?;
             let _ = fs::remove_file(&path);
         }
         Outcome::Unreachable(message) => {
             let wait = BACKOFF_SECONDS[(parcel.attempts as usize).min(BACKOFF_SECONDS.len() - 1)];
             let next_at = clock::format(clock::now() + time::Duration::seconds(wait));
-            write_json(&path, &Parcel { attempts: parcel.attempts + 1, next_at, last_error: Some(message.clone()), ..parcel.clone() })?;
+            write_json(
+                &path,
+                &Parcel {
+                    attempts: parcel.attempts + 1,
+                    next_at,
+                    last_error: Some(message.clone()),
+                    ..parcel.clone()
+                },
+            )?;
         }
     }
     Ok(outcome)
@@ -115,7 +160,10 @@ pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
 pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
     let now = clock::now();
     let mut outcomes = vec![];
-    for parcel in pending(node).into_iter().filter(|one| clock::parse(&one.next_at).is_none_or(|at| at <= now)) {
+    for parcel in pending(node)
+        .into_iter()
+        .filter(|one| clock::parse(&one.next_at).is_none_or(|at| at <= now))
+    {
         outcomes.push(deliver(node, &parcel).await?);
     }
     Ok(outcomes)

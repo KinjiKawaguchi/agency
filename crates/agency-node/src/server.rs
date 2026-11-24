@@ -41,15 +41,25 @@ fn parse_body<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Refusal> {
 }
 
 fn definition_of(node: &Node, org: &Id) -> Result<SignedOrg, Refusal> {
-    node.data.load_org(org).ok_or((StatusCode::NOT_FOUND, "見つからない".into()))
+    node.data
+        .load_org(org)
+        .ok_or((StatusCode::NOT_FOUND, "見つからない".into()))
 }
 
 /// 組織の定義: 所属する人の署名つきの読み出し、または有効な招待の合言葉で読める
-async fn get_definition(State(node): Shared, Path(org): Path<String>, Query(query): Query<HashMap<String, String>>, headers: HeaderMap, uri: Uri) -> Response {
+async fn get_definition(
+    State(node): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Response {
     let result = (|| {
         let org = parse_id(&org)?;
         let doc = definition_of(&node, &org)?;
-        let has_invite = query.get("code").is_some_and(|code| open_invite(&node, &org, code).is_some());
+        let has_invite = query
+            .get("code")
+            .is_some_and(|code| open_invite(&node, &org, code).is_some());
         if !has_invite {
             verify_read(&doc.body, &headers, "GET", uri.path())?;
         }
@@ -67,7 +77,9 @@ async fn post_definition(State(node): Shared, Path(org): Path<String>, bytes: By
         }
         receive(&node, doc).await
     };
-    result.await.map_or_else(refuse, |()| Json(json!({ "accepted": true })).into_response())
+    result.await.map_or_else(refuse, |()| {
+        Json(json!({ "accepted": true })).into_response()
+    })
 }
 
 async fn post_join(State(node): Shared, Path(org): Path<String>, bytes: Bytes) -> Response {
@@ -76,39 +88,74 @@ async fn post_join(State(node): Shared, Path(org): Path<String>, bytes: Bytes) -
         let signed: Signed<JoinRequest> = parse_body(&bytes)?;
         accept_join(&node, &org, signed).await
     };
-    result.await.map_or_else(refuse, |doc| Json(doc).into_response())
+    result
+        .await
+        .map_or_else(refuse, |doc| Json(doc).into_response())
 }
 
 /// The TeamView of a team on this node, only for a signed read by a member of its org.
-async fn get_view(State(node): Shared, Path((org, team)): Path<(String, String)>, headers: HeaderMap, uri: Uri) -> Response {
+async fn get_view(
+    State(node): Shared,
+    Path((org, team)): Path<(String, String)>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Response {
     let result = async {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
-        let hosted = node.config().hosted(&org, &team).cloned().ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
+        let hosted = node
+            .config()
+            .hosted(&org, &team)
+            .cloned()
+            .ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
         let doc = definition_of(&node, &org)?;
         verify_read(&doc.body, &headers, "GET", uri.path())?;
-        node.runtimes.view(&hosted).await.map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.message))
+        node.runtimes
+            .view(&hosted)
+            .await
+            .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.message))
     };
-    result.await.map_or_else(refuse, |view: TeamView| Json(view).into_response())
+    result
+        .await
+        .map_or_else(refuse, |view: TeamView| Json(view).into_response())
 }
 
 /// 封筒を確かめて当てる。形、届け先、所属、署名、期限、2 度目でないことの順
-async fn post_envelope(State(node): Shared, Path((org, team)): Path<(String, String)>, bytes: Bytes) -> Response {
+async fn post_envelope(
+    State(node): Shared,
+    Path((org, team)): Path<(String, String)>,
+    bytes: Bytes,
+) -> Response {
     let result = async {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         let signed: Signed<Envelope> = parse_body(&bytes)?;
         let envelope = &signed.body;
-        envelope.validate().map_err(|message| (StatusCode::BAD_REQUEST, message))?;
+        envelope
+            .validate()
+            .map_err(|message| (StatusCode::BAD_REQUEST, message))?;
         if envelope.org != org || envelope.team != team {
-            return Err((StatusCode::BAD_REQUEST, "封筒の組織とチームが届け先と違う".into()));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "封筒の組織とチームが届け先と違う".into(),
+            ));
         }
-        let hosted = node.config().hosted(&org, &team).cloned().ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
+        let hosted = node
+            .config()
+            .hosted(&org, &team)
+            .cloned()
+            .ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
         let doc = definition_of(&node, &org)?;
-        let person = doc.body.member(&envelope.account).ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
+        let person = doc
+            .body
+            .member(&envelope.account)
+            .ok_or((StatusCode::NOT_FOUND, "見つからない".into()))?;
         if signed.signer != envelope.account || !signed.verify(Kind::Envelope, &person.public_key) {
             return Err((StatusCode::UNAUTHORIZED, "署名が合わない".into()));
         }
         if !envelope.is_fresh(clock::now()) {
-            return Err((StatusCode::BAD_REQUEST, "封筒の期限が切れているか、時刻が先すぎる".into()));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "封筒の期限が切れているか、時刻が先すぎる".into(),
+            ));
         }
         let _guard = node.writes.lock().await;
         let applied_path = node.data.dir("applied.json");
@@ -116,18 +163,32 @@ async fn post_envelope(State(node): Shared, Path((org, team)): Path<(String, Str
         if applied.contains_key(envelope.id.as_str()) {
             return Ok(json!({ "duplicate": true }));
         }
-        let decision = RuntimeDecision { kind: envelope.kind, target: envelope.target.clone(), by: person.id.clone(), payload: envelope.payload.clone() };
-        node.runtimes.decide(&hosted, decision).await.map_err(runtime_refusal)?;
+        let decision = RuntimeDecision {
+            kind: envelope.kind,
+            target: envelope.target.clone(),
+            by: person.id.clone(),
+            payload: envelope.payload.clone(),
+        };
+        node.runtimes
+            .decide(&hosted, decision)
+            .await
+            .map_err(runtime_refusal)?;
         applied.insert(envelope.id.as_str().to_owned(), clock::format(clock::now()));
-        write_json(&applied_path, &applied).map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+        write_json(&applied_path, &applied)
+            .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
         Ok(json!({ "applied": true }))
     };
-    result.await.map_or_else(refuse, |body| Json(body).into_response())
+    result
+        .await
+        .map_or_else(refuse, |body| Json(body).into_response())
 }
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/fed/v1/orgs/{org}/definition", get(get_definition).post(post_definition))
+        .route(
+            "/fed/v1/orgs/{org}/definition",
+            get(get_definition).post(post_definition),
+        )
         .route("/fed/v1/orgs/{org}/join", post(post_join))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))

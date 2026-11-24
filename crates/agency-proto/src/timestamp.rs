@@ -88,7 +88,13 @@ mod tests {
     fn timestamp_accepts_only_utc_rfc3339() {
         assert!(Timestamp::parse("2026-11-24T12:00:00Z").is_ok());
         assert!(Timestamp::parse("2026-11-24T12:00:00.123Z").is_ok());
-        for bad in ["", "2026-11-24", "2026-11-24T21:00:00+09:00", "2026-13-01T00:00:00Z", "yesterday"] {
+        for bad in [
+            "",
+            "2026-11-24",
+            "2026-11-24T21:00:00+09:00",
+            "2026-13-01T00:00:00Z",
+            "yesterday",
+        ] {
             assert!(Timestamp::parse(bad).is_err(), "{bad}");
         }
     }
@@ -96,7 +102,15 @@ mod tests {
     #[test]
     fn date_accepts_only_calendar_dates() {
         assert!(Date::parse("2026-11-24").is_ok());
-        for bad in ["", "2026-11-24T00:00:00Z", "2026-02-30", "26-11-24", "2026-1-24", "+2026-11-24", "-0001-11-24"] {
+        for bad in [
+            "",
+            "2026-11-24T00:00:00Z",
+            "2026-02-30",
+            "26-11-24",
+            "2026-1-24",
+            "+2026-11-24",
+            "-0001-11-24",
+        ] {
             assert!(Date::parse(bad).is_err(), "{bad}");
         }
     }
