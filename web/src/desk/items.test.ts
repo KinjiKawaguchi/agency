@@ -1,8 +1,8 @@
 import { sampleTeamView } from '../api/teamview'
-import { withRequestFor } from '../test/views'
+import { teamOf, withRequestFor } from '../test/views'
 import { blockedPeople, canDecide, openItems, resolveSelection, situationOf, stepSelection } from './items'
 
-const views = [sampleTeamView]
+const views = [teamOf(sampleTeamView)]
 
 describe('openItems', () => {
   it('orders by group, then by how many people are stopped, then oldest first', () => {
@@ -18,9 +18,21 @@ describe('openItems', () => {
   })
 
   it('puts requests addressed to someone else in their own group, last', () => {
-    const items = openItems([withRequestFor('frontend')])
+    const items = openItems([teamOf(withRequestFor('frontend'))])
     expect(items.map((item) => item.group)).toEqual(['proposal', 'question', 'pendingDecision', 'others'])
     expect(items.at(-1)?.decider?.label).toBe('Frontend')
+  })
+})
+
+describe('the viewer in a team', () => {
+  it('is whoever the node names, so a request with no addressee is theirs', () => {
+    const asLead = openItems([teamOf(sampleTeamView, 'lead')])
+    // The proposal names the owner explicitly, so it now belongs to someone else.
+    expect(asLead.map((item) => [item.request.title, item.isMine])).toEqual([
+      ['Which database should the app use in production?', true],
+      ['Drop support for the old export format?', true],
+      ['Add a second frontend agent', false],
+    ])
   })
 })
 
@@ -38,7 +50,7 @@ describe('canDecide', () => {
   })
 
   it('refuses a request addressed to someone else', () => {
-    const others = openItems([withRequestFor('frontend')]).find((item) => item.group === 'others')
+    const others = openItems([teamOf(withRequestFor('frontend'))]).find((item) => item.group === 'others')
     expect(others && canDecide(others)).toBe(false)
   })
 })

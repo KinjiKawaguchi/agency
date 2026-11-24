@@ -1,10 +1,4 @@
-import type { TeamView } from '../api/teamview'
+import type { PersonStatus, TeamView } from '../api/teamview'
 
-/**
- * The team runtime's name for the person the viewer answers for in this team.
- * The Client API will report it per team; until then it is the team's owner, and this is the one
- * place that guess lives.
- */
-export function viewerNameOf(_view: TeamView): string {
-  return 'owner'
-}
+/** The person a team runtime calls `name`, if the team lists them. */
+export const personOf = (view: TeamView, name: string): PersonStatus | undefined => view.people.find((person) => person.id === name)

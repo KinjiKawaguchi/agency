@@ -1,0 +1,196 @@
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+}
+
+.page-head select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.oc-up {
+  margin: -8px 0 16px;
+  font-size: 13.5px;
+}
+
+.oc-up a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* A wide chart scrolls sideways instead of squeezing the page. */
+.oc-frame {
+  overflow-x: auto;
+  padding-bottom: 24px;
+}
+
+.orgchart {
+  --line: var(--border-strong);
+  --gap: 24px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.orgchart ul {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: var(--gap) 0 0;
+  list-style: none;
+}
+
+.orgchart > ul {
+  padding-top: 0;
+}
+
+.orgchart li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--gap) 10px 0;
+}
+
+.orgchart > ul > li {
+  padding-top: 0;
+}
+
+/* The bar over siblings, and the drop from a parent to its row of children. */
+.orgchart li::before,
+.orgchart li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: var(--gap);
+  border-top: 1px solid var(--line);
+}
+
+.orgchart li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--line);
+}
+
+.orgchart li:first-child::before,
+.orgchart li:last-child::after {
+  border-top: 0;
+}
+
+.orgchart li:last-child::before {
+  border-right: 1px solid var(--line);
+  border-radius: 0 6px 0 0;
+}
+
+.orgchart li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+.orgchart li:only-child::before,
+.orgchart li:only-child::after {
+  display: none;
+}
+
+.orgchart > ul > li::before,
+.orgchart > ul > li::after {
+  display: none;
+}
+
+.orgchart ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: var(--gap);
+  border-left: 1px solid var(--line);
+}
+
+/* ── Boxes ── */
+.oc-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 188px;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  text-align: center;
+}
+
+a.oc-node:hover {
+  background: var(--hover);
+}
+
+.oc-node.top {
+  border-color: var(--ink);
+}
+
+.oc-node.is-you {
+  border-color: var(--seal);
+}
+
+.oc-kind {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.oc-name {
+  font-weight: 650;
+}
+
+.oc-sub,
+.oc-now {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.oc-wait {
+  margin-top: 4px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--seal-soft);
+  color: var(--seal);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.oc-node.agent {
+  width: 188px;
+  margin-top: 8px;
+}
+
+.oc-node.agent .face {
+  margin-bottom: 4px;
+}
+
+/* The agents of a team hang in a column under it, the members indented under the lead. */
+.orgchart ul.oc-agents {
+  flex-direction: column;
+  align-items: center;
+  padding-top: 0;
+}
+
+.orgchart ul.oc-agents::before,
+.orgchart ul.oc-agents li::before,
+.orgchart ul.oc-agents li::after {
+  display: none;
+}
+
+.orgchart ul.oc-agents li {
+  padding: 0;
+}
+
+.orgchart ul.oc-agents li.member {
+  margin-left: 28px;
+}

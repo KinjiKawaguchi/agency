@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MOCK_TOKEN } from '../mock/node'
 import { renderApp } from '../test/render'
 import { withRequestFor } from '../test/views'
 
@@ -115,12 +116,33 @@ describe('decision desk', () => {
     await node.handle(
       new Request('http://mock.local/api/orgs/acme/teams/app/decisions', {
         method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN },
         body: JSON.stringify({ kind: 'answer', target: 'r-20261124-113000-c3d4', text: 'x' }),
       }),
     )
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
     expect(await screen.findByText('Could not send: That request is not open.')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Reject/ })).toBeChecked()
+  })
+
+  it('warns when a team’s data is a copy that could not be refreshed', async () => {
+    renderApp({ siteError: 'connection refused' })
+    expect(await screen.findByText(/Showing a copy of this team from .*Its node could not be reached: connection refused/)).toBeInTheDocument()
+  })
+
+  it('says nothing about a copy that was refreshed fine', async () => {
+    renderApp()
+    await screen.findByRole('article')
+    expect(screen.queryByText(/Showing a copy/)).not.toBeInTheDocument()
+  })
+
+  it('reports a queued decision as saved for later', async () => {
+    const user = userEvent.setup()
+    const { node } = renderApp({ outcome: 'queued' })
+    await user.click(await screen.findByRole('radio', { name: /Approve/ }))
+    await user.click(screen.getByRole('button', { name: /^Approve with/ }))
+    expect(await screen.findByText(/The team’s node is asleep/)).toBeInTheDocument()
+    expect(node.decisions()).toHaveLength(1)
   })
 
   it('shows earlier messages on a request', async () => {

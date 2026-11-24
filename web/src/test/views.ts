@@ -1,4 +1,8 @@
+import type { Team } from '../api/teams'
 import { sampleTeamView, type TeamRequest, type TeamView } from '../api/teamview'
+
+/** A local team whose viewer goes by `viewer` (the owner, unless said otherwise). */
+export const teamOf = (view: TeamView, viewer = 'owner'): Team => ({ view, viewer, source: { kind: 'local' } })
 
 /** The shared sample with one more request, addressed to the person named `to`. */
 export function withRequestFor(to: string): TeamView {

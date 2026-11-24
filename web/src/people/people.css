@@ -1,0 +1,234 @@
+.sub-head {
+  margin: 32px 0 12px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.ref {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+
+.crew {
+  margin-bottom: 56px;
+}
+
+.crew-head h2 {
+  font-size: 22px;
+}
+
+.crew-head p {
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.mate {
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.mate.presence-needs-you {
+  border-color: var(--seal);
+}
+
+.mate-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mate-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.mate-role {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.mate-tag {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.mate-tag.tag-needs-you {
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+.mate-tag.tag-working {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.mate-now {
+  margin-top: 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mate-sub,
+.mate-since,
+.mate-holding {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.mate-holding .ref {
+  margin-left: 6px;
+}
+
+.mate-go {
+  align-self: flex-start;
+  margin-top: 8px;
+  color: var(--seal);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Work ── */
+.work {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.work-row {
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.work-row + .work-row {
+  border-top: 1px solid var(--border);
+}
+
+.work-body {
+  min-width: 0;
+}
+
+.work-title {
+  font-weight: 600;
+}
+
+.work-meta,
+.goal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.work-stop {
+  color: var(--hold);
+  font-weight: 600;
+}
+
+/* ── Epics ── */
+.goals {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.goal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.goal-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+.goal {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.goal-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.goal-title {
+  font-weight: 600;
+}
+
+.goal-count {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  margin: 10px 0;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--track);
+}
+
+.seg.done,
+.goal-legend i.done {
+  background: var(--ok);
+}
+
+.seg.doing,
+.goal-legend i.doing {
+  background: var(--flow);
+}
+
+.seg.blocked,
+.goal-legend i.blocked {
+  background: var(--hold);
+}
+
+.seg.rest,
+.goal-legend i.rest {
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  .people {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-row {
+    padding: 12px 14px;
+  }
+}

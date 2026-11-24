@@ -1,6 +1,8 @@
 import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
+import { CostsPage } from '../costs/CostsPage'
 import { DeskPage } from '../desk/DeskPage'
-import { useI18n } from '../i18n'
+import { OrgChartPage } from '../org/OrgChartPage'
+import { PeoplePage } from '../people/PeoplePage'
 import { AppBar } from './AppBar'
 
 function Shell() {
@@ -12,11 +14,6 @@ function Shell() {
       </main>
     </>
   )
-}
-
-function ComingSoon() {
-  const { t } = useI18n()
-  return <p className="page-soon">{t.nav.comingSoon}</p>
 }
 
 const rootRoute = createRootRoute({ component: Shell })
@@ -41,9 +38,22 @@ const deskRoute = createRoute({
   },
 })
 
-const peopleRoute = createRoute({ getParentRoute: () => rootRoute, path: '/people', component: ComingSoon })
-const orgRoute = createRoute({ getParentRoute: () => rootRoute, path: '/org', component: ComingSoon })
-const costsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/costs', component: ComingSoon })
+const peopleRoute = createRoute({ getParentRoute: () => rootRoute, path: '/people', component: PeoplePage })
+const nonEmpty = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
+
+const orgRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/org',
+  validateSearch: (search: Record<string, unknown>): { org?: string; unit?: string } => ({
+    ...(nonEmpty(search.org) === undefined ? {} : { org: nonEmpty(search.org) }),
+    ...(nonEmpty(search.unit) === undefined ? {} : { unit: nonEmpty(search.unit) }),
+  }),
+  component: function OrgRoute() {
+    const { org, unit } = orgRoute.useSearch()
+    return <OrgChartPage org={org} unit={unit} />
+  },
+})
+const costsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/costs', component: CostsPage })
 
 const routeTree = rootRoute.addChildren([indexRoute, deskRoute, peopleRoute, orgRoute, costsRoute])
 
