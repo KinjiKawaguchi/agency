@@ -59,11 +59,11 @@ agency --dir ~/.agency decide --org acme --team app --request r-20260101-000000-
 招待のリンクには組織の根の鍵の指紋が入っている。
 参加する前に、台が返した組織の定義の鍵がその指紋と合うかを確かめ、合わなければ申し込まない。
 
-## ハーネスとの境目
+## Team runtimes
 
-ノードはハーネスのファイルを直接読み書きしない。
-ハーネスの CLI (`scrum state --json`、`scrum request answer|judge`) だけを呼ぶ。
-答えの文は標準入力の JSON で渡す。
+The node never reads or writes a harness's files.
+For each team it hosts, it runs the team's runtime command and speaks agency-runtime/1 (`describe`, `view`, `decide`) as JSON over stdin and stdout; see docs/protocol.md.
+`team-add --state-dir` configures the scrum harness's runtime, `<scrum> runtime` with `SCRUM_STATE_DIR`, owned by this node's account unless `--owner` names another org person.
 
 ## まだ無いもの
 

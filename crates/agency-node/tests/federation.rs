@@ -1,8 +1,8 @@
 //! 2 つの台を同じプロセスで動かし、招待 → 参加 → 写し → 署名した決裁 → ため置き → 起きた後の届け を通す。
 //! 断る側 (所属していない人、書き換えた封筒、使った招待、偽の台、根でない鍵の版) も確かめる。
 use agency_node::client::{decide, join, refresh, replica_path, Decided, Replica};
-use agency_node::config::{Account, HostedTeam, NodeConfig};
-use agency_node::harness::{Harness, MemoryHarness};
+use agency_node::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
+use agency_node::runtime::{MemoryRuntime, Runtimes};
 use agency_node::node::Node;
 use agency_node::orgs;
 use agency_node::outbox::{deliver, deliver_due, pending, ParcelBody};
@@ -46,32 +46,32 @@ impl Running {
     }
 }
 
-async fn node(account: &str, harness: Harness) -> Running {
+async fn node(account: &str, runtimes: Runtimes) -> Running {
     let dir = TempDir::new().unwrap();
     let port = TcpListener::bind("127.0.0.1:0").await.unwrap().local_addr().unwrap().port();
     let data = DataDir::new(dir.path().join("node"));
     data.create_key().unwrap();
     let url = format!("http://127.0.0.1:{port}");
     data.save_config(&NodeConfig { url, listen: format!("127.0.0.1:{port}"), account: Account { id: id(account), label: account.to_uppercase() }, scrum: "scrum".into(), teams: vec![], trusted: vec![] }).unwrap();
-    let mut running = Running { node: Node::open(data, Some(harness)).unwrap(), port, server: None, _dir: dir };
+    let mut running = Running { node: Node::open(data, Some(runtimes)).unwrap(), port, server: None, _dir: dir };
     running.start().await;
     running
 }
 
 /// alice の台: 組織 acme の根の鍵を持ち、チーム app を置く。チームには答え待ちの要求 r-1 がある
-async fn alice() -> (Running, Arc<Mutex<MemoryHarness>>) {
-    let (harness, memory) = Harness::memory();
+async fn alice() -> (Running, Arc<Mutex<MemoryRuntime>>) {
+    let (runtimes, memory) = Runtimes::memory();
     memory.lock().unwrap().requests.push(("r-1".into(), "鍵を作るか".into()));
-    let running = node("alice", harness).await;
+    let running = node("alice", runtimes).await;
     let node = &running.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     orgs::add_team(node, &id("acme"), TeamPlace { id: id("app"), label: "app".into(), department: None, node: running.url() }).unwrap();
-    node.update_config(|config| config.teams.push(HostedTeam { org: id("acme"), team: id("app"), state_dir: "/nonexistent".into() })).unwrap();
+    node.update_config(|config| config.teams.push(HostedTeam { org: id("acme"), team: id("app"), owner: id("alice"), people: Default::default(), runtime: RuntimeCommand { command: vec!["/nonexistent".into()], env: Default::default() } })).unwrap();
     (running, memory)
 }
 
 async fn joined_bob(alice: &Running) -> Running {
-    let bob = node("bob", Harness::memory().0).await;
+    let bob = node("bob", Runtimes::memory().0).await;
     let link = orgs::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
     let doc = join(&bob.node, &link, |definition| definition.label == "Acme").await.unwrap();
     assert!(doc.body.member(&id("bob")).is_some());
@@ -92,13 +92,18 @@ async fn invite_join_replica_and_signed_decision() {
     refresh(&bob.node).await.unwrap();
     let replica: Replica = read_json(&replica_path(&bob.node, &id("acme"), &id("app"))).unwrap();
     assert_eq!(replica.error, None);
-    assert_eq!(replica.state.unwrap()["inbox"]["waitingOwner"][0]["id"], "r-1");
+    assert_eq!(replica.view.unwrap().requests[0].id, "r-1");
 
     let outcome = decide(&bob.node, &id("acme"), &id("app"), EnvelopeKind::Answer, "r-1".into(), answer("ア")).await.unwrap();
     assert_eq!(outcome, Decided::Delivered);
     let applied = memory.lock().unwrap().applied.clone();
     assert_eq!(applied.len(), 1);
     assert_eq!((applied[0].by.as_str(), applied[0].payload.choice.as_deref()), ("bob", Some("ア")), "答えた人は封筒のアカウントの人");
+
+    // A request the team runtime does not know is a refusal: not retried, not queued
+    let outcome = decide(&bob.node, &id("acme"), &id("app"), EnvelopeKind::Answer, "r-404".into(), answer("ア")).await.unwrap();
+    assert!(matches!(outcome, Decided::Refused(_)), "{outcome:?}");
+    assert!(pending(&bob.node).is_empty());
 }
 
 #[tokio::test]
@@ -135,7 +140,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let http = reqwest::Client::new();
 
     // 所属していない人の署名つきの読み出しは 404 (組織があることも見せない)
-    let carol = node("carol", Harness::memory().0).await;
+    let carol = node("carol", Runtimes::memory().0).await;
     carol.node.data.save_org(&alice.node.data.load_org(&id("acme")).unwrap()).unwrap();
     refresh(&carol.node).await.unwrap();
     assert!(read_json::<Replica>(&replica_path(&carol.node, &id("acme"), &id("app"))).is_none());
@@ -156,7 +161,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     // 使った招待では、もう入れない
     let link = orgs::invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
     join(&carol.node, &link, |_| true).await.unwrap();
-    let dave = node("dave", Harness::memory().0).await;
+    let dave = node("dave", Runtimes::memory().0).await;
     assert!(join(&dave.node, &link, |_| true).await.is_err());
 
     // 指紋の合わない招待のリンク (偽の台) では申し込まない

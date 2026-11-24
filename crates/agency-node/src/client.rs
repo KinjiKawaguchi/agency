@@ -1,24 +1,23 @@
 //! ほかの台へ出ていくもの: 写しの読み直し、決裁、参加。
 use crate::auth::signed_headers;
-use crate::harness::Decision;
 use crate::node::Node;
 use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
 use crate::store::{read_json, write_json};
 use agency_proto::invite::Invite;
 use agency_proto::org::{verify_successor, SignedOrg};
-use agency_proto::{clock, Envelope, EnvelopeId, EnvelopeKind, Id, JoinRequest, Kind, OrgDefinition, Payload, Signed};
+use agency_proto::{clock, Envelope, EnvelopeId, EnvelopeKind, Id, JoinRequest, Kind, OrgDefinition, Payload, RuntimeDecision, Signed, TeamView};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// ほかの台のチームの写し。読めなければ前の写しを残し、失敗だけ書き足す
+/// A replica of a team on another node. When a read fails, the previous view stays and only the error is recorded.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Replica {
     pub fetched_at: Option<String>,
     pub tried_at: String,
     pub error: Option<String>,
-    pub state: Option<Value>,
+    pub view: Option<TeamView>,
 }
 
 async fn signed_get(node: &Node, base: &str, path: &str) -> Result<Value, String> {
@@ -36,6 +35,15 @@ async fn signed_get(node: &Node, base: &str, path: &str) -> Result<Value, String
     }
 }
 
+/// Another node's view is kept only if it parses as a TeamView of the team that was asked for.
+fn parse_view(value: Value, org: &Id, team: &Id) -> Result<TeamView, String> {
+    let view: TeamView = serde_json::from_value(value).map_err(|error| format!("not a TeamView: {error}"))?;
+    if &view.org != org || &view.team != team {
+        return Err(format!("the node answered with {}/{} instead of {org}/{team}", view.org, view.team));
+    }
+    Ok(view)
+}
+
 pub fn replica_path(node: &Node, org: &Id, team: &Id) -> std::path::PathBuf {
     node.data.dir("replicas").join(org.as_str()).join(format!("{team}.json"))
 }
@@ -51,8 +59,9 @@ pub async fn refresh(node: &Node) -> Result<()> {
             let file = replica_path(node, &org, &place.id);
             let previous: Replica = read_json(&file).unwrap_or_default();
             let now = clock::format(clock::now());
-            let next = match signed_get(node, &place.node, &path).await {
-                Ok(state) => Replica { fetched_at: Some(now.clone()), tried_at: now, error: None, state: Some(state) },
+            let fetched = signed_get(node, &place.node, &path).await.and_then(|value| parse_view(value, &org, &place.id));
+            let next = match fetched {
+                Ok(view) => Replica { fetched_at: Some(now.clone()), tried_at: now, error: None, view: Some(view) },
                 Err(error) => Replica { tried_at: now, error: Some(error), ..previous },
             };
             write_json(&file, &next)?;
@@ -87,8 +96,8 @@ pub async fn decide(node: &Node, org: &Id, team: &Id, kind: EnvelopeKind, target
     let envelope = Envelope { id: EnvelopeId::random(), kind, org: org.clone(), team: team.clone(), target, payload, account: node.account(), at: clock::format(clock::now()) };
     envelope.validate().map_err(anyhow::Error::msg)?;
     if let Some(hosted) = node.config().hosted(org, team).filter(|_| place.node == node.url()) {
-        let decision = Decision { kind, target: envelope.target, by: person.id, payload: envelope.payload };
-        node.harness.apply(hosted, &decision).await.map_err(|error| anyhow::anyhow!("{error:?}"))?;
+        let decision = RuntimeDecision { kind, target: envelope.target, by: person.id, payload: envelope.payload };
+        node.runtimes.decide(hosted, decision).await.map_err(|error| anyhow::anyhow!("the team runtime refused ({}): {}", error.status, error.message))?;
         return Ok(Decided::Applied);
     }
     let signed = Signed::sign(Kind::Envelope, envelope, node.account(), &node.key)?;
@@ -130,4 +139,24 @@ pub async fn join(node: &Node, link: &str, confirm: impl FnOnce(&OrgDefinition) 
     node.data.save_org(&joined)?;
     node.update_config(|config| config.trust(invite.org.clone(), invite.fp.clone()))?;
     Ok(joined)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = include_str!("../../../testdata/teamview.sample.json");
+
+    fn id(raw: &str) -> Id {
+        Id::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn replicas_keep_only_a_teamview_of_the_team_asked_for() {
+        let sample: Value = serde_json::from_str(SAMPLE).unwrap();
+        assert!(parse_view(sample.clone(), &id("acme"), &id("app")).is_ok());
+        assert!(parse_view(sample.clone(), &id("acme"), &id("other")).is_err());
+        assert!(parse_view(sample, &id("other"), &id("app")).is_err());
+        assert!(parse_view(serde_json::json!({ "inbox": {} }), &id("acme"), &id("app")).is_err());
+    }
 }
