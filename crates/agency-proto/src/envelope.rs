@@ -2,22 +2,25 @@
 use crate::clock;
 use crate::ids::{EnvelopeId, Id};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 pub const MAX_TEXT: usize = 4000;
 /// 作ってから受け取りを許す長さ (寝ていた台が起きて届けるのを待つ)
 pub const MAX_AGE_SECONDS: i64 = 7 * 24 * 60 * 60;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum EnvelopeKind {
-    /// 要求に答える (target は要求の id)
+    /// Answers a request (`target` is the request id).
     Answer,
-    /// ボードの判断待ちに答える (target は repo#番号)
+    /// Decides a board item waiting for a decision (`target` is `repo#N`).
     Judge,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export, optional_fields)]
 pub struct Payload {
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]

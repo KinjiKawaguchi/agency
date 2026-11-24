@@ -22,5 +22,7 @@ sha2 = "0.10"
 tempfile = "3"
 thiserror = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+# no-serde-warnings: ts-rs cannot read `try_from`/`into`; those types state their TypeScript type with `#[ts(type)]`.
+ts-rs = { version = "12", features = ["no-serde-warnings"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "fs", "process", "signal"] }
 agency-proto = { path = "crates/agency-proto" }
