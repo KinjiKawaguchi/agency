@@ -259,3 +259,14 @@ pub struct Forecast {
     pub days: u32,
     pub at: Timestamp,
 }
+
+/// What a team's node answers to a member's signed read of the team: the view, and the reader's name
+/// in the team runtime (absent when the team does not address the reader).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct FederatedView {
+    pub view: TeamView,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer: Option<String>,
+}

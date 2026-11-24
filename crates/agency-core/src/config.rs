@@ -1,4 +1,5 @@
 //! ノードの設定 (データのディレクトリの config.json)。この台のアカウント、この台の URL、この台に置くチーム、信じる組織。
+use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -78,6 +79,39 @@ pub struct NodeConfig {
     pub teams: Vec<HostedTeam>,
     #[serde(default)]
     pub trusted: Vec<TrustedOrg>,
+    /// The account's sources of funding, shown to clients with their usage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub funding: Vec<FundingConfig>,
+    /// Cloudflare Access in front of the Client API. Without it, the Client API answers only direct
+    /// local requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<AccessConfig>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FundingConfig {
+    pub id: Id,
+    pub label: String,
+    pub kind: FundingKind,
+    /// A JSON file with the subscription's usage windows (`five_hour`, `seven_day`). Never a token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_file: Option<PathBuf>,
+}
+
+/// Cloudflare Access for requests that arrive through a tunnel or at the public host name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccessConfig {
+    /// The public host name the tunnel serves, such as `agency.example.com`.
+    pub public_host: String,
+    /// The Zero Trust team domain, such as `acme.cloudflareaccess.com`.
+    pub team_domain: String,
+    /// The Access application's audience tag (64 hex characters).
+    pub audience: String,
+    /// Only this signed-in email may write. The node signs decisions for its owner (agency#19 moves
+    /// signing to device keys).
+    pub owner_email: String,
 }
 
 impl NodeConfig {

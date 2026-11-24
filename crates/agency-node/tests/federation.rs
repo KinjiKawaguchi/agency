@@ -1,162 +1,17 @@
 //! 2 つの台を同じプロセスで動かし、招待 → 参加 → 写し → 署名した決裁 → ため置き → 起きた後の届け を通す。
 //! 断る側 (所属していない人、書き換えた封筒、使った招待、偽の台、根でない鍵の版) も確かめる。
-use agency_adapters::files::DataDir;
-use agency_adapters::memory::{ManualClock, MemoryRuntime, MemoryRuntimeState};
+mod common;
+
 use agency_adapters::peers::read_headers;
-use agency_adapters::server::router;
-use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::{decide, Decided};
 use agency_core::invites::{self, join};
 use agency_core::outbox::{deliver, deliver_due, pending, ParcelBody};
-use agency_core::ports::{ConfigStore, TeamRuntime};
 use agency_core::read_auth::sign_read;
 use agency_core::views::{refresh, Replica};
-use agency_core::{orgs, Node};
-use agency_node::Overrides;
 use agency_proto::invite::Invite;
-use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::{EnvelopeKind, Id, Kind, OrgDefinition, Payload, Role, Signed};
-use std::sync::{Arc, Mutex};
-use tempfile::TempDir;
-use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
-
-/// Every node in these tests reads this time; nothing depends on the wall clock.
-const T0: &str = "2026-11-24T12:00:00Z";
-
-fn memory_runtime() -> (Arc<dyn TeamRuntime>, Arc<Mutex<MemoryRuntimeState>>) {
-    let runtime = MemoryRuntime::default();
-    let state = runtime.0.clone();
-    (Arc::new(runtime), state)
-}
-
-fn id(raw: &str) -> Id {
-    Id::parse(raw).unwrap()
-}
-
-struct Running {
-    node: Arc<Node>,
-    port: u16,
-    server: Option<JoinHandle<()>>,
-    _dir: TempDir,
-}
-
-impl Running {
-    fn url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
-    }
-
-    async fn start(&mut self) {
-        let listener = TcpListener::bind(("127.0.0.1", self.port)).await.unwrap();
-        let app = router(self.node.clone());
-        self.server = Some(tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap()
-        }));
-    }
-
-    async fn stop(&mut self) {
-        if let Some(server) = self.server.take() {
-            server.abort();
-            let _ = server.await;
-        }
-    }
-}
-
-async fn node(account: &str, runtime: Arc<dyn TeamRuntime>) -> Running {
-    let dir = TempDir::new().unwrap();
-    let port = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
-    let data = DataDir::new(dir.path().join("node"));
-    data.create_key().unwrap();
-    let url = format!("http://127.0.0.1:{port}");
-    data.save_config(&NodeConfig {
-        url,
-        listen: format!("127.0.0.1:{port}"),
-        account: Account {
-            id: id(account),
-            label: account.to_uppercase(),
-        },
-        scrum: "scrum".into(),
-        teams: vec![],
-        trusted: vec![],
-    })
-    .unwrap();
-    let mut running = Running {
-        node: agency_node::open(
-            data,
-            Overrides {
-                runtime: Some(runtime),
-                clock: Some(Arc::new(ManualClock::at(T0))),
-                random: None,
-            },
-        )
-        .unwrap(),
-        port,
-        server: None,
-        _dir: dir,
-    };
-    running.start().await;
-    running
-}
-
-/// alice の台: 組織 acme の根の鍵を持ち、チーム app を置く。チームには答え待ちの要求 r-1 がある
-async fn alice() -> (Running, Arc<Mutex<MemoryRuntimeState>>) {
-    let (runtime, memory) = memory_runtime();
-    memory
-        .lock()
-        .unwrap()
-        .requests
-        .push(("r-1".into(), "鍵を作るか".into()));
-    let running = node("alice", runtime).await;
-    let node = &running.node;
-    orgs::create(node, id("acme"), "Acme".into()).unwrap();
-    orgs::add_team(
-        node,
-        &id("acme"),
-        TeamPlace {
-            id: id("app"),
-            label: "app".into(),
-            department: None,
-            node: running.url(),
-        },
-    )
-    .unwrap();
-    node.update_config(|config| {
-        config.teams.push(HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: Default::default(),
-            runtime: RuntimeCommand {
-                command: vec!["/nonexistent".into()],
-                env: Default::default(),
-            },
-        })
-    })
-    .unwrap();
-    (running, memory)
-}
-
-async fn joined_bob(alice: &Running) -> Running {
-    let bob = node("bob", memory_runtime().0).await;
-    let link = invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
-    let doc = join(&bob.node, &link, |definition| definition.label == "Acme")
-        .await
-        .unwrap();
-    assert!(doc.body.member(&id("bob")).is_some());
-    bob
-}
-
-fn answer(choice: &str) -> Payload {
-    Payload {
-        text: String::new(),
-        choice: Some(choice.into()),
-    }
-}
+use agency_proto::org::SignedOrg;
+use agency_proto::{EnvelopeKind, Kind, OrgDefinition, Role, Signed};
+use common::{alice, answer, id, joined_bob, memory_runtime, node};
 
 #[tokio::test]
 async fn invite_join_replica_and_signed_decision() {

@@ -61,6 +61,18 @@ agency --dir ~/.agency decide --org acme --team app --request r-20260101-000000-
 招待のリンクには組織の根の鍵の指紋が入っている。
 参加する前に、台が返した組織の定義の鍵がその指紋と合うかを確かめ、合わなければ申し込まない。
 
+## Web client
+
+`agency serve` also serves the web client and its Client API at `http://127.0.0.1:<port>/`. Build the client before the node, so the node embeds it: `npm run build` in `web/`, then `cargo build`. Without a build, the node serves a page that says so.
+
+To open it from elsewhere, put the node behind a Cloudflare Tunnel with Cloudflare Access, and add to the node's `config.json`:
+
+```json
+"access": { "publicHost": "agency.example.com", "teamDomain": "acme.cloudflareaccess.com", "audience": "<64 hex characters>", "ownerEmail": "alice@example.com" }
+```
+
+The Access policy must bypass `/fed/*` so other nodes can reach the federation routes. See "Client API" in docs/protocol.md for what is checked.
+
 ## Team runtimes
 
 The node never reads or writes a harness's files.

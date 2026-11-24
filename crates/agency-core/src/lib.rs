@@ -2,6 +2,7 @@
 //! team runtimes) goes through the ports in `ports`, so this crate never touches the wall clock, the
 //! network, or the filesystem. See docs/protocol.md.
 
+pub mod client;
 pub mod config;
 pub mod decisions;
 pub mod error;
