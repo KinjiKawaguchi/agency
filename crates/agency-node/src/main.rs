@@ -1,6 +1,6 @@
 //! `agency`: Agency のノードの CLI。台を作り、組織を作り、招待し、参加し、動かす。
 use agency_node::client::{decide, join, refresh, Decided};
-use agency_node::config::{Account, HostedTeam, NodeConfig};
+use agency_node::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_node::node::Node;
 use agency_node::orgs;
 use agency_node::outbox::{deliver_due, pending};
@@ -57,9 +57,12 @@ enum Command {
         team: String,
         #[arg(long)]
         label: String,
-        /// この台に置くとき、ハーネスの状態のディレクトリ
+        /// For a team on this node: the scrum harness state directory. The team runtime is `<scrum> runtime`.
         #[arg(long)]
         state_dir: Option<PathBuf>,
+        /// For a team on this node: the org person who owns it (default: this node's account)
+        #[arg(long)]
+        owner: Option<String>,
         #[arg(long)]
         node: Option<String>,
     },
@@ -134,7 +137,7 @@ fn status(node: &Node) {
         println!("組織 {} ({}) {} 版、{}、人 {} 人、チーム {}", doc.body.org, doc.body.label, doc.body.version, role, doc.body.people.len(), doc.body.teams.iter().map(|t| format!("{}@{}", t.id, t.node)).collect::<Vec<_>>().join(", "));
     }
     for team in &config.teams {
-        println!("この台のチーム: {}/{} ← {}", team.org, team.team, team.state_dir.display());
+        println!("Team on this node: {}/{} (owner {}) runs {}", team.org, team.team, team.owner, team.runtime.command.join(" "));
     }
     for parcel in pending(node) {
         println!("送り箱: {} → {} ({} 回、{})", parcel.id, parcel.to, parcel.attempts, parcel.last_error.unwrap_or_default());
@@ -187,7 +190,7 @@ async fn run(cli: Cli) -> Result<()> {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!("組織 {} を作った。根の鍵の指紋: {}", doc.body.org, node.key.public().fingerprint());
         }
-        Command::TeamAdd { org, team, label, state_dir, node: place } => {
+        Command::TeamAdd { org, team, label, state_dir, owner, node: place } => {
             let (org, team) = (id(&org)?, id(&team)?);
             let place_url = place.unwrap_or_else(|| node.url());
             if !is_node_origin(&place_url) {
@@ -199,7 +202,9 @@ async fn run(cli: Cli) -> Result<()> {
             }
             let doc = orgs::add_team(&node, &org, TeamPlace { id: team.clone(), label, department: None, node: place_url })?;
             if let (true, Some(state_dir)) = (is_here, state_dir) {
-                node.update_config(|config| config.teams.push(HostedTeam { org: org.clone(), team: team.clone(), state_dir }))?;
+                let owner = owner.as_deref().map(id).transpose()?.unwrap_or_else(|| node.account());
+                let runtime = RuntimeCommand::scrum(&node.config().scrum, &state_dir);
+                node.update_config(|config| config.teams.push(HostedTeam { org: org.clone(), team: team.clone(), owner, people: Default::default(), runtime }))?;
             }
             println!("組織 {org} にチーム {team} を足した ({} 版)", doc.body.version);
         }

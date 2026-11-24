@@ -4,7 +4,7 @@
 pub mod auth;
 pub mod client;
 pub mod config;
-pub mod harness;
+pub mod runtime;
 pub mod node;
 pub mod orgs;
 pub mod outbox;
