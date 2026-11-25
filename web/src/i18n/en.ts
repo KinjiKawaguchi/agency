@@ -148,14 +148,23 @@ export const en = {
     capabilities: (secure: string, crypto: string, storage: string) => `Secure page: ${secure} · WebCrypto: ${crypto} · IndexedDB: ${storage}`,
     failed: (reason: string) => `This device’s key could not be made or read: ${reason}`,
     listFailed: (reason: string) => `Could not read your devices: ${reason}`,
-    notAdded: 'This device is not added yet. Until it is, the node signs your decisions itself.',
+    notAdded: 'Add this device so your decisions are signed with a key that never leaves it. Until you do, the node signs them for you.',
+    promptNone: 'Add this device so your decisions are signed with a key that never leaves it.',
+    promptAdd: 'Add this device',
+    promptPending: 'This device is waiting to be added. Open it to see the code to confirm.',
+    promptSee: 'See the code',
     labelField: 'Name for this device',
     defaultLabel: 'Browser',
     ask: 'Add this device',
     asking: 'Asking…',
     askFailed: (reason: string) => `Could not ask the node: ${reason}`,
-    waitingLead: 'Waiting for you to confirm it. The code above must be exactly the one shown where you confirm it.',
-    waitingWhere: 'Confirm it on a device that is already added, which lists this request, or, for your first device, in the node’s terminal with “agency device-add”.',
+    waitingLead: 'Waiting for you to confirm this device. This page updates by itself.',
+    waitingSteps: [
+      'On the computer that runs the node, run “agency device-add”.',
+      'Check that the code it shows is exactly the one above.',
+      'Confirm there.',
+    ],
+    waitingOther: 'If another of your devices is already added, you can instead open Devices on it and confirm this request there.',
     added: 'This device is added. Your decisions are signed with its key.',
     addedAs: (id: string) => `Its id is ${id}.`,
     yourDevices: 'Your devices',
@@ -188,7 +197,7 @@ export const en = {
     },
     pile: {
       label: 'Documents waiting',
-      empty: 'No documents have arrived.',
+      empty: 'Nothing is waiting for you. New requests from your team show up here.',
       groups: {
         proposal: 'Proposals for you to approve',
         question: 'Questions for you',
@@ -211,7 +220,6 @@ export const en = {
       unavailable: (reason: string) => `Recent decisions could not be loaded: ${reason}`,
     },
     paper: {
-      blank: 'Pick a document on the left to open it here.',
       types: { proposal: 'Proposal for approval', question: 'Question', pendingDecision: 'Request for a decision' },
       team: (org: string, team: string) => `${org} / ${team}`,
       stoppedBy: (names: string) => `${names} cannot continue until this is decided`,
@@ -251,10 +259,12 @@ type Widen<T> = T extends string
   ? string
   : T extends readonly [string, string]
     ? Around
-    : T extends (...args: infer A) => infer R
-      ? (...args: A) => Widen<R>
-      : T extends object
-        ? { -readonly [K in keyof T]: Widen<T[K]> }
-        : T
+    : T extends readonly string[]
+      ? readonly string[]
+      : T extends (...args: infer A) => infer R
+        ? (...args: A) => Widen<R>
+        : T extends object
+          ? { -readonly [K in keyof T]: Widen<T[K]> }
+          : T
 
 export type Messages = Widen<typeof en>

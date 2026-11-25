@@ -17,6 +17,7 @@ interface Options {
   usageFailsWith?: number
   refuseDecisionsWith?: string
   earlierDecisions?: boolean
+  nothingWaiting?: boolean
   decisionLogFailsWith?: number
   /** Use this node instead of a fresh one, for a test that has to act on it first. */
   node?: MockNode
@@ -41,7 +42,7 @@ export function memoryKeyStore(): KeyStore {
 
 /** Renders the whole app against a fresh mock node. */
 export function renderApp(options: Options = {}): RenderResult & { node: MockNode } {
-  const node = options.node ?? createMockNode({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }), ...(options.earlierDecisions === undefined ? {} : { earlierDecisions: options.earlierDecisions }), ...(options.decisionLogFailsWith === undefined ? {} : { decisionLogFailsWith: options.decisionLogFailsWith }) })
+  const node = options.node ?? createMockNode({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }), ...(options.earlierDecisions === undefined ? {} : { earlierDecisions: options.earlierDecisions }), ...(options.nothingWaiting === undefined ? {} : { nothingWaiting: options.nothingWaiting }), ...(options.decisionLogFailsWith === undefined ? {} : { decisionLogFailsWith: options.decisionLogFailsWith }) })
   const history = createMemoryHistory({ initialEntries: [options.path ?? '/desk'] })
   const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? memoryKeyStore()} />)
   return { ...result, node }

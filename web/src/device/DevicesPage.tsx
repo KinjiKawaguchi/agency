@@ -54,8 +54,13 @@ function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLis
       {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} /> : null}
       {enrollment.status === 'pending' ? (
         <>
-          <p className="device-lead">{t.devices.waitingLead}</p>
-          <p className="muted" role="status">{t.devices.waitingWhere}</p>
+          <p className="device-lead" role="status">{t.devices.waitingLead}</p>
+          <ol className="device-steps">
+            {t.devices.waitingSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p className="muted">{t.devices.waitingOther}</p>
         </>
       ) : null}
       {enrollment.status === 'enrolled' ? (

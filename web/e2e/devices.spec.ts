@@ -55,7 +55,7 @@ async function askToBeAdded(page: Page, label: string): Promise<string> {
   await page.goto('/devices')
   await page.getByRole('textbox', { name: 'Name for this device' }).fill(label)
   await page.getByRole('button', { name: 'Add this device' }).click()
-  await expect(page.getByText(/Waiting for you to confirm it/)).toBeVisible()
+  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
   return (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
 }
 
@@ -121,7 +121,7 @@ for (const view of VIEWS) {
 
     await page.getByRole('textbox', { name: 'Name for this device' }).fill('Work laptop')
     await page.getByRole('button', { name: 'Add this device' }).click()
-    await expect(page.getByText(/Waiting for you to confirm it/)).toBeVisible()
+    await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
     await shoot('waiting', page)
 
     await confirmInTerminal(request, (await page.getByLabel('Pairing code of this device').textContent()) ?? '')

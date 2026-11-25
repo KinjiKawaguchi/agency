@@ -7,6 +7,8 @@ export interface NodeOptions {
   siteError?: string
   /** What the node reports for an accepted decision. */
   outcome?: 'queued' | 'delivered'
+  /** Nothing waits on anyone, and nothing was decided before. */
+  empty?: boolean
 }
 
 /** Starts the mock node over, with its sample data and the given options. */
@@ -15,6 +17,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.usage === true) query.set('usage', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
+  if (options.empty === true) query.set('empty', '1')
   const reply = await request.post(`/__mock/reset?${query.toString()}`)
   expect(reply.status()).toBe(204)
 }

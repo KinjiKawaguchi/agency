@@ -52,14 +52,26 @@
 .desk {
   display: grid;
   grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
-  gap: 28px;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'pile paper'
+    'recent paper';
+  column-gap: 28px;
+  row-gap: 20px;
   align-items: start;
 }
 
-.desk-left {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.desk-pile {
+  grid-area: pile;
+  min-width: 0;
+}
+
+.desk > .paper {
+  grid-area: paper;
+}
+
+.desk > .recent {
+  grid-area: recent;
   min-width: 0;
 }
 
@@ -190,11 +202,6 @@
   border-radius: 12px;
   background: var(--panel);
   box-shadow: var(--shadow);
-}
-
-.paper.blank {
-  color: var(--ink-3);
-  text-align: center;
 }
 
 .doc-head {
@@ -539,8 +546,14 @@
 
 /* ── Phone and tablet: the paper opens below the pile ── */
 @media (max-width: 960px) {
+  /* The open paper comes before the log, so a phone does not scroll past a list of old decisions to reach it. */
   .desk {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      'pile'
+      'paper'
+      'recent';
   }
 
   .paper {
