@@ -7,7 +7,7 @@ import JavaScriptCore
 
 /// Runs the script in JavaScriptCore against a stand-in for the page's `window`.
 private struct FakePage {
-    let context = JSContext()!
+    let context = JavaScript.makeContext()
     let events: JSValue
 
     init(origin: String) {
