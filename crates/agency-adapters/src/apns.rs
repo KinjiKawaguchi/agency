@@ -130,14 +130,15 @@ impl Apns {
     }
 }
 
-/// The notification: the team label as the title, the request title as the body, grouped by team, and
-/// the `agency` keys the app opens the request with.
+/// The notification: the team label as the title, the request title as the body, grouped by team, the
+/// badge count, and the `agency` keys the app opens the request with.
 pub fn payload(notice: &Notice) -> Value {
     json!({
         "aps": {
             "alert": { "title": notice.title, "body": notice.body },
             "sound": "default",
             "thread-id": notice.thread(),
+            "badge": notice.badge,
         },
         "agency": { "org": notice.org, "team": notice.team, "request": notice.request },
     })

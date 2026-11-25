@@ -173,6 +173,10 @@ Requests:
 - `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
 - `to` absent means the team's owner. The node maps runtime names to org people through its hosted-team configuration: `owner` is the org person id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org person id>" }`). A `to` that is not in `people` goes to the owner.
 - In the other direction, an org person's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
+- Which requests are a reader's to decide ("mine") is one rule, computed by the reader's home node and given to clients as `TeamSnapshot.mine`. The desk, the badge counts, and push notifications all use it.
+  - In a team on that node, a request is the reader's when its addressee, as above, is the reader. So a request with no `to`, or with a `to` that is not in `people`, is the team owner's.
+  - In a team on another node, the home node knows only the reader's runtime name there (`viewer`). A request is the reader's when its `to` is that name, or when it has no `to` and that name is `owner`. A reader who owns that team under another runtime name is not given the requests without `to`; this is a known limit until the team's node reports it.
+  - A reader the team does not address (no `viewer`) has none.
 - `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
 - `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
 
@@ -223,7 +227,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 |---|---|---|
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
-| GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
+| GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
@@ -242,10 +246,9 @@ Funding: each configured source (`id`, `label`, `kind` `subscription` or `apiKey
 
 When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `bundleId`), the node notifies the owner's registered device tokens through APNs. Without it, nothing is sent.
 
-- The node checks for new requests every 30 seconds. A request waits for the owner when, in a team on this node, its addressee is the owner (see "Requests"), or, in a team on another node, its `to` is the owner's runtime name there (`viewer`), or it has no `to` and that name is `owner`.
-- Limit: in a team on another node, a request without `to` is missed when the owner owns the team under another runtime name, because the team's node reports only that name.
+- The node checks for new requests every 30 seconds. A request waits for the owner when it is the owner's to decide, by the rule in "Requests" (the same set as `TeamSnapshot.mine`, with the same limit for teams on other nodes).
 - Each request is notified once (by `org/team/request id`; the node remembers the last 1000). The first check after the node starts with an empty data directory only records the requests already waiting.
-- A notification is `{ "aps": { "alert": { "title": <team label>, "body": <request title> }, "sound": "default", "thread-id": "<org>/<team>" }, "agency": { "org", "team", "request" } }` with `apns-collapse-id` set to the request id. Nothing else about the request leaves the node.
+- A notification is `{ "aps": { "alert": { "title": <team label>, "body": <request title> }, "sound": "default", "thread-id": "<org>/<team>", "badge": <count> }, "agency": { "org", "team", "request" } }` with `apns-collapse-id` set to the request id. `badge` is the number of requests waiting for the owner across all their orgs and teams when the notification is sent, this one included: the sum of `mine` over the teams whose view the node could read. Nothing else about the request leaves the node.
 - A token APNs answers 410 or `BadDeviceToken` for is removed. Any other failure is tried again at the next check. The provider token (ES256 JWT, `kid` the key id, `iss` the team id) is reused for 50 minutes.
 
 ### Who is let in
@@ -258,13 +261,8 @@ The node serves the federation routes, the Client API, and the web client on one
 Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
-<<<<<<< HEAD
 - `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
-- through Access, the signed-in email must equal the configured `ownerEmail`, because the node signs decisions with its owner's account key.
-=======
-- `Content-Type: application/json` and a body of at most 64 KiB;
 - through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
->>>>>>> ba80d80 (feat(node)!: accept only device-signed decisions)
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.

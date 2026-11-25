@@ -56,6 +56,7 @@ async fn reads_and_decides_on_a_local_team() {
         (Some("local"), Some("owner"))
     );
     assert_eq!(snapshot["view"]["requests"][0]["id"], "r-1");
+    assert_eq!(snapshot["mine"], json!(["r-1"]), "unaddressed: the owner's");
 
     let (status, result) = body(
         post(&alice, ENVELOPES, &decision(&alice, &key, "r-1"))
@@ -136,6 +137,11 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
             snapshot["viewer"].as_str()
         ),
         (Some("replica"), Some("reviewer"))
+    );
+    assert_eq!(
+        snapshot["mine"],
+        json!([]),
+        "an unaddressed request is the team owner's, not the reviewer's"
     );
     assert_eq!(snapshot["source"]["fetchedAt"], "2026-11-24T12:00:00Z");
 

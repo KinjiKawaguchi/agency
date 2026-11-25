@@ -7,7 +7,7 @@ use crate::ports::DefinitionAccess;
 use crate::read_auth::{sign_read, verify_read, ReadAuth};
 use crate::routes;
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::view::FederatedView;
+use agency_proto::view::{FederatedView, Request};
 use agency_proto::{Id, TeamView};
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +33,40 @@ pub fn viewer_name(hosted: &HostedTeam, person: &Id) -> Option<String> {
         .find(|(_, id)| *id == person)
         .map(|(name, _)| name.clone());
     mapped.or_else(|| (&hosted.owner == person).then(|| "owner".to_owned()))
+}
+
+/// Who reads a team's requests, as this node knows them.
+pub enum Reader<'a> {
+    /// A team on this node: its hosted-team configuration maps runtime names to org people.
+    Hosted {
+        hosted: &'a HostedTeam,
+        person: &'a Id,
+    },
+    /// A team on another node: the reader's runtime name there, as that node reported it.
+    Remote { viewer: Option<&'a str> },
+}
+
+/// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team
+/// here, the request's addressee is the reader (an absent or unmapped `to` goes to the team's owner); on
+/// a team elsewhere, `to` is the reader's runtime name, or it is absent and that name is `owner`.
+pub fn is_addressed_to(reader: &Reader, request: &Request) -> bool {
+    let to = request.to.as_deref();
+    match reader {
+        Reader::Hosted { hosted, person } => hosted.addressee(to) == *person,
+        Reader::Remote {
+            viewer: Some(viewer),
+        } => to.unwrap_or("owner") == *viewer,
+        Reader::Remote { viewer: None } => false,
+    }
+}
+
+/// The ids of the requests in `view` that are the reader's to decide.
+pub fn mine(view: &TeamView, reader: &Reader) -> Vec<String> {
+    let requests = view.requests.iter();
+    requests
+        .filter(|request| is_addressed_to(reader, request))
+        .map(|request| request.id.clone())
+        .collect()
 }
 
 /// A view is kept only if it is a view of the team that was asked for.
@@ -213,6 +247,94 @@ mod tests {
             Some("kin"),
             "a mapped name wins over owner"
         );
+    }
+
+    fn request(to: Option<&str>) -> Request {
+        use agency_proto::view::{AnswerWith, RequestKind};
+        Request {
+            id: "r-1".into(),
+            kind: RequestKind::Question,
+            title: "Make a key?".into(),
+            context: String::new(),
+            document: None,
+            from: "lead".into(),
+            to: to.map(str::to_owned),
+            created_at: Timestamp::parse("2026-11-24T12:00:00Z").unwrap(),
+            issue: None,
+            blocks: vec![],
+            options: vec![],
+            thread: None,
+            answer_with: AnswerWith {
+                kind: agency_proto::EnvelopeKind::Answer,
+                target: "r-1".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_request_is_mine_by_one_rule() {
+        use crate::config::RuntimeCommand;
+        let hosted = HostedTeam {
+            org: id("acme"),
+            team: id("app"),
+            owner: id("alice"),
+            people: [("reviewer".to_owned(), id("bob"))].into(),
+            runtime: RuntimeCommand {
+                command: vec![],
+                env: Default::default(),
+            },
+        };
+        let (alice, bob) = (id("alice"), id("bob"));
+        let here = |person| Reader::Hosted {
+            hosted: &hosted,
+            person,
+        };
+        let cases = [
+            ("absent to: the owner's", here(&alice), None, true),
+            ("absent to: not the reviewer's", here(&bob), None, false),
+            ("a mapped name", here(&bob), Some("reviewer"), true),
+            (
+                "an unmapped name: the owner's",
+                here(&alice),
+                Some("someone"),
+                true,
+            ),
+            (
+                "an unmapped name: not the reviewer's",
+                here(&bob),
+                Some("someone"),
+                false,
+            ),
+        ];
+        for (name, reader, to, expected) in cases {
+            assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");
+        }
+        let elsewhere = |viewer| Reader::Remote { viewer };
+        let cases = [
+            (
+                "their name",
+                elsewhere(Some("reviewer")),
+                Some("reviewer"),
+                true,
+            ),
+            (
+                "another name",
+                elsewhere(Some("reviewer")),
+                Some("lead"),
+                false,
+            ),
+            ("absent to, as owner", elsewhere(Some("owner")), None, true),
+            (
+                "absent to, as reviewer",
+                elsewhere(Some("reviewer")),
+                None,
+                false,
+            ),
+            ("not addressed by the team", elsewhere(None), None, false),
+        ];
+        for (name, reader, to, expected) in cases {
+            assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");
+        }
     }
 
     #[test]

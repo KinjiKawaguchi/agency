@@ -83,6 +83,7 @@ fn notice() -> Notice {
         org: Id::parse("acme").unwrap(),
         team: Id::parse("app").unwrap(),
         request: "r-20261124-110000-a1b2".into(),
+        badge: 3,
     }
 }
 
@@ -127,7 +128,7 @@ async fn sends_a_signed_alert_to_the_tokens_environment() {
     assert_eq!(
         body,
         &json!({
-            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app" },
+            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app", "badge": 3 },
             "agency": { "org": "acme", "team": "app", "request": "r-20261124-110000-a1b2" },
         })
     );
