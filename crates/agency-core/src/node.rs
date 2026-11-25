@@ -1,5 +1,5 @@
 //! A node's shared state: its configuration, its account key, and the ports its use cases use.
-use crate::config::NodeConfig;
+use crate::config::{HostedTeam, NodeConfig};
 use crate::error::Result;
 use crate::ports::{Clock, FundingSource, Peers, Random, Store, TeamRuntime, WriteLock};
 use agency_proto::clock::{self, OffsetDateTime};
@@ -85,6 +85,17 @@ impl Node {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         edit(&mut guard);
         self.ports.store.save_config(&guard)
+    }
+
+    /// The team, if it runs on this node. The node's own hosted-team configuration decides, never the
+    /// org's `TeamPlace.node`, which is only where other nodes reach the team and can lag behind a change
+    /// of this node's URL.
+    pub fn hosted(&self, org: &Id, team: &Id) -> Option<HostedTeam> {
+        self.config().hosted(org, team).cloned()
+    }
+
+    pub fn runs_here(&self, org: &Id, team: &Id) -> bool {
+        self.hosted(org, team).is_some()
     }
 
     pub fn account(&self) -> Id {

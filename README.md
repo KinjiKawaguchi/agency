@@ -66,6 +66,14 @@ For your first device, run `agency device-add` on the node's terminal, check tha
 After that, add more devices from one you already have. Once the CLI device is added, `agency device-add` on the terminal adds them too.
 Add the CLI device first (`device-add --cli`), so you can add the rest from the terminal.
 
+If a node's URL changes (for example, when it moves behind a tunnel), set `url` in its `config.json`, then, on the root key's node, move each of its teams to the new origin:
+
+```sh
+agency --dir ~/.agency team-move --org acme --team app --node https://agency.example.com
+```
+
+Until then, the node still runs and serves its teams, and `agency status` and `agency serve` say which teams other nodes look for elsewhere.
+
 An invite link carries the fingerprint of the org's root key.
 Before joining, the node checks that the key in the org definition the inviting node returns matches that fingerprint, and does not send a join request if it does not.
 

@@ -44,7 +44,7 @@ pub async fn decide_signed(
         .team(team)
         .ok_or_else(|| Error::not_found("not found"))?
         .clone();
-    let is_local = place.node == node.url() && node.config().hosted(org, team).is_some();
+    let is_local = node.runs_here(org, team);
     let record = DecisionRecord::of(envelope, note, is_local);
     if !is_local {
         return send_envelope(node, place.node, signed, record).await;
