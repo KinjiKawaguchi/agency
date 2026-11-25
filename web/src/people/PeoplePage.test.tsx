@@ -7,7 +7,7 @@ describe('people and work', () => {
     renderApp({ path: '/people' })
     expect(await screen.findByRole('heading', { level: 2, name: 'App team' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Site team' })).toBeInTheDocument()
-    expect(screen.getByText('2 of 4 people are working. 1 is waiting for your answer.')).toBeInTheDocument()
+    expect(screen.getByText('2 of 4 participants are working. 1 is waiting for your answer.')).toBeInTheDocument()
     expect(screen.queryByText('Three requests are waiting for an answer')).not.toBeInTheDocument()
   })
 

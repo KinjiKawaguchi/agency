@@ -33,7 +33,7 @@ describe('org chart', () => {
     const team = await box('Team', 'App')
     expect(team).toHaveTextContent('4 agents, 2 working')
     expect(team).toHaveTextContent('1 waiting for you')
-    expect(await box('Backend', 'Member (agent)')).toHaveTextContent('Waiting for your answer')
+    expect(await box('Backend', 'Agent')).toHaveTextContent('Waiting for your answer')
     expect(await box('Lead', 'Lead (agent)')).toHaveTextContent('Reviewing app#12')
   })
 

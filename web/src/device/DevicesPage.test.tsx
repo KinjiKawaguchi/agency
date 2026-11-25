@@ -27,7 +27,7 @@ describe('devices screen', () => {
     renderApp({ path: '/devices', enrolled: false })
     expect((await screen.findByLabelText('Pairing code of this device')).textContent).toMatch(CODE)
     expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
-    expect(screen.getByText(/Decisions and comments need a device of yours\. To add this one, ask for its code below, then confirm that code on the computer that runs the node with “agency device-add”\./)).toBeInTheDocument()
+    expect(screen.getByText(/Decisions and comments need a device of yours\. To add this one, ask for its code below, then confirm that code on the machine that runs the node with “agency device-add”\./)).toBeInTheDocument()
   })
 
   it('says in Japanese, too, that decisions and comments need a device, and how to add this one', async () => {
@@ -160,13 +160,13 @@ describe('devices screen', () => {
     }
   })
 
-  it('tells a first-time person what to do while waiting: run the command on the node’s computer and compare the code', async () => {
+  it('tells a first-time person what to do while waiting: run the command on the node’s machine and compare the code', async () => {
     const user = userEvent.setup()
     renderApp({ path: '/devices', enrolled: false })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
     const steps = await screen.findAllByRole('listitem')
     expect(steps.map((one) => one.textContent)).toEqual([
-      'On the computer that runs the node, run “agency device-add”.',
+      'On the machine that runs the node, run “agency device-add”.',
       'Check that the code it shows is exactly the one above.',
       'Confirm there.',
     ])

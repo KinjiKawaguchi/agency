@@ -15,7 +15,7 @@ describe('decision desk', () => {
   it('summarizes the situation and opens the most urgent document first', async () => {
     renderApp()
     // The heading appears once the account is known; its text settles when every team has loaded.
-    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`1 person is waiting for your answer.Start by approving “${PROPOSAL}”.`))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`1 participant is waiting for your answer.Start by approving “${PROPOSAL}”.`))
     const paper = screen.getByRole('article')
     expect(within(paper).getByRole('heading', { level: 2 })).toHaveTextContent(PROPOSAL)
     expect(within(paper).getByRole('group', { name: 'Drafted by Lead, Approved by Alice' })).toBeInTheDocument()
@@ -24,7 +24,7 @@ describe('decision desk', () => {
   it('groups the pile and lists a request for someone else apart', async () => {
     renderApp({ view: withRequestFor('frontend') })
     const headings = (await pile()).getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)
-    expect(headings).toEqual(['Proposals for you to approve1', 'Questions for you1', 'Decisions waiting on the board1', 'Waiting on someone else1'])
+    expect(headings).toEqual(['Proposals for you to approve1', 'Questions for you1', 'Pending decisions on the board1', 'Waiting on someone else1'])
   })
 
   it('sends the chosen option and the note with the request’s own answer target, then stamps the document', async () => {

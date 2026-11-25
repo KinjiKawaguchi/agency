@@ -20,7 +20,7 @@ test('opens the most urgent request first, from a page that carries the node’s
   const response = await page.goto('/desk')
   expect(response?.headers()['content-security-policy']).toContain("script-src 'self'")
   await expect(page.locator('meta[name="agency-token"]')).toHaveAttribute('content', 'mock-token')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('1 person is waiting for your answer.')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('1 participant is waiting for your answer.')
   await expect(page.getByRole('article').getByRole('heading', { level: 2 })).toHaveText(PROPOSAL)
   await expect(page.getByRole('group', { name: 'Drafted by Lead, Approved by Alice' })).toBeVisible()
 })

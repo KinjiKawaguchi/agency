@@ -38,7 +38,7 @@ export function PersonCard({ node }: { node: PersonNode }) {
     <div className={`oc-node person${node.isYou ? ' is-you' : ''}`}>
       <Face label={node.person.label} kind="human" size="md" />
       <span className="oc-name">{node.person.label}</span>
-      <span className="oc-sub">{notes.length === 0 ? t.org.kinds.person : notes.join(', ')}</span>
+      <span className="oc-sub">{notes.length === 0 ? t.org.kinds.member : notes.join(', ')}</span>
     </div>
   )
 }
@@ -49,7 +49,7 @@ export function AgentCard({ agent }: { agent: AgentNode }) {
     <Link className={`oc-node agent presence-${agent.presence}`} to="/people" title={agent.person.status}>
       <Face label={agent.person.label} kind="agent" state={agent.presence} size="md" />
       <span className="oc-name">{agent.person.label}</span>
-      <span className="oc-kind">{agent.isLead ? t.org.kinds.lead : t.org.kinds.member}</span>
+      <span className="oc-kind">{agent.isLead ? t.org.kinds.lead : t.org.kinds.agent}</span>
       <span className="oc-now">{agent.presence === 'needs-you' ? t.org.yourTurn : agent.person.status}</span>
     </Link>
   )
