@@ -13,6 +13,7 @@ pub mod outbox;
 pub mod ports;
 pub mod read_auth;
 pub mod routes;
+pub mod usage;
 pub mod views;
 
 pub use error::{Error, ErrorKind, Result};

@@ -11,10 +11,11 @@ use std::path::Path;
 use tempfile::TempDir;
 
 const SAMPLE: &str = include_str!("../../../testdata/teamview.sample.json");
+const USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
 
 const FAKE: &str = r#"#!/bin/sh
 input=$(cat)
-op=$(printf '%s' "$input" | sed -n 's/.*"op":"\([a-z]*\)".*/\1/p')
+op=$(printf '%s' "$input" | sed -n 's/.*"op":"\([a-zA-Z]*\)".*/\1/p')
 printf '%s' "$input" > "$FAKE_DIR/last-$op.json"
 echo "$op" >> "$FAKE_DIR/calls"
 cat "$FAKE_DIR/$op.json"
@@ -184,4 +185,37 @@ async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
             .status,
         503
     );
+}
+
+#[tokio::test]
+async fn reads_token_usage_only_from_a_runtime_that_lists_it() {
+    let fake = Fake::new();
+    let team = fake.team("app");
+    let error = CommandRuntime::default()
+        .token_usage(&team, 14)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, 404);
+    assert_eq!(
+        fake.read("calls"),
+        "describe\n",
+        "no tokenUsage call to a runtime that does not list it"
+    );
+
+    let fake = Fake::new();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","tokenUsage"],"label":"App"}}"#,
+        0,
+    );
+    fake.answer("tokenUsage", &format!(r#"{{"result":{USAGE}}}"#), 0);
+    let usage = CommandRuntime::default()
+        .token_usage(&fake.team("app"), 14)
+        .await
+        .unwrap();
+    assert_eq!(usage.by_person.len(), 3);
+    assert_eq!(fake.read("calls"), "describe\ntokenUsage\n");
+    let request: serde_json::Value =
+        serde_json::from_str(&fake.read("last-tokenUsage.json")).unwrap();
+    assert_eq!(request["days"], 14);
 }

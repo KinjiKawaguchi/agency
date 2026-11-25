@@ -76,7 +76,7 @@ The Access policy must bypass `/fed/*` so other nodes can reach the federation r
 ## Team runtimes
 
 The node never reads or writes a harness's files.
-For each team it hosts, it runs the team's runtime command and speaks agency-runtime/1 (`describe`, `view`, `decide`) as JSON over stdin and stdout; see docs/protocol.md.
+For each team it hosts, it runs the team's runtime command and speaks agency-runtime/1 (`describe`, `view`, `decide`, and the optional `tokenUsage`) as JSON over stdin and stdout; see docs/protocol.md.
 `team-add --state-dir` configures the scrum harness's runtime, `<scrum> runtime` with `SCRUM_STATE_DIR`, owned by this node's account unless `--owner` names another org person.
 
 ## Not yet

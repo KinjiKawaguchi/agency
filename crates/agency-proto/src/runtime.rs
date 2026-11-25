@@ -34,7 +34,8 @@ impl RuntimeRequest {
     }
 }
 
-/// The operation and its input. `usage` is reserved for a later version.
+/// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage` is optional,
+/// and the node calls it only when `Describe::ops` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "op", rename_all = "camelCase")]
 #[ts(export)]
@@ -45,7 +46,12 @@ pub enum RuntimeCall {
     View,
     /// Answered with `Decided`.
     Decide { decision: RuntimeDecision },
+    /// Answered with `TokenUsage` over the last `days` days (1 to 90).
+    TokenUsage { days: u32 },
 }
+
+/// The optional operation name for `RuntimeCall::TokenUsage` in `Describe::ops`.
+pub const TOKEN_USAGE_OP: &str = "tokenUsage";
 
 /// A verified decision, applied by the team runtime.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -75,6 +81,10 @@ pub struct Describe {
 impl Describe {
     pub fn speaks(&self, version: &str) -> bool {
         self.runtimes.iter().any(|one| one == version)
+    }
+
+    pub fn supports(&self, op: &str) -> bool {
+        self.ops.iter().any(|one| one == op)
     }
 }
 
