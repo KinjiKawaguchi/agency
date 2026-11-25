@@ -1,6 +1,8 @@
 //! Nodes for the integration tests: each in its own data directory, on its own port, with a manual clock
 //! at T0 and an in-memory team runtime.
 #![allow(dead_code)]
+pub mod access;
+
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;

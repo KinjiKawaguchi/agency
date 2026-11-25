@@ -266,7 +266,16 @@ Writes (any method but GET and HEAD) also need:
 - through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
-If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.
+If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access, and `/.well-known/apple-app-site-association`, because Apple's servers fetch it without signing in.
+
+### App sign-in
+
+A web view in the iOS app cannot use passkeys for the Access team domain, so the app signs in to Access in a system browser session and takes the session over. This needs the optional setting `access.appId`, the app identifier `<team id>.<bundle id>` (ten uppercase letters or digits, a dot, and a bundle id of letters, digits, dots, and hyphens, for example `ABCDE12345.com.example.agency`). Without it, or with a malformed one, `GET /app/handoff` and the association file answer 404; the rest of the `access` setting still applies.
+
+- `GET /app/handoff?state=<state>` is admitted like the Client API. It answers `303 See Other` with `Location: https://<publicHost>/app/callback#token=<jwt>&state=<state>`, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`, where `<jwt>` is the `Cf-Access-Jwt-Assertion` the node has just verified. The query must be exactly `state=` and 43 base64url characters (`A–Z a–z 0–9 - _`, 256 bits from the app); anything else gets 400. A direct local request gets 403 (it carries no Access sign-in), and so does a signed-in email other than `ownerEmail`. The target is built only from `publicHost`; nothing else from the request goes into it. The node never logs the request URL or the answer's `Location`.
+- `GET /app/callback` is a universal link the app receives before it loads. If a browser loads it anyway, it gets a page with no script that reads nothing from the URL, admitted like any other page.
+- `GET /.well-known/apple-app-site-association` is served to anyone, without an Access sign-in, as `application/json` without a redirect: `{ "applinks": { "details": [{ "appIDs": [<appId>], "components": [{ "/": "/app/callback" }] }] }, "webcredentials": { "apps": [<appId>] } }`. Nothing in it comes from the request.
+- A native client keeps the handed-over token and sends it in `cf-access-token`. Once Access no longer accepts it, Access answers with a redirect to the team domain instead of the node's answer. The client never follows that redirect; it treats it as signed out and runs the handoff again.
 
 ## Test vectors
 

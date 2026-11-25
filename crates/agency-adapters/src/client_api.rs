@@ -9,6 +9,7 @@
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
 //! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
+use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
 use crate::server::status_of;
 use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
@@ -34,7 +35,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
-const ACCESS_HEADER: &str = "cf-access-jwt-assertion";
 const BODY_LIMIT: usize = 64 * 1024;
 /// The attribute of `<meta name="agency-token">` that the web client's build leaves for the node to fill in.
 const TOKEN_PLACEHOLDER: &str = "content=\"__AGENCY_TOKEN__\"";
@@ -56,16 +56,16 @@ pub struct ClientApi {
     pub assets: Arc<dyn Assets>,
 }
 
-type Shared = State<Arc<ClientApi>>;
+pub(crate) type Shared = State<Arc<ClientApi>>;
 
 /// How a request was let in.
 #[derive(Clone, Debug)]
-enum Admitted {
+pub(crate) enum Admitted {
     Local,
     Access(Identity),
 }
 
-fn refuse(status: StatusCode, message: &str) -> Response {
+pub(crate) fn refuse(status: StatusCode, message: &str) -> Response {
     json_response(status, &json!({ "error": message }))
 }
 
@@ -84,7 +84,7 @@ fn respond<T: Serialize>(result: Result<T, Error>) -> Response {
     }
 }
 
-fn header_text(headers: &HeaderMap, name: impl header::AsHeaderName) -> Option<&str> {
+pub(crate) fn header_text(headers: &HeaderMap, name: impl header::AsHeaderName) -> Option<&str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
@@ -161,26 +161,30 @@ fn check_write(
     let Admitted::Access(identity) = admitted else {
         return Ok(());
     };
-    let owner = api
-        .access
-        .as_ref()
-        .map(|access| access.config().owner_email.as_str());
-    let is_owner = identity
-        .email
-        .as_deref()
-        .zip(owner)
-        .is_some_and(|(email, owner)| email.eq_ignore_ascii_case(owner));
-    if is_owner {
+    if is_owner(api, identity) {
         Ok(())
     } else {
         Err((StatusCode::FORBIDDEN, "only the node's owner may decide"))
     }
 }
 
+/// Whether the Access sign-in is the configured owner's.
+pub(crate) fn is_owner(api: &ClientApi, identity: &Identity) -> bool {
+    let owner = api
+        .access
+        .as_ref()
+        .map(|access| access.config().owner_email.as_str());
+    identity
+        .email
+        .as_deref()
+        .zip(owner)
+        .is_some_and(|(email, owner)| email.eq_ignore_ascii_case(owner))
+}
+
 async fn guard(
     State(api): Shared,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let admitted = match admit(&api, peer, request.headers()).await {
@@ -195,6 +199,7 @@ async fn guard(
             return refuse(status, message);
         }
     }
+    request.extensions_mut().insert(admitted);
     next.run(request).await
 }
 
@@ -316,7 +321,7 @@ fn content_type(path: &str) -> &'static str {
     }
 }
 
-fn page_response(content_type: &str, body: Body) -> Response {
+pub(crate) fn page_response(content_type: &str, body: Body) -> Response {
     let mut response = (StatusCode::OK, body).into_response();
     let headers = response.headers_mut();
     for (name, value) in [
@@ -378,8 +383,12 @@ pub fn router(api: Arc<ClientApi>) -> Router {
             "/api/orgs/{org}/teams/{team}/envelopes",
             post(post_envelope),
         )
+        .route(HANDOFF_PATH, get(handoff::handoff))
+        .route(CALLBACK_PATH, get(handoff::callback))
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))
+        // Added after the guard, so it answers without an Access sign-in: Apple's servers fetch it.
+        .route(ASSOCIATION_PATH, get(handoff::association))
         .with_state(api)
 }

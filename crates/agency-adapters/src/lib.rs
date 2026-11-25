@@ -9,6 +9,7 @@ pub mod apns;
 pub mod client_api;
 pub mod files;
 pub mod funding;
+pub mod handoff;
 pub mod memory;
 pub mod peers;
 pub mod runtime;
