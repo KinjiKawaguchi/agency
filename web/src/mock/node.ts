@@ -13,6 +13,8 @@ export interface MockNode {
   handle: (request: Request) => Promise<Response>
   /** What `agency device-add` does on the node's terminal: adds the device that asked with this pairing code. */
   addDeviceFromTerminal: (pairingCode: string) => boolean
+  /** Push tokens registered so far, one entry per token, as the node keeps them. */
+  pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
   /** Makes the node answer every call as Cloudflare Access does once the session has expired: a redirect to its login on another origin. */
@@ -38,6 +40,8 @@ interface MockNodeOptions {
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
+  pushTokensFailWith?: number
   /** Makes only the decision log calls fail with this status. */
   decisionLogFailsWith?: number
   /** Makes the team's node refuse every decision for this reason (HTTP 409). */
@@ -75,6 +79,7 @@ const MAX_LIMIT = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|envelopes)$/
 const DEVICES_PATH = '/api/devices'
+const PUSH_TOKENS_PATH = '/api/push/tokens'
 
 const teamKey = (org: string, team: string): string => `${org}/${team}`
 
@@ -86,6 +91,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let received: readonly DecisionAnswer[] = []
   let isSignInExpired = false
   let accepted: readonly Signed<Envelope>[] = []
+  let pushTokens: ReadonlyArray<{ token: string; environment: string; label: string }> = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false ? [] : earlierDecisions(now)
 
   const me: Me = {
@@ -161,6 +167,19 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
   }
 
+  /** The owner's write: the page's token and JSON, a lowercase-hex token, its environment, and a label. Idempotent per token. */
+  const registerPushToken = async (request: Request): Promise<Response> => {
+    if (options.pushTokensFailWith !== undefined) return failure(options.pushTokensFailWith, 'The node does not take push tokens.')
+    const write = await readWrite(request)
+    if (write instanceof Response) return write
+    const { token, environment, label } = (write.body ?? {}) as Record<string, unknown>
+    if (typeof token !== 'string' || !/^[0-9a-f]{32,200}$/.test(token)) return failure(400, 'The token is hex of 32 to 200 characters.')
+    if (environment !== 'sandbox' && environment !== 'production') return failure(400, 'The environment is sandbox or production.')
+    if (typeof label !== 'string' || label.trim() === '') return failure(400, 'The label is missing.')
+    pushTokens = [...pushTokens.filter((one) => one.token !== token), { token, environment, label }]
+    return json({})
+  }
+
   const handleDevices = async (request: Request, url: URL): Promise<Response> => {
     if (request.method === 'GET' && url.pathname === DEVICES_PATH) return json(devices.list())
     const write = request.method === 'POST' ? await readWrite(request) : undefined
@@ -187,6 +206,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
       return json({ entries: log.slice(0, Math.min(MAX_LIMIT, Math.max(1, limit))) } satisfies DecisionLog)
     }
+    if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
@@ -201,6 +221,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     },
     decisions: () => received,
     envelopes: () => accepted,
+    pushTokens: () => pushTokens,
     addDeviceFromTerminal: devices.addFromTerminal,
   }
 }

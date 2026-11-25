@@ -8,6 +8,7 @@ import { ApiProvider } from '../api/context'
 import { createApiClient, type ApiClient } from '../api/client'
 import { I18nProvider } from '../i18n'
 import type { Locale } from '../i18n/locale'
+import { NativePushRegistration } from '../native/NativePushRegistration'
 import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { ToastProvider } from '../shared/Toasts'
 import { createAppRouter } from './router'
@@ -32,6 +33,7 @@ export function App({ client, history, locale, keyStore }: AppProps) {
             <KeyStoreProvider {...(keyStore === undefined ? {} : { store: keyStore })}>
               <DeviceKeyProvider>
                 <ToastProvider>
+                  <NativePushRegistration />
                   <RouterProvider router={router} />
                 </ToastProvider>
               </DeviceKeyProvider>

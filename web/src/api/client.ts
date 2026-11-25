@@ -1,5 +1,5 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -39,6 +39,8 @@ export interface ApiClient {
   decideSigned: (org: string, team: string, input: SignedDecisionInput) => Promise<DecisionResult>
   /** The account's devices in each org, and the devices waiting to be added. */
   devices: () => Promise<DeviceList>
+  /** Registers this phone's push token with the node. Idempotent: the node keeps one entry per token. */
+  registerPushToken: (input: PushTokenInput) => Promise<void>
   /** Asks the node to add this device; a device that is already added confirms it after comparing the pairing codes. */
   requestDevice: (input: DeviceRequestInput) => Promise<DeviceRequest>
   /** Adds a device: a change signed by one of the account's devices. */
@@ -108,6 +110,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
       const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label }
       return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
     },
+    registerPushToken: async (input) => void (await post<unknown>('/api/push/tokens', input)),
     devices: () => get<DeviceList>('/api/devices'),
     requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
     submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),

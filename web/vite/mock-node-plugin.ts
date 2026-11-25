@@ -14,6 +14,7 @@ const RESET_PATH = '/__mock/reset'
 const SIGN_IN_PATH = '/__mock/sign-in'
 const DEVICE_ADD_PATH = '/__mock/device-add'
 const ENVELOPES_PATH = '/__mock/envelopes'
+const PUSH_TOKENS_PATH = '/__mock/push-tokens'
 
 /**
  * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
@@ -53,6 +54,10 @@ function apiMiddleware(): Connect.NextHandleFunction {
     if (message.method === 'GET' && url.pathname === ENVELOPES_PATH) {
       response.setHeader('content-type', 'application/json')
       return response.end(JSON.stringify(node.envelopes()))
+    }
+    if (message.method === 'GET' && url.pathname === PUSH_TOKENS_PATH) {
+      response.setHeader('content-type', 'application/json')
+      return response.end(JSON.stringify(node.pushTokens()))
     }
     if (!message.url?.startsWith('/api/')) return next()
     const method = message.method ?? 'GET'
