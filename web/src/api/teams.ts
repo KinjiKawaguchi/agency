@@ -1,4 +1,4 @@
-import type { TeamSnapshot, TeamSource } from './clientApi'
+import type { TeamSnapshot, SnapshotSource } from './clientApi'
 import type { TeamView } from './teamview'
 
 /** A team as the app uses it: what the team reported, and who the viewer is in it. */
@@ -6,7 +6,7 @@ export interface Team {
   view: TeamView
   /** The team runtime's name for the person the viewer answers for. */
   viewer: string
-  source: TeamSource
+  source: SnapshotSource
 }
 
 /**

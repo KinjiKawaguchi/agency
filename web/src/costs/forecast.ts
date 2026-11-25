@@ -1,11 +1,8 @@
-import type { FundingWindowReading } from '../api/clientApi'
+import type { UsageWindow } from '../api/clientApi'
 
 export type WindowStatus = 'waste' | 'ok' | 'overrun'
 
 const HOUR = 3_600_000
-
-/** How long each window is, which the node does not report. */
-export const WINDOW_MS: Record<FundingWindowReading['name'], number> = { fiveHour: 5 * HOUR, sevenDay: 7 * 24 * HOUR }
 
 /** Below this share of the window there is too little to extrapolate from. */
 const MIN_ELAPSED_SHARE = 0.02
@@ -24,14 +21,15 @@ export interface WindowForecast {
 }
 
 /**
- * Projects a window to its reset from the pace so far. Returns `undefined` when the reset has already
- * passed, which means the reading is out of date and says nothing about the current window.
+ * Projects a window to its reset from the pace so far, using the window's own length. Returns `undefined`
+ * when the reset has already passed, which means the reading is out of date and says nothing about the
+ * current window, or when the length is not a positive number.
  */
-export function forecastWindow(reading: FundingWindowReading, now: number): WindowForecast | undefined {
+export function forecastWindow(reading: UsageWindow, now: number): WindowForecast | undefined {
   const resetsAt = Date.parse(reading.resetsAt)
-  const length = WINDOW_MS[reading.name]
+  const length = reading.lengthHours * HOUR
   const remaining = resetsAt - now
-  if (remaining <= 0) return undefined
+  if (remaining <= 0 || !(length > 0)) return undefined
 
   const elapsed = Math.min(length, Math.max(0, length - remaining))
   const hasPace = elapsed >= length * MIN_ELAPSED_SHARE && reading.utilization > 0

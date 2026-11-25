@@ -1,8 +1,11 @@
-import type { DecisionAnswer, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
+import type { DecisionAnswer, DecisionInput, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
-/** An error from the node, carrying the status so callers can tell "gone" from "down". */
+/**
+ * An error from the node, carrying the status so callers can tell them apart: 404 is gone (or not served),
+ * 409 is a refusal by the team's node, and a runtime's own 400 and 404 pass through unchanged.
+ */
 export class ApiError extends Error {
   readonly status: number
 
@@ -47,13 +50,15 @@ export function createApiClient(send: FetchLike = (request) => fetch(request)): 
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<UsageReport>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
-    decide: ({ org, team, answerWith, choice, text }) =>
-      send(
+    decide: ({ org, team, answerWith, choice, text }) => {
+      const input: DecisionInput = { ...answerWith, text, ...(choice === undefined ? {} : { choice }) }
+      return send(
         new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-agency-token': readToken() },
-          body: JSON.stringify({ ...answerWith, text, ...(choice === undefined ? {} : { choice }) }),
+          body: JSON.stringify(input),
         }),
-      ).then(readJson<DecisionResult>),
+      ).then(readJson<DecisionResult>)
+    },
   }
 }

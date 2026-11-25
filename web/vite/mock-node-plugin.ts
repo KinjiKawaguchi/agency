@@ -55,6 +55,15 @@ function apiMiddleware(): Connect.NextHandleFunction {
 /** The real node fills the page's token into the served index.html; the mock does the same with its own. */
 const withToken = (html: string): string => html.replace('__AGENCY_TOKEN__', MOCK_TOKEN)
 
+/** The headers the real node puts on every page (docs/protocol.md, "Who is let in"), so the built client is exercised under them. */
+const PAGE_HEADERS: Record<string, string> = {
+  'content-type': 'text/html',
+  'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'cache-control': 'no-store',
+}
+
 const isPageRequest = (message: IncomingMessage): boolean =>
   message.method === 'GET' && message.url !== undefined && !message.url.startsWith('/api/') && !/\.[a-z0-9]+$/i.test(message.url.split('?')[0] ?? '')
 
@@ -69,7 +78,7 @@ export function mockNodePlugin(): Plugin {
       server.middlewares.use(async (message, response, next) => {
         if (!isPageRequest(message)) return next()
         const html = await readFile(resolve(server.config.root, server.config.build.outDir, 'index.html'), 'utf8')
-        response.setHeader('content-type', 'text/html')
+        for (const [name, value] of Object.entries(PAGE_HEADERS)) response.setHeader(name, value)
         response.end(withToken(html))
       })
     },

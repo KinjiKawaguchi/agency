@@ -141,8 +141,17 @@ describe('decision desk', () => {
     const { node } = renderApp({ outcome: 'queued' })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
-    expect(await screen.findByText(/The team’s node is asleep/)).toBeInTheDocument()
+    expect(await screen.findByText(/The team’s node is asleep.*Its node is not reachable right now\./)).toBeInTheDocument()
     expect(node.decisions()).toHaveLength(1)
+  })
+
+  it('tells the viewer when the team’s node refuses the decision, and keeps the draft', async () => {
+    const user = userEvent.setup()
+    renderApp({ refuseDecisionsWith: 'The decision has expired.' })
+    await user.click(await screen.findByRole('radio', { name: /Reject/ }))
+    await user.click(screen.getByRole('button', { name: /^Approve with/ }))
+    expect(await screen.findByText('The team’s node refused the decision: The decision has expired.')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Reject/ })).toBeChecked()
   })
 
   it('shows earlier messages on a request', async () => {

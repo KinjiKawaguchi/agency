@@ -95,6 +95,7 @@ export const ja: Messages = {
     kinds: { subscription: 'サブスクリプション', apiKey: 'API キー' },
     windows: { sevenDay: '週の枠', fiveHour: '5 時間の枠' },
     notStarted: (window) => `${window}はまだ始まっていません。`,
+    unknownUsage: 'この資金源の使用状況は読み取れませんでした。',
     statuses: { waste: '余りそう', ok: '順調', overrun: '足りなくなりそう' },
     verdicts: {
       waste: 'このペースでは、リセットまでに使い切れません。重い仕事をここに寄せられます。',
@@ -184,6 +185,7 @@ export const ja: Messages = {
       sent: (drafter) => `送りました。${drafter} に届きます。`,
       queued: '保存しました。チームのノードが休止中なので、起動したときに届きます。',
       sendFailed: (reason) => `送れませんでした: ${reason}`,
+      refused: (reason) => `チームのノードが決定を受け付けませんでした: ${reason}`,
       thread: (name, choice) => (choice === null ? name : `${name} は「${choice}」を選びました`),
     },
   },

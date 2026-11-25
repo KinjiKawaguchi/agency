@@ -1,56 +1,27 @@
-// The Client API between the web client and its home node. These shapes follow what the node will
-// serve (agency#4) and are replaced by the generated bindings when they land. Token use
-// (`UsageReport`) is not part of that contract yet and is served by the mock node only.
-import type { AnswerWith, TeamView } from './teamview'
+// The Client API between the web client and its home node (docs/protocol.md, "Client API").
+// Its types are generated from the Rust types in `bindings/` and are never edited by hand. The only
+// types defined here are the client's own: the arguments of a decision call, and token use, which the
+// node does not serve yet (agency#22).
+import type { AnswerWith } from './teamview'
 
-// ── Who the viewer is, and what they can reach ──
-
-export interface FundingWindowReading {
-  name: 'fiveHour' | 'sevenDay'
-  /** Percent of the window used so far. */
-  utilization: number
-  resetsAt: string
-}
-
-/** A funding source, as the node last read it. Forecasts are worked out by the client. */
-export interface FundingSource {
-  id: string
-  label: string
-  kind: 'subscription' | 'apiKey'
-  windows: FundingWindowReading[]
-  /** When the node last read the usage. */
-  readAt?: string
-}
-
-export interface TeamRef {
-  id: string
-  label: string
-  location: 'local' | 'remote'
-  /** The viewer's runtime name in this team. */
-  viewer?: string
-}
-
-export interface Me {
-  account: { id: string; label: string; fingerprint: string }
-  orgs: Array<{ id: string; label: string; isRoot: boolean; teams: TeamRef[] }>
-  funding: FundingSource[]
-}
-
-// ── A team ──
-
-export type TeamSource =
-  | { kind: 'local' }
-  /** A copy read from the team's own node. `error` says why the last read failed. */
-  | { kind: 'replica'; fetchedAt?: string; triedAt: string; error?: string }
-
-export interface TeamSnapshot {
-  view: TeamView
-  /** The viewer's runtime name in this team, when the node knows it. */
-  viewer?: string
-  source: TeamSource
-}
-
-// ── Deciding ──
+export type { AccountRef } from '../../../bindings/AccountRef'
+export type { DecisionInput } from '../../../bindings/DecisionInput'
+export type { DecisionOutcome } from '../../../bindings/DecisionOutcome'
+export type { DecisionResult } from '../../../bindings/DecisionResult'
+export type { Department } from '../../../bindings/Department'
+export type { Funding } from '../../../bindings/Funding'
+export type { FundingKind } from '../../../bindings/FundingKind'
+export type { Me } from '../../../bindings/Me'
+export type { OrgDefinition } from '../../../bindings/OrgDefinition'
+export type { OrgRef } from '../../../bindings/OrgRef'
+export type { Person } from '../../../bindings/Person'
+export type { SnapshotSource } from '../../../bindings/SnapshotSource'
+export type { TeamLocation } from '../../../bindings/TeamLocation'
+export type { TeamPlace } from '../../../bindings/TeamPlace'
+export type { TeamRef } from '../../../bindings/TeamRef'
+export type { TeamSnapshot } from '../../../bindings/TeamSnapshot'
+export type { UsageWindow } from '../../../bindings/UsageWindow'
+export type { UsageWindowName } from '../../../bindings/UsageWindowName'
 
 /** One decision: which request it answers (`answerWith` is copied from the request) and what was decided. */
 export interface DecisionAnswer {
@@ -61,49 +32,7 @@ export interface DecisionAnswer {
   text: string
 }
 
-export interface DecisionResult {
-  /** `applied`: the team has it. `delivered`: sent on to the team's node. `queued`: kept until that node is reachable. */
-  outcome: 'applied' | 'delivered' | 'queued'
-  message?: string
-}
-
-// ── Organization structure ──
-// The part of the org definition (`agency-proto` OrgDefinition) that the org chart reads.
-// Optional fields are left out when absent, as in the Rust type; keys, versions, and node URLs are not needed here.
-
-export interface OrgDepartment {
-  id: string
-  label: string
-  parent?: string
-  /** A person id from `people`. */
-  head?: string
-}
-
-export interface OrgPerson {
-  id: string
-  label: string
-  /** The account that signs for this person. */
-  account: string
-  department?: string
-  role: 'member' | 'answerer'
-}
-
-export interface OrgTeam {
-  id: string
-  label: string
-  department?: string
-}
-
-export interface OrgDefinition {
-  org: string
-  label: string
-  version: number
-  departments: OrgDepartment[]
-  people: OrgPerson[]
-  teams: OrgTeam[]
-}
-
-// ── Token use ──
+// ── Token use (not in the node's contract yet) ──
 
 export interface TokenCounts {
   input: number

@@ -99,6 +99,7 @@ export const en = {
     kinds: { subscription: 'Subscription', apiKey: 'API key' },
     windows: { sevenDay: 'Weekly window', fiveHour: 'Five-hour window' },
     notStarted: (window: string) => `${window} has not started.`,
+    unknownUsage: 'The usage of this source could not be read.',
     statuses: { waste: 'Will go unused', ok: 'On pace', overrun: 'Will run out' },
     verdicts: {
       waste: 'At this pace the window will not be used up before it resets. Heavier work can move here.',
@@ -188,6 +189,7 @@ export const en = {
       sent: (drafter: string) => `Sent. ${drafter} will get it.`,
       queued: 'Saved. The team’s node is asleep, so it will be delivered when it wakes.',
       sendFailed: (reason: string) => `Could not send: ${reason}`,
+      refused: (reason: string) => `The team’s node refused the decision: ${reason}`,
       thread: (name: string, choice: string | null) => (choice === null ? name : `${name} chose “${choice}”`),
     },
   },

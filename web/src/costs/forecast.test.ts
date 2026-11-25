@@ -1,14 +1,17 @@
-import type { FundingWindowReading } from '../api/clientApi'
-import { forecastWindow, WINDOW_MS } from './forecast'
+import type { UsageWindow } from '../api/clientApi'
+import { forecastWindow } from './forecast'
 
 const HOUR = 3_600_000
 const NOW = Date.parse('2026-11-25T12:00:00Z')
 
+const LENGTH_HOURS: Record<UsageWindow['name'], number> = { fiveHour: 5, sevenDay: 168 }
+
 /** A window that is `elapsedHours` into its length, with the given use so far. */
-const reading = (name: FundingWindowReading['name'], elapsed: number, utilization: number): FundingWindowReading => ({
+const reading = (name: UsageWindow['name'], elapsed: number, utilization: number): UsageWindow => ({
   name,
+  lengthHours: LENGTH_HOURS[name],
   utilization,
-  resetsAt: new Date(NOW + WINDOW_MS[name] - elapsed).toISOString(),
+  resetsAt: new Date(NOW + LENGTH_HOURS[name] * HOUR - elapsed).toISOString(),
 })
 
 describe('forecastWindow', () => {
@@ -51,6 +54,16 @@ describe('forecastWindow', () => {
   })
 
   it('gives no forecast once the reset has passed, since the reading is out of date', () => {
-    expect(forecastWindow({ name: 'fiveHour', utilization: 50, resetsAt: new Date(NOW - 1).toISOString() }, NOW)).toBeUndefined()
+    expect(forecastWindow({ name: 'fiveHour', lengthHours: 5, utilization: 50, resetsAt: new Date(NOW - 1).toISOString() }, NOW)).toBeUndefined()
+  })
+
+  it('uses the length the node reports, not one it assumes for the name', () => {
+    // Two days of a 10-day window gone at 20%: the pace says 100% at the reset.
+    const custom = forecastWindow({ name: 'sevenDay', lengthHours: 240, utilization: 20, resetsAt: new Date(NOW + 8 * 24 * HOUR).toISOString() }, NOW)
+    expect(custom?.projectedAtReset).toBeCloseTo(100)
+  })
+
+  it('gives no forecast for a window with no length', () => {
+    expect(forecastWindow({ name: 'fiveHour', lengthHours: 0, utilization: 50, resetsAt: new Date(NOW + HOUR).toISOString() }, NOW)).toBeUndefined()
   })
 })

@@ -1,30 +1,37 @@
 // Mock org structure, funding, and token use for the mock node. Every name here is fictional.
 // The shapes are the ones the real node will serve; the numbers are made up.
-import type { FundingSource, OrgDefinition, UsageReport } from '../api/clientApi.ts'
+import type { Funding, OrgDefinition, UsageReport } from '../api/clientApi.ts'
 import type { TeamView } from '../api/teamview.ts'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
+/** A made-up Ed25519 public key: 32 bytes in base64, as the type documents. Not a key of anyone. */
+const fakeKey = (character: string): string => `${character.repeat(43)}=`
+
 export const ORG_DEFINITION: OrgDefinition = {
   org: 'acme',
   label: 'Acme',
   version: 3,
+  prev: '0'.repeat(64),
+  root: { account: 'alice', publicKey: fakeKey('A') },
   departments: [
-    { id: 'engineering', label: 'Engineering', head: 'owner' },
+    { id: 'engineering', label: 'Engineering', parent: null, head: 'owner' },
     { id: 'platform', label: 'Platform', parent: 'engineering', head: 'bob' },
-    { id: 'design', label: 'Design', head: 'carol' },
+    { id: 'design', label: 'Design', parent: null, head: 'carol' },
   ],
   people: [
-    { id: 'owner', label: 'Alice', account: 'alice', department: 'engineering', role: 'member' },
-    { id: 'bob', label: 'Bob', account: 'bob', department: 'platform', role: 'member' },
-    { id: 'carol', label: 'Carol', account: 'carol', department: 'design', role: 'answerer' },
+    { id: 'owner', label: 'Alice', account: 'alice', publicKey: fakeKey('A'), department: 'engineering', role: 'member' },
+    { id: 'bob', label: 'Bob', account: 'bob', publicKey: fakeKey('B'), department: 'platform', role: 'member' },
+    { id: 'carol', label: 'Carol', account: 'carol', publicKey: fakeKey('C'), department: 'design', role: 'answerer' },
   ],
   teams: [
-    { id: 'app', label: 'App', department: 'engineering' },
-    { id: 'site', label: 'Site', department: 'design' },
+    { id: 'app', label: 'App', department: 'engineering', node: 'https://alice.example' },
+    { id: 'site', label: 'Site', department: 'design', node: 'https://carol.example' },
   ],
+  revoked: [],
+  at: '2026-11-24T12:00:00Z',
 }
 
 /** A second, quiet team, so the org chart and the people screen show more than one. */
@@ -44,7 +51,7 @@ export function siteTeamView(base: TeamView): TeamView {
   }
 }
 
-export function fundingSources(now: Date): FundingSource[] {
+export function fundingSources(now: Date): Funding[] {
   const at = (ms: number) => new Date(now.getTime() + ms).toISOString()
   const readAt = at(-3 * MINUTE)
   return [
@@ -54,8 +61,8 @@ export function fundingSources(now: Date): FundingSource[] {
       kind: 'subscription',
       // Four of seven days in at 52%: on pace. Three of five hours in at 74%: it will run out.
       windows: [
-        { name: 'sevenDay', utilization: 52, resetsAt: at(3 * DAY) },
-        { name: 'fiveHour', utilization: 74, resetsAt: at(2 * HOUR) },
+        { name: 'sevenDay', lengthHours: 168, utilization: 52, resetsAt: at(3 * DAY) },
+        { name: 'fiveHour', lengthHours: 5, utilization: 74, resetsAt: at(2 * HOUR) },
       ],
       readAt,
     },
@@ -64,7 +71,7 @@ export function fundingSources(now: Date): FundingSource[] {
       label: 'Lab plan',
       kind: 'subscription',
       // Two of seven days in at 21%: it will not be used up. No five-hour window is running.
-      windows: [{ name: 'sevenDay', utilization: 21, resetsAt: at(5 * DAY) }],
+      windows: [{ name: 'sevenDay', lengthHours: 168, utilization: 21, resetsAt: at(5 * DAY) }],
       readAt,
     },
   ]
