@@ -1,3 +1,4 @@
+import type { TeamSnapshot } from '../api/clientApi'
 import { toTeam } from '../api/teams'
 import { sampleTeamView } from '../api/teamview'
 import { teamOf, withRequestFor } from '../test/views'
@@ -57,8 +58,10 @@ describe('whose a request is', () => {
     expect(items.every((item) => !canDecide(item))).toBe(true)
   })
 
-  it('treats a snapshot without `mine` as listing none, so nothing is decidable on a guess', () => {
-    expect(toTeam({ view: sampleTeamView, viewer: 'owner', source: { kind: 'local' } }).mine.size).toBe(0)
+  it('lists exactly what the node lists, and none from a node that sends no `mine`, so nothing is decidable on a guess', () => {
+    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: [], source: { kind: 'local' } }).mine.size).toBe(0)
+    const oldNode = { view: sampleTeamView, viewer: 'owner', source: { kind: 'local' } } as unknown as TeamSnapshot
+    expect(toTeam(oldNode).mine.size).toBe(0)
     expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: ['x'], source: { kind: 'local' } }).mine).toEqual(new Set(['x']))
   })
 })
