@@ -21,6 +21,13 @@ import './desk.css'
 /** How long a pressed seal stays visible before the answered item leaves the pile. */
 export const SEAL_HOLD_MS = 1600
 
+/** The option the draft picked, with the label the viewer saw on it. */
+function chosenOf(item: DeskItem, draft: Draft): { choice?: string; choiceLabel?: string } {
+  if (draft.choice === null) return {}
+  const label = item.request.options.find((option) => option.key === draft.choice)?.text
+  return { choice: draft.choice, ...(label === undefined ? {} : { choiceLabel: label }) }
+}
+
 function sendFailureText(t: Messages, failure: unknown, reason: string): string {
   if (failure instanceof SignInExpiredError) return t.app.signInExpired.message
   return failure instanceof ApiError && failure.status === 409 ? t.desk.paper.refused(reason) : t.desk.paper.sendFailed(reason)
@@ -58,7 +65,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
+        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
         toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : t.desk.paper.sent(item.drafter?.label ?? item.request.from))

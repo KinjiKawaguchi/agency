@@ -12,7 +12,9 @@ describe('recently decided', () => {
     const rows = list.getAllByRole('listitem')
     expect(rows.map((row) => within(row).getByText(/^(Applied|Delivered|Waiting to send|Refused)$/).textContent)).toEqual(['Waiting to send', 'Refused', 'Applied', 'Delivered'])
     expect(rows[0]).toHaveTextContent('Which hosting plan should the landing page use?')
-    expect(rows[0]).toHaveTextContent('Chose “free”.')
+    expect(rows[0]).toHaveTextContent('Chose “Free plan”.')
+    // A decision logged without a label falls back to the option's key.
+    expect(rows[2]).toHaveTextContent('Chose “approve”.')
   })
 
   it('says when a queued decision will be tried again, and what went wrong last time', async () => {
@@ -54,6 +56,7 @@ describe('recently decided', () => {
     const [added] = (await recent()).getAllByRole('listitem')
     expect(added).toHaveTextContent('Add a second frontend agent')
     expect(added).toHaveTextContent('Applied')
+    expect(added).toHaveTextContent('Chose “Approve”.')
   })
 
   it('shows a decision the node queued as waiting to send, with when it will try again', async () => {

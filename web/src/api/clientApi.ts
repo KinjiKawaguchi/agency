@@ -37,5 +37,7 @@ export interface DecisionAnswer {
   /** The request's title. The request leaves the team's view once answered, so the node keeps the title in its log. */
   title: string
   choice?: string
+  /** What the chosen option says, kept in the decision log because the request is gone from the team's view once answered. */
+  choiceLabel?: string
   text: string
 }

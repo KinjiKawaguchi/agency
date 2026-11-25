@@ -120,6 +120,7 @@ export function earlierDecisions(now: Date): DecisionEntry[] {
       title: 'Which hosting plan should the landing page use?',
       text: 'The free plan is enough until launch.',
       choice: 'free',
+      choiceLabel: 'Free plan',
       decidedAt: ago(20 * MINUTE),
       state: { kind: 'queued', attempts: 2, nextAt: ahead(6 * MINUTE), lastError: 'The team’s node did not answer.' },
     },

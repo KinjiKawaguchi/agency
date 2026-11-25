@@ -34,7 +34,7 @@ describe('decision desk', () => {
 
     expect(await screen.findByText(/Alice approved this\. It is on its way to the drafter\./)).toBeInTheDocument()
     expect(node.decisions()).toEqual([
-      { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, choice: 'approve', text: 'Start next week.' },
+      { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, choice: 'approve', choiceLabel: 'Approve', text: 'Start next week.' },
     ])
   })
 
