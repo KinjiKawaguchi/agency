@@ -21,7 +21,7 @@ The whole protocol is in [docs/protocol.md](docs/protocol.md).
 ## Contents
 
 ```
-crates/agency-proto    The protocol: canonical JSON, Ed25519 signatures, envelopes, org definition versions, invites and joining
+crates/agency-proto    The protocol: canonical JSON, Ed25519 and P-256 signatures, envelopes, org definition versions, invites and joining
 crates/agency-core     Domain, use cases, and ports; no async runtime, network, filesystem, wall clock, or randomness
 crates/agency-adapters Port adapters: data directory, HTTP in and out, team runtime commands, system clock, test doubles
 crates/agency-node     Wiring and the `agency` CLI

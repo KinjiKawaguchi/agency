@@ -193,6 +193,11 @@ impl OrgDefinition {
         {
             return Err("a department, person, team, or account appears twice".into());
         }
+        let are_node_keys_ed25519 = self.root.public_key.is_ed25519()
+            && self.people.iter().all(|p| p.public_key.is_ed25519());
+        if !are_node_keys_ed25519 {
+            return Err("account and root keys must be Ed25519".into());
+        }
         let departments: HashSet<_> = self.departments.iter().map(|d| &d.id).collect();
         let people: HashSet<_> = self.people.iter().map(|p| &p.id).collect();
         let is_known_department =

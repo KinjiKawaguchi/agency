@@ -17,6 +17,8 @@ base64 = "0.22"
 jsonwebtoken = { version = "9", default-features = false }
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+# P-256 device keys (ECDSA with SHA-256): the only curve some phones keep keys in hardware for.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rust-embed = "8"
 # http2: APNs accepts only HTTP/2.
