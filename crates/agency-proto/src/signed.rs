@@ -1,11 +1,11 @@
-//! 署名したもの: `{ body, signer, signature }`。署名する文字列は「種類の行 + 決まった順の JSON」。
+//! Signed documents: `{ body, signer, signature }`. The signed text is a kind line followed by canonical JSON.
 use crate::canonical::{canonical, canonical_of};
 use crate::ids::Id;
 use crate::keys::{AccountKey, PublicKey};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// 署名の種類。種類の行があるので、ある種類の署名を別の種類に流用できない
+/// What a signature is for. Because of the kind line, a signature for one kind cannot be reused for another.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Envelope,
@@ -47,14 +47,14 @@ impl<T: Serialize + DeserializeOwned> Signed<T> {
         })
     }
 
-    /// 本体の決まった順の JSON に対して、署名がこの公開鍵で合うか
+    /// Whether the signature over the body's canonical JSON matches this public key.
     pub fn verify(&self, kind: Kind, key: &PublicKey) -> bool {
         canonical_of(&self.body)
             .map(|text| key.verify(&kind.message(&text), &self.signature))
             .unwrap_or(false)
     }
 
-    /// 署名したもの全体の指紋 (決まった順の JSON の SHA-256 の 16 進、64 文字)。組織の定義の版をつなぐ
+    /// Fingerprint of the whole signed document (hex SHA-256 of its canonical JSON, 64 characters). Links org definition versions.
     pub fn digest(&self) -> String {
         let text = serde_json::to_value(self)
             .map(|value| canonical(&value))
@@ -66,7 +66,7 @@ impl<T: Serialize + DeserializeOwned> Signed<T> {
     }
 }
 
-/// 読み出しの署名の文字列 (本文の無い GET)
+/// The text signed for a signed read (a GET without a body).
 pub fn read_text(method: &str, path: &str, date: &str, account: &Id) -> String {
     format!("{method}\n{path}\n{date}\n{account}")
 }

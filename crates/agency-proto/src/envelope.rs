@@ -1,11 +1,11 @@
-//! 決裁の封筒。決めた人のアカウントの鍵で署名し、チームの台が確かめてから当てる。
+//! Decision envelopes. Signed with the decider's account key; the team's node checks them before applying.
 use crate::clock;
 use crate::ids::{EnvelopeId, Id};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub const MAX_TEXT: usize = 4000;
-/// 作ってから受け取りを許す長さ (寝ていた台が起きて届けるのを待つ)
+/// How long after it was made an envelope is still accepted (long enough for a sleeping node to wake up and deliver it).
 pub const MAX_AGE_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -48,28 +48,28 @@ fn is_target(raw: &str) -> bool {
 }
 
 impl Envelope {
-    /// 形の確かめ (署名の確かめとは別)。台の境目で、当てる前に呼ぶ
+    /// Checks the shape (not the signature). Called at the node boundary, before applying.
     pub fn validate(&self) -> Result<(), String> {
         if !is_target(&self.target) {
-            return Err("宛ての形が違う".into());
+            return Err("malformed target".into());
         }
         if self.payload.text.chars().count() > MAX_TEXT {
-            return Err(format!("答えの文は {MAX_TEXT} 文字まで"));
+            return Err(format!("the answer text is at most {MAX_TEXT} characters"));
         }
         if let Some(choice) = &self.payload.choice {
             if choice.is_empty() || choice.chars().count() > 20 {
-                return Err("選択肢の形が違う".into());
+                return Err("malformed choice".into());
             }
         }
         if self.payload.text.trim().is_empty() && self.payload.choice.is_none() {
-            return Err("選択肢か答えの文が要る".into());
+            return Err("a choice or an answer text is required".into());
         }
         clock::parse(&self.at)
             .map(|_| ())
-            .ok_or_else(|| "時刻の形が違う".into())
+            .ok_or_else(|| "malformed time".into())
     }
 
-    /// 作ってからの長さが受け取りの期限の内か (先の時刻は、時計のずれの 5 分まで)
+    /// Whether it is within its acceptance period: at most 7 days old, and at most 5 minutes ahead (clock skew).
     pub fn is_fresh(&self, now: time::OffsetDateTime) -> bool {
         clock::parse(&self.at).is_some_and(|at| {
             let age = (now - at).whole_seconds();

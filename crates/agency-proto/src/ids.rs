@@ -1,4 +1,4 @@
-//! 識別子。台の境目で形を確かめ、形の違う値は型にしない。
+//! Identifiers. Their shape is checked at the node boundary; a malformed value never becomes one of these types.
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
@@ -25,7 +25,7 @@ impl Id {
             Ok(Self(raw.to_owned()))
         } else {
             Err(IdError(format!(
-                "id の形が違う (英小文字、数字、- で 40 文字まで): {raw}"
+                "malformed id (lowercase letters, digits, and -, at most 40 characters): {raw}"
             )))
         }
     }
@@ -54,7 +54,7 @@ impl fmt::Display for Id {
     }
 }
 
-/// 封筒の id: 16 バイトの乱数の 16 進 (32 文字)
+/// Envelope id: 16 random bytes as hex (32 characters).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct EnvelopeId(String);
@@ -80,7 +80,7 @@ impl TryFrom<String> for EnvelopeId {
         if is_valid {
             Ok(Self(raw))
         } else {
-            Err(IdError(format!("封筒の id の形が違う: {raw}")))
+            Err(IdError(format!("malformed envelope id: {raw}")))
         }
     }
 }
