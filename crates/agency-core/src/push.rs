@@ -3,7 +3,7 @@
 //! Only the team label and the request title leave the node.
 use crate::error::{Error, Result};
 use crate::node::Node;
-use crate::views::runtime_view;
+use crate::views::{mine, runtime_view, Reader};
 use agency_proto::client::{PushToken, PushTokenInput, PushTokenList};
 use agency_proto::view::Request;
 use agency_proto::{Id, OrgDefinition, Timestamp};
@@ -23,6 +23,9 @@ pub struct Notice {
     pub org: Id,
     pub team: Id,
     pub request: String,
+    /// How many requests are the owner's to decide across all their teams when this is sent, this one
+    /// included: the app's badge.
+    pub badge: u32,
 }
 
 impl Notice {
@@ -126,39 +129,42 @@ fn waiting(org: &Id, team: &Id, label: &str, request: &Request) -> Waiting {
             org: org.clone(),
             team: team.clone(),
             request: request.id.clone(),
+            badge: 0,
         },
     }
 }
 
-/// Requests addressed to the owner in one team: through the hosted-team configuration for a team on
-/// this node, and through the owner's runtime name (`viewer`) for a replica.
+/// Requests that are the owner's to decide in one team, by the same rule as `TeamSnapshot.mine`.
 async fn waiting_in(node: &Node, definition: &OrgDefinition, team: &Id) -> Vec<Waiting> {
     let org = &definition.org;
     let Some(person) = definition.member(&node.account()) else {
         return vec![];
     };
-    if let Some(hosted) = node.hosted(org, team) {
+    let (view, mine) = if let Some(hosted) = node.hosted(org, team) {
         let Ok(view) = runtime_view(node, &hosted).await else {
             return vec![];
         };
-        let mine = view
-            .requests
-            .iter()
-            .filter(|request| hosted.addressee(request.to.as_deref()) == &person.id);
-        return mine
-            .map(|request| waiting(org, team, &view.label, request))
-            .collect();
-    }
-    let replica = node.store().load_replica(org, team).unwrap_or_default();
-    let (Some(view), Some(viewer)) = (replica.view, replica.viewer) else {
-        return vec![];
+        let reader = Reader::Hosted {
+            hosted: &hosted,
+            person: &person.id,
+        };
+        let mine = mine(&view, &reader);
+        (view, mine)
+    } else {
+        let replica = node.store().load_replica(org, team).unwrap_or_default();
+        let Some(view) = replica.view else {
+            return vec![];
+        };
+        let reader = Reader::Remote {
+            viewer: replica.viewer.as_deref(),
+        };
+        let mine = mine(&view, &reader);
+        (view, mine)
     };
-    let is_mine = |request: &&Request| match request.to.as_deref() {
-        Some(to) => to == viewer,
-        None => viewer == "owner",
-    };
-    let mine = view.requests.iter().filter(is_mine);
-    mine.map(|request| waiting(org, team, &view.label, request))
+    let requests = view.requests.iter();
+    requests
+        .filter(|request| mine.contains(&request.id))
+        .map(|request| waiting(org, team, &view.label, request))
         .collect()
 }
 
@@ -209,9 +215,17 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         node.store().save_notified(&keys)?;
         return Ok(Pass::default());
     };
+    let badge = u32::try_from(waiting.len()).unwrap_or(u32::MAX);
     let fresh: Vec<Waiting> = waiting
         .into_iter()
         .filter(|one| !notified.contains(&one.key))
+        .map(|one| Waiting {
+            notice: Notice {
+                badge,
+                ..one.notice
+            },
+            ..one
+        })
         .collect();
     let mut pass = Pass::default();
     for one in fresh {

@@ -139,6 +139,7 @@ async fn each_new_request_for_the_owner_is_notified_once() {
         ),
         ("app", "Ship it?", "r-2")
     );
+    assert_eq!(notice.badge, 2, "r-1 and r-2 wait for alice");
     assert_eq!(
         (notice.org.clone(), notice.team.clone()),
         (id("acme"), id("app"))
@@ -230,4 +231,5 @@ async fn a_member_is_notified_of_requests_on_another_node_addressed_to_them() {
     );
     let sent = bob.notifier.0.lock().unwrap().sent.clone();
     assert!(sent.iter().any(|(_, notice)| notice.request == "r-3"));
+    assert!(sent.iter().all(|(_, notice)| notice.badge == 3));
 }

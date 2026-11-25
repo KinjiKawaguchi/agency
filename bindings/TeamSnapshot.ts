@@ -5,4 +5,9 @@ import type { TeamView } from "./TeamView.js";
 /**
  * A team's view as the client needs it: the view, who the viewer is in it, and how fresh it is.
  */
-export type TeamSnapshot = { view: TeamView, viewer?: string, source: SnapshotSource, };
+export type TeamSnapshot = { view: TeamView, viewer?: string, 
+/**
+ * The ids of the requests that are the viewer's to decide, by the rule in "Requests"
+ * (docs/protocol.md). Clients use this instead of working it out from `to`.
+ */
+mine?: Array<string>, source: SnapshotSource, };
