@@ -14,4 +14,4 @@ mine: Array<string>,
 /**
  * The `id`s of the team's people whose `waitingOn` is the viewer (see "People" in docs/protocol.md).
  */
-waitingOnViewer?: Array<string>, source: SnapshotSource, };
+waitingOnViewer: Array<string>, source: SnapshotSource, };
