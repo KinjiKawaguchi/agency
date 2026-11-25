@@ -1,35 +1,48 @@
-import { createMockNode, MOCK_TOKEN } from './node'
+import { buildEnvelope, newEnvelopeId, signEnvelope } from '../device/envelope'
+import { createTestNode, TEST_DEVICE, TEST_DEVICE_ID } from '../test/testDevice'
+import { MOCK_TOKEN, createMockNode } from './node'
 
-const BODY = JSON.stringify({ kind: 'answer', target: 'r-20261124-113000-c3d4', text: 'Go.', choice: 'approve' })
+const ANSWER = { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: 'A request', choice: 'approve', text: 'Go.' } as const
 
-const post = (headers: Record<string, string>) =>
-  new Request('http://mock.local/api/orgs/acme/teams/app/decisions', { method: 'POST', headers, body: BODY })
+async function body(): Promise<string> {
+  const envelope = buildEnvelope({ answer: ANSWER, account: 'alice', id: newEnvelopeId(), at: new Date() })
+  return JSON.stringify({ envelope: await signEnvelope(TEST_DEVICE, TEST_DEVICE_ID, envelope) })
+}
+
+const post = async (headers: Record<string, string>) =>
+  new Request('http://mock.local/api/orgs/acme/teams/app/envelopes', { method: 'POST', headers, body: await body() })
 
 describe('mock node writes', () => {
-  it('accepts a decision with the page token and a JSON body', async () => {
-    const node = createMockNode()
-    const reply = await node.handle(post({ 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN }))
+  it('accepts a signed decision with the page token and a JSON body', async () => {
+    const node = createTestNode()
+    const reply = await node.handle(await post({ 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN }))
     expect(reply.status).toBe(200)
     expect(await reply.json()).toEqual({ outcome: 'applied' })
   })
 
   it('refuses a decision without the token, and does not apply it', async () => {
-    const node = createMockNode()
-    const reply = await node.handle(post({ 'content-type': 'application/json' }))
+    const node = createTestNode()
+    const reply = await node.handle(await post({ 'content-type': 'application/json' }))
     expect(reply.status).toBe(403)
     expect(node.decisions()).toEqual([])
   })
 
   it('refuses a decision with the wrong token', async () => {
-    const node = createMockNode()
-    expect((await node.handle(post({ 'content-type': 'application/json', 'x-agency-token': 'guess' }))).status).toBe(403)
+    const node = createTestNode()
+    expect((await node.handle(await post({ 'content-type': 'application/json', 'x-agency-token': 'guess' }))).status).toBe(403)
     expect(node.decisions()).toEqual([])
   })
 
   it('refuses a body that is not declared as JSON', async () => {
-    const node = createMockNode()
-    expect((await node.handle(post({ 'content-type': 'text/plain', 'x-agency-token': MOCK_TOKEN }))).status).toBe(415)
+    const node = createTestNode()
+    expect((await node.handle(await post({ 'content-type': 'text/plain', 'x-agency-token': MOCK_TOKEN }))).status).toBe(415)
     expect(node.decisions()).toEqual([])
+  })
+
+  it('no longer takes a decision it would have to sign itself', async () => {
+    const node = createMockNode()
+    const reply = await node.handle(new Request('http://mock.local/api/orgs/acme/teams/app/decisions', { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN }, body: '{}' }))
+    expect(reply.status).toBe(404)
   })
 })
 

@@ -1,14 +1,14 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
-import { createMockNode } from '../mock/node'
+import { createTestNode } from '../test/testDevice'
 import { renderApp } from '../test/render'
 
 const AWAY = { hostname: () => 'agency.example.test', isOnline: () => true }
 
 /** A client whose calls fail the way a redirect to another origin does, while `state.isExpired` is set. */
 function clientWithSignIn(page = AWAY) {
-  const node = createMockNode()
+  const node = createTestNode()
   const state = { isExpired: false }
   const client = createApiClient((request) => (state.isExpired ? Promise.reject(new TypeError('Failed to fetch')) : node.handle(request)), page)
   return { client, state, node }

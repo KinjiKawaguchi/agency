@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { resetNode, trackErrors } from './helpers'
+import { enrolBrowser, resetNode, trackErrors } from './helpers'
 
 const PROPOSAL = 'Add a second frontend agent'
 const QUESTION = 'Which database should the app use in production?'
@@ -26,6 +26,7 @@ test('opens the most urgent request first, from a page that carries the node’s
 })
 
 test('decides a proposal: picks an option, sends it, sees the stamp and the outcome, and the node has it', async ({ page, request }) => {
+  await enrolBrowser(page, request)
   await page.goto('/desk')
   const paper = page.getByRole('article')
   await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()
@@ -50,6 +51,7 @@ test('decides a proposal: picks an option, sends it, sees the stamp and the outc
 })
 
 test('works from the keyboard: j and k move, a number picks, Control+Enter sends', async ({ page, request }) => {
+  await enrolBrowser(page, request)
   await page.goto('/desk')
   await expect(page.getByRole('article').getByRole('heading', { level: 2 })).toHaveText(PROPOSAL)
   await page.keyboard.press('j')
@@ -64,6 +66,7 @@ test('works from the keyboard: j and k move, a number picks, Control+Enter sends
 })
 
 test('asks for an answer before sending anything', async ({ page, request }) => {
+  await enrolBrowser(page, request)
   await page.goto('/desk')
   await page.getByRole('article').getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByText('Pick an option or write an answer first.')).toBeVisible()
@@ -73,6 +76,7 @@ test('asks for an answer before sending anything', async ({ page, request }) => 
 
 test('reports a decision the node queued for later', async ({ page, request }) => {
   await resetNode(request, { outcome: 'queued' })
+  await enrolBrowser(page, request)
   await page.goto('/desk')
   await page.getByRole('article').locator('label.choice').filter({ hasText: 'Approve' }).click()
   await page.getByRole('button', { name: 'Approve with “Approve”' }).click()
@@ -80,7 +84,8 @@ test('reports a decision the node queued for later', async ({ page, request }) =
   await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Waiting to send')
 })
 
-test('answers a pending decision in free text', async ({ page }) => {
+test('answers a pending decision in free text', async ({ page, request }) => {
+  await enrolBrowser(page, request)
   await page.goto('/desk')
   await page.getByRole('option', { name: /Drop support for the old export format/ }).click()
   await page.getByRole('textbox', { name: 'Notes' }).fill('Drop it in the next release.')

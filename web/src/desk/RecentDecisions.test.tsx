@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMockNode, MOCK_TOKEN } from '../mock/node'
+import { createApiClient } from '../api/client'
 import { renderApp } from '../test/render'
+import { createTestNode, decideAsTestDevice } from '../test/testDevice'
 
 const recent = async () => within(await screen.findByRole('region', { name: /Recently decided/ }))
 
@@ -28,10 +29,10 @@ describe('recently decided', () => {
     ['is a few seconds away', 5.5 * 60_000, 'Tried 2 times. Next try in under a minute.'],
     ['has passed', 7 * 60_000, 'Tried 2 times. Trying again now.'],
   ])('says so when the next try %s', async (_when, later, expected) => {
-    const node = createMockNode()
+    const node = createTestNode()
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + later })
     try {
-      renderApp({ node })
+      renderApp({ node, enrolled: true })
       const [queued] = (await recent()).getAllByRole('listitem')
       expect(queued).toHaveTextContent(expected)
     } finally {
@@ -71,20 +72,13 @@ describe('recently decided', () => {
   })
 
   it('folds the older decisions behind a button', async () => {
-    const node = createMockNode()
+    const node = createTestNode()
+    const api = createApiClient((request) => node.handle(request))
     for (const target of ['r-20261124-110000-a1b2', 'r-20261124-113000-c3d4', 'app#14']) {
-      const kind = target.startsWith('app#') ? 'judge' : 'answer'
-      const sent = await node.handle(
-        new Request('http://mock.local/api/orgs/acme/teams/app/decisions', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN },
-          body: JSON.stringify({ kind, target, text: 'Done.' }),
-        }),
-      )
-      expect(sent.status).toBe(200)
+      await decideAsTestDevice(api, { org: 'acme', team: 'app', answerWith: { kind: target.startsWith('app#') ? 'judge' : 'answer', target }, title: 'Earlier', text: 'Done.' })
     }
     const user = userEvent.setup()
-    renderApp({ node })
+    renderApp({ node, enrolled: true })
     const list = await recent()
     expect(await list.findAllByRole('listitem')).toHaveLength(6)
     await user.click(list.getByRole('button', { name: 'Show 1 more' }))

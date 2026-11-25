@@ -245,6 +245,11 @@ export const ja: Messages = {
       sent: (drafter) => `送りました。${drafter} に届きます。`,
       queued: '保存しました。チームのノードが休止中なので、起動したときに届きます。',
       sendFailed: (reason) => `送れませんでした: ${reason}`,
+      cannotSign: {
+        prompt: '決めるには、この端末を追加してください。書いた内容は残してあります。',
+        add: 'この端末を追加',
+        unsupported: 'このブラウザでは、決定に署名する鍵を作れません。最新の Chrome、Safari、Firefox で、HTTPS で開いてください。書いた内容は残してあります。',
+      },
       refused: (reason) => `チームのノードが決定を受け付けませんでした: ${reason}`,
       thread: (name, choice) => (choice === null ? name : `${name} は「${choice}」を選びました`),
     },

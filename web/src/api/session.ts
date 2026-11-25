@@ -12,7 +12,7 @@ export class SignInExpiredError extends Error {
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 
-export const isLoopbackHost = (hostname: string): boolean => LOOPBACK_HOSTS.has(hostname) || hostname.endsWith('.localhost')
+export const isLoopbackHost = (hostname: string): boolean => LOOPBACK_HOSTS.has(hostname)
 
 /**
  * A call that failed without any HTTP answer, from a page that was not loaded from this machine, is most

@@ -24,7 +24,7 @@ async function otherDeviceAsks(node: ReturnType<typeof createMockNode>, label: s
 
 describe('devices screen', () => {
   it('shows this device’s pairing code, and offers to add it while the node does not know it', async () => {
-    renderApp({ path: '/devices' })
+    renderApp({ path: '/devices', enrolled: false })
     expect((await screen.findByLabelText('Pairing code of this device')).textContent).toMatch(CODE)
     expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
     expect(screen.getByText(/Until you do, the node signs them for you/)).toBeInTheDocument()
@@ -157,7 +157,7 @@ describe('devices screen', () => {
 
   it('tells a first-time person what to do while waiting: run the command on the node’s computer and compare the code', async () => {
     const user = userEvent.setup()
-    renderApp({ path: '/devices' })
+    renderApp({ path: '/devices', enrolled: false })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
     const steps = await screen.findAllByRole('listitem')
     expect(steps.map((one) => one.textContent)).toEqual([
@@ -171,10 +171,11 @@ describe('devices screen', () => {
 describe('the prompt to add this device', () => {
   it('leads from the first screen to adding it, in one sentence that says why', async () => {
     const user = userEvent.setup()
-    renderApp({ path: '/desk' })
+    renderApp({ path: '/desk', enrolled: false })
     const notice = (await screen.findByText('Add this device so your decisions are signed with a key that never leaves it.')).closest('.device-notice')
     expect(notice).not.toBeNull()
-    await user.click(screen.getByRole('link', { name: 'Add this device' }))
+    const [fromNotice] = screen.getAllByRole('link', { name: 'Add this device' })
+    await user.click(fromNotice as HTMLElement)
     expect(await screen.findByRole('heading', { level: 1, name: 'Devices' })).toBeInTheDocument()
     expect(screen.queryByText('Add this device so your decisions are signed with a key that never leaves it.', { selector: '.device-notice p' })).not.toBeInTheDocument()
   })

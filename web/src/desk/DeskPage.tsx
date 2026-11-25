@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
-import { useDecide } from '../device/useDecide'
+import { CannotSignError, useDecide, useSigningState } from '../device/useDecide'
 import { SignInExpiredError } from '../api/session'
 import type { Messages } from '../i18n/en'
 import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
@@ -30,6 +30,7 @@ function chosenOf(item: DeskItem, draft: Draft): { choice?: string; choiceLabel?
 
 function sendFailureText(t: Messages, failure: unknown, reason: string): string {
   if (failure instanceof SignInExpiredError) return t.app.signInExpired.message
+  if (failure instanceof CannotSignError) return failure.reason === 'unsupported' ? t.desk.paper.cannotSign.unsupported : t.desk.paper.cannotSign.prompt
   return failure instanceof ApiError && failure.status === 409 ? t.desk.paper.refused(reason) : t.desk.paper.sendFailed(reason)
 }
 
@@ -65,6 +66,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   const items = useMemo(() => openItems(teams), [teams])
   const selectedKey = resolveSelection(items, requested)
   const current = items.find((item) => item.key === selectedKey)
+  const signing = useSigningState(current?.view.org ?? '')
 
   const send = useCallback(
     async (item: DeskItem) => {
@@ -129,6 +131,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
             draft={draftOf(drafts, current.key)}
             sealedAt={sealed.get(current.key) ?? null}
             isSending={sending.has(current.key)}
+            signing={signing}
             onChange={(change: Partial<Draft>) => setDrafts((now) => withDraft(now, current.key, change))}
             onSend={() => void send(current)}
           />

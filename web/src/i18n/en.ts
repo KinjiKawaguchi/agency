@@ -249,6 +249,11 @@ export const en = {
       sent: (drafter: string) => `Sent. ${drafter} will get it.`,
       queued: 'Saved. The team’s node is asleep, so it will be delivered when it wakes.',
       sendFailed: (reason: string) => `Could not send: ${reason}`,
+      cannotSign: {
+        prompt: 'Add this device to decide. What you wrote is kept.',
+        add: 'Add this device',
+        unsupported: 'This browser cannot make the key that signs decisions. Open the page in a current Chrome, Safari, or Firefox, over HTTPS. What you wrote is kept.',
+      },
       refused: (reason: string) => `The team’s node refused the decision: ${reason}`,
       thread: (name: string, choice: string | null) => (choice === null ? name : `${name} chose “${choice}”`),
     },
