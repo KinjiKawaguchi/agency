@@ -97,6 +97,14 @@
     "digest": "4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4",
     "signature": "H/brmJtPumtrLHcvjdB26ERB+v3wceMYcSGQ8QEGLqdlAlZ+68nJuZPWMe/a3/prmxFt6xJMeMapmbG9vOe3DA=="
   },
+  "p256Device": {
+    "commentSignature": "SMoU0WHlWHXyP/vft+7CVpvBD1y9qj2dU8ygGkvrrie/DEQc4k4+XpevDimTxs4Itj9qt8RDHaluV0WBPO/6Gw==",
+    "deviceId": "d-a652124afda7",
+    "fingerprint": "a652124afda7253fc85b3d3209972d18",
+    "pairingCode": "a652-124a-fda7",
+    "privateKey": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+    "publicKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
+  },
   "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
   "seed": "0707070707070707070707070707070707070707070707070707070707070707"
 }
