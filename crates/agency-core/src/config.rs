@@ -63,6 +63,10 @@ impl RuntimeCommand {
 pub struct TrustedOrg {
     pub org: Id,
     pub root_fingerprint: String,
+    /// The origin of the node that holds the root key, where device changes go. Recorded when joining
+    /// through an invite, which only the root's node creates; absent for orgs this node is root of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_node: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -134,7 +138,23 @@ impl NodeConfig {
         self.trusted.push(TrustedOrg {
             org,
             root_fingerprint,
+            root_node: None,
         });
+    }
+
+    /// Joins `trust` with where the root's node is.
+    pub fn trust_with_root_node(&mut self, org: Id, root_fingerprint: String, root_node: String) {
+        self.trust(org, root_fingerprint);
+        if let Some(last) = self.trusted.last_mut() {
+            last.root_node = Some(root_node);
+        }
+    }
+
+    pub fn root_node(&self, org: &Id) -> Option<&str> {
+        self.trusted
+            .iter()
+            .find(|one| &one.org == org)
+            .and_then(|one| one.root_node.as_deref())
     }
 }
 

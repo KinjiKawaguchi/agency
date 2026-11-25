@@ -2,10 +2,12 @@
 //! see a half-written file. The account key file and the directory are readable only by their owner.
 use agency_core::config::NodeConfig;
 use agency_core::decisions::DecisionRecord;
+use agency_core::devices::DeviceRequestRecord;
 use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::ports::{
-    AppliedLog, ConfigStore, DecisionLogStore, InviteStore, OrgStore, OutboxStore, ReplicaStore,
+    AppliedLog, ConfigStore, DecisionLogStore, DeviceRequestStore, InviteStore, OrgStore,
+    OutboxStore, ReplicaStore,
 };
 use agency_core::views::Replica;
 use agency_core::{Error, Result};
@@ -93,6 +95,38 @@ impl DataDir {
         let path = self.key_path();
         fs::write(&path, key.encoded() + "\n")
             .and_then(|()| fs::set_permissions(&path, fs::Permissions::from_mode(0o600)))
+            .map_err(|error| io_error(&path, error))?;
+        Ok(key)
+    }
+
+    fn device_key_path(&self) -> PathBuf {
+        self.0.join("cli-device.key")
+    }
+
+    /// The CLI device's key, if this node has one.
+    pub fn load_device_key(&self) -> Result<Option<AccountKey>> {
+        let path = self.device_key_path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        let raw = fs::read_to_string(&path).map_err(|error| io_error(&path, error))?;
+        AccountKey::from_encoded(&raw)
+            .map(Some)
+            .ok_or_else(|| Error::internal("the CLI device key file is malformed"))
+    }
+
+    /// Makes the CLI device's key. The file is created readable only by its owner, and never replaced.
+    pub fn create_device_key(&self) -> Result<AccountKey> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let key = AccountKey::generate();
+        let path = self.device_key_path();
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .and_then(|mut file| file.write_all((key.encoded() + "\n").as_bytes()))
             .map_err(|error| io_error(&path, error))?;
         Ok(key)
     }
@@ -236,5 +270,15 @@ impl DecisionLogStore for DataDir {
         let records: Vec<DecisionRecord> =
             read_json(&self.0.join("decisions.json")).unwrap_or_default();
         records.into_iter().rev().take(limit).collect()
+    }
+}
+
+impl DeviceRequestStore for DataDir {
+    fn device_requests(&self) -> Vec<DeviceRequestRecord> {
+        read_json(&self.0.join("device-requests.json")).unwrap_or_default()
+    }
+
+    fn save_device_requests(&self, requests: &[DeviceRequestRecord]) -> Result<()> {
+        write_json(&self.0.join("device-requests.json"), requests)
     }
 }

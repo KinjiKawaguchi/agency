@@ -1,10 +1,13 @@
-//! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, decides, and serves.
+//! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod device_cli;
+
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
-use agency_core::decisions::{decide, Decided};
+use agency_core::decisions::Decided;
 use agency_core::invites::join;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::ports::ConfigStore;
+use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
 use agency_node::Overrides;
@@ -12,6 +15,7 @@ use agency_proto::org::{is_node_origin, TeamPlace};
 use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use device_cli::{device_add, CliDevice};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -87,7 +91,15 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Answers a request (applied directly to a team on this node; signed and delivered to a team on another node)
+    /// Adds a device that asked through the web client, after you compare its pairing code. With --cli,
+    /// adds this terminal's own device, which `decide` signs with. The account key adds only your first
+    /// device; later ones are added from one of your devices.
+    DeviceAdd {
+        /// Adds the CLI device (its key stays in the data directory)
+        #[arg(long)]
+        cli: bool,
+    },
+    /// Answers a request, signed with the CLI device (applied directly to a team on this node; delivered to a team on another node)
     Decide {
         #[arg(long)]
         org: String,
@@ -193,6 +205,22 @@ fn status(node: &Node) {
                 .join(", ")
         );
     }
+    for doc in node.store().orgs() {
+        let devices = doc
+            .body
+            .member(&config.account.id)
+            .map(|person| person.devices.clone())
+            .unwrap_or_default();
+        for device in devices {
+            println!(
+                "Device in {}: {} ({}), pairing code {}",
+                doc.body.org,
+                device.label,
+                device.id,
+                device.public_key.pairing_code()
+            );
+        }
+    }
     for team in &config.teams {
         println!(
             "Team on this node: {}/{} (owner {}) runs {}",
@@ -272,6 +300,7 @@ async fn run(cli: Cli) -> Result<()> {
     {
         return init(&data, account, label, url, listen, scrum.clone());
     }
+    let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
     match cli.command {
@@ -360,20 +389,23 @@ async fn run(cli: Cli) -> Result<()> {
             choice,
             text,
         } => {
-            let outcome = decide(
+            let device = CliDevice::load(&cli_data)?;
+            let outcome = decide_with_device(
                 &node,
+                device.signer(),
                 &id(&org)?,
                 &id(&team)?,
                 EnvelopeKind::Answer,
                 request,
                 Payload { text, choice },
             )
-            .await?;
+            .await
+            .context("is the CLI device added in this org? `agency status` lists your devices")?;
             println!(
                 "{}",
                 match outcome {
                     Decided::Applied => "Applied to the team on this node".to_owned(),
-                    Decided::Delivered => "Signed and delivered to the team's node".to_owned(),
+                    Decided::Delivered => "Delivered to the team's node".to_owned(),
                     Decided::Queued(why) => format!(
                         "The team's node is unreachable; the decision waits in the outbox ({why})"
                     ),
@@ -381,6 +413,7 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             );
         }
+        Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
             refresh(&node).await?;
             let outcomes = deliver_due(&node).await?;

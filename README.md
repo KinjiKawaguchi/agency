@@ -55,8 +55,16 @@ Join from an invite link and answer (on the invited person's node):
 agency --dir ~/.agency init --account bob --label Bob --url https://bob.example
 agency --dir ~/.agency join 'agency:join?node=...&org=acme&fp=...&code=...'
 agency --dir ~/.agency sync
+agency --dir ~/.agency device-add --cli
 agency --dir ~/.agency decide --org acme --team app --request r-20260101-000000-abcd --choice a
 ```
+
+The CLI signs decisions with a device key, never with the node's account key.
+`device-add --cli` adds this terminal's own device, which `decide` signs with.
+To add a phone or a browser, ask to add it from the web client.
+For your first device, run `agency device-add` on the node's terminal, check that the pairing code matches, and confirm.
+After that, add more devices from one you already have. Once the CLI device is added, `agency device-add` on the terminal adds them too.
+Add the CLI device first (`device-add --cli`), so you can add the rest from the terminal.
 
 An invite link carries the fingerprint of the org's root key.
 Before joining, the node checks that the key in the org definition the inviting node returns matches that fingerprint, and does not send a join request if it does not.
@@ -81,7 +89,7 @@ For each team it hosts, it runs the team's runtime command and speaks agency-run
 
 ## Not yet
 
-- Keys held by browsers and devices: today the node holds the account key (agency#19).
+- Signing in the web client: until it signs with its device key, decisions made in the web client are still signed by the node (agency#19).
 - Department heads signing their own department's definition: today only the org's root key signs.
 - Flows for revoking a lost key or a person who leaves.
 

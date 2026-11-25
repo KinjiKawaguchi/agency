@@ -30,6 +30,12 @@ impl PublicKey {
         [&fingerprint[0..4], &fingerprint[4..8], &fingerprint[8..12]].join("-")
     }
 
+    /// The id a client gives the device that holds this key: `d-` and the pairing code without dashes.
+    pub fn device_id(&self) -> crate::ids::Id {
+        crate::ids::Id::parse(&format!("d-{}", &self.fingerprint()[..12]))
+            .expect("d- and 12 hex characters is an id")
+    }
+
     pub fn verify(&self, message: &[u8], signature: &str) -> bool {
         let Ok(bytes) = STANDARD.decode(signature) else {
             return false;

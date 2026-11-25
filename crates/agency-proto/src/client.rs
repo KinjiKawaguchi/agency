@@ -1,7 +1,10 @@
 //! The Client API between a client (web, iOS, desktop) and its home node (`/api`). See "Client API" in
 //! docs/protocol.md. Every `Option` is omitted from JSON when absent.
-use crate::envelope::EnvelopeKind;
+use crate::envelope::{Envelope, EnvelopeKind};
 use crate::ids::Id;
+use crate::keys::PublicKey;
+use crate::org::Device;
+use crate::signed::Signed;
 use crate::timestamp::Timestamp;
 use crate::view::TeamView;
 use serde::{Deserialize, Serialize};
@@ -237,4 +240,79 @@ pub enum DecisionState {
     },
     /// The team's node refused it; it will not be retried.
     Refused { message: String },
+}
+
+/// A decision signed by one of the account's devices, with notes for the decision log.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, optional_fields)]
+pub struct SignedDecisionInput {
+    pub envelope: Signed<Envelope>,
+    /// As in `DecisionInput`: kept in the decision log only, never signed or sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice_label: Option<String>,
+}
+
+/// A new device asking to be added. One of the account's devices (or, for the first device, the node's
+/// terminal) adds it after the person compares the pairing codes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct DeviceRequestInput {
+    pub label: String,
+    pub public_key: PublicKey,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DeviceRequest {
+    pub label: String,
+    pub public_key: PublicKey,
+    /// The id the device gets when it is added: `d-` and the pairing code without dashes.
+    pub device_id: Id,
+    pub pairing_code: String,
+    pub requested_at: Timestamp,
+}
+
+/// The account's devices in each org it belongs to, and the devices waiting to be added.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DeviceList {
+    pub orgs: Vec<OrgDevices>,
+    pub requests: Vec<DeviceRequest>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OrgDevices {
+    pub org: Id,
+    pub devices: Vec<Device>,
+}
+
+/// Where a device change went.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct DeviceChangeResult {
+    pub outcome: DeviceChangeOutcome,
+    /// Why a change was queued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum DeviceChangeOutcome {
+    /// This node holds the org's root key and wrote the next version.
+    Applied,
+    /// The root's node wrote the next version; this node has it.
+    Delivered,
+    /// The root's node could not be reached; the change waits in the outbox.
+    Queued,
 }

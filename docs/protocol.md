@@ -68,8 +68,12 @@ A device change adds or removes one of a person's devices:
 ```
 
 - Who signs: while the person has no devices, only their account key, and only to add the first device. After that, only one of their devices (named by `signer`), never the account key.
-- The person's home node relays the change to the org's root node. The root node checks the signature, that `account` is a member, and that `at` is at most 7 days old and at most 5 minutes ahead, then applies the change and checks the result like any version. It writes the result as the next org definition version. Like every version, that one is signed by the root key and reaches the other nodes as usual.
+- The person's home node checks the change against its copy of the definition and relays it to the org's root node with `POST /fed/v1/orgs/<org>/devices`. It knows where the root's node is from the invite it joined with, which only the root's node creates. If that node can't be reached, the change waits in the outbox. The root's node answers with the version it wrote, and the home node keeps it. The root node checks the signature, that `account` is a member, and that `at` is at most 7 days old and at most 5 minutes ahead, then applies the change and checks the result like any version. It writes the result as the next org definition version. Like every version, that one is signed by the root key and reaches the other nodes as usual.
 - Removing a device also adds its key to `revoked`, so a lost device can never sign again, under any id. A removal takes effect on each node as soon as it holds the new version, including for envelopes still waiting in outboxes.
+- Adding a device works like this:
+  1. The new device asks its home node to add it, through the Client API. The node keeps the request for an hour, and at most 10 requests.
+  2. The person compares pairing codes. For the first device, the node's terminal shows the code (`agency device-add`) and signs the change with the account key. No Client API route signs with the account key. For later devices, one of the person's devices lists the request and signs the change. That device can be a client, or the CLI device on the node's terminal once it has been added.
+  3. A device's id is `d-` followed by its pairing code without dashes.
 - Pairing: a new device shows its pairing code, the first 12 hex characters of its key's fingerprint in groups of 4 (`dbc2-9825-1c51`). The person checks that the device that signs the add shows the same code for the key it is adding. The code has 48 bits, so a node that relays the key cannot find another key with the same code while the person is pairing.
 
 ## Signed reads (kind `read`)
@@ -96,7 +100,8 @@ A non-member gets 404, so it cannot tell whether the team exists.
 - `signer` is the id of one of the deciding person's devices. The signature is checked with that device's key, found under the person whose `account` is the envelope's `account`. A signature by an account key is refused.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, and that its id has not been applied before. A repeated envelope is not applied again; the node answers that it received it.
 - The sending node keeps an envelope it could not deliver in its outbox and retries with backoff (15 s, 30 s, 1 min, 2 min, 5 min, then every 5 min). It does not retry when the receiver refuses with a 4xx (408 and 429 are retried).
-- Transition: the types, this text, and the test vectors define device signing. Nodes switch to it in the node part of agency#19. Until then, the home node still signs envelopes for its owner with the account key and accepts envelopes signed that way.
+- Nodes accept envelopes signed by a device of the deciding member. The CLI signs with its CLI device, and clients send device-signed envelopes through `POST /api/orgs/<org>/teams/<team>/envelopes`. The home node checks them as the team's node will, and never signs them itself.
+- Transition (until the web client signs, agency#19): `POST /api/orgs/<org>/teams/<team>/decisions` still has the home node sign with the account key, and team nodes still accept envelopes signed that way.
 
 ## Invites and joining (kind `join`)
 
@@ -112,6 +117,7 @@ A non-member gets 404, so it cannot tell whether the team exists.
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
+| POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
 | GET | `/fed/v1/teams/<org>/<team>/usage?days=<n>` | A signed read of the path with its query, and membership (answers `TokenUsage`; 400 for a range outside 1 to 90; 404 when the team's runtime does not report usage) |
 | POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
@@ -220,6 +226,10 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`, and optionally the request's `title` and, with `choice`, the chosen option's `choiceLabel`, each trimmed and at most 200 characters. These two are kept in the decision log for people to read and are never signed or sent to another node). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
+| POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` signed by one of the account's devices, plus the optional `title` and `choiceLabel` as in `DecisionInput`. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies or sends it like a decision. Answer `DecisionResult` |
+| GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
+| POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
+| POST | `/api/devices/changes` | Body `Signed<DeviceChange>` for the account, signed by one of its devices. Checked here, then written by the root's node. Answer `DeviceChangeResult`: `applied` (this node holds the root key), `delivered`, or `queued` (with `message`). A refusal by the root's node is 409 |
 | GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `choiceLabel`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
 
 Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
