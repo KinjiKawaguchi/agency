@@ -18,7 +18,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use device_cli::{device_add, CliDevice};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -147,6 +147,23 @@ fn data_dir(cli: &Cli) -> DataDir {
 
 fn id(raw: &str) -> Result<Id> {
     Id::parse(raw).map_err(anyhow::Error::msg)
+}
+
+/// `path` made absolute against the current directory, so it means the same when the node runs from
+/// another directory (a launchd service runs from `/`).
+fn absolute(path: &Path) -> Result<PathBuf> {
+    std::path::absolute(path).with_context(|| format!("cannot make {} absolute", path.display()))
+}
+
+/// The harness CLI to configure: a bare name stays a name looked up on the node's `PATH`; a path is
+/// made absolute.
+fn harness_command(scrum: &Path) -> Result<PathBuf> {
+    let is_bare_name = !scrum.is_absolute() && scrum.components().count() == 1;
+    if is_bare_name {
+        Ok(scrum.to_owned())
+    } else {
+        absolute(scrum)
+    }
 }
 
 fn init(
@@ -332,7 +349,7 @@ async fn run(cli: Cli) -> Result<()> {
         scrum,
     } = &cli.command
     {
-        return init(&data, account, label, url, listen, scrum.clone());
+        return init(&data, account, label, url, listen, harness_command(scrum)?);
     }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
@@ -380,7 +397,7 @@ async fn run(cli: Cli) -> Result<()> {
                     .map(id)
                     .transpose()?
                     .unwrap_or_else(|| node.account());
-                let runtime = RuntimeCommand::scrum(&node.config().scrum, &state_dir);
+                let runtime = RuntimeCommand::scrum(&node.config().scrum, &absolute(&state_dir)?);
                 node.update_config(|config| {
                     config.teams.push(HostedTeam {
                         org: org.clone(),
@@ -478,5 +495,33 @@ async fn main() {
     if let Err(error) = run(Cli::parse()).await {
         eprintln!("agency: {error:#}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configured_paths_do_not_depend_on_the_directory_the_node_runs_from() {
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(absolute(Path::new("state")).unwrap(), here.join("state"));
+        assert_eq!(
+            harness_command(Path::new("bin/scrum")).unwrap(),
+            here.join("bin/scrum")
+        );
+        assert_eq!(
+            harness_command(Path::new("./scrum")).unwrap(),
+            here.join("scrum")
+        );
+        assert_eq!(
+            harness_command(Path::new("scrum")).unwrap(),
+            Path::new("scrum"),
+            "a bare name is looked up on PATH"
+        );
+        assert_eq!(
+            harness_command(Path::new("/opt/scrum")).unwrap(),
+            Path::new("/opt/scrum")
+        );
     }
 }

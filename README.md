@@ -29,6 +29,10 @@ docs/protocol.md       The protocol specification
 testdata/vectors.json  Language-independent test vectors (a key from a fixed seed, canonical JSON, a signature)
 ```
 
+## Install
+
+To install a node on a Mac, run it as a service, and reach it from outside behind Cloudflare Access, see [docs/install.md](docs/install.md) (in Japanese: [docs/install.ja.md](docs/install.ja.md)).
+
 ## Build and test
 
 ```sh
@@ -95,7 +99,9 @@ To notify the owner's iPhone of new requests, add the APNs key Apple issued for 
 
 ```json
 "push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
-``` See "Client API" in docs/protocol.md for what is checked.
+```
+
+See "Client API" in docs/protocol.md for what is checked.
 
 ## iPhone app
 
