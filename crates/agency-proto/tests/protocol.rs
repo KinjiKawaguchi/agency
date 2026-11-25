@@ -3,8 +3,8 @@
 use agency_proto::canonical::canonical_of;
 use agency_proto::org::{verify_genesis, verify_successor, Department, Root, SignedOrg, TeamPlace};
 use agency_proto::{
-    clock, AccountKey, Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, Payload,
-    Person, Role, Signed,
+    clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
+    Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
 };
 
 fn id(raw: &str) -> Id {
@@ -36,6 +36,7 @@ fn genesis(root: &AccountKey) -> SignedOrg {
             public_key: root.public(),
             department: Some(id("dev")),
             role: Role::Member,
+            devices: vec![],
         }],
         teams: vec![TeamPlace {
             id: id("app"),
@@ -73,6 +74,7 @@ fn org_chain_accepts_only_the_next_version_signed_by_the_root() {
             public_key: bob.public(),
             department: Some(id("dev")),
             role: Role::Answerer,
+            devices: vec![],
         })
     });
     assert_eq!(verify_successor(&v1, &v2), Ok(()));
@@ -157,19 +159,42 @@ fn signature_is_bound_to_its_kind() {
     );
 }
 
-/// Test vectors: canonical JSON and signatures of fixed bodies with a key from a fixed seed. Another implementation must produce the same values.
+/// Test vectors: canonical JSON and signatures of fixed bodies with keys from fixed seeds: the account key (seed 7) signs
+/// the org definition and the first device change, and the device key (seed 9) signs the envelope. Another implementation
+/// must produce the same values.
 #[test]
 fn vectors_match_testdata() {
     let key = AccountKey::from_seed([7u8; 32]);
+    let device_key = AccountKey::from_seed([9u8; 32]);
     let mut body = envelope(AT);
     body.id = EnvelopeId::try_from("00112233445566778899aabbccddeeff".to_owned()).unwrap();
-    let signed = Signed::sign(Kind::Envelope, body.clone(), id("alice"), &key).unwrap();
+    let signed = Signed::sign(Kind::Envelope, body.clone(), id("laptop"), &device_key).unwrap();
     let org = genesis(&key);
+    let first_device = DeviceChange {
+        org: id("acme"),
+        account: id("alice"),
+        op: DeviceOp::Add {
+            device: Box::new(Device {
+                id: id("laptop"),
+                label: "Laptop".into(),
+                public_key: device_key.public(),
+                added_at: Timestamp::parse(AT).unwrap(),
+            }),
+        },
+        at: Timestamp::parse(AT).unwrap(),
+    };
+    let change = Signed::sign(Kind::Device, first_device.clone(), id("alice"), &key).unwrap();
     let actual = serde_json::json!({
         "seed": "0707070707070707070707070707070707070707070707070707070707070707",
         "publicKey": key.public().encoded(),
         "fingerprint": key.public().fingerprint(),
-        "envelope": { "canonical": canonical_of(&body).unwrap(), "signature": signed.signature },
+        "device": {
+            "seed": "0909090909090909090909090909090909090909090909090909090909090909",
+            "publicKey": device_key.public().encoded(),
+            "pairingCode": device_key.public().pairing_code(),
+        },
+        "envelope": { "canonical": canonical_of(&body).unwrap(), "signer": "laptop", "signature": signed.signature },
+        "deviceChange": { "canonical": canonical_of(&first_device).unwrap(), "signer": "alice", "signature": change.signature },
         "org": { "canonical": canonical_of(&org.body).unwrap(), "signature": org.signature, "digest": org.digest() },
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");

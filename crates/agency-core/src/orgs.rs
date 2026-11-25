@@ -67,6 +67,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         public_key: public_key.clone(),
         department: None,
         role: Role::Member,
+        devices: vec![],
     };
     let root = Root {
         account,

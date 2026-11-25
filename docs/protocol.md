@@ -25,10 +25,14 @@ To change something, send a signed envelope to its writer.
 ## Keys and signatures
 
 - Keys are Ed25519. A public key is written as its 32 bytes in standard base64 with `=` padding.
+- Three kinds of key, each limited to what it may sign:
+  - The root key, held by the root's node, signs org definition versions.
+  - A person's account key, held by their home node, signs reads, join requests, and that person's first device. It never signs a decision.
+  - A device key, held by one of the person's clients (a browser, a phone, or the CLI) and never by a node, signs decisions and changes to that person's devices.
 - Fingerprint: the first 16 bytes of the SHA-256 of the public key's 32 bytes, as hex (32 characters). Invite links carry it, so the invited node can check that the org's root key is genuine.
-- The signed text is a kind line followed by canonical JSON: `agency/v1/<kind>\n` and then the body's canonical JSON. The kinds are `envelope`, `org`, `join`, and `read`. Because of the kind line, a signature for one kind cannot be reused for another.
+- The signed text is a kind line followed by canonical JSON: `agency/v1/<kind>\n` and then the body's canonical JSON. The kinds are `envelope`, `org`, `join`, `read`, and `device`. Because of the kind line, a signature for one kind cannot be reused for another.
 - Canonical JSON: object keys sorted by bytes, no whitespace, strings escaped as standard JSON, integers only, and fields whose value is null left out.
-- A signed document: `{ "body": <body>, "signer": <account id>, "signature": <base64> }`
+- A signed document: `{ "body": <body>, "signer": <id>, "signature": <base64> }`. `signer` is an account id, or, for a document signed with a device key, that device's id.
 
 ## Org definition (kind `org`)
 
@@ -37,7 +41,8 @@ To change something, send a signed envelope to its writer.
   "org": "acme", "label": "Acme", "version": 3, "prev": "<fingerprint of the previous version>",
   "root": { "account": "alice", "publicKey": "..." },
   "departments": [{ "id": "dev", "label": "Development", "parent": null, "head": "owner" }],
-  "people": [{ "id": "owner", "label": "Alice", "account": "alice", "publicKey": "...", "department": "dev", "role": "member" }],
+  "people": [{ "id": "owner", "label": "Alice", "account": "alice", "publicKey": "...", "department": "dev", "role": "member",
+              "devices": [{ "id": "laptop", "label": "Laptop", "publicKey": "...", "addedAt": "2026-11-24T12:00:00Z" }] }],
   "teams": [{ "id": "app", "label": "app", "department": "dev", "node": "https://alice.example" }],
   "revoked": ["<revoked public key>"],
   "at": "2026-11-24T12:00:00Z"
@@ -48,7 +53,24 @@ To change something, send a signed envelope to its writer.
 - Versions start at 1 and grow by 1. `prev` is the hex SHA-256 (64 characters) of the canonical JSON of the previous signed version. Version 1 has no `prev`.
 - A node accepts only the next version of the one it has: the version is one higher, `prev` is the current version's fingerprint, and it is signed by the current root key. A new root is also signed by the previous root key.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
+- `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per person. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - `role`: `member` (reads and answers) or `answerer` (only answers; in v1 it can read the same as a member).
+
+## Devices (kind `device`)
+
+A device change adds or removes one of a person's devices:
+
+```json
+{ "org": "acme", "account": "bob", "op": "add",
+  "device": { "id": "phone", "label": "Phone", "publicKey": "...", "addedAt": "2026-11-24T12:00:00Z" },
+  "at": "2026-11-24T12:00:00Z" }
+{ "org": "acme", "account": "bob", "op": "remove", "device": "phone", "at": "2026-11-24T12:00:00Z" }
+```
+
+- Who signs: while the person has no devices, only their account key, and only to add the first device. After that, only one of their devices (named by `signer`), never the account key.
+- The person's home node relays the change to the org's root node. The root node checks the signature, that `account` is a member, and that `at` is at most 7 days old and at most 5 minutes ahead, then applies the change and checks the result like any version. It writes the result as the next org definition version. Like every version, that one is signed by the root key and reaches the other nodes as usual.
+- Removing a device also adds its key to `revoked`, so a lost device can never sign again, under any id. A removal takes effect on each node as soon as it holds the new version, including for envelopes still waiting in outboxes.
+- Pairing: a new device shows its pairing code, the first 12 hex characters of its key's fingerprint in groups of 4 (`dbc2-9825-1c51`). The person checks that the device that signs the add shows the same code for the key it is adding. The code has 48 bits, so a node that relays the key cannot find another key with the same code while the person is pairing.
 
 ## Signed reads (kind `read`)
 
@@ -71,9 +93,10 @@ A non-member gets 404, so it cannot tell whether the team exists.
 ```
 
 - `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is `repo#N`).
+- `signer` is the id of one of the deciding person's devices. The signature is checked with that device's key, found under the person whose `account` is the envelope's `account`. A signature by an account key is refused.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, and that its id has not been applied before. A repeated envelope is not applied again; the node answers that it received it.
 - The sending node keeps an envelope it could not deliver in its outbox and retries with backoff (15 s, 30 s, 1 min, 2 min, 5 min, then every 5 min). It does not retry when the receiver refuses with a 4xx (408 and 429 are retried).
-- Who signs: today the home node signs envelopes for its owner with the account key, including decisions made through the Client API. agency#19 moves signing to device keys held by clients before other people join an org or the iOS client ships.
+- Transition: the types, this text, and the test vectors define device signing. Nodes switch to it in the node part of agency#19. Until then, the home node still signs envelopes for its owner with the account key and accepts envelopes signed that way.
 
 ## Invites and joining (kind `join`)
 
@@ -221,5 +244,5 @@ If Cloudflare Access protects the node's public host name, its policy must bypas
 
 ## Test vectors
 
-`testdata/vectors.json` holds a key from a fixed seed, a body, its canonical JSON, and its signature.
+`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures.
 An implementation in another language must produce the same values.

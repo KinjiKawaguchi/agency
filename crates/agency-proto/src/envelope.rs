@@ -1,4 +1,4 @@
-//! Decision envelopes. Signed with the decider's account key; the team's node checks them before applying.
+//! Decision envelopes. Signed with one of the decider's device keys; the team's node checks them before applying.
 use crate::clock;
 use crate::ids::{EnvelopeId, Id};
 use serde::{Deserialize, Serialize};
@@ -27,8 +27,9 @@ pub struct Payload {
     pub choice: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export)]
 pub struct Envelope {
     pub id: EnvelopeId,
     pub kind: EnvelopeKind,
@@ -71,9 +72,14 @@ impl Envelope {
 
     /// Whether it is within its acceptance period: at most 7 days old, and at most 5 minutes ahead (clock skew).
     pub fn is_fresh(&self, now: time::OffsetDateTime) -> bool {
-        clock::parse(&self.at).is_some_and(|at| {
-            let age = (now - at).whole_seconds();
-            (-300..=MAX_AGE_SECONDS).contains(&age)
-        })
+        is_fresh_at(&self.at, now)
     }
+}
+
+/// Whether a signed time is at most 7 days old and at most 5 minutes ahead (clock skew).
+pub(crate) fn is_fresh_at(at: &str, now: time::OffsetDateTime) -> bool {
+    clock::parse(at).is_some_and(|at| {
+        let age = (now - at).whole_seconds();
+        (-300..=MAX_AGE_SECONDS).contains(&age)
+    })
 }

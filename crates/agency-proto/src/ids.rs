@@ -55,8 +55,9 @@ impl fmt::Display for Id {
 }
 
 /// Envelope id: 16 random bytes as hex (32 characters).
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(try_from = "String", into = "String")]
+#[ts(export, type = "string")]
 pub struct EnvelopeId(String);
 
 impl EnvelopeId {

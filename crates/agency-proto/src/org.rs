@@ -2,6 +2,7 @@
 use crate::ids::Id;
 use crate::keys::PublicKey;
 use crate::signed::{Kind, Signed};
+use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use ts_rs::TS;
@@ -42,9 +43,29 @@ pub struct Person {
     pub id: Id,
     pub label: String,
     pub account: Id,
+    /// The account key, held by the person's home node. It signs reads, join requests, and the first
+    /// device, never decisions.
     pub public_key: PublicKey,
     pub department: Option<Id>,
     pub role: Role,
+    /// Keys held by the person's clients. Only these sign decisions. Left out of JSON when empty, so
+    /// versions signed before devices existed keep their signatures.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Device>>", optional)]
+    pub devices: Vec<Device>,
+}
+
+/// A key held by one of a person's clients (a browser, a phone, the CLI). Its private key never leaves
+/// that client.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct Device {
+    /// Unique among the person's devices; envelopes name it as their `signer`.
+    pub id: Id,
+    pub label: String,
+    pub public_key: PublicKey,
+    pub added_at: Timestamp,
 }
 
 /// A team and the node it runs on.
@@ -106,12 +127,53 @@ fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {
     ids.into_iter().all(|id| seen.insert(id))
 }
 
+fn unique_keys<'a>(keys: impl Iterator<Item = &'a PublicKey>) -> bool {
+    let mut seen = HashSet::new();
+    keys.into_iter().all(|key| seen.insert(key))
+}
+
 impl OrgDefinition {
     /// A member: listed in the definition, with a key that is not revoked.
     pub fn member(&self, account: &Id) -> Option<&Person> {
         self.people
             .iter()
             .find(|one| &one.account == account && !self.revoked.contains(&one.public_key))
+    }
+
+    /// A device of a member, which may sign for them. A well-formed definition never lists a revoked
+    /// device key (see `validate`), so a listed device is a usable one.
+    pub fn device(&self, account: &Id, device: &Id) -> Option<(&Person, &Device)> {
+        let person = self.member(account)?;
+        let found = person.devices.iter().find(|one| &one.id == device)?;
+        Some((person, found))
+    }
+
+    /// Account and root keys: these must never be device keys, because nodes hold them.
+    fn node_keys(&self) -> HashSet<&PublicKey> {
+        let accounts = self.people.iter().map(|p| &p.public_key);
+        accounts.chain([&self.root.public_key]).collect()
+    }
+
+    /// Device ids are unique per person; device keys are unique in the org, are not account or root
+    /// keys, and are not revoked.
+    fn validate_devices(&self) -> Result<(), String> {
+        let node_keys = self.node_keys();
+        let devices: Vec<&Device> = self.people.iter().flat_map(|p| &p.devices).collect();
+        let is_usable = |device: &&Device| {
+            label_ok(&device.label)
+                && !node_keys.contains(&device.public_key)
+                && !self.revoked.contains(&device.public_key)
+        };
+        if !devices.iter().all(is_usable)
+            || !unique_keys(devices.iter().map(|d| &d.public_key))
+            || !self
+                .people
+                .iter()
+                .all(|p| unique(p.devices.iter().map(|d| &d.id)))
+        {
+            return Err("a device has a malformed label, a repeated id or key, or a key that is an account, root, or revoked key".into());
+        }
+        Ok(())
     }
 
     pub fn team(&self, id: &Id) -> Option<&TeamPlace> {
@@ -154,7 +216,7 @@ impl OrgDefinition {
         }) {
             return Err("malformed team label, department, or node URL".into());
         }
-        Ok(())
+        self.validate_devices()
     }
 
     /// A draft of the next version: one version higher and linked to the previous version's fingerprint. The caller edits the contents.

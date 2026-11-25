@@ -107,6 +107,7 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
         public_key: request.public_key.clone(),
         department: record.department.clone(),
         role: record.role,
+        devices: vec![],
     };
     let mut body = OrgDefinition::successor_of(&current, node.now_text());
     body.people.push(person);

@@ -4,6 +4,7 @@
 pub mod canonical;
 pub mod client;
 pub mod clock;
+pub mod device;
 pub mod digest;
 pub mod envelope;
 pub mod ids;
@@ -16,11 +17,12 @@ pub mod timestamp;
 pub mod usage;
 pub mod view;
 
+pub use device::{DeviceChange, DeviceOp};
 pub use envelope::{Envelope, EnvelopeKind, Payload};
 pub use ids::{EnvelopeId, Id};
 pub use invite::{Invite, JoinRequest};
 pub use keys::{AccountKey, PublicKey};
-pub use org::{OrgDefinition, Person, Role};
+pub use org::{Device, OrgDefinition, Person, Role};
 pub use runtime::{RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, RUNTIME_VERSION};
 pub use signed::{Kind, Signed};
 pub use timestamp::{Date, Timestamp};

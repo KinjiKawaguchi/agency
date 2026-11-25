@@ -4,6 +4,7 @@ use crate::ids::Id;
 use crate::keys::{AccountKey, PublicKey};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use ts_rs::TS;
 
 /// What a signature is for. Because of the kind line, a signature for one kind cannot be reused for another.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,6 +13,7 @@ pub enum Kind {
     Org,
     Join,
     Read,
+    Device,
 }
 
 impl Kind {
@@ -21,6 +23,7 @@ impl Kind {
             Self::Org => "agency/v1/org\n",
             Self::Join => "agency/v1/join\n",
             Self::Read => "agency/v1/read\n",
+            Self::Device => "agency/v1/device\n",
         }
     }
 
@@ -29,8 +32,10 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// `signer` is an account id, or a device id for envelopes and device changes signed by a device.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export)]
 pub struct Signed<T> {
     pub body: T,
     pub signer: Id,
