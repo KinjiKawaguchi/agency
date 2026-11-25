@@ -134,7 +134,7 @@ async fn federation_usage_reads_are_signed_by_a_member_for_their_range() {
     );
     assert_eq!(
         federated(&alice, &bob, &id("bob"), &path(1), &path(90)).await,
-        401,
+        404,
         "a signature for one range does not read another"
     );
     assert_eq!(
@@ -146,7 +146,7 @@ async fn federation_usage_reads_are_signed_by_a_member_for_their_range() {
             &path(7)
         )
         .await,
-        401,
+        404,
         "a view signature does not read usage"
     );
     assert_eq!(
@@ -158,7 +158,7 @@ async fn federation_usage_reads_are_signed_by_a_member_for_their_range() {
         .send()
         .await
         .unwrap();
-    assert_eq!(unsigned.status(), 401);
+    assert_eq!(unsigned.status(), 404, "refused like an unknown team");
 
     let carol = node_with("carol", memory_runtime().0, None).await;
     let copy = alice.node.store().load_org(&id("acme")).unwrap();

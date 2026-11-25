@@ -6,6 +6,7 @@ use crate::orgs;
 use crate::ports::DefinitionAccess;
 use crate::read_auth::{sign_read, verify_read, ReadAuth};
 use crate::routes;
+use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{FederatedView, Request, WaitingOn};
 use agency_proto::{Id, TeamView};
@@ -110,13 +111,16 @@ pub async fn hosted_view(
     auth: &ReadAuth,
     path: &str,
 ) -> Result<FederatedView> {
-    let hosted = node
-        .config()
-        .hosted(org, team)
-        .cloned()
-        .ok_or_else(|| Error::not_found("not found"))?;
-    let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
-    let reader = verify_read(&doc.body, auth, "GET", path, node.now())?;
+    let hosted = node.config().hosted(org, team).cloned();
+    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
+    let reader = verify_read(
+        doc.as_ref().map(|doc| &doc.body),
+        auth,
+        "GET",
+        path,
+        node.now(),
+    )?;
+    let hosted = hosted.ok_or_else(unseen::not_found)?;
     let view = runtime_view(node, &hosted).await?;
     Ok(FederatedView {
         view,

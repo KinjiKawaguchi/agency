@@ -4,10 +4,10 @@ use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
-use crate::orgs;
 use crate::ports::PeerError;
 use crate::read_auth::{sign_read, verify_read, ReadAuth};
 use crate::routes;
+use crate::unseen;
 use agency_proto::org::TeamPlace;
 use agency_proto::usage::{valid_days, DEFAULT_USAGE_DAYS, MAX_USAGE_DAYS};
 use agency_proto::{Id, TokenUsage};
@@ -87,18 +87,15 @@ pub async fn hosted_usage(
     days: u32,
     auth: &ReadAuth,
 ) -> Result<TokenUsage> {
-    let hosted = node
-        .config()
-        .hosted(org, team)
-        .cloned()
-        .ok_or_else(|| Error::not_found("not found"))?;
-    let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
+    let hosted = node.config().hosted(org, team).cloned();
+    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
     verify_read(
-        &doc.body,
+        doc.as_ref().map(|doc| &doc.body),
         auth,
         "GET",
         &routes::usage(org, team, days),
         node.now(),
     )?;
+    let hosted = hosted.ok_or_else(unseen::not_found)?;
     runtime_usage(node, &hosted, check_days(days)?).await
 }
