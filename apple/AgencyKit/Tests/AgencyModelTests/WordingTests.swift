@@ -27,7 +27,12 @@ struct WordingTests {
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verb) == ["決裁する", "答える", "判断を送る"])
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verbDone) == ["決裁しました", "答えました", "判断を送りました"])
         #expect(Ja.Paper.sendWith("決裁する", choice: "承認") == "「承認」で決裁する")
-        #expect(Ja.Paper.sentComment(to: "Lead") == "コメントしました。Lead に届きます。まだ決裁はされていません。")
+        #expect(Ja.Paper.sentComment(to: "Lead", kind: .proposal) == "コメントしました。Lead に届きます。まだ決裁はされていません。")
+        #expect(Ja.Paper.sentComment(to: "Lead", kind: .question) == "コメントしました。Lead に届きます。まだ決まっていません。")
+        #expect(Ja.Paper.commentExplain(.proposal).hasPrefix("決裁はしません。"))
+        #expect(Ja.Paper.commentExplain(.question).hasPrefix("決めません。"))
+        #expect(!Ja.Paper.commentExplain(.question).contains("決裁"))
+        #expect(!Ja.Paper.commentExplain(.pendingDecision).contains("決裁"))
     }
 
     @Test("a queued decision says how often it was tried and when it goes next")
@@ -37,7 +42,7 @@ struct WordingTests {
     }
 
     @Test("the words never explain a keyboard", arguments: [
-        Ja.Paper.commentExplain, Ja.Paper.notePlaceholderWithOptions, Ja.Paper.faceIDNote, Ja.Desk.empty,
+        Ja.Paper.commentExplain(.proposal), Ja.Paper.commentExplain(.question), Ja.Paper.notePlaceholderWithOptions, Ja.Paper.faceIDNote, Ja.Desk.empty,
     ])
     func noKeyboardHints(text: String) {
         for word in ["キー", "ショートカット", "Enter", "Cmd", "Ctrl", "⌘"] {

@@ -182,6 +182,23 @@ struct NodeClientTests {
         #expect(transport.requests[3].headers["x-agency-token"] == "w-2")
     }
 
+    @Test("the device list is a read; a device request is a write with the label and the key")
+    func devices() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/devices", fixture("device-list")),
+            ("GET /api/session", json(session)),
+            ("POST /api/devices/requests", fixture("device-request")),
+        ])
+        let node = client(transport)
+        #expect(try await node.devices().requests.count == 1)
+        let request = try await node.requestDevice(label: "iPhone", publicKey: "p256:AAAA")
+        #expect(request.pairingCode == "506e-f187-9d74")
+        let post = try #require(transport.requests.last)
+        #expect(post.headers["x-agency-token"] == "w-1")
+        #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"label":"iPhone","publicKey":"p256:AAAA"}"#)
+        #expect(transport.requests.first?.headers["x-agency-token"] == nil)
+    }
+
     @Test("a 403 for another reason is the answer and is not sent again", arguments: [
         #"{"error":"writes are for the owner"}"#, #"{"error":"bad signature"}"#, #"{}"#, "",
     ])

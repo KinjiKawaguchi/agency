@@ -56,7 +56,11 @@ public enum Ja {
         public static let notePlaceholderOpen = "答えを書いてください"
         public static let noteLabelOpen = "答え"
         public static let sendComment = "コメントだけ送る"
-        public static let commentExplain = "決裁はしません。この文章だけがチームに届きます。選択肢を選んでいても、選択は送られません。"
+        /// What the comment button does. 決裁 is a proposal's word; a question or a decision is "decided".
+        public static func commentExplain(_ kind: Request.Kind) -> String {
+            let nothing = kind == .proposal ? "決裁はしません。" : "決めません。"
+            return nothing + "この文章だけがチームに届きます。選択肢を選んでいても、選択は送られません。"
+        }
         public static let sending = "送信中…"
         public static let earlierMessages = "これまでのやりとり"
         public static let decisionLog = "決定の記録"
@@ -95,7 +99,9 @@ public enum Ja {
         public static func waitingOn(_ name: String) -> String { "\(name) さんの判断待ちです。ここで読むことはできますが、答えることはできません。" }
         public static func readDocument(characters: Int) -> String { "本文を読む (約 \(characters) 文字)" }
         public static func sent(to drafter: String) -> String { "送りました。\(drafter) に届きます。" }
-        public static func sentComment(to drafter: String) -> String { "コメントしました。\(drafter) に届きます。まだ決裁はされていません。" }
+        public static func sentComment(to drafter: String, kind: Request.Kind) -> String {
+            "コメントしました。\(drafter) に届きます。" + (kind == .proposal ? "まだ決裁はされていません。" : "まだ決まっていません。")
+        }
         public static func sendFailed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static func team(org: String, team: String) -> String { "\(org) / \(team)" }
         public static func thread(name: String, choice: String?) -> String { choice.map { "\(name) は「\($0)」を選びました" } ?? name }

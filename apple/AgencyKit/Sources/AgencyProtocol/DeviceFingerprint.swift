@@ -10,6 +10,10 @@ public struct DeviceFingerprint: Equatable, Sendable {
         hex = SHA256.hash(data: publicKey).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
+    public init(key: DevicePublicKey) {
+        self.init(publicKey: key.bytes)
+    }
+
     /// `dbc2-9825-1c51`: 48 bits in groups of 4, which the person compares on both devices.
     public var pairingCode: String {
         let digits = Array(hex.prefix(12))

@@ -152,7 +152,7 @@ struct RequestDetail: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .disabled(!controls.canComment)
-            Text(Ja.Paper.commentExplain).font(.footnote).foregroundStyle(.secondary).wrapping()
+            Text(Ja.Paper.commentExplain(request.kind)).font(.footnote).foregroundStyle(.secondary).wrapping()
         }
         .padding(.top, 4)
     }
@@ -168,7 +168,7 @@ struct RequestDetail: View {
             let drafter = item.drafter?.label ?? request.from
             let text = reply.outcome == .queued
                 ? Ja.Paper.queued
-                : (reply.isComment ? Ja.Paper.sentComment(to: drafter) : Ja.Paper.sent(to: drafter))
+                : (reply.isComment ? Ja.Paper.sentComment(to: drafter, kind: request.kind) : Ja.Paper.sent(to: drafter))
             Label(text, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green).wrapping()
         case .failed(let reason):
             Label(Ja.Paper.sendFailed(reason), systemImage: "exclamationmark.triangle.fill")

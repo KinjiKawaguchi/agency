@@ -77,6 +77,10 @@ public actor NodeClient {
         try await get("/api/decisions?limit=\(limit)")
     }
 
+    public func devices() async throws -> DeviceList {
+        try await get("/api/devices")
+    }
+
     /// The node's time now, from the offset the last session call measured.
     public func nodeNow() -> Date {
         clock().addingTimeInterval(clockOffset)
@@ -88,6 +92,13 @@ public actor NodeClient {
     public func submit(_ decision: SignedDecision, org: String, team: String) async throws -> DecisionResult {
         let body = Data(try CanonicalJSON.encode(decision.json).utf8)
         return try await write("POST", "/api/orgs/\(org)/teams/\(team)/envelopes", body: body)
+    }
+
+    /// Asks the node to add this device. `label` is 1 to 80 characters. The answer carries the pairing
+    /// code to show; an existing device (or the node's terminal) adds it after the person compares codes.
+    public func requestDevice(label: String, publicKey: String) async throws -> DeviceRequest {
+        let body = Data(try CanonicalJSON.encode(.object([.init("label", .string(label)), .init("publicKey", .string(publicKey))])).utf8)
+        return try await write("POST", "/api/devices/requests", body: body)
     }
 
     /// Fetches the write token and the node's time (the clock offset is kept for `nodeNow()`).
