@@ -27,6 +27,18 @@ jobs:
       - name: Check that generated TypeScript bindings match the Rust types
         run: scripts/check-bindings.sh
 
+  # The package behind the iPhone app (address validation and the navigation allow list) has no UIKit,
+  # so it is tested on Linux. The app itself needs Xcode, and this repository has no macOS runner.
+  apple-package:
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    defaults:
+      run:
+        working-directory: apple/AgencyKit
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
   web:
     runs-on: ubuntu-latest
     steps:

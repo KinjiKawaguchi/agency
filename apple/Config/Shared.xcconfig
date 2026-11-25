@@ -1,0 +1,6 @@
+// Defaults that let the project build without signing, for example in a build check.
+// Real values go in apple/Local.xcconfig (see Local.xcconfig.example), which is not committed.
+PRODUCT_BUNDLE_IDENTIFIER = org.example.agency
+DEVELOPMENT_TEAM =
+
+#include? "../Local.xcconfig"

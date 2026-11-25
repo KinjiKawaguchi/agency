@@ -81,6 +81,10 @@ To open it from elsewhere, put the node behind a Cloudflare Tunnel with Cloudfla
 
 The Access policy must bypass `/fed/*` so other nodes can reach the federation routes. See "Client API" in docs/protocol.md for what is checked.
 
+## iPhone app
+
+`apple/` holds a thin iPhone app that opens the home node in a web view, for TestFlight. See [docs/apple.md](docs/apple.md).
+
 ## Team runtimes
 
 The node never reads or writes a harness's files.

@@ -1,0 +1,8 @@
+// Copy this file to apple/Local.xcconfig, which git ignores, and fill in your own values.
+
+// Your Apple Developer team ID (10 characters).
+DEVELOPMENT_TEAM = XXXXXXXXXX
+
+// The bundle ID of the app record in App Store Connect. If the node sends push notifications,
+// the node's configuration must name the same ID.
+PRODUCT_BUNDLE_IDENTIFIER = com.example.agency
