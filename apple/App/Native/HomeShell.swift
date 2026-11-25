@@ -31,6 +31,7 @@ struct HomeShell: View {
     @State private var openItemID: String?
     @State private var showsSettings = false
     @State private var triedSignIn = false
+    @State private var accessTeamHost: String?
 
     var body: some View {
         Group {
@@ -103,8 +104,19 @@ struct HomeShell: View {
         let tokens = AccessTokenStore(host: homeNode.host)
         let flow = AccessSignInFlow(homeNode: homeNode, tokens: tokens)
         self.flow = flow
-        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow)
+        let session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow)
+        self.session = session
+        accessTeamHost = AccessTeamStore(host: homeNode.host).host
         takeLink()
+        Task { await learnAccessTeam(session) }
+    }
+
+    /// Asks the node where it sends a browser that is not signed in, and pins that Access team.
+    private func learnAccessTeam(_ session: NativeSession) async {
+        guard let team = await session.discoverAccessTeam() else { return }
+        AccessTeamStore(host: homeNode.host).save(team)
+        accessTeamHost = team
+        web?.pinAccessTeam(team)
     }
 
     private func openWeb(_ tab: Tab) {
@@ -112,7 +124,9 @@ struct HomeShell: View {
         if let web {
             web.openPath(path)
         } else {
-            web = NodeWebModel(homeNode: homeNode, push: push.registration, accessSignIn: flow, path: path)
+            web = NodeWebModel(
+                homeNode: homeNode, push: push.registration, accessSignIn: flow, accessTeamHost: accessTeamHost, path: path
+            )
         }
     }
 

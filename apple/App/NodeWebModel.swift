@@ -21,7 +21,7 @@ final class NodeWebModel: NSObject {
     private(set) var failure: LoadFailure?
 
     @ObservationIgnored private let homeNode: HomeNodeURL
-    @ObservationIgnored private let policy: NavigationPolicy
+    @ObservationIgnored private var policy: NavigationPolicy
     @ObservationIgnored private let userContentController = WKUserContentController()
     @ObservationIgnored private let accessSignIn: AccessSignInFlow
     /// The last page of the home node the web view was sent to, to come back to after signing in.
@@ -38,9 +38,10 @@ final class NodeWebModel: NSObject {
     ///   - push: this device's registration, for the page to hand to the node.
     ///   - accessSignIn: the one sign-in the whole app shares.
     ///   - path: the page to open first, a path of the home node.
-    init(homeNode: HomeNodeURL, push: PushRegistration?, accessSignIn: AccessSignInFlow, path: String) {
+    ///   - accessTeamHost: the node's Access team, when known; no other Access page stays in the app.
+    init(homeNode: HomeNodeURL, push: PushRegistration?, accessSignIn: AccessSignInFlow, accessTeamHost: String?, path: String) {
         self.homeNode = homeNode
-        policy = NavigationPolicy(homeNode: homeNode)
+        policy = NavigationPolicy(homeNode: homeNode, accessTeamHost: accessTeamHost)
         self.accessSignIn = accessSignIn
 
         userContentController.addUserScript(Self.bridgeScript(homeNode: homeNode, push: push))
@@ -75,6 +76,11 @@ final class NodeWebModel: NSObject {
               homeNode.hasSameOrigin(url)
         else { return homeNode.url }
         return url
+    }
+
+    /// Remembers the node's Access team once it is learned.
+    func pinAccessTeam(_ host: String?) {
+        policy = NavigationPolicy(homeNode: homeNode, accessTeamHost: host)
     }
 
     /// Shows another page of the home node, unless it is already the one shown.
