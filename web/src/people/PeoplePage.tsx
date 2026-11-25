@@ -1,5 +1,6 @@
 import { useTeams } from '../api/queries'
 import { teamKey, type Team } from '../api/teams'
+import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { EpicList } from './EpicList'
 import { PersonCard } from './PersonCard'
@@ -37,7 +38,7 @@ function TeamSection({ team }: { team: Team }) {
 export function PeoplePage() {
   const { t } = useI18n()
   const { teams, isLoading, error } = useTeams()
-  if (error !== null && teams.length === 0) return <p className="empty" role="alert">{t.app.unreachable(error.message)}</p>
+  if (error !== null && teams.length === 0) return <p className="empty" role="alert">{failureText(t, error)}</p>
   if (isLoading && teams.length === 0) return <p className="muted">{t.app.loading}</p>
   return (
     <>

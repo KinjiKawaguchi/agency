@@ -3,6 +3,7 @@ import { CostsPage } from '../costs/CostsPage'
 import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
 import { PeoplePage } from '../people/PeoplePage'
+import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { AppBar } from './AppBar'
 
 function Shell() {
@@ -10,6 +11,7 @@ function Shell() {
     <>
       <AppBar />
       <main className="page">
+        <SignInExpiredBanner />
         <Outlet />
       </main>
     </>

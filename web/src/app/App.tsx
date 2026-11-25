@@ -5,6 +5,7 @@ import { ApiProvider } from '../api/context'
 import { createApiClient, type ApiClient } from '../api/client'
 import { I18nProvider } from '../i18n'
 import type { Locale } from '../i18n/locale'
+import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { ToastProvider } from '../shared/Toasts'
 import { createAppRouter } from './router'
 
@@ -22,9 +23,11 @@ export function App({ client, history, locale }: AppProps) {
     <I18nProvider {...(locale === undefined ? {} : { initial: locale })}>
       <QueryClientProvider client={queryClient}>
         <ApiProvider client={api}>
-          <ToastProvider>
-            <RouterProvider router={router} />
-          </ToastProvider>
+          <SignInExpiredProvider>
+            <ToastProvider>
+              <RouterProvider router={router} />
+            </ToastProvider>
+          </SignInExpiredProvider>
         </ApiProvider>
       </QueryClientProvider>
     </I18nProvider>

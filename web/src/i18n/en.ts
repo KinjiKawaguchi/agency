@@ -13,6 +13,7 @@ export const en = {
       neverRead: (reason: string) => `This team’s node has not been read yet: ${reason}`,
     },
     unreachable: (reason: string) => `Could not reach the node: ${reason}`,
+    signInExpired: { message: 'Your sign-in expired. Reload to sign in again.', reload: 'Reload', nothingToShow: 'Nothing can be shown until you sign in again.' },
   },
   nav: {
     label: 'Main menu',

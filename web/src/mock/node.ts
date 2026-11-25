@@ -10,6 +10,8 @@ export const MOCK_TOKEN = 'mock-token'
 export interface MockNode {
   /** Answers a request the way the real node would. */
   handle: (request: Request) => Promise<Response>
+  /** Makes the node answer every call as Cloudflare Access does once the session has expired: a redirect to its login on another origin. */
+  setSignInExpired: (isExpired: boolean) => void
   /** Decisions received so far, oldest first. They also appear in the decision log. */
   decisions: () => readonly DecisionAnswer[]
 }
@@ -55,6 +57,9 @@ const json = (body: unknown, status = 200): Response =>
 const failure = (status: number, message: string): Response => json({ error: message }, status)
 
 const MINUTE = 60_000
+
+/** Where an expired session is sent: another origin, as the access login is. */
+const SIGN_IN_URL = 'https://login.agency.test/cdn-cgi/access/login'
 const DECISIONS_PATH = '/api/decisions'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
@@ -71,6 +76,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const app: TeamView = options.view ?? shiftTimes(sampleTeamView, now.getTime() - Date.parse(sampleTeamView.generatedAt))
   let views = new Map<string, TeamView>([app, siteTeamView(app)].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
+  let isSignInExpired = false
   let log: readonly DecisionEntry[] = options.earlierDecisions === false ? [] : earlierDecisions(now)
 
   const me: Me = {
@@ -126,6 +132,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const handle = async (request: Request): Promise<Response> => {
+    if (isSignInExpired) return new Response(null, { status: 302, headers: { location: SIGN_IN_URL } })
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (request.method === 'GET' && url.pathname === '/api/me') return json(me)
@@ -140,5 +147,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return teamMatch ? handleTeam(request, url, teamMatch) : failure(404, 'No such route.')
   }
 
-  return { handle, decisions: () => received }
+  return {
+    handle,
+    setSignInExpired: (isExpired) => {
+      isSignInExpired = isExpired
+    },
+    decisions: () => received,
+  }
 }

@@ -11,6 +11,7 @@ async function readBody(message: IncomingMessage): Promise<Buffer> {
 }
 
 const RESET_PATH = '/__mock/reset'
+const SIGN_IN_PATH = '/__mock/sign-in'
 
 /**
  * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
@@ -36,6 +37,11 @@ function apiMiddleware(): Connect.NextHandleFunction {
       response.statusCode = 204
       return response.end()
     }
+    if (message.method === 'POST' && url.pathname === SIGN_IN_PATH) {
+      node.setSignInExpired(url.searchParams.get('expired') === '1')
+      response.statusCode = 204
+      return response.end()
+    }
     if (!message.url?.startsWith('/api/')) return next()
     const method = message.method ?? 'GET'
     const hasBody = method !== 'GET' && method !== 'HEAD'
@@ -47,6 +53,8 @@ function apiMiddleware(): Connect.NextHandleFunction {
     const request = new Request(new URL(message.url, 'http://localhost'), { method, headers, ...(hasBody ? { body: new Uint8Array(await readBody(message)) } : {}) })
     const reply = await node.handle(request)
     response.statusCode = reply.status
+    const location = reply.headers.get('location')
+    if (location !== null) response.setHeader('location', location)
     response.setHeader('content-type', reply.headers.get('content-type') ?? 'application/json')
     response.end(await reply.text())
   }

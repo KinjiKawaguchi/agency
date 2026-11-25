@@ -1,3 +1,4 @@
+import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, Me, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
@@ -16,7 +17,19 @@ export class ApiError extends Error {
   }
 }
 
+/** What the client needs to know about the page it runs in. */
+export interface PageEnvironment {
+  hostname: () => string
+  isOnline: () => boolean
+}
+
+const browserPage: PageEnvironment = { hostname: () => window.location.hostname, isOnline: () => navigator.onLine }
+
+export type SessionState = 'ok' | 'expired'
+
 export interface ApiClient {
+  /** Tells when calls start failing because the sign-in expired, and when one works again. Returns the way to stop. */
+  onSession: (listener: (state: SessionState) => void) => () => void
   me: () => Promise<Me>
   teamSnapshot: (org: string, team: string) => Promise<TeamSnapshot>
   decide: (answer: DecisionAnswer) => Promise<DecisionResult>
@@ -46,11 +59,31 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 /** Talks to the home node. `send` is injectable so tests can route calls to the mock node. */
-export function createApiClient(send: FetchLike = (request) => fetch(request)): ApiClient {
+export function createApiClient(send: FetchLike = (request) => fetch(request), page: PageEnvironment = browserPage): ApiClient {
   const url = (path: string): URL => new URL(path, window.location.origin)
-  const get = <T>(path: string): Promise<T> => send(new Request(url(path), { headers: { accept: 'application/json' } })).then(readJson<T>)
+  const listeners = new Set<(state: SessionState) => void>()
+  const tell = (state: SessionState): void => listeners.forEach((listener) => listener(state))
+
+  /** Sends a call. One that fails without an answer, away from this machine, is taken for an expired sign-in. */
+  const dispatch = async (request: Request): Promise<Response> => {
+    let response: Response
+    try {
+      response = await send(request)
+    } catch (cause) {
+      if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) throw cause
+      tell('expired')
+      throw new SignInExpiredError()
+    }
+    tell('ok')
+    return response
+  }
+  const get = <T>(path: string): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' } })).then(readJson<T>)
 
   return {
+    onSession: (listener) => {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
     me: () => get<Me>('/api/me'),
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
@@ -58,7 +91,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request)): 
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decide: ({ org, team, answerWith, choice, text, title }) => {
       const input: DecisionInput = { ...answerWith, text, title: [...title].slice(0, MAX_TITLE).join(''), ...(choice === undefined ? {} : { choice }) }
-      return send(
+      return dispatch(
         new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-agency-token': readToken() },
