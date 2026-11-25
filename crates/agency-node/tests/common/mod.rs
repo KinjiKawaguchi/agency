@@ -12,6 +12,8 @@ use agency_core::{orgs, Node};
 use agency_node::{Opened, Overrides};
 use agency_proto::org::TeamPlace;
 use agency_proto::{Id, Payload, Role};
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
+use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -199,4 +201,20 @@ pub fn answer(choice: &str) -> Payload {
         text: String::new(),
         choice: Some(choice.into()),
     }
+}
+
+/// A request to a node's Client API, sent from loopback with its local `Host`.
+pub fn get(running: &Running, path: &str) -> RequestBuilder {
+    Client::new().get(format!("{}{path}", running.url()))
+}
+
+pub fn post(running: &Running, path: &str, body: &Value) -> RequestBuilder {
+    Client::new()
+        .post(format!("{}{path}", running.url()))
+        .json(body)
+}
+
+pub async fn body(response: Response) -> (StatusCode, Value) {
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
 }
