@@ -34,12 +34,15 @@ public struct SignedDecision: Sendable {
 /// The client of the home node's Client API.
 ///
 /// Every request carries the Access token as `cf-access-token`. A write also carries the write token
-/// from `GET /api/session`, fetched on first use and once more when the node refuses it with a 403
+/// from `GET /api/session`, fetched on first use and once more when the node says it is stale
 /// (it changes when the node restarts). The client keeps the difference between the node's clock and
 /// this phone's, so a signed envelope's time is the node's.
 public actor NodeClient {
     public static let accessHeader = "cf-access-token"
     public static let writeHeader = "x-agency-token"
+    /// What the node says when the write token is not the one it holds now. Any other 403 (the signed-in
+    /// person is not the owner, say) is an answer and is not sent again.
+    static let staleWriteTokenMessage = "missing or wrong write token"
 
     private let transport: any HTTPTransport
     private let accessToken: @Sendable () async -> String?
@@ -106,7 +109,7 @@ public actor NodeClient {
         if writeToken == nil { try await refreshSession() }
         do {
             return try decode(try await send(HTTPRequest(method: method, path: path, body: body)))
-        } catch NodeError.http(let status, _) where status == 403 {
+        } catch NodeError.http(let status, let message) where status == 403 && message == Self.staleWriteTokenMessage {
             try await refreshSession()
             return try decode(try await send(HTTPRequest(method: method, path: path, body: body)))
         }

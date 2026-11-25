@@ -89,6 +89,11 @@ public struct ThreadMessage: Decodable, Equatable, Sendable {
 public struct AnswerWith: Decodable, Equatable, Sendable {
     public let kind: DecisionEnvelope.Kind
     public let target: String
+
+    public init(kind: DecisionEnvelope.Kind, target: String) {
+        self.kind = kind
+        self.target = target
+    }
 }
 
 public struct WorkItem: Decodable, Equatable, Sendable {
