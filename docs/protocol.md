@@ -272,3 +272,5 @@ If Cloudflare Access protects the node's public host name, its policy must bypas
 
 `testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures.
 An implementation in another language must produce the same values.
+
+`testdata/client/` holds the Client API's answers as two test nodes give them: alice's, which hosts `acme/app`, and bob's, a member that reads it as a replica. The nodes use fixed keys, counted ids, a fixed clock, and fixed ports, so the files repeat byte for byte. `cargo test` fails when a file differs from what the node answers; `AGENCY_WRITE_FIXTURES=1 cargo test -p agency-node --test fixtures` writes them again. Clients decode these files in their tests, so a change to an answer shows up as a change to a file.

@@ -4,7 +4,9 @@
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;
-use agency_adapters::memory::{ManualClock, MemoryNotifier, MemoryRuntime, MemoryRuntimeState};
+use agency_adapters::memory::{
+    CountingRandom, ManualClock, MemoryNotifier, MemoryRuntime, MemoryRuntimeState,
+};
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::invites::{self, join};
 use agency_core::ports::{ConfigStore, TeamRuntime};
@@ -106,15 +108,44 @@ pub async fn node_with(
     runtime: Arc<dyn TeamRuntime>,
     certs: Option<Arc<dyn CertSource>>,
 ) -> Running {
+    node_from(account, runtime, certs, None).await
+}
+
+/// A node that is the same on every run: its account key comes from `seed`, its random values count
+/// up, and it listens on `port` (outside the ports the system hands out), so keys, signatures, ids, and
+/// the URLs inside signed documents repeat.
+pub async fn seeded_node(
+    account: &str,
+    runtime: Arc<dyn TeamRuntime>,
+    seed: u8,
+    port: u16,
+) -> Running {
+    node_from(account, runtime, None, Some((seed, port))).await
+}
+
+async fn node_from(
+    account: &str,
+    runtime: Arc<dyn TeamRuntime>,
+    certs: Option<Arc<dyn CertSource>>,
+    fixed: Option<(u8, u16)>,
+) -> Running {
     let dir = TempDir::new().unwrap();
-    let port = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    let port = match fixed {
+        Some((_, port)) => port,
+        None => TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port(),
+    };
+    let seed = fixed.map(|(seed, _)| seed);
     let data = DataDir::new(dir.path().join("node"));
     data.create_key().unwrap();
+    if let Some(seed) = seed {
+        let key = agency_proto::AccountKey::from_seed([seed; 32]);
+        std::fs::write(data.root().join("account.key"), key.encoded() + "\n").unwrap();
+    }
     let url = format!("http://127.0.0.1:{port}");
     data.save_config(&NodeConfig {
         url,
@@ -136,7 +167,8 @@ pub async fn node_with(
     let overrides = Overrides {
         runtime: Some(runtime),
         clock: Some(Arc::new(clock.clone())),
-        random: None,
+        random: seed
+            .map(|_| Arc::new(CountingRandom::default()) as Arc<dyn agency_core::ports::Random>),
         certs,
         notifier: Some(Arc::new(notifier.clone())),
     };
@@ -157,12 +189,17 @@ pub async fn node_with(
 /// alice's node: holds the root key of org acme and hosts team app, which has a waiting request r-1.
 pub async fn alice() -> (Running, Arc<Mutex<MemoryRuntimeState>>) {
     let (runtime, memory) = memory_runtime();
+    let running = node("alice", runtime).await;
+    (alice_on(running, &memory), memory)
+}
+
+/// Sets up alice's org and team on `running`, whose runtime keeps its requests in `memory`.
+pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Running {
     memory
         .lock()
         .unwrap()
         .requests
         .push(("r-1".into(), "Make a key?".into()));
-    let running = node("alice", runtime).await;
     let node = &running.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     orgs::add_team(
@@ -189,11 +226,15 @@ pub async fn alice() -> (Running, Arc<Mutex<MemoryRuntimeState>>) {
         })
     })
     .unwrap();
-    (running, memory)
+    running
 }
 
 pub async fn joined_bob(alice: &Running) -> Running {
-    let bob = node("bob", memory_runtime().0).await;
+    joined(alice, node("bob", memory_runtime().0).await).await
+}
+
+/// `bob` after joining alice's org acme as a member.
+pub async fn joined(alice: &Running, bob: Running) -> Running {
     let link = invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
     let doc = join(&bob.node, &link, |definition| definition.label == "Acme")
         .await

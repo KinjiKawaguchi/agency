@@ -5,7 +5,7 @@ use agency_core::push::{Notice, PushError};
 use agency_proto::client::PushToken;
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
-use agency_proto::view::{AnswerWith, Request, RequestKind};
+use agency_proto::view::{AnswerWith, PersonStatus, Request, RequestKind};
 use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -66,6 +66,8 @@ impl Random for CountingRandom {
 pub struct MemoryRuntimeState {
     /// Requests waiting for an answer: (id, title).
     pub requests: Vec<(String, String)>,
+    /// The people the view shows.
+    pub people: Vec<PersonStatus>,
     pub applied: Vec<RuntimeDecision>,
     /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
     /// without `tokenUsage`.
@@ -123,7 +125,7 @@ impl TeamRuntime for MemoryRuntime {
             team: team.team.clone(),
             label: team.team.to_string(),
             generated_at: at,
-            people: vec![],
+            people: state.people.clone(),
             requests,
             work: vec![],
             epics: vec![],
