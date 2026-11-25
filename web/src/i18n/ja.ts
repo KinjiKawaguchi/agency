@@ -154,6 +154,17 @@ export const ja: Messages = {
       blocking: (count) => `${count} 人が待機`,
       showMore: (count) => `あと ${count} 件を表示`,
     },
+    recent: {
+      head: '最近決めたもの',
+      states: { applied: '反映済み', delivered: '届きました', queued: '送信待ち', refused: '断られました' },
+      chose: (choice) => `「${choice}」を選びました。`,
+      queuedDetail: (attempts, retry) =>
+        `${attempts === 0 ? 'まだ送れていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
+      underMinute: '1 分以内',
+      lastError: (reason) => `直近のエラー: ${reason}`,
+      refusedDetail: (reason) => `チームのノードが受け付けませんでした: ${reason}`,
+      unavailable: (reason) => `最近の決定を読み込めませんでした: ${reason}`,
+    },
     paper: {
       blank: '左の一覧から書類を選ぶと、ここに開きます。',
       types: { proposal: '稟議書', question: '質問', pendingDecision: '判断のお願い' },

@@ -1,8 +1,8 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
-import { fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
+import { earlierDecisions, fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
 
 /** The token the mock node's index.html carries and its writes demand. */
 export const MOCK_TOKEN = 'mock-token'
@@ -10,7 +10,7 @@ export const MOCK_TOKEN = 'mock-token'
 export interface MockNode {
   /** Answers a request the way the real node would. */
   handle: (request: Request) => Promise<Response>
-  /** Decisions received so far, oldest first. */
+  /** Decisions received so far, oldest first. They also appear in the decision log. */
   decisions: () => readonly DecisionAnswer[]
 }
 
@@ -27,8 +27,12 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** Makes only the decision log calls fail with this status. */
+  decisionLogFailsWith?: number
   /** Makes the team's node refuse every decision for this reason (HTTP 409). */
   refuseDecisionsWith?: string
+  /** Starts the decision log with a few made earlier, one in each state. On by default; `false` starts it empty. */
+  earlierDecisions?: boolean
   /** What the node reports for an accepted decision. */
   outcome?: DecisionResult['outcome']
 }
@@ -50,10 +54,14 @@ const json = (body: unknown, status = 200): Response =>
 
 const failure = (status: number, message: string): Response => json({ error: message }, status)
 
+const MINUTE = 60_000
+const DECISIONS_PATH = '/api/decisions'
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|decisions|usage)$/
 
-const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string } =>
+const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string; title?: string } =>
   typeof body === 'object' && body !== null && 'kind' in body && 'target' in body && 'text' in body && typeof body.text === 'string'
 
 const teamKey = (org: string, team: string): string => `${org}/${team}`
@@ -63,6 +71,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const app: TeamView = options.view ?? shiftTimes(sampleTeamView, now.getTime() - Date.parse(sampleTeamView.generatedAt))
   let views = new Map<string, TeamView>([app, siteTeamView(app)].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
+  let log: readonly DecisionEntry[] = options.earlierDecisions === false ? [] : earlierDecisions(now)
 
   const me: Me = {
     account: { id: 'alice', label: 'Alice', fingerprint: 'a1b2c3d4e5f6' },
@@ -91,9 +100,15 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (!isAnswerWith(body)) return failure(400, 'The decision body is malformed.')
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
-    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }) }]
+    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }) }]
     views = new Map([...views, [teamKey(view.org, view.team), { ...view, requests: view.requests.filter((one) => one !== target) }]])
     const outcome = options.outcome ?? 'applied'
+    const state: DecisionEntry['state'] =
+      outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
+    log = [
+      { id: `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }) },
+      ...log,
+    ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
   }
 
@@ -114,6 +129,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (request.method === 'GET' && url.pathname === '/api/me') return json(me)
+    if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
+      if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
+      const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
+      return json({ entries: log.slice(0, Math.min(MAX_LIMIT, Math.max(1, limit))) } satisfies DecisionLog)
+    }
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
     const teamMatch = TEAM_PATH.exec(url.pathname)

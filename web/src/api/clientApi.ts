@@ -5,9 +5,12 @@
 import type { AnswerWith } from './teamview'
 
 export type { AccountRef } from '../../../bindings/AccountRef'
+export type { DecisionEntry } from '../../../bindings/DecisionEntry'
 export type { DecisionInput } from '../../../bindings/DecisionInput'
+export type { DecisionLog } from '../../../bindings/DecisionLog'
 export type { DecisionOutcome } from '../../../bindings/DecisionOutcome'
 export type { DecisionResult } from '../../../bindings/DecisionResult'
+export type { DecisionState } from '../../../bindings/DecisionState'
 export type { Department } from '../../../bindings/Department'
 export type { Funding } from '../../../bindings/Funding'
 export type { FundingKind } from '../../../bindings/FundingKind'
@@ -28,6 +31,8 @@ export interface DecisionAnswer {
   org: string
   team: string
   answerWith: AnswerWith
+  /** The request's title. The request leaves the team's view once answered, so the node keeps the title in its log. */
+  title: string
   choice?: string
   text: string
 }

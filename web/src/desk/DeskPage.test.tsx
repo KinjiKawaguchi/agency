@@ -34,7 +34,7 @@ describe('decision desk', () => {
 
     expect(await screen.findByText(/Alice approved this\. It is on its way to the drafter\./)).toBeInTheDocument()
     expect(node.decisions()).toEqual([
-      { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, choice: 'approve', text: 'Start next week.' },
+      { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, choice: 'approve', text: 'Start next week.' },
     ])
   })
 
@@ -45,7 +45,7 @@ describe('decision desk', () => {
     await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Drop it in the next release.')
     await user.click(screen.getByRole('button', { name: 'Send decision' }))
     await waitFor(() =>
-      expect(node.decisions()).toEqual([{ org: 'acme', team: 'app', answerWith: { kind: 'judge', target: 'app#14' }, text: 'Drop it in the next release.' }]),
+      expect(node.decisions()).toEqual([{ org: 'acme', team: 'app', answerWith: { kind: 'judge', target: 'app#14' }, title: PENDING, text: 'Drop it in the next release.' }]),
     )
   })
 
