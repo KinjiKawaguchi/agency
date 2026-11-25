@@ -12,6 +12,22 @@ test.afterEach(() => {
   expect(errors()).toEqual([])
 })
 
+test('overview: every org and team, what needs the viewer first, and a team that cannot be read in its place', async ({ page, request }) => {
+  await resetNode(request, { moreOrgs: true, usage: true })
+  await page.goto('/overview')
+  await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
+  await expect(page.locator('article.ov-team')).toHaveCount(6)
+  await expect(page.locator('section.ov-org h2').allTextContents()).resolves.toEqual(['Acme', 'Lab', 'Club', 'Usage limits'])
+  const research = page.getByRole('article', { name: 'lab/research' })
+  await expect(research).toContainText('3 blocked items')
+  await expect(page.getByRole('article', { name: 'lab/notebook' })).toContainText('The team’s node could not be reached')
+  await expect(page.getByRole('article', { name: 'club/shop' })).toContainText('Could not load this team')
+  await page.getByRole('link', { name: '1 request waits for you' }).click()
+  await expect(page).toHaveURL(/\/desk\?team=lab/)
+  await expect(page.getByText('Showing only Notebook.')).toBeVisible()
+  await expect(page.getByRole('article').getByRole('heading', { level: 2 })).toHaveText('Publish the notebook under the lab’s name?')
+})
+
 test('people and work: who waits on you, work in progress, blocked work, and epic forecasts', async ({ page }) => {
   await page.goto('/people')
   await expect(page.getByRole('heading', { level: 2, name: 'App team' })).toBeVisible()

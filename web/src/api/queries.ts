@@ -1,7 +1,7 @@
 import { queryOptions, useQueries, useQuery } from '@tanstack/react-query'
 import type { ApiClient } from './client'
 import { useApi } from './context'
-import type { Me } from './clientApi'
+import type { Me, OrgRef, TeamRef } from './clientApi'
 import { toTeam, type Team } from './teams'
 
 export const POLL_MS = 30_000
@@ -50,5 +50,41 @@ export function useTeams(): Teams {
     teams: results.flatMap((result) => (result.data === undefined ? [] : [result.data])),
     isLoading: me.isPending || results.some((result) => result.isPending),
     error: me.error ?? results.find((result) => result.error !== null)?.error ?? null,
+  }
+}
+
+/** What is known of one team: still loading, could not be loaded, or its snapshot. */
+export type TeamState = { status: 'loading' } | { status: 'failed'; error: Error } | { status: 'ready'; team: Team }
+
+export interface OrgStates {
+  org: OrgRef
+  teams: ReadonlyArray<{ ref: TeamRef; state: TeamState }>
+}
+
+export interface TeamStates {
+  me: Me | undefined
+  orgs: readonly OrgStates[]
+  /** The viewer's own account could not be read; nothing else can be shown. */
+  error: Error | null
+}
+
+/**
+ * Every team of every org, each with its own outcome, so that a team that cannot be read is shown as that
+ * in its place. It reads the same queries as `useTeams`, so the two share what the page has already loaded.
+ */
+export function useTeamStates(): TeamStates {
+  const api = useApi()
+  const me = useQuery(meQuery(api))
+  const refs = (me.data?.orgs ?? []).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
+  const results = useQueries({ queries: refs.map(({ org, team }) => teamQuery(api, org, team)) })
+  const stateOf = (org: string, team: string): TeamState => {
+    const result = results[refs.findIndex((ref) => ref.org === org && ref.team === team)]
+    if (result?.data !== undefined) return { status: 'ready', team: result.data }
+    return result?.error ? { status: 'failed', error: result.error } : { status: 'loading' }
+  }
+  return {
+    me: me.data,
+    orgs: (me.data?.orgs ?? []).map((org) => ({ org, teams: org.teams.map((ref) => ({ ref, state: stateOf(org.id, ref.id) })) })),
+    error: me.error,
   }
 }

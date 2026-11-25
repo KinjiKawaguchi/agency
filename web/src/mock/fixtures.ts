@@ -171,3 +171,145 @@ export function earlierDecisions(now: Date): DecisionEntry[] {
     },
   ]
 }
+
+/** More orgs for the overview: a team that is stuck, one that is a stale copy, a busy one, and one that cannot be read. */
+export const MORE_ORGS = [
+  {
+    id: 'lab',
+    label: 'Lab',
+    teams: [
+      { id: 'research', label: 'Research', location: 'local' },
+      { id: 'notebook', label: 'Notebook', location: 'remote' },
+    ],
+  },
+  {
+    id: 'club',
+    label: 'Club',
+    teams: [
+      { id: 'garden', label: 'Garden', location: 'local' },
+      { id: 'shop', label: 'Shop', location: 'remote' },
+    ],
+  },
+] as const
+
+/** The team of `MORE_ORGS` that nobody can read: its node does not answer. */
+export const UNREADABLE_TEAM = 'club/shop'
+
+/** The team of `MORE_ORGS` whose data is a day old, because its node could not be reached. */
+export const STALE_TEAM = 'lab/notebook'
+
+const agent = (id: string, label: string, role: 'lead' | 'member', state: 'working' | 'idle', status: string, since: string, holding: string[] = []): TeamView['people'][number] => ({
+  id,
+  label,
+  kind: 'agent',
+  role,
+  state,
+  since,
+  status,
+  holding,
+})
+
+const owner: TeamView['people'][number] = { id: 'owner', label: 'Alice', kind: 'human', role: 'member', state: 'unknown', status: 'Nothing is waiting for an answer', holding: [] }
+
+/** The views of the teams in `MORE_ORGS` that can be read, in the node's time frame. */
+export function moreTeamViews(now: Date): TeamView[] {
+  const ago = (ms: number): string => new Date(now.getTime() - ms).toISOString()
+  const day = (days: number): string => new Date(now.getTime() - days * DAY).toISOString().slice(0, 10)
+  const base = { epics: [] }
+  const research: TeamView = {
+    ...base,
+    org: 'lab',
+    team: 'research',
+    label: 'Research',
+    generatedAt: ago(MINUTE),
+    people: [
+      agent('quinn', 'Quinn', 'lead', 'idle', 'Idle: three items wait on a decision', ago(3 * HOUR)),
+      agent('rae', 'Rae', 'member', 'idle', 'Waiting for the data export to finish', ago(5 * HOUR), ['lab#4']),
+      owner,
+    ],
+    requests: [
+      {
+        id: 'r-20261124-090000-e5f6',
+        kind: 'question',
+        title: 'Which sample should the next run use?',
+        context: 'Both samples are ready.',
+        from: 'quinn',
+        to: 'bob',
+        createdAt: ago(3 * HOUR),
+        blocks: ['quinn'],
+        options: [],
+        answerWith: { kind: 'answer', target: 'r-20261124-090000-e5f6' },
+      },
+    ],
+    work: [
+      { ref: 'lab#2', title: 'Choose the sampling rate', status: 'next', blocked: { reason: 'needsDecision', since: day(3) }, points: 2 },
+      { ref: 'lab#3', title: 'Pick the control group', status: 'next', blocked: { reason: 'needsDecision', since: day(2) }, points: 3 },
+      { ref: 'lab#4', title: 'Collect the second batch', status: 'inProgress', assignee: 'rae', blocked: { reason: 'external', since: day(1) }, points: 5 },
+      { ref: 'lab#5', title: 'Write up the first batch', status: 'done', assignee: 'quinn', points: 2 },
+    ],
+  }
+  const notebook: TeamView = {
+    ...base,
+    org: 'lab',
+    team: 'notebook',
+    label: 'Notebook',
+    generatedAt: ago(26 * HOUR),
+    people: [
+      agent('nova', 'Nova', 'lead', 'working', 'Reviewing the draft', ago(26 * HOUR), ['nb#7']),
+      agent('kit', 'Kit', 'member', 'working', 'Cleaning the figures', ago(27 * HOUR), ['nb#8']),
+      owner,
+    ],
+    requests: [
+      {
+        id: 'r-20261123-100000-a7b8',
+        kind: 'pendingDecision',
+        title: 'Publish the notebook under the lab’s name?',
+        context: 'The draft is ready for review.',
+        from: 'nb#7',
+        createdAt: ago(27 * HOUR),
+        blocks: [],
+        options: [],
+        answerWith: { kind: 'judge', target: 'nb#7' },
+      },
+    ],
+    work: [
+      { ref: 'nb#7', title: 'Review the draft', status: 'inProgress', assignee: 'nova', points: 2 },
+      { ref: 'nb#8', title: 'Clean the figures', status: 'inProgress', assignee: 'kit', points: 1 },
+    ],
+  }
+  const garden: TeamView = {
+    ...base,
+    org: 'club',
+    team: 'garden',
+    label: 'Garden',
+    generatedAt: ago(MINUTE),
+    people: [
+      agent('ivy', 'Ivy', 'lead', 'working', 'Planning the spring planting', ago(HOUR), ['gd#1']),
+      agent('moss', 'Moss', 'member', 'working', 'Updating the seed list', ago(2 * HOUR), ['gd#2']),
+      agent('fern', 'Fern', 'member', 'idle', 'Nothing in Next', ago(6 * HOUR)),
+      owner,
+    ],
+    requests: [],
+    work: [
+      { ref: 'gd#1', title: 'Plan the spring planting', status: 'inProgress', assignee: 'ivy', points: 3 },
+      { ref: 'gd#2', title: 'Update the seed list', status: 'inProgress', assignee: 'moss', points: 1 },
+    ],
+  }
+  return [research, notebook, garden]
+}
+
+/** A made-up definition for an org of `MORE_ORGS`: the account is its root, and every team runs on its own node. */
+export function moreOrgDefinition(org: (typeof MORE_ORGS)[number]): OrgDefinition {
+  return {
+    org: org.id,
+    label: org.label,
+    version: 1,
+    prev: '0'.repeat(64),
+    root: { account: 'alice', publicKey: fakeKey('A') },
+    departments: [{ id: 'main', label: 'Main', parent: null, head: 'owner' }],
+    people: [{ id: 'owner', label: 'Alice', account: 'alice', publicKey: fakeKey('A'), department: 'main', role: 'member' }],
+    teams: org.teams.map((team) => ({ id: team.id, label: team.label, department: 'main', node: 'https://alice.example' })),
+    revoked: [],
+    at: '2026-11-24T12:00:00Z',
+  }
+}

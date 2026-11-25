@@ -37,6 +37,7 @@ export function AppBar() {
             {t.nav.desk}
             {waiting > 0 ? <span className="nav-count">{waiting}</span> : null}
           </Link>
+          <Link to="/overview">{t.nav.overview}</Link>
           <Link to="/people">{t.nav.people}</Link>
           <Link to="/org">{t.nav.org}</Link>
           <Link to="/costs">{t.nav.costs}</Link>

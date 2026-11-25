@@ -1,10 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { CannotSignError, useDecide, useSigningState } from '../device/useDecide'
 import { SignInExpiredError } from '../api/session'
 import type { Messages } from '../i18n/en'
 import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
+import { teamKey } from '../api/teams'
 import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
@@ -39,12 +41,16 @@ interface DeskPageProps {
   /** The open item's key, kept in the address so a link opens the same document. */
   selected: string | undefined
   onSelect: (key: string) => void
+  /** Shows only this team's requests (`org/team`), as a link from the overview does. */
+  team?: string | undefined
   sealHoldMs?: number
 }
 
-export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD_MS }: DeskPageProps) {
+export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHoldMs = SEAL_HOLD_MS }: DeskPageProps) {
   const { t } = useI18n()
-  const { me, teams, isLoading, error } = useTeams()
+  const { me, teams: everyTeam, isLoading, error } = useTeams()
+  const scope = onlyTeam === undefined ? undefined : everyTeam.find((team) => teamKey(team) === onlyTeam)
+  const teams = useMemo(() => (scope === undefined ? everyTeam : [scope]), [everyTeam, scope])
   const decide = useDecide()
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -120,6 +126,11 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       {teams.map((team) => (
         <ReplicaNotice key={`${team.view.org}/${team.view.team}`} source={team.source} />
       ))}
+      {scope === undefined ? null : (
+        <p className="desk-scope">
+          {t.desk.pile.scope.only(scope.view.label)} <Link to="/desk">{t.desk.pile.scope.all}</Link>
+        </p>
+      )}
       <Briefing me={me} teams={teams} items={items} situation={situation} now={new Date()} />
       <div className="desk">
         <div className="desk-pile">

@@ -9,6 +9,8 @@ export interface NodeOptions {
   outcome?: 'queued' | 'delivered'
   /** Nothing waits on anyone, and nothing was decided before. */
   empty?: boolean
+  /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
+  moreOrgs?: boolean
 }
 
 /** Starts the mock node over, with its sample data and the given options. */
@@ -18,6 +20,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')
+  if (options.moreOrgs === true) query.set('orgs', 'more')
   const reply = await request.post(`/__mock/reset?${query.toString()}`)
   expect(reply.status()).toBe(204)
 }

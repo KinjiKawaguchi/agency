@@ -27,6 +27,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const isEmpty = query?.get('empty') === '1'
   return {
     usage: usage === '1',
+    ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
     ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),

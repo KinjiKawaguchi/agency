@@ -15,6 +15,7 @@ const THEMES = ['light', 'dark'] as const
 
 const SCREENS = [
   { name: 'desk', path: '/desk', ready: 'article.paper' },
+  { name: 'overview', path: '/overview', ready: 'article.ov-team' },
   { name: 'people', path: '/people', ready: 'article.mate' },
   { name: 'org', path: '/org', ready: '.orgchart .oc-node.agent' },
   { name: 'costs', path: '/costs', ready: '.columns .column' },
@@ -23,14 +24,12 @@ const SCREENS = [
 
 test.beforeAll(() => mkdirSync(DIRECTORY, { recursive: true }))
 
-test.beforeEach(async ({ request }) => {
-  await resetNode(request, { usage: true })
-})
-
 for (const viewport of VIEWPORTS) {
   for (const theme of THEMES) {
     for (const screen of SCREENS) {
-      test(`${screen.name} in ${theme} at ${viewport.name} width`, async ({ page }) => {
+      test(`${screen.name} in ${theme} at ${viewport.name} width`, async ({ page, request }) => {
+        // The overview shows several orgs, with a stuck team, a stale copy, and one that cannot be read.
+        await resetNode(request, { usage: true, moreOrgs: screen.name === 'overview' })
         await page.setViewportSize({ width: viewport.width, height: viewport.height })
         await page.goto(`${screen.path}?theme=${theme}`)
         await expect(page.locator(screen.ready).first()).toBeVisible()
