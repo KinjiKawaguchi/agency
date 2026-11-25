@@ -96,6 +96,7 @@ async fn alice_answers(alice: &Running) -> Answers {
     assert_eq!(status, 404);
     vec![
         ("me", read(alice, "/api/me").await),
+        ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),
         (
             "team-snapshot-local",

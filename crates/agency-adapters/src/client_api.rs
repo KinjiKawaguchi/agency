@@ -18,8 +18,8 @@ use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
-use agency_proto::client::{DeviceRequestInput, PushTokenInput, SignedDecisionInput};
-use agency_proto::{DeviceChange, Id, Signed};
+use agency_proto::client::{DeviceRequestInput, PushTokenInput, Session, SignedDecisionInput};
+use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
@@ -208,6 +208,18 @@ fn parse_id(raw: &str) -> Result<Id, Error> {
     Id::parse(raw).map_err(|_| Error::not_found("not found"))
 }
 
+/// The write token and the node's time, for clients that do not read the page (the iOS app). Any reader
+/// may have it, as any reader may load the page that carries it; writes through Access also need the
+/// owner's sign-in.
+async fn get_session(State(api): Shared) -> Response {
+    let now =
+        Timestamp::parse(&api.node.now_text()).map_err(|error| Error::internal(error.to_string()));
+    respond(now.map(|now| Session {
+        write_token: api.token.clone(),
+        now,
+    }))
+}
+
 async fn get_me(State(api): Shared) -> Response {
     json_response(StatusCode::OK, &me(&api.node))
 }
@@ -367,6 +379,7 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 pub fn router(api: Arc<ClientApi>) -> Router {
     Router::new()
         .route("/api/me", get(get_me))
+        .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
         .route(

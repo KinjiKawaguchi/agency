@@ -10,6 +10,18 @@ use crate::view::TeamView;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// What a client needs before it writes: the write token, and the node's clock, which an envelope's `at`
+/// must agree with.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Session {
+    /// The value every write sends in `x-agency-token`. It changes each time the node starts.
+    pub write_token: String,
+    /// The node's time when it answered.
+    pub now: Timestamp,
+}
+
 /// The node's account and everything it can reach.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
