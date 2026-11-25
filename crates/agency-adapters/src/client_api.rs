@@ -14,16 +14,19 @@ use agency_core::client::{
     decision_log, me, org_definition, submit_decision, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
+use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
-use agency_proto::client::{DecisionInput, DeviceRequestInput, SignedDecisionInput};
+use agency_proto::client::{
+    DecisionInput, DeviceRequestInput, PushTokenInput, SignedDecisionInput,
+};
 use agency_proto::{DeviceChange, Id, Signed};
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::json;
@@ -136,9 +139,11 @@ fn is_same_secret(given: &str, expected: &str) -> bool {
             == 0
 }
 
+/// A write needs the page's token, a JSON body (a DELETE has none), and, through Access, the owner.
 fn check_write(
     api: &ClientApi,
     admitted: &Admitted,
+    method: &Method,
     headers: &HeaderMap,
 ) -> Result<(), (StatusCode, &'static str)> {
     let has_token =
@@ -149,7 +154,7 @@ fn check_write(
     let is_json = header_text(headers, header::CONTENT_TYPE)
         .and_then(|value| value.split(';').next())
         .is_some_and(|value| value.trim() == "application/json");
-    if !is_json {
+    if !is_json && method != Method::DELETE {
         return Err((
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "the body must be application/json",
@@ -186,7 +191,9 @@ async fn guard(
     };
     let is_write = !matches!(*request.method(), Method::GET | Method::HEAD);
     if is_write {
-        if let Err((status, message)) = check_write(&api, &admitted, request.headers()) {
+        if let Err((status, message)) =
+            check_write(&api, &admitted, request.method(), request.headers())
+        {
             return refuse(status, message);
         }
     }
@@ -292,6 +299,24 @@ async fn post_device_change(State(api): Shared, bytes: Bytes) -> Response {
     respond(result.await)
 }
 
+async fn get_push_tokens(State(api): Shared) -> Response {
+    json_response(StatusCode::OK, &push_tokens(&api.node))
+}
+
+/// Registers an APNs device token for the owner's notifications (or updates its environment and label).
+async fn post_push_token(State(api): Shared, bytes: Bytes) -> Response {
+    let result = json_body::<PushTokenInput>(&bytes, "push token")
+        .and_then(|input| register_push_token(&api.node, input));
+    respond(result)
+}
+
+async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Response {
+    match remove_push_token(&api.node, &token) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
+}
+
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html; charset=utf-8",
@@ -355,6 +380,11 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/me", get(get_me))
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
+        .route(
+            "/api/push/tokens",
+            get(get_push_tokens).post(post_push_token),
+        )
+        .route("/api/push/tokens/{token}", delete(delete_push_token))
         .route("/api/devices/requests", post(post_device_request))
         .route("/api/devices/changes", post(post_device_change))
         .route("/api/orgs/{org}", get(get_org))

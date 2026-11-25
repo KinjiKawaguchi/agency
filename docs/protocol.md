@@ -231,11 +231,24 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
 | POST | `/api/devices/changes` | Body `Signed<DeviceChange>` for the account, signed by one of its devices. Checked here, then written by the root's node. Answer `DeviceChangeResult`: `applied` (this node holds the root key), `delivered`, or `queued` (with `message`). A refusal by the root's node is 409 |
+| GET | `/api/push/tokens` | `PushTokenList`: the owner's registered APNs device tokens, each `token` shortened to its last 8 characters, with `environment`, `label`, `registeredAt` |
+| POST | `/api/push/tokens` | Body `PushTokenInput`: `token` (hex, 32 to 200 characters, stored lowercased), `environment` (`production` or `sandbox`, as the app was signed; the node never guesses), `label` (1 to 80 characters). Registering a known token updates it. Answer the `PushToken` |
+| DELETE | `/api/push/tokens/<token>` | 204, also for an unknown token. A DELETE needs the write token but has no body |
 | GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `choiceLabel`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
 
 Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 
 Funding: each configured source (`id`, `label`, `kind` `subscription` or `apiKey`, optional `usageFile`) is reported with the usage windows its file holds (`fiveHour` and `sevenDay`, each with `lengthHours`, `utilization` as a rounded percent, and `resetsAt`). A missing or malformed file reports no windows. The node never reads or stores a token.
+
+### Push notifications
+
+When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `bundleId`), the node notifies the owner's registered device tokens through APNs. Without it, nothing is sent.
+
+- The node checks for new requests every 30 seconds. A request waits for the owner when, in a team on this node, its addressee is the owner (see "Requests"), or, in a team on another node, its `to` is the owner's runtime name there (`viewer`), or it has no `to` and that name is `owner`.
+- Limit: in a team on another node, a request without `to` is missed when the owner owns the team under another runtime name, because the team's node reports only that name.
+- Each request is notified once (by `org/team/request id`; the node remembers the last 1000). The first check after the node starts with an empty data directory only records the requests already waiting.
+- A notification is `{ "aps": { "alert": { "title": <team label>, "body": <request title> }, "sound": "default", "thread-id": "<org>/<team>" }, "agency": { "org", "team", "request" } }` with `apns-collapse-id` set to the request id. Nothing else about the request leaves the node.
+- A token APNs answers 410 or `BadDeviceToken` for is removed. Any other failure is tried again at the next check. The provider token (ES256 JWT, `kid` the key id, `iss` the team id) is reused for 50 minutes.
 
 ### Who is let in
 
@@ -247,7 +260,7 @@ The node serves the federation routes, the Client API, and the web client on one
 Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
-- `Content-Type: application/json` and a body of at most 64 KiB;
+- `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
 - through Access, the signed-in email must equal the configured `ownerEmail`, because the node signs decisions with its owner's account key.
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.

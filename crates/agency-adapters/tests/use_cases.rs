@@ -3,7 +3,7 @@
 //! checks that decide whether a signed document is accepted.
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
-use agency_adapters::memory::{CountingRandom, ManualClock, MemoryRuntime};
+use agency_adapters::memory::{CountingRandom, ManualClock, MemoryRuntime, NoNotifier};
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::system::TokioWriteLock;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
@@ -77,6 +77,7 @@ fn bare(account: &str) -> Fixture {
         trusted: vec![],
         funding: vec![],
         access: None,
+        push: None,
     })
     .unwrap();
     let clock = ManualClock::at(T0);
@@ -95,6 +96,7 @@ fn bare(account: &str) -> Fixture {
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(Arc::new(clock.clone()))),
+        notifier: Arc::new(NoNotifier),
     };
     let node = Node::open(ports, key).unwrap();
     Fixture {

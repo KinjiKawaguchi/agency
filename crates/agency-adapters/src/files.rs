@@ -7,10 +7,11 @@ use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::ports::{
     AppliedLog, ConfigStore, DecisionLogStore, DeviceRequestStore, InviteStore, OrgStore,
-    OutboxStore, ReplicaStore,
+    OutboxStore, PushStore, ReplicaStore,
 };
 use agency_core::views::Replica;
 use agency_core::{Error, Result};
+use agency_proto::client::PushToken;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
 use serde::{de::DeserializeOwned, Serialize};
@@ -280,5 +281,23 @@ impl DeviceRequestStore for DataDir {
 
     fn save_device_requests(&self, requests: &[DeviceRequestRecord]) -> Result<()> {
         write_json(&self.0.join("device-requests.json"), requests)
+    }
+}
+
+impl PushStore for DataDir {
+    fn push_tokens(&self) -> Vec<PushToken> {
+        read_json(&self.0.join("push-tokens.json")).unwrap_or_default()
+    }
+
+    fn save_push_tokens(&self, tokens: &[PushToken]) -> Result<()> {
+        write_json(&self.0.join("push-tokens.json"), tokens)
+    }
+
+    fn notified(&self) -> Option<Vec<String>> {
+        read_json(&self.0.join("notified.json"))
+    }
+
+    fn save_notified(&self, keys: &[String]) -> Result<()> {
+        write_json(&self.0.join("notified.json"), keys)
     }
 }

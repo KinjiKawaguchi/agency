@@ -1,6 +1,8 @@
 //! In-memory test doubles: a clock that moves only when told to, counting randomness, and a team runtime.
 use agency_core::config::HostedTeam;
-use agency_core::ports::{Clock, Random, TeamRuntime};
+use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
+use agency_core::push::{Notice, PushError};
+use agency_proto::client::PushToken;
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, Request, RequestKind};
@@ -155,5 +157,45 @@ impl TeamRuntime for MemoryRuntime {
             status: 404,
             message: "the memory runtime does not report token usage".into(),
         })
+    }
+}
+
+/// Sends nothing: the notifier of a node without an APNs key.
+pub struct NoNotifier;
+
+#[async_trait]
+impl Notifier for NoNotifier {
+    async fn send(&self, _token: &PushToken, _notice: &Notice) -> Result<(), PushError> {
+        Ok(())
+    }
+}
+
+/// A notifier that records what it was asked to send. Tokens in `gone` answer like an unregistered
+/// device; with `failing`, every send fails.
+#[derive(Default, Debug)]
+pub struct MemoryNotifierState {
+    pub sent: Vec<(String, Notice)>,
+    pub gone: Vec<String>,
+    pub failing: bool,
+}
+
+#[derive(Clone, Default)]
+pub struct MemoryNotifier(pub Arc<Mutex<MemoryNotifierState>>);
+
+#[async_trait]
+impl Notifier for MemoryNotifier {
+    async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
+        if state.failing {
+            return Err(PushError::Failed("APNs did not answer".into()));
+        }
+        if state.gone.contains(&token.token) {
+            return Err(PushError::Gone);
+        }
+        state.sent.push((token.token.clone(), notice.clone()));
+        Ok(())
     }
 }

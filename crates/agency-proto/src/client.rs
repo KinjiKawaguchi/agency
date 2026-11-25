@@ -316,3 +316,42 @@ pub enum DeviceChangeOutcome {
     /// The root's node could not be reached; the change waits in the outbox.
     Queued,
 }
+
+/// Which APNs host a device token belongs to: `sandbox` for development builds, `production` for
+/// TestFlight and App Store builds. The app says which; the node never guesses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PushEnvironment {
+    Production,
+    Sandbox,
+}
+
+/// An APNs device token to register for the owner's notifications.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct PushTokenInput {
+    /// The device token as hex.
+    pub token: String,
+    pub environment: PushEnvironment,
+    pub label: String,
+}
+
+/// A registered device token. In a list, `token` holds only its last 8 characters.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushToken {
+    pub token: String,
+    pub environment: PushEnvironment,
+    pub label: String,
+    pub registered_at: Timestamp,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushTokenList {
+    pub tokens: Vec<PushToken>,
+}

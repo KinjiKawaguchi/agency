@@ -7,6 +7,7 @@ use agency_core::decisions::Decided;
 use agency_core::invites::join;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::ports::ConfigStore;
+use agency_core::push::notify_waiting;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -175,6 +176,7 @@ fn init(
         trusted: vec![],
         funding: vec![],
         access: None,
+        push: None,
     })?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
@@ -292,6 +294,14 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
             if tick.is_multiple_of(2) {
                 if let Err(error) = refresh(&background).await {
                     eprintln!("agency: re-reading the replicas failed: {error}");
+                }
+                match notify_waiting(&background).await {
+                    Ok(pass) => {
+                        for failure in pass.failures {
+                            eprintln!("agency: a push notification was not sent: {failure}");
+                        }
+                    }
+                    Err(error) => eprintln!("agency: checking for new requests failed: {error}"),
                 }
             }
             if let Err(error) = deliver_due(&background).await {

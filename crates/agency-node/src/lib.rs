@@ -2,14 +2,18 @@
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
+use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
+use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::runtime::CommandRuntime;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
-use agency_core::ports::{Clock, Random, TeamRuntime};
+use agency_core::config::NodeConfig;
+use agency_core::ports::ConfigStore as _;
+use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
 use agency_core::{Node, Ports};
 use axum::Router;
 use std::borrow::Cow;
@@ -22,6 +26,21 @@ pub struct Overrides {
     pub clock: Option<Arc<dyn Clock>>,
     pub random: Option<Arc<dyn Random>>,
     pub certs: Option<Arc<dyn CertSource>>,
+    pub notifier: Option<Arc<dyn Notifier>>,
+}
+
+/// APNs when the node has a push setting whose key can be read; otherwise nothing is sent.
+fn notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
+    let Some(push) = config.push.clone() else {
+        return Arc::new(NoNotifier);
+    };
+    match Apns::new(push, ApnsHosts::default(), clock) {
+        Ok(apns) => Arc::new(apns),
+        Err(error) => {
+            eprintln!("agency: push notifications are off: {error}");
+            Arc::new(NoNotifier)
+        }
+    }
 }
 
 /// The node and the parts its HTTP server needs.
@@ -37,6 +56,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let key = data.load_key()?;
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
+    let notifier = match overrides.notifier {
+        Some(notifier) => notifier,
+        None => notifier(&data.load_config()?, clock.clone()),
+    };
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
@@ -47,6 +70,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(clock.clone())),
+        notifier,
     };
     let node = Arc::new(Node::open(ports, key)?);
     Ok(Opened {
