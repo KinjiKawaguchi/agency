@@ -10,12 +10,12 @@
 //! also need the owner's email, because the node signs decisions with the owner's account key.
 use crate::access::{AccessVerifier, Identity};
 use crate::server::status_of;
-use agency_core::client::{me, org_definition, submit_decision, team_snapshot};
+use agency_core::client::{decision_log, me, org_definition, submit_decision, team_snapshot};
 use agency_core::{Error, Node};
 use agency_proto::client::DecisionInput;
 use agency_proto::Id;
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -24,6 +24,7 @@ use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::json;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -197,6 +198,19 @@ async fn get_me(State(api): Shared) -> Response {
     json_response(StatusCode::OK, &me(&api.node))
 }
 
+/// The account's recent decisions. `limit` defaults to 50 and is capped at 200.
+async fn get_decisions(
+    State(api): Shared,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let limit = match query.get("limit").map(|raw| raw.parse::<usize>()) {
+        None => None,
+        Some(Ok(limit)) => Some(limit),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "limit must be a number"),
+    };
+    json_response(StatusCode::OK, &decision_log(&api.node, limit))
+}
+
 async fn get_org(State(api): Shared, Path(org): Path<String>) -> Response {
     respond(parse_id(&org).and_then(|org| org_definition(&api.node, &org)))
 }
@@ -281,6 +295,7 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 pub fn router(api: Arc<ClientApi>) -> Router {
     Router::new()
         .route("/api/me", get(get_me))
+        .route("/api/decisions", get(get_decisions))
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route(

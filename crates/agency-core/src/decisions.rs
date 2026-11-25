@@ -8,6 +8,40 @@ use agency_proto::runtime::RuntimeError;
 use agency_proto::{
     Envelope, EnvelopeId, EnvelopeKind, Id, Kind, Payload, RuntimeDecision, Signed,
 };
+use serde::{Deserialize, Serialize};
+
+/// A decision this node's account made, as kept in the decision log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecisionRecord {
+    pub id: EnvelopeId,
+    pub org: Id,
+    pub team: Id,
+    pub kind: EnvelopeKind,
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub payload: Payload,
+    pub at: String,
+    /// Applied to a team on this node; otherwise sent as an envelope, whose delivery the outbox tracks.
+    pub is_local: bool,
+}
+
+impl DecisionRecord {
+    fn of(envelope: &Envelope, title: Option<String>, is_local: bool) -> Self {
+        Self {
+            id: envelope.id.clone(),
+            org: envelope.org.clone(),
+            team: envelope.team.clone(),
+            kind: envelope.kind,
+            target: envelope.target.clone(),
+            title,
+            payload: envelope.payload.clone(),
+            at: envelope.at.clone(),
+            is_local,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Decided {
@@ -47,6 +81,19 @@ pub async fn decide(
     target: String,
     payload: Payload,
 ) -> Result<Decided> {
+    decide_titled(node, org, team, kind, target, payload, None).await
+}
+
+/// `decide`, keeping the request's title in the decision log.
+pub async fn decide_titled(
+    node: &Node,
+    org: &Id,
+    team: &Id,
+    kind: EnvelopeKind,
+    target: String,
+    payload: Payload,
+    title: Option<String>,
+) -> Result<Decided> {
     let doc = orgs::load(node, org)?;
     let person = doc
         .body
@@ -79,6 +126,7 @@ pub async fn decide(
         .hosted(org, team)
         .filter(|_| place.node == node.url())
     {
+        let record = DecisionRecord::of(&envelope, title, true);
         let decision = RuntimeDecision {
             kind,
             target: envelope.target,
@@ -89,8 +137,10 @@ pub async fn decide(
             .decide(hosted, decision)
             .await
             .map_err(runtime_refusal)?;
+        node.store().append_decision(&record)?;
         return Ok(Decided::Applied);
     }
+    let record = DecisionRecord::of(&envelope, title, false);
     let signed = Signed::sign(Kind::Envelope, envelope, node.account(), node.key())
         .map_err(|error| Error::internal(error.to_string()))?;
     let parcel = Parcel::new(
@@ -99,6 +149,7 @@ pub async fn decide(
         &node.now_text(),
     );
     enqueue(node, &parcel)?;
+    node.store().append_decision(&record)?;
     Ok(match deliver(node, &parcel).await? {
         Outcome::Delivered => Decided::Delivered,
         Outcome::Unreachable(message) => Decided::Queued(message),

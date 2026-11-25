@@ -4,4 +4,8 @@ import type { EnvelopeKind } from "./EnvelopeKind.js";
 /**
  * A decision from the client. `kind` and `target` are the request's `answerWith`.
  */
-export type DecisionInput = { kind: EnvelopeKind, target: string, text: string, choice?: string, };
+export type DecisionInput = { kind: EnvelopeKind, target: string, text: string, choice?: string, 
+/**
+ * The request's title, kept in the decision log for people to read (at most 200 characters).
+ */
+title?: string, };

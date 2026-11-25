@@ -176,7 +176,8 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
-| POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
+| POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`, and optionally the request's `title`, at most 200 characters, kept in the decision log). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
+| GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
 
 Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 

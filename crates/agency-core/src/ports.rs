@@ -1,5 +1,6 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
+use crate::decisions::DecisionRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
 use crate::outbox::Parcel;
@@ -61,6 +62,15 @@ pub trait OutboxStore {
     fn remove_parcel(&self, id: &str) -> Result<()>;
     /// Moves a parcel the receiver refused out of the outbox, keeping it for people to read.
     fn refuse_parcel(&self, parcel: &Parcel) -> Result<()>;
+    /// Parcels the receiver refused.
+    fn refused_parcels(&self) -> Vec<Parcel>;
+}
+
+/// The decisions this node's account made, oldest first in storage.
+pub trait DecisionLogStore {
+    fn append_decision(&self, record: &DecisionRecord) -> Result<()>;
+    /// At most `limit` records, newest first.
+    fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
 }
 
 pub trait ReplicaStore {
@@ -69,7 +79,15 @@ pub trait ReplicaStore {
 }
 
 pub trait Store:
-    ConfigStore + OrgStore + InviteStore + AppliedLog + OutboxStore + ReplicaStore + Send + Sync
+    ConfigStore
+    + OrgStore
+    + InviteStore
+    + AppliedLog
+    + OutboxStore
+    + ReplicaStore
+    + DecisionLogStore
+    + Send
+    + Sync
 {
 }
 
@@ -80,6 +98,7 @@ impl<
             + AppliedLog
             + OutboxStore
             + ReplicaStore
+            + DecisionLogStore
             + Send
             + Sync,
     > Store for T
