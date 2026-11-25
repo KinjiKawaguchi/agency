@@ -7,19 +7,21 @@ use agency_adapters::memory::{CountingRandom, ManualClock, MemoryRuntime, NoNoti
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::system::TokioWriteLock;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
-use agency_core::decisions::{accept_envelope, decide, Accepted, Decided};
+use agency_core::decisions::{accept_envelope, Accepted, Decided};
+use agency_core::devices::DeviceSigner;
 use agency_core::invites::{accept_join, invite, open_invite};
 use agency_core::orgs::{self, receive};
 use agency_core::outbox::{deliver_due, pending, Parcel, ParcelBody};
 use agency_core::ports::ConfigStore;
 use agency_core::read_auth::{sign_read, verify_read};
+use agency_core::signed_decisions::decide_with_device;
 use agency_core::{ErrorKind, Node, Ports};
 use agency_proto::clock::Duration;
 use agency_proto::invite::Invite;
 use agency_proto::org::{Root, SignedOrg, TeamPlace};
 use agency_proto::{
-    AccountKey, Envelope, EnvelopeId, EnvelopeKind, Id, JoinRequest, Kind, OrgDefinition, Payload,
-    Person, Role, Signed,
+    AccountKey, Device, Envelope, EnvelopeId, EnvelopeKind, Id, JoinRequest, Kind, OrgDefinition,
+    Payload, Person, Role, Signed, Timestamp,
 };
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -39,7 +41,7 @@ struct Fixture {
     _dir: TempDir,
 }
 
-/// alice's node at T0: the root of org acme, hosting team app with one waiting request r-1.
+/// alice's node at T0: the root of org acme with one device, hosting team app with one waiting request r-1.
 fn alice() -> Fixture {
     let fixture = bare("alice");
     let node = &fixture.node;
@@ -56,7 +58,23 @@ fn alice() -> Fixture {
     };
     node.update_config(|config| config.teams.push(hosted))
         .unwrap();
+    let laptop = Device {
+        id: laptop().public().device_id(),
+        label: "Laptop".into(),
+        public_key: laptop().public(),
+        added_at: Timestamp::parse(T0).unwrap(),
+    };
+    orgs::amend(node, &id("acme"), |body| {
+        body.people[0].devices.push(laptop);
+        Ok(())
+    })
+    .unwrap();
     fixture
+}
+
+/// alice's device in the fixture; only it signs her decisions.
+fn laptop() -> AccountKey {
+    AccountKey::from_seed([3; 32])
 }
 
 /// A node at T0 with an account and nothing else.
@@ -107,7 +125,7 @@ fn bare(account: &str) -> Fixture {
     }
 }
 
-fn envelope(node: &Node, at: &str, byte: u8) -> Signed<Envelope> {
+fn envelope(at: &str, byte: u8) -> Signed<Envelope> {
     let payload = Payload {
         text: String::new(),
         choice: Some("a".into()),
@@ -122,7 +140,13 @@ fn envelope(node: &Node, at: &str, byte: u8) -> Signed<Envelope> {
         account: id("alice"),
         at: at.into(),
     };
-    Signed::sign(Kind::Envelope, body, id("alice"), node.key()).unwrap()
+    Signed::sign(
+        Kind::Envelope,
+        body,
+        laptop().public().device_id(),
+        &laptop(),
+    )
+    .unwrap()
 }
 
 #[tokio::test]
@@ -131,13 +155,13 @@ async fn envelopes_are_accepted_for_seven_days_and_up_to_five_minutes_ahead() {
     let (org, team) = (id("acme"), id("app"));
     alice.clock.set("2026-12-01T12:00:00Z");
     assert_eq!(
-        accept_envelope(&alice.node, &org, &team, envelope(&alice.node, T0, 1)).await,
+        accept_envelope(&alice.node, &org, &team, envelope(T0, 1)).await,
         Ok(Accepted::Applied),
         "exactly 7 days old"
     );
     alice.clock.advance(Duration::seconds(1));
     assert_eq!(
-        accept_envelope(&alice.node, &org, &team, envelope(&alice.node, T0, 2))
+        accept_envelope(&alice.node, &org, &team, envelope(T0, 2))
             .await
             .unwrap_err()
             .kind,
@@ -151,7 +175,7 @@ async fn envelopes_are_accepted_for_seven_days_and_up_to_five_minutes_ahead() {
             &alice.node,
             &org,
             &team,
-            envelope(&alice.node, "2026-11-24T12:05:00Z", 3)
+            envelope("2026-11-24T12:05:00Z", 3)
         )
         .await
         .is_ok(),
@@ -162,7 +186,7 @@ async fn envelopes_are_accepted_for_seven_days_and_up_to_five_minutes_ahead() {
             &alice.node,
             &org,
             &team,
-            envelope(&alice.node, "2026-11-24T12:05:01Z", 4)
+            envelope("2026-11-24T12:05:01Z", 4)
         )
         .await
         .unwrap_err()
@@ -273,8 +297,14 @@ async fn the_outbox_retries_only_when_the_backoff_is_due() {
         node: NOWHERE.into(),
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
-    let outcome = decide(
+    let (key, key_id) = (laptop(), laptop().public().device_id());
+    let device = DeviceSigner {
+        id: &key_id,
+        key: &key,
+    };
+    let outcome = decide_with_device(
         &alice.node,
+        device,
         &id("acme"),
         &id("far"),
         EnvelopeKind::Answer,
@@ -319,10 +349,10 @@ async fn the_outbox_retries_only_when_the_backoff_is_due() {
 }
 
 #[tokio::test]
-async fn envelopes_must_be_signed_by_their_account_for_this_team() {
+async fn envelopes_must_be_signed_by_a_device_of_their_account_for_this_team() {
     let alice = alice();
     let (org, team) = (id("acme"), id("app"));
-    let mut wrong_signer = envelope(&alice.node, T0, 1);
+    let mut wrong_signer = envelope(T0, 1);
     wrong_signer.signer = id("bob");
     let error = accept_envelope(&alice.node, &org, &team, wrong_signer)
         .await
@@ -330,17 +360,27 @@ async fn envelopes_must_be_signed_by_their_account_for_this_team() {
     assert_eq!(
         error.kind,
         ErrorKind::Unauthorized,
-        "the signer must be the envelope's account"
+        "the signer must be one of the account's devices"
+    );
+    let by_account = Signed::sign(
+        Kind::Envelope,
+        envelope(T0, 1).body,
+        id("alice"),
+        alice.node.key(),
+    )
+    .unwrap();
+    let error = accept_envelope(&alice.node, &org, &team, by_account)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.kind,
+        ErrorKind::Unauthorized,
+        "the account key, which the node holds, never signs a decision"
     );
 
-    let error = accept_envelope(
-        &alice.node,
-        &org,
-        &id("other"),
-        envelope(&alice.node, T0, 2),
-    )
-    .await
-    .unwrap_err();
+    let error = accept_envelope(&alice.node, &org, &id("other"), envelope(T0, 2))
+        .await
+        .unwrap_err();
     assert_eq!(
         error.kind,
         ErrorKind::BadRequest,

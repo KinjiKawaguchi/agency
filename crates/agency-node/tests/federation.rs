@@ -3,20 +3,23 @@
 mod common;
 
 use agency_adapters::peers::read_headers;
-use agency_core::decisions::{decide, Decided};
+use agency_core::decisions::Decided;
 use agency_core::invites::{self, join};
 use agency_core::outbox::{deliver, deliver_due, pending, ParcelBody};
 use agency_core::read_auth::sign_read;
 use agency_core::views::{refresh, Replica};
 use agency_proto::invite::Invite;
 use agency_proto::org::SignedOrg;
-use agency_proto::{EnvelopeKind, Kind, OrgDefinition, Role, Signed};
-use common::{alice, answer, id, joined_bob, memory_runtime, node};
+use agency_proto::{AccountKey, Kind, OrgDefinition, Role, Signed};
+use common::{
+    alice, answer, decide_as, device, id, joined_bob, memory_runtime, node, signed_answer,
+};
 
 #[tokio::test]
 async fn invite_join_replica_and_signed_decision() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    let bob_key = device(&bob).await;
     // alice's node also has the version with bob added (its one writer is alice's root key)
     assert!(alice
         .node
@@ -36,16 +39,7 @@ async fn invite_join_replica_and_signed_decision() {
     assert_eq!(replica.error, None);
     assert_eq!(replica.view.unwrap().requests[0].id, "r-1");
 
-    let outcome = decide(
-        &bob.node,
-        &id("acme"),
-        &id("app"),
-        EnvelopeKind::Answer,
-        "r-1".into(),
-        answer("a"),
-    )
-    .await
-    .unwrap();
+    let outcome = decide_as(&bob, &bob_key, "r-1", answer("a")).await.unwrap();
     assert_eq!(outcome, Decided::Delivered);
     let applied = memory.lock().unwrap().applied.clone();
     assert_eq!(applied.len(), 1);
@@ -56,16 +50,9 @@ async fn invite_join_replica_and_signed_decision() {
     );
 
     // A request the team runtime does not know is a refusal: not retried, not queued
-    let outcome = decide(
-        &bob.node,
-        &id("acme"),
-        &id("app"),
-        EnvelopeKind::Answer,
-        "r-404".into(),
-        answer("a"),
-    )
-    .await
-    .unwrap();
+    let outcome = decide_as(&bob, &bob_key, "r-404", answer("a"))
+        .await
+        .unwrap();
     assert!(matches!(outcome, Decided::Refused(_)), "{outcome:?}");
     assert!(pending(&bob.node).is_empty());
 }
@@ -74,17 +61,9 @@ async fn invite_join_replica_and_signed_decision() {
 async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
     let (mut alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    let bob_key = device(&bob).await;
     alice.stop().await;
-    let outcome = decide(
-        &bob.node,
-        &id("acme"),
-        &id("app"),
-        EnvelopeKind::Answer,
-        "r-1".into(),
-        answer("b"),
-    )
-    .await
-    .unwrap();
+    let outcome = decide_as(&bob, &bob_key, "r-1", answer("b")).await.unwrap();
     assert!(matches!(outcome, Decided::Queued(_)), "{outcome:?}");
     assert_eq!(pending(&bob.node).len(), 1);
     refresh(&bob.node).await.unwrap();
@@ -130,6 +109,7 @@ async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
 async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    let bob_key = device(&bob).await;
     let http = reqwest::Client::new();
 
     // A non-member's signed read gets 404 (the org's existence is not revealed)
@@ -159,40 +139,29 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     assert_eq!(request.send().await.unwrap().status(), 404);
 
     // A tampered envelope gets 401 and is not applied
-    decide(
-        &bob.node,
-        &id("acme"),
-        &id("app"),
-        EnvelopeKind::Answer,
-        "r-1".into(),
-        answer("a"),
-    )
-    .await
-    .unwrap();
-    let mut tampered: Signed<agency_proto::Envelope> = Signed::sign(
+    decide_as(&bob, &bob_key, "r-1", answer("a")).await.unwrap();
+    let mut tampered = signed_answer(&bob, &bob_key, "r-1", "a");
+    tampered.body.payload = answer("b");
+    let post = |signed: Signed<agency_proto::Envelope>| {
+        http.post(format!("{}/fed/v1/teams/acme/app/envelopes", alice.url()))
+            .json(&signed)
+            .send()
+    };
+    assert_eq!(post(tampered).await.unwrap().status(), 401);
+
+    // An envelope signed by bob's account key, which bob's node holds, is not a decision
+    let by_account = Signed::sign(
         Kind::Envelope,
-        agency_proto::Envelope {
-            id: agency_proto::EnvelopeId::from_bytes([9; 16]),
-            kind: EnvelopeKind::Answer,
-            org: id("acme"),
-            team: id("app"),
-            target: "r-1".into(),
-            payload: answer("a"),
-            account: id("bob"),
-            at: alice.node.now_text(),
-        },
+        signed_answer(&bob, &bob_key, "r-1", "a").body,
         id("bob"),
         bob.node.key(),
     )
     .unwrap();
-    tampered.body.payload = answer("b");
-    let response = http
-        .post(format!("{}/fed/v1/teams/acme/app/envelopes", alice.url()))
-        .json(&tampered)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 401);
+    assert_eq!(post(by_account).await.unwrap().status(), 401);
+
+    // A non-member's envelope gets 404 like a non-member's read, whatever key signed it
+    let from_carol = signed_answer(&carol, &AccountKey::generate(), "r-1", "a");
+    assert_eq!(post(from_carol).await.unwrap().status(), 404);
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
 
     // A used invite cannot be used again

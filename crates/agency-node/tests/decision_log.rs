@@ -2,12 +2,21 @@
 //! each decision went.
 mod common;
 
-use common::{alice, body, get, id, joined_bob, post, Running, TOKEN};
+use agency_proto::{AccountKey, Payload};
+use common::{
+    alice, body, device, get, id, joined_bob, post, sign_answer, Running, ENVELOPES, TOKEN,
+};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
-fn titled(target: &str, title: &str) -> Value {
-    json!({ "kind": "answer", "target": target, "text": "Go", "choice": "a", "title": title, "choiceLabel": " Option A " })
+/// A device-signed answer "Go" with choice "a", with notes for the log.
+fn titled(running: &Running, key: &AccountKey, target: &str, title: &str) -> Value {
+    let payload = Payload {
+        text: "Go".into(),
+        choice: Some("a".into()),
+    };
+    let envelope = sign_answer(running, key, target, payload);
+    json!({ "envelope": envelope, "title": title, "choiceLabel": " Option A " })
 }
 
 async fn decisions(running: &Running, query: &str) -> Value {
@@ -24,8 +33,9 @@ async fn decisions(running: &Running, query: &str) -> Value {
 #[tokio::test]
 async fn logs_local_decisions_as_applied() {
     let (alice, _) = alice().await;
-    let path = "/api/orgs/acme/teams/app/decisions";
-    let sent = post(&alice, path, &titled("r-1", "Make a key?"))
+    let key = device(&alice).await;
+    let path = ENVELOPES;
+    let sent = post(&alice, path, &titled(&alice, &key, "r-1", "Make a key?"))
         .header("x-agency-token", TOKEN)
         .send()
         .await
@@ -53,7 +63,7 @@ async fn logs_local_decisions_as_applied() {
     assert_eq!(entry["choiceLabel"], "Option A", "kept trimmed");
     assert_eq!(entry["decidedAt"], "2026-11-24T12:00:00Z");
 
-    let refused = post(&alice, path, &titled("r-404", "Gone"))
+    let refused = post(&alice, path, &titled(&alice, &key, "r-404", "Gone"))
         .header("x-agency-token", TOKEN)
         .send()
         .await
@@ -106,10 +116,11 @@ async fn logs_sent_decisions_with_their_delivery_state() {
         .requests
         .push(("r-2".into(), "Second".into()));
     let bob = joined_bob(&alice).await;
-    let path = "/api/orgs/acme/teams/app/decisions";
+    let key = device(&bob).await;
+    let path = ENVELOPES;
     alice.stop().await;
     let (status, result) = body(
-        post(&bob, path, &titled("r-1", "First"))
+        post(&bob, path, &titled(&bob, &key, "r-1", "First"))
             .header("x-agency-token", TOKEN)
             .send()
             .await
@@ -141,7 +152,7 @@ async fn logs_sent_decisions_with_their_delivery_state() {
     );
 
     let (status, _) = body(
-        post(&bob, path, &titled("r-404", "Unknown"))
+        post(&bob, path, &titled(&bob, &key, "r-404", "Unknown"))
             .header("x-agency-token", TOKEN)
             .send()
             .await
@@ -171,20 +182,21 @@ async fn logs_sent_decisions_with_their_delivery_state() {
 #[tokio::test]
 async fn refuses_long_notes_and_malformed_limits() {
     let (alice, memory) = alice().await;
+    let key = device(&alice).await;
     let long = "x".repeat(201);
-    let mut long_label = titled("r-1", "Make a key?");
+    let mut long_label = titled(&alice, &key, "r-1", "Make a key?");
     long_label["choiceLabel"] = json!(long);
-    let mut label_without_choice = titled("r-1", "Make a key?");
-    label_without_choice
+    let mut label_without_choice = titled(&alice, &key, "r-1", "Make a key?");
+    label_without_choice["envelope"]["body"]["payload"]
         .as_object_mut()
         .unwrap()
         .remove("choice");
     for (name, input) in [
-        ("long title", titled("r-1", &long)),
+        ("long title", titled(&alice, &key, "r-1", &long)),
         ("long choice label", long_label),
         ("choice label without a choice", label_without_choice),
     ] {
-        let response = post(&alice, "/api/orgs/acme/teams/app/decisions", &input)
+        let response = post(&alice, ENVELOPES, &input)
             .header("x-agency-token", TOKEN)
             .send()
             .await

@@ -131,8 +131,8 @@ pub struct AccessConfig {
     pub team_domain: String,
     /// The Access application's audience tag (64 hex characters).
     pub audience: String,
-    /// Only this signed-in email may write. The node signs decisions for its owner (agency#19 moves
-    /// signing to device keys).
+    /// Only this signed-in email may write: writes act for the node's account (they relay its
+    /// decisions and device changes).
     pub owner_email: String,
 }
 

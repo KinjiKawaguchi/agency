@@ -102,7 +102,6 @@ A non-member gets 404, so it cannot tell whether the team exists.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, and that its id has not been applied before. A repeated envelope is not applied again; the node answers that it received it.
 - The sending node keeps an envelope it could not deliver in its outbox and retries with backoff (15 s, 30 s, 1 min, 2 min, 5 min, then every 5 min). It does not retry when the receiver refuses with a 4xx (408 and 429 are retried).
 - Nodes accept envelopes signed by a device of the deciding member. The CLI signs with its CLI device, and clients send device-signed envelopes through `POST /api/orgs/<org>/teams/<team>/envelopes`. The home node checks them as the team's node will, and never signs them itself.
-- Transition (until the web client signs, agency#19): `POST /api/orgs/<org>/teams/<team>/decisions` still has the home node sign with the account key, and team nodes still accept envelopes signed that way.
 
 ## Invites and joining (kind `join`)
 
@@ -225,9 +224,8 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
-| POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`, and optionally the request's `title` and, with `choice`, the chosen option's `choiceLabel`, each trimmed and at most 200 characters. These two are kept in the decision log for people to read and are never signed or sent to another node). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
-| POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` signed by one of the account's devices, plus the optional `title` and `choiceLabel` as in `DecisionInput`. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies or sends it like a decision. Answer `DecisionResult` |
+| POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
 | POST | `/api/devices/changes` | Body `Signed<DeviceChange>` for the account, signed by one of its devices. Checked here, then written by the root's node. Answer `DeviceChangeResult`: `applied` (this node holds the root key), `delivered`, or `queued` (with `message`). A refusal by the root's node is 409 |
@@ -260,8 +258,13 @@ The node serves the federation routes, the Client API, and the web client on one
 Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
+<<<<<<< HEAD
 - `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
 - through Access, the signed-in email must equal the configured `ownerEmail`, because the node signs decisions with its owner's account key.
+=======
+- `Content-Type: application/json` and a body of at most 64 KiB;
+- through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
+>>>>>>> ba80d80 (feat(node)!: accept only device-signed decisions)
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.

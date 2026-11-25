@@ -5,8 +5,12 @@ use agency_adapters::access::CertSource;
 use agency_core::config::{AccessConfig, FundingConfig};
 use agency_core::views::refresh;
 use agency_proto::client::FundingKind;
+use agency_proto::AccountKey;
 use async_trait::async_trait;
-use common::{alice, body, get, id, joined_bob, memory_runtime, node_with, post, Running, TOKEN};
+use common::{
+    alice, body, device, get, id, joined_bob, memory_runtime, node_with, post, signed_answer,
+    Running, ENVELOPES, TOKEN,
+};
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -18,13 +22,15 @@ const AUDIENCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const TEAM_DOMAIN: &str = "acme.cloudflareaccess.com";
 const PUBLIC_HOST: &str = "agency.example.com";
 
-fn decision(target: &str) -> Value {
-    json!({ "kind": "answer", "target": target, "text": "", "choice": "a" })
+/// A Client API body for an answer to `target`, signed by `key` as a device of the node's account.
+fn decision(running: &Running, key: &AccountKey, target: &str) -> Value {
+    json!({ "envelope": signed_answer(running, key, target, "a") })
 }
 
 #[tokio::test]
 async fn reads_and_decides_on_a_local_team() {
     let (alice, memory) = alice().await;
+    let key = device(&alice).await;
     let (status, me) = body(get(&alice, "/api/me").send().await.unwrap()).await;
     assert_eq!(status, 200);
     assert_eq!(me["account"]["id"], "alice");
@@ -52,15 +58,11 @@ async fn reads_and_decides_on_a_local_team() {
     assert_eq!(snapshot["view"]["requests"][0]["id"], "r-1");
 
     let (status, result) = body(
-        post(
-            &alice,
-            "/api/orgs/acme/teams/app/decisions",
-            &decision("r-1"),
-        )
-        .header("x-agency-token", TOKEN)
-        .send()
-        .await
-        .unwrap(),
+        post(&alice, ENVELOPES, &decision(&alice, &key, "r-1"))
+            .header("x-agency-token", TOKEN)
+            .send()
+            .await
+            .unwrap(),
     )
     .await;
     assert_eq!(
@@ -70,15 +72,11 @@ async fn reads_and_decides_on_a_local_team() {
     assert_eq!(memory.lock().unwrap().applied[0].by, id("alice"));
 
     let (status, _) = body(
-        post(
-            &alice,
-            "/api/orgs/acme/teams/app/decisions",
-            &decision("r-404"),
-        )
-        .header("x-agency-token", TOKEN)
-        .send()
-        .await
-        .unwrap(),
+        post(&alice, ENVELOPES, &decision(&alice, &key, "r-404"))
+            .header("x-agency-token", TOKEN)
+            .send()
+            .await
+            .unwrap(),
     )
     .await;
     assert_eq!(status, 404, "a request the runtime does not know");
@@ -107,6 +105,7 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
         })
         .unwrap();
     let bob = joined_bob(&alice).await;
+    let key = device(&bob).await;
     let (status, _) = body(
         get(&bob, "/api/orgs/acme/teams/app/view")
             .send()
@@ -141,7 +140,7 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
     assert_eq!(snapshot["source"]["fetchedAt"], "2026-11-24T12:00:00Z");
 
     let (status, result) = body(
-        post(&bob, "/api/orgs/acme/teams/app/decisions", &decision("r-1"))
+        post(&bob, ENVELOPES, &decision(&bob, &key, "r-1"))
             .header("x-agency-token", TOKEN)
             .send()
             .await
@@ -155,23 +154,24 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
     assert_eq!(
         memory.lock().unwrap().applied[0].by,
         id("bob"),
-        "signed by bob's node, applied as bob"
+        "signed by bob's device, applied as bob"
     );
 }
 
 #[tokio::test]
 async fn writes_need_the_token_and_a_json_body() {
     let (alice, memory) = alice().await;
-    let path = "/api/orgs/acme/teams/app/decisions";
+    let path = ENVELOPES;
+    let key = AccountKey::generate();
     let cases = [
         (
             "no token",
-            post(&alice, path, &decision("r-1")),
+            post(&alice, path, &decision(&alice, &key, "r-1")),
             StatusCode::FORBIDDEN,
         ),
         (
             "wrong token",
-            post(&alice, path, &decision("r-1"))
+            post(&alice, path, &decision(&alice, &key, "r-1"))
                 .header("x-agency-token", "test-token-0123456789abcdeX"),
             StatusCode::FORBIDDEN,
         ),
@@ -181,7 +181,7 @@ async fn writes_need_the_token_and_a_json_body() {
                 .post(format!("{}{path}", alice.url()))
                 .header("x-agency-token", TOKEN)
                 .header("content-type", "text/plain")
-                .body(decision("r-1").to_string()),
+                .body(decision(&alice, &key, "r-1").to_string()),
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
         ),
         (
@@ -468,8 +468,8 @@ async fn through_access_only_valid_tokens_read_and_only_the_owner_writes() {
     let write = |email: &str| {
         post(
             &running,
-            "/api/orgs/acme/teams/app/decisions",
-            &decision("r-1"),
+            ENVELOPES,
+            &decision(&running, &AccountKey::generate(), "r-1"),
         )
         .header("cf-ray", "1")
         .header("x-agency-token", TOKEN)
@@ -555,8 +555,8 @@ async fn orgs_the_account_does_not_belong_to_are_not_found() {
     );
     let decided = post(
         &carol,
-        "/api/orgs/acme/teams/app/decisions",
-        &decision("r-1"),
+        ENVELOPES,
+        &decision(&carol, &AccountKey::generate(), "r-1"),
     )
     .header("x-agency-token", TOKEN)
     .send()

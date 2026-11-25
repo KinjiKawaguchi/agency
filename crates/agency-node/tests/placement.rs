@@ -11,7 +11,7 @@ use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::ErrorKind;
 use agency_proto::{AccountKey, EnvelopeKind, Payload};
-use common::{alice, body, get, id, joined_bob, post, TOKEN};
+use common::{alice, body, get, id, joined_bob, post, signed_answer, ENVELOPES, TOKEN};
 use serde_json::json;
 
 const ELSEWHERE: &str = "http://127.0.0.1:9";
@@ -45,11 +45,13 @@ async fn a_hosted_team_runs_here_even_when_its_place_names_another_origin() {
     .1;
     assert_eq!(snapshot["source"]["kind"], "local");
 
+    let phone = AccountKey::generate();
+    add_device(&alice.node, "Phone", &phone.public(), None).await;
     let decided = body(
         post(
             &alice,
-            "/api/orgs/acme/teams/app/decisions",
-            &json!({ "kind": "answer", "target": "r-1", "text": "", "choice": "a" }),
+            ENVELOPES,
+            &json!({ "envelope": signed_answer(&alice, &phone, "r-1", "a") }),
         )
         .header("x-agency-token", TOKEN)
         .send()
@@ -65,8 +67,6 @@ async fn a_hosted_team_runs_here_even_when_its_place_names_another_origin() {
         "nothing sent to the stale place"
     );
 
-    let phone = AccountKey::generate();
-    add_device(&alice.node, "Phone", &phone.public(), None).await;
     let signer = phone.public().device_id();
     let device = DeviceSigner {
         id: &signer,
@@ -88,7 +88,11 @@ async fn a_hosted_team_runs_here_even_when_its_place_names_another_origin() {
     )
     .await
     .unwrap();
-    assert_eq!(decided, Decided::Applied, "a device-signed decision too");
+    assert_eq!(
+        decided,
+        Decided::Applied,
+        "a decision by the CLI device too"
+    );
 
     memory.lock().unwrap().usage = Some(
         serde_json::from_str(include_str!("../../../testdata/tokenusage.sample.json")).unwrap(),
