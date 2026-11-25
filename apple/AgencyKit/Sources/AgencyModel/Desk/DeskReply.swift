@@ -36,7 +36,7 @@ public struct PreparedDecision: Equatable, Sendable {
     public let title: String
     public let text: String
     public let choice: String?
-    /// What the chosen option says, for the decision log.
+    /// What the chosen option says, for the decision log; absent when it says nothing.
     public let choiceLabel: String?
     /// Text with no option picked, on a request that has options: the team is told and nothing is decided.
     public let isComment: Bool
@@ -48,16 +48,19 @@ public struct PreparedDecision: Equatable, Sendable {
         title = Self.clipped(item.request.title)
         self.text = text
         choice = option?.key
-        choiceLabel = option.map { Self.clipped($0.text) }
+        choiceLabel = option.map { Self.clipped($0.text) }.flatMap { $0.isEmpty ? nil : $0 }
         self.isComment = isComment
     }
 
-    /// Cuts a note to 200 characters, ending in `…` when it had to. Characters are Unicode scalars, as the node counts them.
+    /// Trimmed, and when longer than the node keeps, cut so that the text and its ellipsis fit: 199
+    /// scalars with their trailing space removed, then `…`. Characters are Unicode scalars, as the node
+    /// counts them (Rust `chars`), not graphemes or UTF-16 units. The web client cuts the same way.
     static func clipped(_ note: String) -> String {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.unicodeScalars.count > maxNote else { return trimmed }
         var scalars = String.UnicodeScalarView()
         scalars.append(contentsOf: trimmed.unicodeScalars.prefix(maxNote - 1))
+        while let last = scalars.last, last.properties.isWhitespace { scalars.removeLast() }
         return String(scalars) + "…"
     }
 

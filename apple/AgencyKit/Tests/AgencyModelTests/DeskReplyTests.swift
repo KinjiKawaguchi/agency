@@ -141,6 +141,20 @@ struct DeskReplyTests {
         #expect(PreparedDecision.clipped(emoji + "🙂").unicodeScalars.count == 200)
     }
 
+    @Test("the cut keeps 199 scalars, drops the space it ends on, and adds the ellipsis, as the web client does")
+    func clippingTrimsTheEnd() {
+        let text = String(repeating: "a", count: 198) + " " + "bcd"
+        #expect(PreparedDecision.clipped(text) == String(repeating: "a", count: 198) + "…")
+        let wide = String(repeating: "a", count: 197) + "\u{3000} " + "zz"
+        #expect(PreparedDecision.clipped(wide) == String(repeating: "a", count: 197) + "…")
+    }
+
+    @Test("a note is trimmed before it is counted")
+    func clippingTrimsFirst() {
+        let padded = "  " + String(repeating: "a", count: 200) + "\n "
+        #expect(PreparedDecision.clipped(padded) == String(repeating: "a", count: 200))
+    }
+
     @Test("a cut never splits an emoji or leaves half of a sequence in the title that the node would refuse")
     func clippingKeepsScalarsWhole() {
         let title = String(repeating: "あ", count: 150) + String(repeating: "👩\u{200D}💻", count: 20)
@@ -156,6 +170,12 @@ struct DeskReplyTests {
         let item = try item("r-long", in: team)
         let decision = try item.prepare(.choose(optionKey: "yes", note: ""))
         #expect(decision.title.unicodeScalars.count == 200)
+    }
+
+    @Test("an option that says nothing sends no label")
+    func emptyLabel() throws {
+        let team = Teams.team(addRequests: [Teams.request(id: "r-blank", to: nil, optionText: "  ")])
+        #expect(try item("r-blank", in: team).prepare(.choose(optionKey: "yes", note: "")).choiceLabel == nil)
     }
 
     @Test("a long option label is clipped for the log too")
