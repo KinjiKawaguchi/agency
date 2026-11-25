@@ -2,12 +2,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
+import { SignInExpiredError } from '../api/session'
+import type { Messages } from '../i18n/en'
 import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
+import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
-import { draftOf, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
+import { draftOf, loadDrafts, saveDrafts, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
 import { canDecide, openItems, resolveSelection, situationOf, stepSelection, type DeskItem } from './items'
 import { Paper } from './Paper'
 import { Pile } from './Pile'
@@ -17,6 +20,11 @@ import './desk.css'
 
 /** How long a pressed seal stays visible before the answered item leaves the pile. */
 export const SEAL_HOLD_MS = 1600
+
+function sendFailureText(t: Messages, failure: unknown, reason: string): string {
+  if (failure instanceof SignInExpiredError) return t.app.signInExpired.message
+  return failure instanceof ApiError && failure.status === 409 ? t.desk.paper.refused(reason) : t.desk.paper.sendFailed(reason)
+}
 
 interface DeskPageProps {
   /** The open item's key, kept in the address so a link opens the same document. */
@@ -31,11 +39,12 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   const api = useApi()
   const queryClient = useQueryClient()
   const toast = useToast()
-  const [drafts, setDrafts] = useState<Drafts>(new Map())
+  const [drafts, setDrafts] = useState<Drafts>(loadDrafts)
   const [sealed, setSealed] = useState<ReadonlyMap<string, string>>(new Map())
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set())
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
+  useEffect(() => saveDrafts(drafts), [drafts])
 
   const items = useMemo(() => openItems(teams), [teams])
   const selectedKey = resolveSelection(items, requested)
@@ -57,7 +66,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
         timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {
         const reason = failure instanceof Error ? failure.message : String(failure)
-        toast(failure instanceof ApiError && failure.status === 409 ? t.desk.paper.refused(reason) : t.desk.paper.sendFailed(reason), 'error')
+        toast(sendFailureText(t, failure, reason), 'error')
       } finally {
         setSending((keys) => new Set([...keys].filter((key) => key !== item.key)))
       }
@@ -80,14 +89,14 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   })
 
   if (me === undefined) {
-    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : t.app.unreachable(error.message)}</p>
+    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
   }
 
   const orgLabelOf = (id: string): string => me.orgs.find((org) => org.id === id)?.label ?? id
   const situation = situationOf(teams, items)
   return (
     <>
-      {error === null ? null : <p className="empty" role="alert">{t.app.unreachable(error.message)}</p>}
+      {error === null ? null : <p className="empty" role="alert">{failureText(t, error)}</p>}
       {teams.map((team) => (
         <ReplicaNotice key={`${team.view.org}/${team.view.team}`} source={team.source} />
       ))}

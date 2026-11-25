@@ -5,6 +5,7 @@ import { useApi } from '../api/context'
 import { usageQuery } from '../api/queries'
 import type { Team } from '../api/teams'
 import type { TeamView } from '../api/teamview'
+import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { Legend, StackedColumns } from './StackedColumns'
 import { columnsFor, seriesFor, totalsOf } from './usage'
@@ -109,7 +110,7 @@ export function TokenSection({ team, days, onDaysChange }: TokenSectionProps) {
             <TokenReport view={view} days={days} report={usage.data} />
           ) : (
             <p className={usage.error === null ? 'muted' : 'empty'} role={usage.error === null ? undefined : 'alert'}>
-              {usage.error === null ? t.costs.tokens.loading : couldNotAnswer ? t.costs.tokens.couldNotAnswer(usage.error.message) : t.app.unreachable(usage.error.message)}
+              {usage.error === null ? t.costs.tokens.loading : couldNotAnswer ? t.costs.tokens.couldNotAnswer(usage.error.message) : failureText(t, usage.error)}
             </p>
           )}
         </>

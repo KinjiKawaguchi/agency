@@ -15,6 +15,7 @@ afterEach(() => {
   document.head.querySelector('meta[name="agency-token"]')?.remove()
   cleanup()
   window.localStorage.clear()
+  window.sessionStorage.clear()
   window.history.replaceState(null, '', '/')
 })
 

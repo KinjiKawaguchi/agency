@@ -14,13 +14,13 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never', outputFolder: 'e2e-report' }]] : 'list',
   use: {
-    baseURL: `http://localhost:${port}`,
+    baseURL: `http://127.0.0.1:${port}`,
     trace: 'retain-on-failure',
     ...(executablePath === undefined ? {} : { launchOptions: { executablePath } }),
   },
   webServer: {
-    command: `npx vite preview --port ${port} --strictPort`,
-    url: `http://localhost:${port}`,
+    command: `npx vite preview --host 127.0.0.1 --port ${port} --strictPort`,
+    url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

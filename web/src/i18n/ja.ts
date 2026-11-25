@@ -9,6 +9,7 @@ export const ja: Messages = {
       neverRead: (reason) => `このチームのノードはまだ読めていません: ${reason}`,
     },
     unreachable: (reason) => `ノードに接続できません: ${reason}`,
+    signInExpired: { message: 'サインインの有効期限が切れました。再読み込みして、もう一度サインインしてください。', reload: '再読み込み', nothingToShow: 'サインインし直すまで、表示できるものがありません。' },
   },
   nav: {
     label: 'メインメニュー',

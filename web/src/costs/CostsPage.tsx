@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTeams } from '../api/queries'
 import { teamKey } from '../api/teams'
+import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { FundingCard } from './FundingCard'
 import { TokenSection } from './TokenUsage'
@@ -12,7 +13,7 @@ export function CostsPage() {
   const [days, setDays] = useState<number>(14)
 
   if (me === undefined) {
-    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : t.app.unreachable(error.message)}</p>
+    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
   }
   const now = Date.now()
   return (
