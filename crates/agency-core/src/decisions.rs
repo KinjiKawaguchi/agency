@@ -1,6 +1,5 @@
-//! Decisions (kind `envelope`). A person's decision is signed with one of their devices (or, until clients
-//! sign, agency#19, with their account key by their home node). The team's node verifies it before applying
-//! it to the team runtime.
+//! Decisions (kind `envelope`). A person's decision is signed with one of their devices; no node signs one.
+//! The team's node verifies it before applying it to the team runtime.
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
@@ -8,8 +7,7 @@ use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
 use agency_proto::device::envelope_signer;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::{
-    Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, Payload, Person, RuntimeDecision,
-    Signed,
+    Envelope, EnvelopeId, EnvelopeKind, Id, OrgDefinition, Payload, Person, RuntimeDecision, Signed,
 };
 use serde::{Deserialize, Serialize};
 
@@ -85,86 +83,6 @@ fn runtime_refusal(error: RuntimeError) -> Error {
     Error::new(kind, error.message)
 }
 
-/// Decides as this node's account. A team on this node gets the decision directly; a team on another
-/// node gets a signed envelope, which waits in the outbox if that node cannot be reached.
-pub async fn decide(
-    node: &Node,
-    org: &Id,
-    team: &Id,
-    kind: EnvelopeKind,
-    target: String,
-    payload: Payload,
-) -> Result<Decided> {
-    decide_noted(
-        node,
-        org,
-        team,
-        kind,
-        target,
-        payload,
-        DecisionNote::default(),
-    )
-    .await
-}
-
-/// `decide`, keeping a note for people in the decision log.
-pub async fn decide_noted(
-    node: &Node,
-    org: &Id,
-    team: &Id,
-    kind: EnvelopeKind,
-    target: String,
-    payload: Payload,
-    note: DecisionNote,
-) -> Result<Decided> {
-    let doc = orgs::load(node, org)?;
-    let person = doc
-        .body
-        .member(&node.account())
-        .ok_or_else(|| {
-            Error::new(
-                ErrorKind::Forbidden,
-                "this node's account is not in the org",
-            )
-        })?
-        .clone();
-    let place = doc
-        .body
-        .team(team)
-        .ok_or_else(|| Error::not_found(format!("team {team} is not in the org")))?
-        .clone();
-    let envelope = Envelope {
-        id: EnvelopeId::from_bytes(node.random()),
-        kind,
-        org: org.clone(),
-        team: team.clone(),
-        target,
-        payload,
-        account: node.account(),
-        at: node.now_text(),
-    };
-    envelope.validate().map_err(Error::bad_request)?;
-    if let Some(hosted) = node.hosted(org, team) {
-        let record = DecisionRecord::of(&envelope, note, true);
-        let decision = RuntimeDecision {
-            kind,
-            target: envelope.target,
-            by: person.id,
-            payload: envelope.payload,
-        };
-        node.runtime()
-            .decide(&hosted, decision)
-            .await
-            .map_err(runtime_refusal)?;
-        node.store().append_decision(&record)?;
-        return Ok(Decided::Applied);
-    }
-    let record = DecisionRecord::of(&envelope, note, false);
-    let signed = Signed::sign(Kind::Envelope, envelope, node.account(), node.key())
-        .map_err(|error| Error::internal(error.to_string()))?;
-    send_envelope(node, place.node, signed, record).await
-}
-
 /// Queues a signed envelope for the team's node, logs it, and tries to deliver it now.
 pub(crate) async fn send_envelope(
     node: &Node,
@@ -182,23 +100,13 @@ pub(crate) async fn send_envelope(
     })
 }
 
-/// The member who signed an envelope: with one of their devices, or, until clients sign (agency#19),
-/// with their account key. A non-member is not found, so a stranger cannot tell what exists.
+/// The member who signed an envelope, with one of their devices; an account key never signs one. A
+/// non-member is not found, so a stranger cannot tell what exists.
 fn signer_of<'a>(definition: &'a OrgDefinition, signed: &Signed<Envelope>) -> Result<&'a Person> {
-    let envelope = &signed.body;
-    let person = definition
-        .member(&envelope.account)
+    definition
+        .member(&signed.body.account)
         .ok_or_else(|| Error::not_found("not found"))?;
-    if envelope_signer(definition, signed).is_ok() {
-        return Ok(person);
-    }
-    let is_account_signed =
-        signed.signer == envelope.account && signed.verify(Kind::Envelope, &person.public_key);
-    if is_account_signed {
-        Ok(person)
-    } else {
-        Err(Error::unauthorized("the signature does not match"))
-    }
+    envelope_signer(definition, signed).map_err(Error::unauthorized)
 }
 
 /// Verifies an envelope sent to a team on this node and applies it. Checked in order: shape, addressee,

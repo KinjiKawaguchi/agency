@@ -107,9 +107,8 @@ For each team it hosts, it runs the team's runtime command and speaks agency-run
 
 ## Not yet
 
-- Signing in the web client: until it signs with its device key, decisions made in the web client are still signed by the node (agency#19).
 - Department heads signing their own department's definition: today only the org's root key signs.
-- Flows for revoking a lost key or a person who leaves.
+- Flows for a lost account key, a person who leaves, or a person who loses every device (a lost device is removed from another of their devices).
 
 ## License
 

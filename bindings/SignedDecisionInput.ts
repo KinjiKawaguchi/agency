@@ -7,6 +7,11 @@ import type { Signed } from "./Signed.js";
  */
 export type SignedDecisionInput = { envelope: Signed<Envelope>, 
 /**
- * As in `DecisionInput`: kept in the decision log only, never signed or sent.
+ * The request's title, kept in the decision log for people to read (at most 200 characters).
+ * Never signed or sent.
  */
-title?: string, choiceLabel?: string, };
+title?: string, 
+/**
+ * The label of the chosen option, kept in the decision log like `title`. Only with a choice.
+ */
+choiceLabel?: string, };

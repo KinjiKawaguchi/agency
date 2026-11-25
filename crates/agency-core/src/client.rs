@@ -1,6 +1,6 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
-use crate::decisions::{decide_noted, Decided, DecisionNote, DecisionRecord};
+use crate::decisions::{Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::is_root;
@@ -8,12 +8,12 @@ use crate::outbox::Parcel;
 use crate::signed_decisions::decide_signed;
 use crate::views::{runtime_view, viewer_name};
 use agency_proto::client::{
-    AccountRef, DecisionEntry, DecisionInput, DecisionLog, DecisionOutcome, DecisionResult,
-    DecisionState, Funding, Me, OrgRef, SignedDecisionInput, SnapshotSource, TeamLocation, TeamRef,
-    TeamSnapshot, MAX_NOTE,
+    AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult, DecisionState,
+    Funding, Me, OrgRef, SignedDecisionInput, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
+    MAX_NOTE,
 };
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::{Id, OrgDefinition, Payload, Person, Timestamp};
+use agency_proto::{Id, OrgDefinition, Person, Timestamp};
 
 /// The org, if the node's account is a member of it.
 pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
@@ -150,30 +150,6 @@ fn note_text(raw: Option<String>, field: &str) -> Result<Option<String>> {
         )));
     }
     Ok(text)
-}
-
-/// Decides as the node's account. A refusal by the team's node is a conflict: the client should
-/// re-read the team, because the request has most likely been answered or closed.
-pub async fn submit_decision(
-    node: &Node,
-    org: &Id,
-    team: &Id,
-    input: DecisionInput,
-) -> Result<DecisionResult> {
-    membership(node, org)?;
-    let note = DecisionNote {
-        title: note_text(input.title, "title")?,
-        choice_label: note_text(input.choice_label, "choiceLabel")?,
-    };
-    if note.choice_label.is_some() && input.choice.is_none() {
-        return Err(Error::bad_request("choiceLabel needs a choice"));
-    }
-    let payload = Payload {
-        text: input.text,
-        choice: input.choice,
-    };
-    let decided = decide_noted(node, org, team, input.kind, input.target, payload, note).await?;
-    result_of(decided)
 }
 
 /// Relays a decision signed by one of the account's devices. The node only checks and relays it.

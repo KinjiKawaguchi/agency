@@ -95,25 +95,6 @@ pub enum SnapshotSource {
     },
 }
 
-/// A decision from the client. `kind` and `target` are the request's `answerWith`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[ts(export, optional_fields)]
-pub struct DecisionInput {
-    pub kind: EnvelopeKind,
-    pub target: String,
-    pub text: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub choice: Option<String>,
-    /// The request's title, kept in the decision log for people to read (at most 200 characters).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// The label of the chosen option, kept in the decision log for people to read (at most 200
-    /// characters). Only with `choice`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub choice_label: Option<String>,
-}
-
 /// The longest `title` and `choiceLabel`, in characters.
 pub const MAX_NOTE: usize = 200;
 
@@ -248,9 +229,11 @@ pub enum DecisionState {
 #[ts(export, optional_fields)]
 pub struct SignedDecisionInput {
     pub envelope: Signed<Envelope>,
-    /// As in `DecisionInput`: kept in the decision log only, never signed or sent.
+    /// The request's title, kept in the decision log for people to read (at most 200 characters).
+    /// Never signed or sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The label of the chosen option, kept in the decision log like `title`. Only with a choice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
 }

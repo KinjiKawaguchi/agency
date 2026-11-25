@@ -224,3 +224,80 @@ pub async fn body(response: Response) -> (StatusCode, Value) {
     let status = response.status();
     (status, response.json().await.unwrap_or(Value::Null))
 }
+
+/// Adds a first device for the node's account, as `agency device-add` does, and returns its key.
+pub async fn device(running: &Running) -> agency_proto::AccountKey {
+    let key = agency_proto::AccountKey::generate();
+    let added = agency_core::devices::add_device(&running.node, "Test", &key.public(), None).await;
+    assert!(
+        added
+            .iter()
+            .all(|(_, outcome)| matches!(outcome, agency_core::devices::Added::Done(_))),
+        "{added:?}"
+    );
+    key
+}
+
+/// Decides in acme/app as the node's account, signed by its device `key`.
+pub async fn decide_as(
+    running: &Running,
+    key: &agency_proto::AccountKey,
+    target: &str,
+    payload: Payload,
+) -> agency_core::Result<agency_core::decisions::Decided> {
+    let device = key.public().device_id();
+    let signer = agency_core::devices::DeviceSigner { id: &device, key };
+    let (org, team) = (id("acme"), id("app"));
+    agency_core::signed_decisions::decide_with_device(
+        &running.node,
+        signer,
+        &org,
+        &team,
+        agency_proto::EnvelopeKind::Answer,
+        target.into(),
+        payload,
+    )
+    .await
+}
+
+static NEXT_ENVELOPE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
+
+/// An answer to `target` in acme/app by the node's account, signed by its device `key`, made now.
+pub fn signed_answer(
+    running: &Running,
+    key: &agency_proto::AccountKey,
+    target: &str,
+    choice: &str,
+) -> agency_proto::Signed<agency_proto::Envelope> {
+    sign_answer(running, key, target, answer(choice))
+}
+
+/// `signed_answer` with any payload.
+pub fn sign_answer(
+    running: &Running,
+    key: &agency_proto::AccountKey,
+    target: &str,
+    payload: Payload,
+) -> agency_proto::Signed<agency_proto::Envelope> {
+    let next = NEXT_ENVELOPE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let body = agency_proto::Envelope {
+        id: agency_proto::EnvelopeId::from_bytes([next; 16]),
+        kind: agency_proto::EnvelopeKind::Answer,
+        org: id("acme"),
+        team: id("app"),
+        target: target.into(),
+        payload,
+        account: running.node.account(),
+        at: running.node.now_text(),
+    };
+    agency_proto::Signed::sign(
+        agency_proto::Kind::Envelope,
+        body,
+        key.public().device_id(),
+        key,
+    )
+    .unwrap()
+}
+
+/// The Client API path for device-signed decisions in acme/app.
+pub const ENVELOPES: &str = "/api/orgs/acme/teams/app/envelopes";

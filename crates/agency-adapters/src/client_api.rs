@@ -7,19 +7,17 @@
 //!
 //! Writes also need the page's token in `x-agency-token` and a JSON body. A page on another site cannot
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
-//! also need the owner's email, because the node signs decisions with the owner's account key.
+//! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
 use crate::server::status_of;
 use agency_core::client::{
-    decision_log, me, org_definition, submit_decision, submit_signed_decision, team_snapshot,
+    decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
-use agency_proto::client::{
-    DecisionInput, DeviceRequestInput, PushTokenInput, SignedDecisionInput,
-};
+use agency_proto::client::{DeviceRequestInput, PushTokenInput, SignedDecisionInput};
 use agency_proto::{DeviceChange, Id, Signed};
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
@@ -246,20 +244,6 @@ async fn get_usage(
     respond(result.await)
 }
 
-async fn post_decision(
-    State(api): Shared,
-    Path((org, team)): Path<(String, String)>,
-    bytes: Bytes,
-) -> Response {
-    let result = async {
-        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
-        let input: DecisionInput =
-            serde_json::from_slice(&bytes).map_err(|_| Error::bad_request("malformed decision"))?;
-        submit_decision(&api.node, &org, &team, input).await
-    };
-    respond(result.await)
-}
-
 /// A JSON body, or 400 naming what it should have been.
 fn json_body<T: serde::de::DeserializeOwned>(bytes: &Bytes, what: &str) -> Result<T, Error> {
     serde_json::from_slice(bytes).map_err(|_| Error::bad_request(format!("malformed {what}")))
@@ -390,10 +374,6 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
-        .route(
-            "/api/orgs/{org}/teams/{team}/decisions",
-            post(post_decision),
-        )
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",
             post(post_envelope),
