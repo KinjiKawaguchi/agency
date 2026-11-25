@@ -15,7 +15,7 @@ This repository is public. Never write names or details that point at a specific
 - `agency-proto` is the wire protocol: canonical JSON, Ed25519 signatures, envelopes, org definitions, invites. `docs/protocol.md` is the specification and `testdata/vectors.json` pins its byte-level behavior. A protocol change updates the spec, the types, and the test vectors in the same pull request.
 - `agency-core` holds the domain, use cases, and ports (traits). It must not depend on infrastructure crates (tokio, axum, reqwest, filesystem). Time, randomness, storage, keys, peers, and team runtimes go through ports.
 - `agency-adapters` implements the ports. `agency-node` wires adapters together and provides the CLI.
-- Clients (web, iOS, desktop) talk to their home node's Client API. Today the home node signs for its owner with the account key; agency#19 moves signing to device keys held by clients before other people join an org or the iOS client ships.
+- Clients (web, iOS, desktop) talk to their home node's Client API. Clients sign decisions with device keys they hold (non-extractable where the platform allows); nodes never sign envelopes, and team nodes accept only device-signed ones. The account key stays on the node for signed reads, join requests, and adding a person's first device.
 - Types shared with TypeScript are generated from the Rust types, never copied by hand.
 
 ## Workflow
