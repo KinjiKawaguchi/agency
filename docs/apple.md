@@ -163,8 +163,12 @@ The native screens of agency#77 build and sign decisions in Swift. The `AgencyPr
 The `AgencyAPI` module is the client of the home node's Client API (`NodeClient`, with the transport behind a protocol) and the wire types it reads (`Me`, `TeamSnapshot` with its `TeamView`, `DecisionLog`, `DecisionResult`, `Session`). Each type decodes the node's real answer in `testdata/client/`, which the Rust tests record and fail on when it changes, so a field the node renames or drops fails a Swift test before it reaches a screen. A value the client does not know (a new request kind, a new decision state) fails to decode instead of being read as another. The client's rules:
 
 - Every request carries the Access token as `cf-access-token`. A redirect is Access ending the session: the client throws `sessionExpired` and never follows it.
-- A write also carries the write token from `GET /api/session`, fetched on first use and once more after a 403 (the token changes when the node restarts). A second 403 is the answer.
+- A write also carries the write token from `GET /api/session`, fetched on first use and once more after a 403 that says the token is missing or wrong (it changes when the node restarts). Any other refusal, and a second one, is the answer and is not sent again.
 - The same call gives the node's time. A signed envelope's `at` comes from `nodeNow()`, because the node refuses an envelope more than five minutes ahead of its own clock.
+
+The `AgencyModel` module is what the screens show, ported from the web client with its test cases so the phone makes the same rules: the desk's pile (groups proposal, question, pending decision, and requests for someone else; the request that stops more people first; then the oldest), presence and the one-line summary, and the owner's replies. Whose a request is, is the node's call (`mine`); the model never works it out from `to`.
+
+A reply is one of three things. **Choosing** an option decides the request, with an optional note. **Commenting** is text with no option on a request that has options: the team gets the message and nothing is decided, and the screen says so. **Answering** is words on a request that has no options. The title and the chosen option's label that go to the decision log are cut to 200 characters (Unicode scalars, as the node counts), because the node refuses a longer note.
 
 Two rules in the encoder come from the protocol and are easy to break. Keys sort by their UTF-8 bytes, which is not Swift's string order and not UTF-16 order. Text is never normalized: Swift treats `é` and `e` plus U+0301 as the same string, but they are different signed bytes, so objects keep their members as a list and compare bytes.
 

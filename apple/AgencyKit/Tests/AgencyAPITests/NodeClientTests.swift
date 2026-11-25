@@ -182,6 +182,30 @@ struct NodeClientTests {
         #expect(transport.requests[3].headers["x-agency-token"] == "w-2")
     }
 
+    @Test("a 403 for another reason is the answer and is not sent again", arguments: [
+        #"{"error":"writes are for the owner"}"#, #"{"error":"bad signature"}"#, #"{}"#, "",
+    ])
+    func otherRefusal(body: String) async {
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(session)),
+            ("POST /api/orgs/acme/teams/app/envelopes", json(body, status: 403)),
+        ])
+        await #expect(throws: NodeError.self) { try await client(transport).submit(decision, org: "acme", team: "app") }
+        #expect(transport.requests.map(\.method) == ["GET", "POST"])
+    }
+
+    @Test("the stale-token words under another status are not a reason to send again")
+    func staleWordsElsewhere() async {
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(session)),
+            ("POST /api/orgs/acme/teams/app/envelopes", json(#"{"error":"missing or wrong write token"}"#, status: 401)),
+        ])
+        await #expect(throws: NodeError.http(status: 401, message: "missing or wrong write token")) {
+            try await client(transport).submit(decision, org: "acme", team: "app")
+        }
+        #expect(transport.requests.count == 2)
+    }
+
     @Test("a second 403 is the answer; the client does not loop")
     func refusedTwice() async {
         let refusal = json(#"{"error":"missing or wrong write token"}"#, status: 403)
