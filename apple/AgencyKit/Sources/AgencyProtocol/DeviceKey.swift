@@ -80,24 +80,23 @@ public protocol DeviceSigner: Sendable {
     func sign(_ text: Data, reason: String) async throws -> Data
 }
 
-/// A P-256 key held in memory, for tests and for checking the Swift signatures against the node.
+/// A P-256 key held in memory, for tests and for checking the Swift signatures against the node. It
+/// keeps the key's raw bytes (which are `Sendable` on every platform) and makes the key when it signs.
 public struct SoftwareP256Signer: DeviceSigner {
-    private let key: P256.Signing.PrivateKey
+    private let rawPrivateKey: Data
+    public let publicKey: DevicePublicKey
 
     public init(key: P256.Signing.PrivateKey) {
-        self.key = key
+        rawPrivateKey = key.rawRepresentation
+        // A key CryptoKit made is always a valid point.
+        publicKey = try! DevicePublicKey(p256X963: key.publicKey.x963Representation)
     }
 
     public init(rawPrivateKey: Data) throws {
-        key = try P256.Signing.PrivateKey(rawRepresentation: rawPrivateKey)
-    }
-
-    public var publicKey: DevicePublicKey {
-        // A key CryptoKit made is always a valid point.
-        try! DevicePublicKey(p256X963: key.publicKey.x963Representation)
+        self.init(key: try P256.Signing.PrivateKey(rawRepresentation: rawPrivateKey))
     }
 
     public func sign(_ text: Data, reason: String) async throws -> Data {
-        try key.signature(for: text).rawRepresentation
+        try P256.Signing.PrivateKey(rawRepresentation: rawPrivateKey).signature(for: text).rawRepresentation
     }
 }
