@@ -1,87 +1,197 @@
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useApi } from '../api/context'
+import type { DeviceList, DeviceRequest } from '../api/clientApi'
+import { DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
-import { pairingCodeOf } from './fingerprint'
+import { useToast } from '../shared/Toasts'
+import { addChangeFor, signChange } from './changes'
+import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
+import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
-type Checked = { status: 'empty' } | { status: 'invalid' } | { status: 'valid'; code: string }
+const WAITING_POLL_MS = 3_000
+const POLL_MS = 30_000
 
-/** The pairing code of whatever public key was pasted, as it is worked out. */
-function useCheckedKey(text: string): Checked {
-  const [checked, setChecked] = useState<Checked>({ status: 'empty' })
-  useEffect(() => {
-    let isCurrent = true
-    if (text.trim() === '') {
-      setChecked({ status: 'empty' })
-      return
-    }
-    pairingCodeOf(text).then(
-      (code) => isCurrent && setChecked({ status: 'valid', code }),
-      () => isCurrent && setChecked({ status: 'invalid' }),
-    )
-    return () => {
-      isCurrent = false
-    }
-  }, [text])
-  return checked
-}
+const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure))
 
-function ThisDevice() {
+function AskToBeAdded({ deviceKey }: { deviceKey: DeviceKey }) {
   const { t } = useI18n()
-  const state = useDeviceKey()
-  if (state.status === 'loading') return <p className="muted">{t.devices.loading}</p>
-  if (state.status === 'unsupported') return <p className="empty" role="alert">{t.devices.unsupported}</p>
-  if (state.status === 'failed') return <p className="empty" role="alert">{t.devices.failed(state.reason)}</p>
+  const api = useApi()
+  const queryClient = useQueryClient()
+  const [label, setLabel] = useState(t.devices.defaultLabel)
+  const ask = useMutation({
+    mutationFn: () => api.requestDevice({ label: label.trim(), publicKey: deviceKey.publicKey }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: DEVICES_KEY }),
+  })
   return (
     <>
-      <p className="device-lead">{t.devices.thisLead}</p>
-      <p className="pairing-code" aria-label={t.devices.codeLabel}>{state.key.pairingCode}</p>
-      <details className="device-key">
-        <summary>{t.devices.showKey}</summary>
-        <p className="muted">{t.devices.keyHint}</p>
-        <code className="device-key-text" aria-label={t.devices.keyLabel}>{state.key.publicKey}</code>
-      </details>
+      <p className="device-lead">{t.devices.notAdded}</p>
+      <label className="device-field">
+        <span>{t.devices.labelField}</span>
+        <input type="text" value={label} maxLength={80} onChange={(event) => setLabel(event.target.value)} />
+      </label>
+      <button className="btn primary" type="button" disabled={ask.isPending || label.trim() === ''} onClick={() => ask.mutate()}>
+        {ask.isPending ? t.devices.asking : t.devices.ask}
+      </button>
+      {ask.error === null ? null : <p className="device-invalid" role="alert">{t.devices.askFailed(messageOf(ask.error))}</p>}
     </>
   )
 }
 
-function CheckAnother() {
+function PairingCode({ code, label }: { code: string; label: string }) {
+  return <p className="pairing-code" aria-label={label}>{code}</p>
+}
+
+function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
   const { t } = useI18n()
-  const [text, setText] = useState('')
-  const checked = useCheckedKey(text)
+  const enrollment = enrollmentOf(deviceKey.publicKey, list)
+  return (
+    <section className="device-card">
+      <h2 className="sub-head">{t.devices.thisDevice}</h2>
+      <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} />
+      {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} /> : null}
+      {enrollment.status === 'pending' ? (
+        <>
+          <p className="device-lead">{t.devices.waitingLead}</p>
+          <p className="muted" role="status">{t.devices.waitingWhere}</p>
+        </>
+      ) : null}
+      {enrollment.status === 'enrolled' ? (
+        <p className="device-lead" role="status">
+          {t.devices.added} {t.devices.addedAs(enrollment.deviceId)}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; deviceKey: DeviceKey; list: DeviceList }) {
+  const { t, fmt } = useI18n()
+  const api = useApi()
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const me = useQuery(meQuery(api))
+  const confirm = useMutation({
+    mutationFn: async () => {
+      if (me.data === undefined) throw new Error(t.devices.accountUnknown)
+      // Each org holds its own list of devices, so the new device is added to every org that lacks it,
+      // and only an org that holds this device's key accepts its signature.
+      const orgs = orgsLacking(list, request.publicKey).flatMap((org) => {
+        const signerId = deviceIdIn(list, deviceKey.publicKey, org)
+        return signerId === undefined ? [] : [{ org, signerId }]
+      })
+      if (orgs.length === 0) throw new Error(t.devices.nowhereToAdd)
+      for (const { org, signerId } of orgs) {
+        await api.submitDeviceChange(await signChange(deviceKey, signerId, addChangeFor(request, org, me.data.account.id, new Date())))
+      }
+    },
+    onSuccess: () => toast(t.devices.confirmed(request.label)),
+    onError: (failure) => toast(t.devices.confirmFailed(messageOf(failure)), 'error'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: DEVICES_KEY }),
+  })
+  return (
+    <li className="device-request">
+      <p className="device-request-head">
+        <b>{request.label}</b> <span className="muted">{t.devices.requestedAt(fmt.relative(request.requestedAt, t.time.justNow))}</span>
+      </p>
+      <PairingCode code={request.pairingCode} label={t.devices.codeOf(request.label)} />
+      <p className="device-compare-note">{t.devices.compare}</p>
+      <button className="btn primary" type="button" disabled={confirm.isPending || me.data === undefined} onClick={() => confirm.mutate()}>
+        {confirm.isPending ? t.devices.confirming : t.devices.confirm}
+      </button>
+    </li>
+  )
+}
+
+function Requests({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
+  const { t } = useI18n()
+  const requests = requestsFromOthers(list, deviceKey.publicKey)
+  return (
+    <section className="device-card">
+      <h2 className="sub-head">{t.devices.requests}</h2>
+      {requests.length === 0 ? (
+        <p className="muted">{t.devices.noRequests}</p>
+      ) : (
+        <ul className="device-requests">
+          {requests.map((request) => (
+            <RequestCard key={request.publicKey} request={request} deviceKey={deviceKey} list={list} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function YourDevices({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
+  const { t, fmt } = useI18n()
+  const seen = new Map(list.orgs.flatMap((org) => org.devices).map((device) => [device.id, device]))
+  return (
+    <section className="device-card">
+      <h2 className="sub-head">{t.devices.yourDevices}</h2>
+      <ul className="device-list">
+        {[...seen.values()].map((device) => (
+          <li key={device.id}>
+            <b>{device.label}</b>
+            {device.publicKey === deviceKey.publicKey ? <span className="device-here">{t.devices.thisOne}</span> : null}
+            <span className="muted">{t.devices.addedOn(fmt.dateTime(device.addedAt))}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function WithDeviceKey({ deviceKey }: { deviceKey: DeviceKey }) {
+  const { t } = useI18n()
+  const api = useApi()
+  // A device waiting to be added asks again quickly, to notice when it is.
+  const devices = useQuery({
+    ...devicesQuery(api),
+    refetchInterval: (query) => (query.state.data !== undefined && enrollmentOf(deviceKey.publicKey, query.state.data).status === 'pending' ? WAITING_POLL_MS : POLL_MS),
+  })
+  if (devices.data === undefined) {
+    return devices.error === null ? <p className="muted">{t.devices.loadingList}</p> : <p className="empty" role="alert">{t.devices.listFailed(messageOf(devices.error))}</p>
+  }
+  const enrollment = enrollmentOf(deviceKey.publicKey, devices.data)
   return (
     <>
-      <p className="device-lead">{t.devices.checkLead}</p>
-      <label className="device-field">
-        <span>{t.devices.pasteLabel}</span>
-        <textarea rows={2} value={text} spellCheck={false} placeholder={t.devices.pastePlaceholder} onChange={(event) => setText(event.target.value)} />
-      </label>
-      {checked.status === 'invalid' ? <p className="device-invalid" role="alert">{t.devices.invalidKey}</p> : null}
-      {checked.status === 'valid' ? (
-        <div className="device-compare" role="status">
-          <p className="pairing-code" aria-label={t.devices.otherCodeLabel}>{checked.code}</p>
-          <p>{t.devices.compare}</p>
-        </div>
+      <ThisDevice deviceKey={deviceKey} list={devices.data} />
+      {enrollment.status === 'enrolled' ? (
+        <>
+          <YourDevices deviceKey={deviceKey} list={devices.data} />
+          <Requests deviceKey={deviceKey} list={devices.data} />
+        </>
       ) : null}
     </>
   )
 }
 
-/** This device's pairing code, and a way to read the code of another device's key before adding it. */
+function Unsupported() {
+  const { t } = useI18n()
+  const found = deviceKeyCapabilities()
+  const word = (has: boolean): string => (has ? t.devices.yes : t.devices.no)
+  return (
+    <>
+      <p className="empty" role="alert">{t.devices.unsupported}</p>
+      <p className="muted">{t.devices.capabilities(word(found.secureContext), word(found.webCrypto), word(found.indexedDb))}</p>
+    </>
+  )
+}
+
+/** This device's key and pairing code, asking to be added, and confirming other devices that ask. */
 export function DevicesPage() {
   const { t } = useI18n()
+  const key = useDeviceKey()
   return (
     <>
       <h1 className="page-title">{t.devices.title}</h1>
       <p className="muted">{t.devices.intro}</p>
-      <section className="device-card">
-        <h2 className="sub-head">{t.devices.thisDevice}</h2>
-        <ThisDevice />
-      </section>
-      <section className="device-card">
-        <h2 className="sub-head">{t.devices.addAnother}</h2>
-        <CheckAnother />
-      </section>
+      {key.status === 'loading' ? <p className="muted">{t.devices.loading}</p> : null}
+      {key.status === 'unsupported' ? <Unsupported /> : null}
+      {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
+      {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
     </>
   )
 }

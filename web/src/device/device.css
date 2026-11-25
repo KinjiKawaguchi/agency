@@ -26,23 +26,6 @@
   overflow-wrap: anywhere;
 }
 
-.device-key summary {
-  color: var(--ink-2);
-  cursor: pointer;
-  font-size: 13.5px;
-}
-
-.device-key-text {
-  display: block;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--raised);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
 .device-field {
   display: flex;
   flex-direction: column;
@@ -67,21 +50,65 @@
   font-weight: 600;
 }
 
-.device-compare {
-  margin-top: 12px;
-  padding: 4px 14px 12px;
+@media (max-width: 720px) {
+  .pairing-code {
+    font-size: 26px;
+  }
+}
+
+.device-card .btn {
+  margin-top: 4px;
+}
+
+.device-field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+}
+
+.device-requests,
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-request {
+  padding: 4px 14px 14px;
   border: 1px solid var(--hold);
   border-radius: var(--radius);
   background: var(--raised);
 }
 
-.device-compare p:last-child {
-  margin: 0;
+.device-request-head {
+  margin: 10px 0 0;
+}
+
+.device-compare-note {
+  margin: 0 0 8px;
   font-weight: 600;
 }
 
-@media (max-width: 720px) {
-  .pairing-code {
-    font-size: 26px;
-  }
+.device-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+
+.device-here {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 11.5px;
+  font-weight: 650;
 }

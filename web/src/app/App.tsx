@@ -3,6 +3,7 @@ import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import { useState } from 'react'
 import { KeyStoreProvider } from '../device/context'
 import type { KeyStore } from '../device/deviceKey'
+import { DeviceKeyProvider } from '../device/useDeviceKey'
 import { ApiProvider } from '../api/context'
 import { createApiClient, type ApiClient } from '../api/client'
 import { I18nProvider } from '../i18n'
@@ -29,9 +30,11 @@ export function App({ client, history, locale, keyStore }: AppProps) {
         <ApiProvider client={api}>
           <SignInExpiredProvider>
             <KeyStoreProvider {...(keyStore === undefined ? {} : { store: keyStore })}>
-              <ToastProvider>
-                <RouterProvider router={router} />
-              </ToastProvider>
+              <DeviceKeyProvider>
+                <ToastProvider>
+                  <RouterProvider router={router} />
+                </ToastProvider>
+              </DeviceKeyProvider>
             </KeyStoreProvider>
           </SignInExpiredProvider>
         </ApiProvider>

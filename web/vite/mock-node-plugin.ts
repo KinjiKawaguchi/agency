@@ -12,6 +12,8 @@ async function readBody(message: IncomingMessage): Promise<Buffer> {
 
 const RESET_PATH = '/__mock/reset'
 const SIGN_IN_PATH = '/__mock/sign-in'
+const DEVICE_ADD_PATH = '/__mock/device-add'
+const ENVELOPES_PATH = '/__mock/envelopes'
 
 /**
  * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
@@ -41,6 +43,14 @@ function apiMiddleware(): Connect.NextHandleFunction {
       node.setSignInExpired(url.searchParams.get('expired') === '1')
       response.statusCode = 204
       return response.end()
+    }
+    if (message.method === 'POST' && url.pathname === DEVICE_ADD_PATH) {
+      response.statusCode = node.addDeviceFromTerminal(url.searchParams.get('code') ?? '') ? 204 : 404
+      return response.end()
+    }
+    if (message.method === 'GET' && url.pathname === ENVELOPES_PATH) {
+      response.setHeader('content-type', 'application/json')
+      return response.end(JSON.stringify(node.envelopes()))
     }
     if (!message.url?.startsWith('/api/')) return next()
     const method = message.method ?? 'GET'

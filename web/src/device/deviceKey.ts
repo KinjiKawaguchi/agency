@@ -40,6 +40,11 @@ export async function loadOrCreateDeviceKey(store: KeyStore): Promise<DeviceKey>
   return deviceKeyOf(created)
 }
 
+/** What this page has of what a device key needs, so a wrapper app can see which part is missing. */
+export function deviceKeyCapabilities(): { secureContext: boolean; webCrypto: boolean; indexedDb: boolean } {
+  return { secureContext: window.isSecureContext, webCrypto: typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined', indexedDb: typeof indexedDB !== 'undefined' }
+}
+
 /** Whether this browser can make Ed25519 keys (it needs a secure context and a recent browser). */
 export async function canMakeDeviceKeys(): Promise<boolean> {
   try {

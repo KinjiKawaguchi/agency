@@ -1,5 +1,5 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, Me, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -36,6 +36,14 @@ export interface ApiClient {
   orgDefinition: (org: string) => Promise<OrgDefinition>
   /** The account's recent decisions, newest first. */
   decisions: (limit: number) => Promise<DecisionLog>
+  /** Sends a decision already signed by one of this account's devices. */
+  decideSigned: (org: string, team: string, input: SignedDecisionInput) => Promise<DecisionResult>
+  /** The account's devices in each org, and the devices waiting to be added. */
+  devices: () => Promise<DeviceList>
+  /** Asks the node to add this device; a device that is already added confirms it after comparing the pairing codes. */
+  requestDevice: (input: DeviceRequestInput) => Promise<DeviceRequest>
+  /** Adds a device: a change signed by one of the account's devices. */
+  submitDeviceChange: (change: Signed<DeviceChange>) => Promise<DeviceChangeResult>
   usage: (org: string, team: string, days: number) => Promise<TokenUsage>
 }
 
@@ -81,6 +89,10 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
   }
   const get = <T>(path: string): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' } })).then(readJson<T>)
 
+  /** A write: JSON with the page's token, which the node demands of every write. */
+  const post = <T>(path: string, body: unknown): Promise<T> =>
+    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': readToken() }, body: JSON.stringify(body) })).then(readJson<T>)
+
   return {
     onSession: (listener) => {
       listeners.add(listener)
@@ -91,17 +103,20 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
+    decideSigned: (org, team, { envelope, title, choiceLabel }) => {
+      // As for an unsigned decision, the label travels only with a choice, and both notes are trimmed and cut for the log.
+      const label = envelope.body.payload.choice === undefined || choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }
+      const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label }
+      return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
+    },
+    devices: () => get<DeviceList>('/api/devices'),
+    requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
+    submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),
     decide: ({ org, team, answerWith, choice, choiceLabel, text, title }) => {
       // The node refuses a label that comes without a choice, so the two travel together or not at all.
       const chosen = choice === undefined ? {} : { choice, ...(choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }) }
       const input: DecisionInput = { ...answerWith, text, title: forLog(title), ...chosen }
-      return dispatch(
-        new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-agency-token': readToken() },
-          body: JSON.stringify(input),
-        }),
-      ).then(readJson<DecisionResult>)
+      return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`, input)
     },
   }
 }

@@ -1,7 +1,8 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionEntry, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
+import { createMockDevices, isRefusal } from './devices.ts'
 import { earlierDecisions, fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
 
 /** The token the mock node's index.html carries and its writes demand. */
@@ -10,6 +11,10 @@ export const MOCK_TOKEN = 'mock-token'
 export interface MockNode {
   /** Answers a request the way the real node would. */
   handle: (request: Request) => Promise<Response>
+  /** What `agency device-add` does on the node's terminal: adds the device that asked with this pairing code. */
+  addDeviceFromTerminal: (pairingCode: string) => boolean
+  /** Envelopes that were accepted, oldest first. */
+  envelopes: () => readonly Signed<Envelope>[]
   /** Makes the node answer every call as Cloudflare Access does once the session has expired: a redirect to its login on another origin. */
   setSignInExpired: (isExpired: boolean) => void
   /** Decisions received so far, oldest first. They also appear in the decision log. */
@@ -64,7 +69,8 @@ const DECISIONS_PATH = '/api/decisions'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
-const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|decisions|usage)$/
+const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|decisions|usage|envelopes)$/
+const DEVICES_PATH = '/api/devices'
 
 const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string } =>
   typeof body === 'object' && body !== null && 'kind' in body && 'target' in body && 'text' in body && typeof body.text === 'string'
@@ -77,6 +83,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let views = new Map<string, TeamView>([app, siteTeamView(app)].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
   let isSignInExpired = false
+  let accepted: readonly Signed<Envelope>[] = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false ? [] : earlierDecisions(now)
 
   const me: Me = {
@@ -98,12 +105,42 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       : { kind: 'local' }
   const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: 'owner', source: sourceOf(view) })
 
-  const decide = async (request: Request, view: TeamView): Promise<Response> => {
+  /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
+  const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
     if (request.headers.get('x-agency-token') !== MOCK_TOKEN) return failure(403, 'The request token is missing or wrong.')
-    if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the decision as application/json.')
-    const body: unknown = await request.json().catch(() => null)
+    if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
+    return { body: await request.json().catch(() => null) }
+  }
+
+  const decide = async (request: Request, view: TeamView): Promise<Response> => {
+    const write = await readWrite(request)
+    if (write instanceof Response) return write
+    const { body } = write
     if (options.refuseDecisionsWith !== undefined) return failure(409, options.refuseDecisionsWith)
     if (!isAnswerWith(body)) return failure(400, 'The decision body is malformed.')
+    return accept(view, body)
+  }
+
+  /** The node's own account, with the devices it holds: the signed routes check against them. */
+  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id)
+
+  const decideSigned = async (request: Request, view: TeamView): Promise<Response> => {
+    const write = await readWrite(request)
+    if (write instanceof Response) return write
+    const { body } = write
+    if (typeof body !== 'object' || body === null || !('envelope' in body)) return failure(400, 'The decision body is malformed.')
+    const refusal = await devices.checkEnvelope(view.org, view.team, body.envelope)
+    if (refusal !== undefined) return failure(refusal.status, refusal.message)
+    if (options.refuseDecisionsWith !== undefined) return failure(409, options.refuseDecisionsWith)
+    const signed = body.envelope as Signed<Envelope>
+    const { kind, target, payload } = signed.body
+    const notes = body as { title?: string; choiceLabel?: string }
+    const reply = await accept(view, { kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
+    if (reply.ok) accepted = [...accepted, signed]
+    return reply
+  }
+
+  const accept = async (view: TeamView, body: AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
     received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
@@ -128,7 +165,24 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const days = Number(url.searchParams.get('days') ?? 14)
       return Number.isInteger(days) && days >= 1 && days <= 90 ? json(usageReport(view, days, now)) : failure(400, 'days must be between 1 and 90.')
     }
-    return request.method === 'POST' && action === 'decisions' ? decide(request, view) : failure(404, 'No such route.')
+    if (request.method === 'POST' && action === 'decisions') return decide(request, view)
+    return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
+  }
+
+  const handleDevices = async (request: Request, url: URL): Promise<Response> => {
+    if (request.method === 'GET' && url.pathname === DEVICES_PATH) return json(devices.list())
+    const write = request.method === 'POST' ? await readWrite(request) : undefined
+    if (write === undefined) return failure(404, 'No such route.')
+    if (write instanceof Response) return write
+    if (url.pathname === `${DEVICES_PATH}/requests`) {
+      const asked = await devices.request(write.body)
+      return isRefusal(asked) ? failure(asked.status, asked.message) : json(asked)
+    }
+    if (url.pathname === `${DEVICES_PATH}/changes`) {
+      const refusal = await devices.change(write.body)
+      return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
+    }
+    return failure(404, 'No such route.')
   }
 
   const handle = async (request: Request): Promise<Response> => {
@@ -141,6 +195,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
       return json({ entries: log.slice(0, Math.min(MAX_LIMIT, Math.max(1, limit))) } satisfies DecisionLog)
     }
+    if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
     const teamMatch = TEAM_PATH.exec(url.pathname)
@@ -153,5 +208,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       isSignInExpired = isExpired
     },
     decisions: () => received,
+    envelopes: () => accepted,
+    addDeviceFromTerminal: devices.addFromTerminal,
   }
 }
