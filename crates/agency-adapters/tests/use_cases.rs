@@ -382,6 +382,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         public_key: root.public(),
         department: None,
         role: Role::Member,
+        devices: vec![],
     };
     let body = OrgDefinition {
         org: id("acme"),

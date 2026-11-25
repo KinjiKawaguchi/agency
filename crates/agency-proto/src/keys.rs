@@ -22,6 +22,14 @@ impl PublicKey {
             .collect()
     }
 
+    /// The code a person compares on two devices before one adds the other: the fingerprint's first
+    /// 12 hex characters in groups of 4 (`3f2a-9c01-77be`). 48 bits, so a node relaying the key cannot
+    /// find another key with the same code while the person is pairing.
+    pub fn pairing_code(&self) -> String {
+        let fingerprint = self.fingerprint();
+        [&fingerprint[0..4], &fingerprint[4..8], &fingerprint[8..12]].join("-")
+    }
+
     pub fn verify(&self, message: &[u8], signature: &str) -> bool {
         let Ok(bytes) = STANDARD.decode(signature) else {
             return false;

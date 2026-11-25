@@ -1,7 +1,18 @@
 {
+  "device": {
+    "pairingCode": "dbc2-9825-1c51",
+    "publicKey": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg=",
+    "seed": "0909090909090909090909090909090909090909090909090909090909090909"
+  },
+  "deviceChange": {
+    "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"laptop\",\"label\":\"Laptop\",\"publicKey\":\"/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg=\"},\"op\":\"add\",\"org\":\"acme\"}",
+    "signature": "0Lwjsbg7e72EdiyH88rOIACT81XWZeiNs9Ggg2VZghXOZn06VOtiqTeHe0Jcf6ZFZmLt7CpVe3F0W9sCmznUDg==",
+    "signer": "alice"
+  },
   "envelope": {
     "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"id\":\"00112233445566778899aabbccddeeff\",\"kind\":\"answer\",\"org\":\"acme\",\"payload\":{\"choice\":\"ア\",\"text\":\"\"},\"target\":\"r-20260101-000000-abcd\",\"team\":\"app\"}",
-    "signature": "bv8UynvNjlWhS1JWv4KMnWW7V3zvaLnFJsW3T9j6fyAdL6Pw9n0uZnaHMALVeCJrrXJzfkYKcYgejFQDcUQtDQ=="
+    "signature": "TZ8RbVmH8OD+bG45WJG5OA/FGlCr7+Qtap6RoOh91J6mWS++gTkUq2Eov6Pt7BAIAARnuZ+6EpgxzMVtbAGNBA==",
+    "signer": "laptop"
   },
   "fingerprint": "fe812c12f3ab4ce6ac5db69ac352f906",
   "org": {
