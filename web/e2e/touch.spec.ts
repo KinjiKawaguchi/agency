@@ -7,6 +7,7 @@ const WIDTHS = [375, 430] as const
 
 const ROUTES = [
   { path: '/desk', ready: 'article.paper' },
+  { path: '/overview', ready: 'article.ov-team' },
   { path: '/people', ready: 'article.mate' },
   { path: '/org', ready: '.orgchart .oc-node.agent' },
   { path: '/costs', ready: '.columns .column' },
@@ -18,7 +19,7 @@ test.use({ hasTouch: true })
 let errors: () => string[]
 
 test.beforeEach(async ({ page, request }) => {
-  await resetNode(request, { usage: true })
+  await resetNode(request, { usage: true, moreOrgs: true })
   errors = trackErrors(page)
 })
 
@@ -84,11 +85,11 @@ for (const route of ROUTES) {
     await page.setViewportSize({ width: 375, height: 800 })
     await page.goto(route.path)
     await expect(page.locator(route.ready).first()).toBeVisible()
-    // Every line of text gets a word with no place to break, as a path or an id has. A time and a status
-    // word are the node's own short values, so they are left as they are.
+    // Every line of text gets a word with no place to break, as a path or an id has. A time, a status
+    // word, and a percentage are short values we format ourselves, so they are left as they are.
     await page.evaluate(() => {
       for (const element of Array.from(document.querySelectorAll('main *, .appbar *'))) {
-        if (element.children.length === 0 && (element.textContent ?? '').trim() !== '' && element.closest('select, option, button, table, .stamp-time, .decided-tag') === null) {
+        if (element.children.length === 0 && (element.textContent ?? '').trim() !== '' && element.closest('select, option, button, table, .stamp-time, .decided-tag, .fund-pct, .fund-left') === null) {
           element.textContent = `${element.textContent} ${'x'.repeat(70)}`
         }
       }

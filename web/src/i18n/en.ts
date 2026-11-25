@@ -18,6 +18,7 @@ export const en = {
   nav: {
     label: 'Main menu',
     desk: 'Decisions',
+    overview: 'Overview',
     people: 'Participants and work',
     org: 'Org chart',
     costs: 'Costs',
@@ -41,6 +42,27 @@ export const en = {
   },
   time: {
     justNow: 'just now',
+  },
+  overview: {
+    title: 'Overview',
+    lead: (requests: number, teams: number) =>
+      requests === 0 ? 'Nothing waits for you in any team.' : `${requests} ${requests === 1 ? 'request waits' : 'requests wait'} for you, in ${teams} ${teams === 1 ? 'team' : 'teams'}.`,
+    noTeams: 'This org has no teams yet.',
+    waitingForYou: (count: number) => (count === 1 ? '1 request waits for you' : `${count} requests wait for you`),
+    nothingWaits: 'Nothing waits for you.',
+    working: (working: number, total: number) => `${working} of ${total} participants working`,
+    noParticipants: 'No participants reported.',
+    tags: { mine: 'Your turn', stuck: 'Stuck', idle: 'Idle', failed: 'Not loaded' },
+    blocked: (count: number) => (count === 1 ? '1 blocked item' : `${count} blocked items`),
+    nobodyWorking: 'Nobody is working.',
+    usage: (amount: string) => `${amount} this week, API-priced`,
+    usageNone: 'Token use is not reported.',
+    usageFailed: 'Token use could not be read.',
+    dataFrom: (relative: string) => `Data from ${relative}`,
+    staleFrom: (relative: string, reason: string) => `Data from ${relative}. The team’s node could not be reached: ${reason}`,
+    neverRead: (reason: string) => `Not read yet: ${reason}`,
+    loadFailed: (reason: string) => `Could not load this team: ${reason}`,
+    funding: 'Usage limits',
   },
   people: {
     title: 'Participants and work',
@@ -103,6 +125,7 @@ export const en = {
     kinds: { subscription: 'Subscription', apiKey: 'API key' },
     windows: { sevenDay: 'Weekly window', fiveHour: 'Five-hour window' },
     notStarted: (window: string) => `${window} has not started.`,
+    left: (percent: string) => `${percent} left`,
     unknownUsage: 'The usage of this source could not be read.',
     statuses: { waste: 'Will go unused', ok: 'On pace', overrun: 'Will run out' },
     verdicts: {
@@ -200,6 +223,7 @@ export const en = {
     pile: {
       label: 'Documents waiting',
       empty: 'Nothing is waiting for you. New requests from your team show up here.',
+      scope: { only: (label: string) => `Showing only ${label}.`, all: 'Show all teams' },
       groups: {
         proposal: 'Proposals for you to approve',
         question: 'Questions for you',

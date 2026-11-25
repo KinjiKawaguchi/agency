@@ -20,6 +20,7 @@ function WindowBlock({ name, reading, now }: { name: WindowName; reading: UsageW
       <div className="fund-top">
         <b>{label}</b>
         <span className="fund-pct">{fmt.percent(forecast.utilization)}</span>
+        <span className="fund-left">{t.costs.left(fmt.percent(Math.max(0, 100 - forecast.utilization)))}</span>
         <span className={`fund-tag tag-${forecast.status}`}>{t.costs.statuses[forecast.status]}</span>
       </div>
       <div className="fund-bar" role="img" aria-label={t.costs.barLabel(label, fmt.percent(forecast.utilization), fmt.percent(forecast.projectedAtReset))}>

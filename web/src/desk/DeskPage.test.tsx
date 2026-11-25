@@ -11,6 +11,22 @@ const PENDING = 'Drop support for the old export format?'
 
 const pile = async () => within(await screen.findByRole('listbox', { name: 'Documents waiting' }))
 
+describe('decision desk filtered to a team', () => {
+  it('shows only that team’s requests, and says so, with a way back to all of them', async () => {
+    renderApp({ path: '/desk?team=lab%2Fnotebook', moreOrgs: true })
+    expect(await screen.findByText('Showing only Notebook.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: 'Publish the notebook under the lab’s name?' })).toBeInTheDocument()
+    expect(screen.queryByText(PROPOSAL)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Show all teams' })).toHaveAttribute('href', '/desk')
+  })
+
+  it('shows every team’s requests when the team asked for is not one of the viewer’s', async () => {
+    renderApp({ path: '/desk?team=nowhere%2Fnone' })
+    expect(await screen.findByRole('heading', { level: 2, name: PROPOSAL })).toBeInTheDocument()
+    expect(screen.queryByText(/Showing only/)).not.toBeInTheDocument()
+  })
+})
+
 describe('decision desk', () => {
   it('summarizes the situation and opens the most urgent document first', async () => {
     renderApp()

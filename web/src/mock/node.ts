@@ -3,7 +3,7 @@
 import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
-import { earlierDecisions, fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
+import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
 
 /** The token the mock node's index.html carries and its writes demand. */
 export const MOCK_TOKEN = 'mock-token'
@@ -30,6 +30,8 @@ interface MockNodeOptions {
   view?: TeamView
   /** When set, the node answers every call with this status, to exercise error paths. */
   failWith?: number
+  /** Adds the orgs Lab and Club, with a stuck team, a stale copy, a busy team, and one that cannot be read. */
+  moreOrgs?: boolean
   /** Makes the `site` team a stale copy that could not be refreshed for this reason. */
   siteError?: string
   /** Serves token use. Off by default, as the real node does not serve it yet and answers 404. */
@@ -90,7 +92,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const now = options.now ?? new Date()
   const sample: TeamView = options.view ?? shiftTimes(sampleTeamView, now.getTime() - Date.parse(sampleTeamView.generatedAt))
   const app: TeamView = options.nothingWaiting === true ? { ...sample, requests: [], people: sample.people.map(({ waitingOn: _waitingOn, ...rest }) => rest) } : sample
-  let views = new Map<string, TeamView>([app, siteTeamView(app)].map((view) => [teamKey(view.org, view.team), view]))
+  const more = options.moreOrgs === true ? moreTeamViews(now) : []
+  let views = new Map<string, TeamView>([app, siteTeamView(app), ...more].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
   let isSignInExpired = false
   let accepted: readonly Signed<Envelope>[] = []
@@ -104,14 +107,19 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
         id: app.org,
         label: ORG_DEFINITION.label,
         isRoot: true,
-        teams: [...views.values()].map((view) => ({ id: view.team, label: view.label, location: view.team === 'site' ? 'remote' : 'local', viewer: 'owner' })),
+        teams: [app, siteTeamView(app)].map((view) => ({ id: view.team, label: view.label, location: view.team === 'site' ? 'remote' : 'local', viewer: 'owner' })),
       },
+      ...(options.moreOrgs === true
+        ? MORE_ORGS.map((org) => ({ id: org.id, label: org.label, isRoot: true, teams: org.teams.map((team) => ({ id: team.id, label: team.label, location: team.location, viewer: 'owner' })) }))
+        : []),
     ],
     funding: fundingSources(now),
   }
 
   const sourceOf = (view: TeamView): SnapshotSource =>
-    view.team === 'site'
+    teamKey(view.org, view.team) === STALE_TEAM
+      ? { kind: 'replica', fetchedAt: view.generatedAt, triedAt: new Date(now.getTime() - 5 * MINUTE).toISOString(), error: 'The team’s node did not answer.' }
+      : view.team === 'site'
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
   // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
@@ -166,6 +174,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const handleTeam = async (request: Request, url: URL, [, org = '', team = '', action = '']: RegExpExecArray): Promise<Response> => {
+    if (teamKey(org, team) === UNREADABLE_TEAM && options.moreOrgs === true) return failure(503, 'The team’s node has not been reached yet.')
     const view = views.get(teamKey(org, team))
     if (view === undefined) return failure(404, 'No such team.')
     if (request.method === 'GET' && action === 'view') return json(snapshotOf(view))
@@ -220,7 +229,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const orgMatch = ORG_PATH.exec(url.pathname)
-    if (request.method === 'GET' && orgMatch) return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
+    if (request.method === 'GET' && orgMatch) {
+      const extra = options.moreOrgs === true ? MORE_ORGS.find((org) => org.id === orgMatch[1]) : undefined
+      if (extra !== undefined) return json(moreOrgDefinition(extra))
+      return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
+    }
     const teamMatch = TEAM_PATH.exec(url.pathname)
     return teamMatch ? handleTeam(request, url, teamMatch) : failure(404, 'No such route.')
   }

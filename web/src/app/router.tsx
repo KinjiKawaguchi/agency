@@ -3,6 +3,7 @@ import { CostsPage } from '../costs/CostsPage'
 import { DevicesPage } from '../device/DevicesPage'
 import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
+import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
@@ -34,14 +35,18 @@ const indexRoute = createRoute({
 const deskRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/desk',
-  validateSearch: (search: Record<string, unknown>): { item?: string } =>
-    typeof search.item === 'string' && search.item !== '' ? { item: search.item } : {},
+  validateSearch: (search: Record<string, unknown>): { item?: string; team?: string } => ({
+    ...(typeof search.item === 'string' && search.item !== '' ? { item: search.item } : {}),
+    ...(typeof search.team === 'string' && search.team !== '' ? { team: search.team } : {}),
+  }),
   component: function DeskRoute() {
-    const { item } = deskRoute.useSearch()
+    const { item, team } = deskRoute.useSearch()
     const navigate = deskRoute.useNavigate()
-    return <DeskPage selected={item} onSelect={(key) => void navigate({ search: { item: key }, replace: true })} />
+    return <DeskPage selected={item} team={team} onSelect={(key) => void navigate({ search: (previous) => ({ ...previous, item: key }), replace: true })} />
   },
 })
+
+const overviewRoute = createRoute({ getParentRoute: () => rootRoute, path: '/overview', component: OverviewPage })
 
 const peopleRoute = createRoute({ getParentRoute: () => rootRoute, path: '/people', component: PeoplePage })
 const nonEmpty = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
@@ -62,7 +67,7 @@ const costsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/costs'
 
 const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, peopleRoute, orgRoute, costsRoute, devicesRoute])
+const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })

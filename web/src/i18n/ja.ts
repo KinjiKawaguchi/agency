@@ -14,6 +14,7 @@ export const ja: Messages = {
   nav: {
     label: 'メインメニュー',
     desk: '決めること',
+    overview: '全体',
     people: '参加者と仕事',
     org: '組織図',
     costs: '費用',
@@ -37,6 +38,26 @@ export const ja: Messages = {
   },
   time: {
     justNow: 'たった今',
+  },
+  overview: {
+    title: '全体の状況',
+    lead: (requests, teams) => (requests === 0 ? 'あなたを待っている依頼は、どのチームにもありません。' : `${teams} チームで、${requests} 件の依頼があなたを待っています。`),
+    noTeams: 'この組織には、まだチームがありません。',
+    waitingForYou: (count) => `あなたを待っている依頼 ${count} 件`,
+    nothingWaits: 'あなたを待っている依頼はありません。',
+    working: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中`,
+    noParticipants: '参加者の報告がありません。',
+    tags: { mine: 'あなたの番', stuck: '止まっている', idle: '動いていない', failed: '読み込めません' },
+    blocked: (count) => `止まっている項目 ${count} 件`,
+    nobodyWorking: '作業中の参加者はいません。',
+    usage: (amount) => `今週 ${amount} (API 換算)`,
+    usageNone: 'このチームはトークンの使用量を報告していません。',
+    usageFailed: 'トークンの使用量を読めませんでした。',
+    dataFrom: (relative) => `${relative} のデータ`,
+    staleFrom: (relative, reason) => `${relative} のデータです。チームのノードに接続できません: ${reason}`,
+    neverRead: (reason) => `まだ読めていません: ${reason}`,
+    loadFailed: (reason) => `このチームを読み込めませんでした: ${reason}`,
+    funding: '利用上限',
   },
   people: {
     title: '参加者と仕事',
@@ -99,6 +120,7 @@ export const ja: Messages = {
     kinds: { subscription: 'サブスクリプション', apiKey: 'API キー' },
     windows: { sevenDay: '週の枠', fiveHour: '5 時間の枠' },
     notStarted: (window) => `${window}はまだ始まっていません。`,
+    left: (percent) => `残り ${percent}`,
     unknownUsage: 'この資金源の使用状況は読み取れませんでした。',
     statuses: { waste: '余りそう', ok: '順調', overrun: '足りなくなりそう' },
     verdicts: {
@@ -196,6 +218,7 @@ export const ja: Messages = {
     pile: {
       label: '届いている書類',
       empty: '待っているものはありません。チームからの新しい依頼は、ここに出ます。',
+      scope: { only: (label) => `${label} だけを表示しています。`, all: 'すべてのチームを表示' },
       groups: {
         proposal: '決裁する稟議',
         question: 'あなたへの質問',

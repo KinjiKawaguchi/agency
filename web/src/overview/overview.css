@@ -1,0 +1,122 @@
+.ov-lead {
+  margin-top: 4px;
+  color: var(--ink-2);
+}
+
+.ov-org {
+  margin-bottom: 8px;
+}
+
+.ov-teams,
+.ov-funds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ov-team {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.ov-team.attention-mine {
+  border-left-color: var(--seal);
+}
+
+.ov-team.attention-stuck {
+  border-left-color: var(--hold);
+}
+
+.ov-team.attention-failed {
+  border-left-color: var(--ink-3);
+  border-style: dashed;
+  border-left-width: 1px;
+}
+
+.ov-team-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.ov-team-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.ov-tag {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.ov-tag.tag-mine {
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+.ov-tag.tag-stuck {
+  color: var(--hold);
+}
+
+.ov-line {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.ov-quiet {
+  color: var(--ink-3);
+}
+
+.ov-failed {
+  color: var(--ink-2);
+}
+
+.ov-mine {
+  align-self: flex-start;
+  padding: 4px 0;
+  color: var(--seal);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ov-age {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.ov-age.is-stale {
+  color: var(--hold);
+}
+
+.ov-why ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .ov-teams,
+  .ov-funds {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
