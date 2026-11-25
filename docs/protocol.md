@@ -91,7 +91,7 @@ A node that reads a team on another node adds these headers:
 `<path>` is the request path without its query, except on a route that takes a query (`usage`): there it is the path with the query exactly as the route table writes it, built from the parsed values, so a signature covers the range it reads.
 
 The receiving node answers only when the time is within 5 minutes either way, the signature matches the account's public key in the org definition, and the account is a member of the team's org.
-A non-member gets 404, so it cannot tell whether the team exists.
+A read that fails any of these checks is refused like a read of an org or team the node does not have (see "Federation routes").
 
 ## Decision envelope (kind `envelope`)
 
@@ -120,10 +120,23 @@ A non-member gets 404, so it cannot tell whether the team exists.
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
-| POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere): a device change, checked as in "Devices". Answers the version it wrote |
+| POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
 | GET | `/fed/v1/teams/<org>/<team>/usage?days=<n>` | A signed read of the path with its query, and membership (answers `TokenUsage`; 400 for a range outside 1 to 90; 404 when the team's runtime does not report usage) |
 | POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
+
+The federation routes bypass Cloudflare Access, so anyone can call them, and nothing in an answer may tell a caller what the node holds until the caller is authenticated.
+Every request that fails before that gets `404` with the body `{"error":"not found"}`, whatever the reason:
+
+- the org or the team is not on this node, or its id is malformed;
+- a signed read is missing, malformed, more than 5 minutes off the node's clock, signed by a non-member, or signed by another key;
+- an envelope names a non-member, a device the member does not have, or is not signed by that device's key;
+- a device change names another org or a non-member, or is not signed by the key that "Devices" requires;
+- an org definition is not signed by the root key the node knows for the org (the root of its copy, or, without a copy, the root whose fingerprint it trusts).
+
+Once the request is authenticated, refusals are specific (an expired envelope, a version that is not the next one, a node that does not hold the root key).
+A request whose signature is well formed spends one signature check even when the org, team, member, or device is missing, so the time of an answer does not tell either (apart from reading the node's files).
+The checks that do not depend on what the node holds come first and answer as they always do: a malformed body (400), an envelope whose org and team differ from the path (400), and a join request (whose invite code is its credential: 403 for an unknown, used, or expired code, also in an org the node does not have).
 
 ## TeamView
 

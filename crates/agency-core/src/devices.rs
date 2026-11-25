@@ -6,12 +6,13 @@ use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
 use crate::outbox::{enqueue, outcome_of, settle, Outcome, Parcel, ParcelBody};
 use crate::routes;
+use crate::unseen;
 use agency_proto::client::{
     DeviceChangeOutcome, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput,
     OrgDevices,
 };
 use agency_proto::clock::{self, Duration};
-use agency_proto::device::check_device_change;
+use agency_proto::device::{check_device_change, device_change_key};
 use agency_proto::org::{verify_successor, SignedOrg};
 use agency_proto::{
     AccountKey, Device, DeviceChange, DeviceOp, Id, Kind, OrgDefinition, PublicKey, Signed,
@@ -135,7 +136,12 @@ pub async fn accept_device_change(
     signed: Signed<DeviceChange>,
 ) -> Result<SignedOrg> {
     let _guard = node.write_lock().lock().await;
-    let current = load(node, org).map_err(|_| Error::not_found("not found"))?;
+    let current = node.store().load_org(org);
+    let key = current
+        .as_ref()
+        .and_then(|current| device_change_key(&current.body, &signed));
+    unseen::verify(&signed, Kind::Device, key)?;
+    let current = current.ok_or_else(unseen::not_found)?;
     if !is_root(node, &current) {
         return Err(Error::new(
             ErrorKind::Forbidden,

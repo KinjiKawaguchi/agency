@@ -257,8 +257,8 @@ async fn only_direct_local_requests_are_let_in_without_access() {
         .unwrap();
     assert_eq!(
         federation.status(),
-        401,
-        "federation is checked by signatures, not by host"
+        404,
+        "federation is checked by signatures, not by host: an unsigned read is refused like an unknown org"
     );
 }
 

@@ -6,6 +6,7 @@ use agency_core::devices::accept_device_change;
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, receive};
 use agency_core::read_auth::ReadAuth;
+use agency_core::unseen;
 use agency_core::usage::hosted_usage;
 use agency_core::views::hosted_view;
 use agency_core::{Error, ErrorKind, Node};
@@ -52,7 +53,7 @@ fn respond<T: Serialize>(result: Result<T, Error>) -> Response {
 
 /// A malformed id in the path is reported like a missing one.
 fn parse_id(raw: &str) -> Result<Id, Error> {
-    Id::parse(raw).map_err(|_| Error::not_found("not found"))
+    Id::parse(raw).map_err(|_| unseen::not_found())
 }
 
 fn parse_body<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Error> {

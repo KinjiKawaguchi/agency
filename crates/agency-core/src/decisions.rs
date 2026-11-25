@@ -2,13 +2,12 @@
 //! The team's node verifies it before applying it to the team runtime.
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
-use crate::orgs;
 use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
-use agency_proto::device::envelope_signer;
+use crate::unseen;
+use agency_proto::device::envelope_key;
 use agency_proto::runtime::RuntimeError;
-use agency_proto::{
-    Envelope, EnvelopeId, EnvelopeKind, Id, OrgDefinition, Payload, Person, RuntimeDecision, Signed,
-};
+use agency_proto::Kind;
+use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Payload, RuntimeDecision, Signed};
 use serde::{Deserialize, Serialize};
 
 /// A decision this node's account made, as kept in the decision log.
@@ -102,15 +101,9 @@ pub(crate) async fn send_envelope(
 
 /// The member who signed an envelope, with one of their devices; an account key never signs one. A
 /// non-member is not found, so a stranger cannot tell what exists.
-fn signer_of<'a>(definition: &'a OrgDefinition, signed: &Signed<Envelope>) -> Result<&'a Person> {
-    definition
-        .member(&signed.body.account)
-        .ok_or_else(|| Error::not_found("not found"))?;
-    envelope_signer(definition, signed).map_err(Error::unauthorized)
-}
-
 /// Verifies an envelope sent to a team on this node and applies it. Checked in order: shape, addressee,
-/// membership, signature, expiry, and replay.
+/// membership and signature, expiry, and replay. An unknown org or team, a non-member, an unknown
+/// device, and a wrong signature are all refused like an unknown team (see `unseen`).
 pub async fn accept_envelope(
     node: &Node,
     org: &Id,
@@ -124,13 +117,15 @@ pub async fn accept_envelope(
             "the envelope's org and team differ from where it was sent",
         ));
     }
-    let hosted = node
-        .config()
-        .hosted(org, team)
-        .cloned()
-        .ok_or_else(|| Error::not_found("not found"))?;
-    let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
-    let person = signer_of(&doc.body, &signed)?;
+    let hosted = node.config().hosted(org, team).cloned();
+    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
+    let found = doc
+        .as_ref()
+        .and_then(|doc| envelope_key(&doc.body, &signed));
+    unseen::verify(&signed, Kind::Envelope, found.map(|(_, key)| key))?;
+    let (Some(hosted), Some((person, _))) = (hosted, found) else {
+        return Err(unseen::not_found());
+    };
     if !envelope.is_fresh(node.now()) {
         return Err(Error::bad_request(
             "the envelope expired, or its time is too far ahead",

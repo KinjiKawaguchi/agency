@@ -261,22 +261,22 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
     let now = alice.node.now();
     for offset in [-300, 300] {
         assert!(
-            verify_read(&definition, &signed_at(offset), "GET", path, now).is_ok(),
+            verify_read(Some(&definition), &signed_at(offset), "GET", path, now).is_ok(),
             "{offset}"
         );
     }
     for offset in [-301, 301] {
         assert_eq!(
-            verify_read(&definition, &signed_at(offset), "GET", path, now)
+            verify_read(Some(&definition), &signed_at(offset), "GET", path, now)
                 .unwrap_err()
                 .kind,
-            ErrorKind::Unauthorized,
-            "{offset}"
+            ErrorKind::NotFound,
+            "{offset}: refused like an unknown org"
         );
     }
     assert!(
         verify_read(
-            &definition,
+            Some(&definition),
             &signed_at(0),
             "GET",
             "/fed/v1/teams/acme/other/view",
@@ -359,8 +359,8 @@ async fn envelopes_must_be_signed_by_a_device_of_their_account_for_this_team() {
         .unwrap_err();
     assert_eq!(
         error.kind,
-        ErrorKind::Unauthorized,
-        "the signer must be one of the account's devices"
+        ErrorKind::NotFound,
+        "the signer must be one of the account's devices; refused like an unknown team"
     );
     let by_account = Signed::sign(
         Kind::Envelope,
@@ -374,7 +374,7 @@ async fn envelopes_must_be_signed_by_a_device_of_their_account_for_this_team() {
         .unwrap_err();
     assert_eq!(
         error.kind,
-        ErrorKind::Unauthorized,
+        ErrorKind::NotFound,
         "the account key, which the node holds, never signs a decision"
     );
 
@@ -458,15 +458,15 @@ async fn a_first_copy_must_be_signed_by_the_trusted_root_key() {
         .unwrap_err();
     assert_eq!(
         error.kind,
-        ErrorKind::Unauthorized,
-        "a different root key than the trusted fingerprint"
+        ErrorKind::NotFound,
+        "a different root key than the trusted fingerprint; refused like an untrusted org"
     );
     let error = receive(&carol.node, first_copy(&root, &mallory))
         .await
         .unwrap_err();
     assert_eq!(
         error.kind,
-        ErrorKind::Unauthorized,
+        ErrorKind::NotFound,
         "the trusted root key, but signed by another key"
     );
     assert!(carol.node.store().load_org(&id("acme")).is_none());

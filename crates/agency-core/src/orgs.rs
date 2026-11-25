@@ -6,6 +6,7 @@ use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::read_auth::{verify_read, ReadAuth};
+use crate::unseen;
 use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace};
 use agency_proto::{Id, Kind, OrgDefinition, Person, Role, Signed};
 
@@ -182,22 +183,33 @@ pub fn read_definition(
     auth: &ReadAuth,
     path: &str,
 ) -> Result<SignedOrg> {
-    let doc = load(node, org).map_err(|_| Error::not_found("not found"))?;
+    let doc = node.store().load_org(org);
     let has_invite = code.is_some_and(|code| open_invite(node, org, code).is_some());
     if !has_invite {
-        verify_read(&doc.body, auth, "GET", path, node.now())?;
+        verify_read(
+            doc.as_ref().map(|doc| &doc.body),
+            auth,
+            "GET",
+            path,
+            node.now(),
+        )?;
     }
-    Ok(doc)
+    doc.ok_or_else(unseen::not_found)
 }
 
 /// Accepts a definition sent by another node: with a copy, only its next version; without one, only a
-/// version signed by the root key whose fingerprint this node trusts.
+/// version signed by the root key whose fingerprint this node trusts. A definition not signed by the
+/// root key this node knows for the org (the current one, or the trusted one) is refused like an
+/// unknown org (see `unseen`), so only the root's node learns which version this node has.
 pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     let _guard = node.write_lock().lock().await;
     let org = doc.body.org.clone();
     let Some(current) = node.store().load_org(&org) else {
         return receive_first(node, doc);
     };
+    let root = &current.body.root;
+    let key = (doc.signer == root.account).then_some(&root.public_key);
+    unseen::verify(&doc, Kind::Org, key)?;
     if current.body.version >= doc.body.version {
         let is_same = current.body.version == doc.body.version && current.digest() == doc.digest();
         return if is_same {
@@ -214,19 +226,14 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
 }
 
 fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
-    let org = &doc.body.org;
+    let root = &doc.body.root;
     let trusted = node
         .config()
-        .trusted_fingerprint(org)
-        .map(str::to_owned)
-        .ok_or_else(|| Error::not_found("this node does not trust that org"))?;
-    let root = &doc.body.root;
-    let is_trusted = root.public_key.fingerprint() == trusted
-        && doc.signer == root.account
-        && doc.verify(Kind::Org, &root.public_key);
-    if !is_trusted {
-        return Err(Error::unauthorized("not signed by the trusted root key"));
-    }
+        .trusted_fingerprint(&doc.body.org)
+        .map(str::to_owned);
+    let is_trusted_root =
+        trusted == Some(root.public_key.fingerprint()) && doc.signer == root.account;
+    unseen::verify(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key))?;
     if doc.body.version == 1 {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }

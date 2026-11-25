@@ -56,6 +56,19 @@ fn change_key<'a>(person: &'a Person, signer: &Id) -> Result<&'a PublicKey, Stri
         .ok_or_else(|| "not signed by one of the person's devices".into())
 }
 
+/// The key a device change must be signed with, when the definition lists its org and member: the
+/// member's account key for their first device, otherwise the device named by `signer`.
+pub fn device_change_key<'a>(
+    current: &'a OrgDefinition,
+    signed: &Signed<DeviceChange>,
+) -> Option<&'a PublicKey> {
+    if signed.body.org != current.org {
+        return None;
+    }
+    let person = current.member(&signed.body.account)?;
+    change_key(person, &signed.signer).ok()
+}
+
 /// Checks a signed device change against the current definition: its org and person, who signed it,
 /// that it is fresh, and that the result is a well-formed definition. Returns the changed definition's
 /// contents; the root node makes it the next version.
@@ -106,16 +119,26 @@ fn apply(current: &OrgDefinition, change: &DeviceChange) -> Result<OrgDefinition
     Ok(next)
 }
 
+/// The member an envelope names (its account) and the key of the device it names (its `signer`), when
+/// the definition lists both. An account key is never one of them.
+pub fn envelope_key<'a>(
+    definition: &'a OrgDefinition,
+    signed: &Signed<Envelope>,
+) -> Option<(&'a Person, &'a PublicKey)> {
+    definition
+        .device(&signed.body.account, &signed.signer)
+        .map(|(person, device)| (person, &device.public_key))
+}
+
 /// The member who decided: the envelope's account, signed with one of that member's devices (named by
 /// `signer`). An account key never signs a decision.
 pub fn envelope_signer<'a>(
     definition: &'a OrgDefinition,
     signed: &Signed<Envelope>,
 ) -> Result<&'a Person, String> {
-    let (person, device) = definition
-        .device(&signed.body.account, &signed.signer)
-        .ok_or("not signed by a device of a member of the org")?;
-    if !signed.verify(Kind::Envelope, &device.public_key) {
+    let (person, key) =
+        envelope_key(definition, signed).ok_or("not signed by a device of a member of the org")?;
+    if !signed.verify(Kind::Envelope, key) {
         return Err("the signature of the envelope does not match".into());
     }
     Ok(person)

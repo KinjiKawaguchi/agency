@@ -331,7 +331,11 @@ async fn a_members_devices_are_added_and_removed_through_the_roots_node() {
         .send()
         .await
         .unwrap();
-    assert_eq!(direct.status(), 401, "the team's node refuses it too");
+    assert_eq!(
+        direct.status(),
+        404,
+        "the team's node refuses it too, like an unknown team"
+    );
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
 }
 
@@ -433,8 +437,8 @@ async fn only_the_roots_node_writes_a_device_change_and_only_a_valid_one() {
     .unwrap());
     assert_eq!(
         post_fed(&alice, "/fed/v1/orgs/acme/devices", &forged).await,
-        400,
-        "not signed by bob's account key"
+        404,
+        "not signed by bob's account key: refused like an unknown org"
     );
     assert_eq!(
         post_fed(&alice, "/fed/v1/orgs/acme/devices", &first).await,

@@ -138,7 +138,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     }
     assert_eq!(request.send().await.unwrap().status(), 404);
 
-    // A tampered envelope gets 401 and is not applied
+    // A tampered envelope is refused like an unknown team, and is not applied
     decide_as(&bob, &bob_key, "r-1", answer("a")).await.unwrap();
     let mut tampered = signed_answer(&bob, &bob_key, "r-1", "a");
     tampered.body.payload = answer("b");
@@ -147,7 +147,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
             .json(&signed)
             .send()
     };
-    assert_eq!(post(tampered).await.unwrap().status(), 401);
+    assert_eq!(post(tampered).await.unwrap().status(), 404);
 
     // An envelope signed by bob's account key, which bob's node holds, is not a decision
     let by_account = Signed::sign(
@@ -157,7 +157,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
         bob.node.key(),
     )
     .unwrap();
-    assert_eq!(post(by_account).await.unwrap().status(), 401);
+    assert_eq!(post(by_account).await.unwrap().status(), 404);
 
     // A non-member's envelope gets 404 like a non-member's read, whatever key signed it
     let from_carol = signed_answer(&carol, &AccountKey::generate(), "r-1", "a");
@@ -191,7 +191,7 @@ async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
         .send()
         .await
         .unwrap();
-    assert_eq!(response.status(), 400);
+    assert_eq!(response.status(), 404);
     assert_eq!(
         alice.node.store().load_org(&id("acme")).unwrap().body.label,
         "Acme"

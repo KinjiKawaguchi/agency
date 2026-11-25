@@ -1,10 +1,11 @@
 //! Signed reads (kind `read`): the reader signs the method, path, time, and account; the reading node
 //! checks the signature against the org definition and answers only members of the org.
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::unseen;
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::org::OrgDefinition;
 use agency_proto::signed::read_text;
-use agency_proto::{AccountKey, Id, Kind, Person};
+use agency_proto::{AccountKey, Id, Kind, Person, PublicKey};
 
 /// How far a signed time may be from the reading node's clock, either way. It also limits how long
 /// a captured signature can be reused.
@@ -34,30 +35,28 @@ pub fn sign_read(
     }
 }
 
-/// Checks a signed read and returns the member who signed it.
-/// A non-member gets `NotFound`, so a stranger cannot tell whether the org or team exists.
+/// Checks a signed read against the definition of the org it reads (none when the org or team is not
+/// here) and returns the member who signed it. Every failure is the same `NotFound` (see `unseen`):
+/// a malformed or stale signature, no definition, a non-member, or a wrong signature. Once the
+/// signature is well formed and fresh, one signature check is spent whatever is missing.
 pub fn verify_read<'a>(
-    definition: &'a OrgDefinition,
+    definition: Option<&'a OrgDefinition>,
     auth: &ReadAuth,
     method: &str,
     path: &str,
     now: OffsetDateTime,
 ) -> Result<&'a Person> {
-    let account = Id::parse(&auth.account)
-        .map_err(|_| Error::unauthorized("missing or malformed account"))?;
-    let at =
-        clock::parse(&auth.date).ok_or_else(|| Error::unauthorized("missing or malformed date"))?;
+    let account = Id::parse(&auth.account).map_err(|_| unseen::not_found())?;
+    let at = clock::parse(&auth.date).ok_or_else(unseen::not_found)?;
     if (now - at).whole_seconds().abs() > SKEW_SECONDS {
-        return Err(Error::unauthorized(
-            "the signed time is too old or too far ahead",
-        ));
+        return Err(unseen::not_found());
     }
-    let person = definition
-        .member(&account)
-        .ok_or_else(|| Error::not_found("not found"))?;
+    let person = definition.and_then(|definition| definition.member(&account));
+    let key: &PublicKey = match person {
+        Some(person) => &person.public_key,
+        None => unseen::stand_in_key(),
+    };
     let message = Kind::Read.message(&read_text(method, path, &auth.date, &account));
-    if !person.public_key.verify(&message, &auth.signature) {
-        return Err(Error::unauthorized("the signature does not match"));
-    }
-    Ok(person)
+    let is_valid = key.verify(&message, &auth.signature);
+    person.filter(|_| is_valid).ok_or_else(unseen::not_found)
 }
