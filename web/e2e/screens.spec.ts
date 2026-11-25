@@ -41,6 +41,36 @@ test('org chart: departments, teams, agents, and focusing on one department', as
   await expect(chart.getByRole('link', { name: /Design/ }).first()).toBeVisible()
 })
 
+test('org chart: units under one parent sit side by side, and on a phone the same tree is an indented list', async ({ page }) => {
+  const box = async (text: string) => {
+    const found = await page.locator('.oc-node', { hasText: text }).first().boundingBox()
+    if (found === null) throw new Error(`no box for ${text}`)
+    return found
+  }
+  const agents = ['Reviewing app#12', 'Waiting for your answer', 'Idle for 30 minutes', 'Session ended']
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/org')
+  await expect(page.locator('.orgchart .oc-node.agent').first()).toBeVisible()
+  const wide = await Promise.all(agents.map(box))
+  const team = await box('4 agents, 2 working')
+  expect(new Set(wide.map((one) => Math.round(one.y))).size).toBe(1)
+  expect(wide.map((one) => one.x)).toEqual(wide.map((one) => one.x).toSorted((a, b) => a - b))
+  expect(wide[0]?.y).toBeGreaterThan(team.y + team.height)
+  // The sibling departments and teams are in one row too.
+  const [engineering, design] = [await box('Led by Alice'), await box('Led by Carol')]
+  expect(Math.round(engineering.y)).toBe(Math.round(design.y))
+
+  await page.setViewportSize({ width: 375, height: 800 })
+  await expect(page.locator('.orgchart .oc-node.agent').first()).toBeVisible()
+  const narrow = await Promise.all(agents.map(box))
+  const narrowTeam = await box('4 agents, 2 working')
+  expect(new Set(narrow.map((one) => Math.round(one.x))).size).toBe(1)
+  expect(narrow.map((one) => one.y)).toEqual(narrow.map((one) => one.y).toSorted((a, b) => a - b))
+  expect(narrow[0]?.x).toBeGreaterThan(narrowTeam.x)
+  expect(await page.locator('.oc-frame').evaluate((frame) => frame.scrollWidth <= frame.clientWidth)).toBe(true)
+})
+
 test('costs: subscription windows are projected, and token use says the team does not report it', async ({ page }) => {
   await page.goto('/costs')
   const personal = page.locator('article.fund', { hasText: 'Personal plan' })
