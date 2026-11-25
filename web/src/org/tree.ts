@@ -47,10 +47,10 @@ export interface OrgTree {
 function teamNode(place: TeamPlace, teams: readonly Team[], orgId: string): TeamNode {
   const found = teams.find((one) => one.view.org === orgId && one.view.team === place.id)
   if (found === undefined) return { kind: 'team', team: place, view: undefined, agents: [], working: 0, waiting: 0 }
-  const { view, viewer } = found
+  const { view, waitingOnViewer } = found
   const agents = view.people
     .filter((person) => person.kind === 'agent')
-    .map((person) => ({ person, presence: presenceOf(person, viewer), isLead: person.role === 'lead' }))
+    .map((person) => ({ person, presence: presenceOf(person, waitingOnViewer), isLead: person.role === 'lead' }))
   return {
     kind: 'team',
     team: place,

@@ -31,7 +31,7 @@ function Holding({ refs }: { refs: readonly string[] }) {
 /** One person on a team: their face, what they are doing, and what they hold. */
 export function PersonCard({ person, team }: { person: PersonStatus; team: Team }) {
   const { t, fmt } = useI18n()
-  const presence = presenceOf(person, team.viewer)
+  const presence = presenceOf(person, team.waitingOnViewer)
   const waitingFor = presence === 'needs-you' ? team.view.requests.filter((request) => request.blocks.includes(person.id)) : []
   return (
     <article className={`mate presence-${presence}`}>

@@ -113,7 +113,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       : { kind: 'local' }
   // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
   const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === 'owner').map((request) => request.id)
-  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: 'owner', mine: mineOf(view), source: sourceOf(view) })
+  // And who waits on them: the people whose `waitingOn` names the viewer.
+  const waitingOnViewerOf = (view: TeamView): string[] => view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === 'owner').map((person) => person.id)
+  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: 'owner', mine: mineOf(view), waitingOnViewer: waitingOnViewerOf(view), source: sourceOf(view) })
 
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {

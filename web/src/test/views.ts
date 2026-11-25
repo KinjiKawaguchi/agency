@@ -6,6 +6,8 @@ export const teamOf = (view: TeamView, viewer = 'owner', mine?: readonly string[
   view,
   viewer,
   source: { kind: 'local' },
+  // The people whose `waitingOn` names the viewer, which is what the node lists.
+  waitingOnViewer: new Set(view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === viewer).map((person) => person.id)),
   mine: new Set(mine ?? view.requests.filter((request) => (request.to ?? viewer) === viewer).map((request) => request.id)),
 })
 
