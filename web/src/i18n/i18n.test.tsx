@@ -60,4 +60,13 @@ describe('locale', () => {
     expect(pile.getByText('決裁する稟議')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '決裁する' })).toBeInTheDocument()
   })
+
+  it('says a comment is a comment in Japanese, on the button and in the result', async () => {
+    const user = userEvent.setup()
+    renderApp({ locale: 'ja' })
+    await user.type(await screen.findByLabelText(/^補足/), '十二月からにできませんか。')
+    await user.click(screen.getByRole('button', { name: 'コメントを送る' }))
+    expect(await screen.findByText(/さんがコメントしました。/)).toBeInTheDocument()
+    expect(screen.getByText(/^コメントしました。.* に届きます。まだ決裁はされていません。$/)).toBeInTheDocument()
+  })
 })

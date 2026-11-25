@@ -11,6 +11,7 @@ import { ReplicaNotice } from '../shared/ReplicaNotice'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
 import { draftOf, loadDrafts, saveDrafts, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
+import { isComment } from './comment'
 import { canDecide, openItems, resolveSelection, situationOf, stepSelection, type DeskItem } from './items'
 import { Paper } from './Paper'
 import { Pile } from './Pile'
@@ -48,7 +49,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   const queryClient = useQueryClient()
   const toast = useToast()
   const [drafts, setDrafts] = useState<Drafts>(loadDrafts)
-  const [sealed, setSealed] = useState<ReadonlyMap<string, string>>(new Map())
+  const [sealed, setSealed] = useState<ReadonlyMap<string, { at: string; isComment: boolean }>>(new Map())
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set())
   const timers = useRef<number[]>([])
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
@@ -72,14 +73,15 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
     async (item: DeskItem) => {
       if (!canDecide(item)) return
       const draft = draftOf(drafts, item.key)
+      const asComment = isComment(item.request.options.length, draft)
       const hasAnswer = draft.text.trim() !== '' || draft.choice !== null
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
         const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
         setDrafts((current) => withoutDraft(current, item.key))
-        setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
-        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
+        setSealed((current) => new Map([...current, [item.key, { at: new Date().toISOString(), isComment: asComment }]]))
+        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : (asComment ? t.desk.paper.sentComment : t.desk.paper.sent)(item.drafter?.label ?? item.request.from))
         void queryClient.invalidateQueries({ queryKey: DECISIONS_KEY })
         timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {
@@ -129,7 +131,8 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
             orgLabel={orgLabelOf(current.view.org)}
             viewerLabel={me.account.label}
             draft={draftOf(drafts, current.key)}
-            sealedAt={sealed.get(current.key) ?? null}
+            sealedAt={sealed.get(current.key)?.at ?? null}
+            wasComment={sealed.get(current.key)?.isComment ?? false}
             isSending={sending.has(current.key)}
             signing={signing}
             onChange={(change: Partial<Draft>) => setDrafts((now) => withDraft(now, current.key, change))}

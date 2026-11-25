@@ -30,7 +30,7 @@ test('decides a proposal: picks an option, sends it, sees the stamp and the outc
   await page.goto('/desk')
   const paper = page.getByRole('article')
   await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()
-  await paper.getByRole('textbox', { name: 'Notes' }).fill('Start next week.')
+  await paper.getByRole('textbox', { name: /^Notes/ }).fill('Start next week.')
   await paper.getByRole('button', { name: 'Approve with “Approve”' }).click()
 
   await expect(page.getByText('Alice approved this. It is on its way to the drafter.')).toBeVisible()
@@ -88,7 +88,7 @@ test('answers a pending decision in free text', async ({ page, request }) => {
   await enrolBrowser(page, request)
   await page.goto('/desk')
   await page.getByRole('option', { name: /Drop support for the old export format/ }).click()
-  await page.getByRole('textbox', { name: 'Notes' }).fill('Drop it in the next release.')
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Drop it in the next release.')
   await page.getByRole('button', { name: 'Send decision' }).click()
   await expect(page.getByText('Alice sent a decision on this.')).toBeVisible()
 })

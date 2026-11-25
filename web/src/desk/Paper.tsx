@@ -1,6 +1,7 @@
 import { canDecide, blockedPeople, type DeskItem } from './items'
 import { personOf } from '../people/viewer'
 import { type Draft } from './drafts'
+import { isComment } from './comment'
 import { ChoiceCards } from './ChoiceCards'
 import { StampRoute } from './StampRoute'
 import { Link } from '@tanstack/react-router'
@@ -18,6 +19,8 @@ export interface PaperProps {
   draft: Draft
   /** When the viewer's seal was pressed on this item, if it was. */
   sealedAt: string | null
+  /** Whether what was sent was a comment, which seals nothing. */
+  wasComment: boolean
   isSending: boolean
   /** Whether this device can sign the decision; when it cannot, the form says to add the device instead of offering to send. */
   signing: SigningState
@@ -61,12 +64,17 @@ function DecideForm({ item, draft, isSending, signing, onChange, onSend }: Pick<
   const { options, kind } = item.request
   const verb = t.desk.paper.verbs[kind]
   const chosen = options.find((option) => option.key === draft.choice)
+  const noteId = `note-${item.key}`
+  const buttonText = isComment(options.length, draft) ? t.desk.paper.sendComment : chosen === undefined ? t.desk.paper.send(verb) : t.desk.paper.sendWith(verb, chosen.text)
   return (
     <div className="doc-decide">
       <ChoiceCards name={`choice-${item.key}`} options={options} choice={draft.choice} isDisabled={isSending} onChoose={(choice) => onChange({ choice })} />
+      <label className="answer-label" htmlFor={noteId}>
+        {options.length > 0 ? t.desk.paper.noteLabelWithOptions : t.desk.paper.noteLabelOpen}
+      </label>
       <textarea
+        id={noteId}
         className="answer-note"
-        aria-label={t.desk.paper.noteLabel}
         placeholder={options.length > 0 ? t.desk.paper.notePlaceholderWithOptions : t.desk.paper.notePlaceholderOpen}
         value={draft.text}
         disabled={isSending}
@@ -77,7 +85,7 @@ function DecideForm({ item, draft, isSending, signing, onChange, onSend }: Pick<
       ) : (
         <div className="doc-actions">
           <button className="btn primary big" type="button" disabled={isSending} onClick={onSend}>
-            {isSending ? t.desk.paper.sending : chosen === undefined ? t.desk.paper.send(verb) : t.desk.paper.sendWith(verb, chosen.text)}
+            {isSending ? t.desk.paper.sending : buttonText}
           </button>
           <span className="hint">
             <span className="kbd">⌘</span> <span className="kbd">Enter</span> {t.desk.paper.shortcutSend}
@@ -91,7 +99,7 @@ function DecideForm({ item, draft, isSending, signing, onChange, onSend }: Pick<
 
 /** One open document: head with the stamp boxes, context, thread, the form to decide, and the body. */
 export function Paper(props: PaperProps) {
-  const { item, orgLabel, viewerLabel, sealedAt } = props
+  const { item, orgLabel, viewerLabel, sealedAt, wasComment } = props
   const { t, fmt } = useI18n()
   const { request } = item
   const deciderLabel = item.isMine ? viewerLabel : (item.decider?.label ?? request.to ?? '?')
@@ -109,12 +117,12 @@ export function Paper(props: PaperProps) {
             {stoppedNames === '' ? null : <span>{t.desk.paper.stoppedBy(stoppedNames)}</span>}
           </p>
         </div>
-        <StampRoute drafter={item.drafter} deciderLabel={deciderLabel} step={request.kind === 'proposal' ? 'approved' : 'answered'} draftedAt={request.createdAt} draftedBy={request.from} sealedAt={sealedAt} />
+        <StampRoute drafter={item.drafter} deciderLabel={deciderLabel} step={request.kind === 'proposal' ? 'approved' : 'answered'} draftedAt={request.createdAt} draftedBy={request.from} sealedAt={wasComment ? null : sealedAt} />
       </header>
       {request.context === '' ? null : <p className="doc-context">{request.context}</p>}
       <Thread item={item} />
       {sealedAt !== null ? (
-        <p className="doc-done" role="status">{t.desk.paper.sealedNote(deciderLabel, t.desk.paper.verbsDone[request.kind])}</p>
+        <p className="doc-done" role="status">{t.desk.paper.sealedNote(deciderLabel, wasComment ? t.desk.paper.commentDone : t.desk.paper.verbsDone[request.kind])}</p>
       ) : canDecide(item) ? (
         <DecideForm {...props} />
       ) : (

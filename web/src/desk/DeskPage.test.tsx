@@ -31,7 +31,7 @@ describe('decision desk', () => {
     const user = userEvent.setup()
     const { node } = renderApp()
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
-    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Start next week.')
+    await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
 
     expect(await screen.findByText(/Alice approved this\. It is on its way to the drafter\./)).toBeInTheDocument()
@@ -40,11 +40,61 @@ describe('decision desk', () => {
     ])
   })
 
+  it('sends text with no option picked as a comment, which decides nothing', async () => {
+    const user = userEvent.setup()
+    const { node } = renderApp()
+    await user.type(await screen.findByLabelText(/^Notes/), 'Can we start in December instead?')
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Send a comment' }))
+
+    expect(await screen.findByText(/Alice commented on this\. It is on its way to the drafter\./)).toBeInTheDocument()
+    expect(screen.getByText('Comment sent. Lead will get it. Nothing is decided yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/Alice approved this/)).not.toBeInTheDocument()
+    // Nothing is sealed: the approver's box stays open.
+    expect(screen.getByRole('article').querySelector('.seal.you')).toBeNull()
+    expect(node.decisions()).toEqual([
+      { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, text: 'Can we start in December instead?' },
+    ])
+    expect(node.decisions()[0]).not.toHaveProperty('choice')
+    expect(node.decisions()[0]).not.toHaveProperty('choiceLabel')
+  })
+
+  it('reads as a decision again once an option is picked, and as the plain verb while nothing is written', async () => {
+    const user = userEvent.setup()
+    renderApp()
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/^Notes/), 'Soon.')
+    expect(screen.getByRole('button', { name: 'Send a comment' })).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: /Approve/ }))
+    expect(screen.getByRole('button', { name: 'Approve with “Approve”' })).toBeInTheDocument()
+  })
+
+  it('calls text on a question with options a comment too, and a question without options answers with it', async () => {
+    const user = userEvent.setup()
+    renderApp()
+    await user.click(await screen.findByRole('option', { name: new RegExp(QUESTION) }))
+    expect(screen.getByRole('button', { name: 'Answer' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/^Notes/), 'Depends on the budget.')
+    expect(screen.getByRole('button', { name: 'Send a comment' })).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: new RegExp(PENDING) }))
+    // This one has no options, so there is nothing to pick: what is written is the answer.
+    await user.type(screen.getByLabelText('Your answer'), 'Later.')
+    expect(screen.getByRole('button', { name: 'Send decision' })).toBeInTheDocument()
+  })
+
+  it('names the box above it, not only inside it', async () => {
+    renderApp()
+    const box = await screen.findByRole('textbox', { name: /^Notes/ })
+    const label = document.querySelector(`label[for="${box.id}"]`)
+    expect(label).toHaveTextContent('Notes (optional). With no option picked, they are sent as a comment.')
+    expect(box).toHaveAttribute('placeholder', 'Add conditions or notes (optional)')
+  })
+
   it('answers a pending decision as a judgement on its work item', async () => {
     const user = userEvent.setup()
     const { node } = renderApp()
     await user.click(await screen.findByRole('option', { name: new RegExp(PENDING) }))
-    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Drop it in the next release.')
+    await user.type(screen.getByRole('textbox', { name: 'Your answer' }), 'Drop it in the next release.')
     await user.click(screen.getByRole('button', { name: 'Send decision' }))
     await waitFor(() =>
       expect(node.decisions()).toEqual([{ org: 'acme', team: 'app', answerWith: { kind: 'judge', target: 'app#14' }, title: PENDING, text: 'Drop it in the next release.' }]),
@@ -85,8 +135,8 @@ describe('decision desk', () => {
   it('does not treat keys typed into the note as shortcuts', async () => {
     const user = userEvent.setup()
     renderApp()
-    await user.type(await screen.findByRole('textbox', { name: 'Notes' }), 'j2k')
-    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('j2k')
+    await user.type(await screen.findByRole('textbox', { name: /^Notes/ }), 'j2k')
+    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('j2k')
     expect(screen.getByRole('heading', { level: 2, name: PROPOSAL })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Reject/ })).not.toBeChecked()
   })

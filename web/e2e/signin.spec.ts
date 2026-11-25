@@ -22,7 +22,7 @@ test('says the sign-in expired when the session ends, keeps the draft, and recov
   await page.goto(`${PAGE}/desk`)
   const paper = page.getByRole('article')
   await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()
-  await paper.getByRole('textbox', { name: 'Notes' }).fill('Start next week.')
+  await paper.getByRole('textbox', { name: /^Notes/ }).fill('Start next week.')
 
   // The access session ends: every call is now redirected to a login on another origin.
   expect((await request.post('/__mock/sign-in?expired=1')).status()).toBe(204)
@@ -31,12 +31,12 @@ test('says the sign-in expired when the session ends, keeps the draft, and recov
   const banner = page.locator('.signin-notice')
   await expect(banner).toContainText('Your sign-in expired. Reload to sign in again.')
   await expect(page.getByText(/Could not reach the node/)).toHaveCount(0)
-  await expect(paper.getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
+  await expect(paper.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
 
   // The viewer signs in again: the node answers once more, the reload keeps the draft, and the notice is gone.
   expect((await request.post('/__mock/sign-in?expired=0')).status()).toBe(204)
   await banner.getByRole('button', { name: 'Reload' }).click()
-  await expect(page.getByRole('article').getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
+  await expect(page.getByRole('article').getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
   await expect(banner).toHaveCount(0)
 })
 
