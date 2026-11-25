@@ -7,7 +7,7 @@ use crate::ports::DefinitionAccess;
 use crate::read_auth::{sign_read, verify_read, ReadAuth};
 use crate::routes;
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::view::{FederatedView, Request};
+use agency_proto::view::{FederatedView, Request, WaitingOn};
 use agency_proto::{Id, TeamView};
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +67,19 @@ pub fn mine(view: &TeamView, reader: &Reader) -> Vec<String> {
         .filter(|request| is_addressed_to(reader, request))
         .map(|request| request.id.clone())
         .collect()
+}
+
+/// The people in `view` who can only continue once the viewer acts: their `waitingOn` names the viewer's
+/// runtime name. Unlike a request's `to`, an unknown name is not the owner's, because `waitingOn` can name
+/// anyone on the team, agents included. A viewer the team does not address has none.
+pub fn waiting_on_viewer(view: &TeamView, viewer: Option<&str>) -> Vec<String> {
+    let Some(viewer) = viewer else {
+        return vec![];
+    };
+    let waiting = view.people.iter().filter(|person| {
+        matches!(&person.waiting_on, Some(WaitingOn::Person { person: name }) if name == viewer)
+    });
+    waiting.map(|person| person.id.clone()).collect()
 }
 
 /// A view is kept only if it is a view of the team that was asked for.
@@ -269,6 +282,46 @@ mod tests {
                 target: "r-1".into(),
             },
         }
+    }
+
+    fn person(id: &str, waiting_on: Option<WaitingOn>) -> agency_proto::view::PersonStatus {
+        use agency_proto::view::{PersonKind, PersonRole, PersonState, PersonStatus};
+        PersonStatus {
+            id: id.into(),
+            label: id.into(),
+            kind: PersonKind::Agent,
+            role: PersonRole::Member,
+            state: PersonState::Working,
+            since: None,
+            waiting_on,
+            status: String::new(),
+            holding: vec![],
+        }
+    }
+
+    #[test]
+    fn people_wait_on_the_viewer_only_by_the_viewers_own_name() {
+        let on = |name: &str| {
+            Some(WaitingOn::Person {
+                person: name.into(),
+            })
+        };
+        let team = TeamView {
+            people: vec![
+                person("backend", on("owner")),
+                person("frontend", on("reviewer")),
+                person("tester", on("backend")),
+                person("writer", Some(WaitingOn::Lead)),
+                person("lead", None),
+            ],
+            ..view("acme", "app")
+        };
+        assert_eq!(waiting_on_viewer(&team, Some("owner")), vec!["backend"]);
+        assert_eq!(waiting_on_viewer(&team, Some("reviewer")), vec!["frontend"]);
+        assert!(
+            waiting_on_viewer(&team, None).is_empty(),
+            "a viewer the team does not address"
+        );
     }
 
     #[test]

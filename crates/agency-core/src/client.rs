@@ -6,7 +6,7 @@ use crate::node::Node;
 use crate::orgs::is_root;
 use crate::outbox::Parcel;
 use crate::signed_decisions::decide_signed;
-use crate::views::{mine, runtime_view, viewer_name, Reader};
+use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
     AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult, DecisionState,
     Funding, Me, OrgRef, SignedDecisionInput, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
@@ -112,10 +112,12 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
             hosted: &hosted,
             person: &person.id,
         };
+        let viewer = viewer_name(&hosted, &person.id);
         return Ok(TeamSnapshot {
             mine: mine(&view, &reader),
+            waiting_on_viewer: waiting_on_viewer(&view, viewer.as_deref()),
             view,
-            viewer: viewer_name(&hosted, &person.id),
+            viewer,
             source: SnapshotSource::Local,
         });
     }
@@ -139,6 +141,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
     };
     Ok(TeamSnapshot {
         mine: mine(&view, &reader),
+        waiting_on_viewer: waiting_on_viewer(&view, replica.viewer.as_deref()),
         view,
         viewer: replica.viewer,
         source,

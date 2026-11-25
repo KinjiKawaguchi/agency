@@ -10,4 +10,8 @@ export type TeamSnapshot = { view: TeamView, viewer?: string,
  * The ids of the requests that are the viewer's to decide, by the rule in "Requests"
  * (docs/protocol.md). Clients use this instead of working it out from `to`.
  */
-mine: Array<string>, source: SnapshotSource, };
+mine: Array<string>, 
+/**
+ * The `id`s of the team's people whose `waitingOn` is the viewer (see "People" in docs/protocol.md).
+ */
+waitingOnViewer?: Array<string>, source: SnapshotSource, };
