@@ -13,6 +13,8 @@ body {
   background: var(--bg);
   color: var(--ink);
   font: 14.5px/1.7 var(--font);
+  /* A long id, path, or title wraps where it has to, and never makes the page wider. */
+  overflow-wrap: anywhere;
 }
 
 h1,
@@ -137,5 +139,19 @@ button {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* A touch screen has no keyboard to advise about, and iOS zooms the page into any control set below 16px. */
+@media (hover: none) and (pointer: coarse) {
+  .keys-only {
+    display: none;
+  }
+
+  input,
+  select,
+  textarea {
+    /* Important, so that no control's own size can bring the zoom back. */
+    font-size: max(16px, 1em) !important;
   }
 }

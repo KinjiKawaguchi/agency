@@ -53,3 +53,31 @@ export async function enrolBrowser(page: Page, request: APIRequestContext, origi
   await expect(page.getByText(/This device is added\./)).toBeVisible()
   return code
 }
+
+/**
+ * Elements that stick out past the edge of the screen without a scrolling box of their own around them.
+ * `scrollWidth` alone can pass on a phone, where a browser widens its layout to fit wide content and then
+ * shows the page zoomed out and swaying sideways, so the boxes are measured too.
+ */
+export const stickingOut = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    const edge = document.documentElement.clientWidth
+    const clipped = (element: Element): boolean => {
+      for (let up = element.parentElement; up !== null && up !== document.body; up = up.parentElement) {
+        if (getComputedStyle(up).overflowX !== 'visible') return true
+      }
+      return false
+    }
+    const found: string[] = []
+    for (const element of Array.from(document.body.querySelectorAll('*'))) {
+      const style = getComputedStyle(element)
+      if (style.display === 'none' || style.position === 'fixed' || clipped(element)) continue
+      const box = element.getBoundingClientRect()
+      if (box.width === 0 || box.height === 0) continue
+      if (box.right > edge + 0.5 || box.left < -0.5) {
+        const text = (element.textContent ?? '').trim().slice(0, 30)
+        found.push(`${element.tagName.toLowerCase()}.${String(element.getAttribute('class') ?? '').split(' ')[0]} "${text}" ${Math.round(box.left)}..${Math.round(box.right)} of ${edge}`)
+      }
+    }
+    return found
+  })
