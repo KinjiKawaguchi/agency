@@ -41,13 +41,13 @@ test('org chart: departments, teams, agents, and focusing on one department', as
   await expect(chart.getByRole('link', { name: /Design/ }).first()).toBeVisible()
 })
 
-test('costs: subscription windows are projected, and token use says it is not available yet', async ({ page }) => {
+test('costs: subscription windows are projected, and token use says the team does not report it', async ({ page }) => {
   await page.goto('/costs')
   const personal = page.locator('article.fund', { hasText: 'Personal plan' })
   await expect(personal.getByRole('img', { name: /Weekly window: 52% used, about 9\d% at the reset/ })).toBeVisible()
   await expect(personal.getByText('Will run out')).toBeVisible()
   await expect(page.locator('article.fund', { hasText: 'Lab plan' }).getByText('Will go unused')).toBeVisible()
-  await expect(page.getByText('Token usage is not available yet.')).toHaveCount(2)
+  await expect(page.getByText('This team does not report token usage.')).toHaveCount(2)
 })
 
 test('costs: token use by day and by person when the node serves it', async ({ page, request }) => {

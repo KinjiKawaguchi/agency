@@ -1,10 +1,10 @@
 // The Client API between the web client and its home node (docs/protocol.md, "Client API").
 // Its types are generated from the Rust types in `bindings/` and are never edited by hand. The only
-// types defined here are the client's own: the arguments of a decision call, and token use, which the
-// node does not serve yet (agency#22).
+// types defined here are the client's own: the arguments of a decision call.
 import type { AnswerWith } from './teamview'
 
 export type { AccountRef } from '../../../bindings/AccountRef'
+export type { DayCost } from '../../../bindings/DayCost'
 export type { DecisionEntry } from '../../../bindings/DecisionEntry'
 export type { DecisionInput } from '../../../bindings/DecisionInput'
 export type { DecisionLog } from '../../../bindings/DecisionLog'
@@ -23,6 +23,9 @@ export type { TeamLocation } from '../../../bindings/TeamLocation'
 export type { TeamPlace } from '../../../bindings/TeamPlace'
 export type { TeamRef } from '../../../bindings/TeamRef'
 export type { TeamSnapshot } from '../../../bindings/TeamSnapshot'
+export type { PersonUsage } from '../../../bindings/PersonUsage'
+export type { TokenCounts } from '../../../bindings/TokenCounts'
+export type { TokenUsage } from '../../../bindings/TokenUsage'
 export type { UsageWindow } from '../../../bindings/UsageWindow'
 export type { UsageWindowName } from '../../../bindings/UsageWindowName'
 
@@ -35,24 +38,4 @@ export interface DecisionAnswer {
   title: string
   choice?: string
   text: string
-}
-
-// ── Token use (not in the node's contract yet) ──
-
-export interface TokenCounts {
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-}
-
-/** Token use of one team over the last `days` days, priced as if billed by the API. */
-export interface UsageReport {
-  org: string
-  team: string
-  days: number
-  generatedAt: string
-  /** Oldest day first. `costUsd` is keyed by the team runtime's person name. */
-  byDay: Array<{ date: string; costUsd: Record<string, number> }>
-  byPerson: Array<{ person: string; costUsd: number; tokens: TokenCounts }>
 }

@@ -48,20 +48,27 @@ describe('costs', () => {
     expect(screen.getAllByRole('button', { name: '30 days' })[0]).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('says token use is not available yet when the node does not serve it, instead of showing numbers', async () => {
+  it('says the team does not report token use when the node answers 404, instead of showing numbers', async () => {
     renderApp({ path: '/costs' })
     await funding('Personal plan')
-    await waitFor(() => expect(screen.getAllByText('Token usage is not available yet.')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByText('This team does not report token usage.')).toHaveLength(2))
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '30 days' })).not.toBeInTheDocument()
     // Subscriptions do not depend on it.
     expect(screen.getByText('Will run out')).toBeInTheDocument()
   })
 
-  it('reports a failure other than 404 as an error, not as unavailable', async () => {
+  it('says the team could not answer when its node or runtime fails with 503, not that it reports nothing', async () => {
     renderApp({ path: '/costs', usageFailsWith: 503 })
     await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2))
+    expect(screen.getAllByRole('alert')[0]).toHaveTextContent('The team could not report its token usage right now: Token usage could not be read.')
+    expect(screen.queryByText('This team does not report token usage.')).not.toBeInTheDocument()
+  })
+
+  it('reports any other failure as the node being unreachable', async () => {
+    renderApp({ path: '/costs', usageFailsWith: 500 })
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2))
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent('Could not reach the node: Token usage could not be read.')
-    expect(screen.queryByText('Token usage is not available yet.')).not.toBeInTheDocument()
+    expect(screen.queryByText('This team does not report token usage.')).not.toBeInTheDocument()
   })
 })
