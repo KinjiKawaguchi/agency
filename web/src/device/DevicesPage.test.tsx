@@ -27,7 +27,12 @@ describe('devices screen', () => {
     renderApp({ path: '/devices', enrolled: false })
     expect((await screen.findByLabelText('Pairing code of this device')).textContent).toMatch(CODE)
     expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
-    expect(screen.getByText(/Until you do, the node signs them for you/)).toBeInTheDocument()
+    expect(screen.getByText(/Decisions and comments need a device of yours\. To add this one, ask for its code below, then confirm that code on the computer that runs the node with “agency device-add”\./)).toBeInTheDocument()
+  })
+
+  it('says in Japanese, too, that decisions and comments need a device, and how to add this one', async () => {
+    renderApp({ path: '/devices', enrolled: false, locale: 'ja' })
+    expect(await screen.findByText(/決定やコメントを送るには、あなたの端末が必要です。.*agency device-add.*承認してください。/)).toBeInTheDocument()
   })
 
   it('shows the same code on a second visit, because the key is kept', async () => {
@@ -172,12 +177,12 @@ describe('the prompt to add this device', () => {
   it('leads from the first screen to adding it, in one sentence that says why', async () => {
     const user = userEvent.setup()
     renderApp({ path: '/desk', enrolled: false })
-    const notice = (await screen.findByText('Add this device so your decisions are signed with a key that never leaves it.')).closest('.device-notice')
+    const notice = (await screen.findByText('Decisions and comments need a device of yours. Add this one: get its code, then confirm it on the node.')).closest('.device-notice')
     expect(notice).not.toBeNull()
     const [fromNotice] = screen.getAllByRole('link', { name: 'Add this device' })
     await user.click(fromNotice as HTMLElement)
     expect(await screen.findByRole('heading', { level: 1, name: 'Devices' })).toBeInTheDocument()
-    expect(screen.queryByText('Add this device so your decisions are signed with a key that never leaves it.', { selector: '.device-notice p' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Decisions and comments need a device of yours. Add this one: get its code, then confirm it on the node.', { selector: '.device-notice p' })).not.toBeInTheDocument()
   })
 
   it('says the device is waiting once it asked, and points to its code', async () => {

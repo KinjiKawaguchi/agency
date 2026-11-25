@@ -25,7 +25,7 @@ test('the first screen without a device leads to adding it, and the document ope
   await resetNode(request)
   await page.goto('/desk')
   const notice = page.locator('.device-notice')
-  await expect(notice).toContainText('Add this device so your decisions are signed with a key that never leaves it.')
+  await expect(notice).toContainText('Decisions and comments need a device of yours. Add this one: get its code, then confirm it on the node.')
   await expect(notice.getByRole('link', { name: 'Add this device' })).toBeVisible()
 
   const paper = await page.getByRole('article').boundingBox()
