@@ -24,6 +24,9 @@ printf '%s %s %s\n' "$method" "$url" "$body" >> "$FAKE_LOG"
 status=200
 case "$method $url" in
   "GET "*"/v1/bundleIds?"*) response=$(cat "$FAKE_DIR/bundle_ids.json") ;;
+  # The real API refuses `limit` on this relationship.
+  "GET "*"/bundleIdCapabilities"*limit*)
+    status=400 response='{"errors":[{"title":"A given parameter is not allowed for this request","detail":"The parameter '"'"'limit'"'"' can not be used with this request : This relationship does not support this parameter."}]}' ;;
   "GET "*"/bundleIdCapabilities"*) response=$(cat "$FAKE_DIR/capabilities.json") ;;
   "POST "*"/v1/bundleIds") status=201 response='{"data":{"id":"NEW-BUNDLE"}}' ;;
   "POST "*"/v1/bundleIdCapabilities") status=201 response='{"data":{"id":"NEW-CAPABILITY"}}' ;;

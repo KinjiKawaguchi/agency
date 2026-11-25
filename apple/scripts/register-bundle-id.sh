@@ -66,7 +66,7 @@ create_bundle_id() {
 }
 
 has_push_capability() {
-  asc_api GET "/v1/bundleIds/$1/bundleIdCapabilities?limit=200"
+  asc_api GET "/v1/bundleIds/$1/bundleIdCapabilities"
   jq -e '.data[]? | select(.attributes.capabilityType == "PUSH_NOTIFICATIONS")' "$RESPONSE" > /dev/null
 }
 
