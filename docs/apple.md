@@ -156,6 +156,12 @@ What has to be in place outside the repository:
 - The App ID for the bundle ID has the Push Notifications capability. With automatic signing and the API key, `-allowProvisioningUpdates` normally enables it when the entitlement is present; check it on the first archive.
 - The node has an APNs key (a `.p8` from the developer account), its key ID, the team ID, and the same bundle ID as the topic. These are credentials: keep them out of the repository.
 
+## Protocol code in Swift
+
+The native screens of agency#77 build and sign decisions in Swift. The `AgencyProtocol` module of `apple/AgencyKit` holds that code: canonical JSON, the signed text (`agency/v1/<kind>`, a newline, the canonical JSON), the decision envelope with the shape checks the node makes, and the key fingerprint with the pairing code and device id. Its tests read `testdata/vectors.json`, which the Rust side produces: each body is built in Swift and has to encode to the vector's canonical JSON, and the vector's Ed25519 signatures have to verify over the bytes Swift made. A change of the protocol that the Swift code does not follow fails those tests.
+
+Two rules in the encoder come from the protocol and are easy to break. Keys sort by their UTF-8 bytes, which is not Swift's string order and not UTF-16 order. Text is never normalized: Swift treats `é` and `e` plus U+0301 as the same string, but they are different signed bytes, so objects keep their members as a list and compare bytes.
+
 ## Not in the app yet
 
 - Device key: the web client's device key lives in the web view's storage. Whether it survives app restarts is checked on the phone with the web client's `/devices` screen.
