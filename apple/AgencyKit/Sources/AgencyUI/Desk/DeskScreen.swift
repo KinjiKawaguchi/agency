@@ -6,12 +6,15 @@ import SwiftUI
 /// The desk tab: the pile, a request open, and the banners that say what is wrong.
 public struct DeskScreen: View {
     private let store: DeskStore
+    private let pairing: PairingStore
     private let onSignInAgain: () -> Void
 
     /// - Parameters:
+    ///   - pairing: whether this phone is added, and how to get it added.
     ///   - onSignInAgain: runs the Access sign-in again, when the session has ended.
-    public init(store: DeskStore, onSignInAgain: @escaping () -> Void) {
+    public init(store: DeskStore, pairing: PairingStore, onSignInAgain: @escaping () -> Void) {
         self.store = store
+        self.pairing = pairing
         self.onSignInAgain = onSignInAgain
     }
 
@@ -27,17 +30,28 @@ public struct DeskScreen: View {
                 }
                 .padding(Theme.gutter)
             }
-            .refreshable { await store.refresh() }
+            .refreshable {
+                await store.refresh()
+                await pairing.refresh()
+            }
             .navigationTitle(Ja.Desk.title)
             .navigationDestination(for: String.self) { id in
-                RequestDetailScreen(store: store, itemID: id)
+                RequestDetailScreen(store: store, isDeviceReady: pairing.isReady, itemID: id)
             }
         }
-        .task { await store.refresh() }
+        .task {
+            await pairing.refresh()
+            await store.refresh()
+        }
     }
 
     @ViewBuilder
     private var banners: some View {
+        PairingCard(
+            status: pairing.status, isAsking: pairing.isAsking,
+            onAdd: { Task { await pairing.requestAdd() } },
+            onCheck: { Task { await pairing.refresh() } }
+        )
         if store.needsSignIn {
             VStack(alignment: .leading, spacing: 8) {
                 Text(Ja.Desk.signInEnded).font(.subheadline).wrapping()
@@ -70,13 +84,14 @@ public struct DeskScreen: View {
 /// A request open, wired to the store: the draft lives there, and so does the sending.
 struct RequestDetailScreen: View {
     let store: DeskStore
+    let isDeviceReady: Bool
     let itemID: String
 
     var body: some View {
         ScrollView {
             if let item = store.item(itemID) {
                 RequestDetail(
-                    item: item, draft: store.draft(for: itemID), status: status, now: Date(),
+                    item: item, draft: store.draft(for: itemID), status: status, now: Date(), isDeviceReady: isDeviceReady,
                     onText: { store.setText($0, for: itemID) },
                     onPick: { store.toggleOption($0, for: itemID) },
                     onDecide: { decide(item) },

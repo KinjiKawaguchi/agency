@@ -31,6 +31,8 @@ public struct PreparedDecision: Equatable, Sendable {
     public let org: String
     public let team: String
     public let answerWith: AnswerWith
+    /// What kind of request it answers, for the words that name the action.
+    public let kind: Request.Kind
     /// The request's title, for the decision log (the request leaves the team's view once answered).
     /// At most 200 characters: the node refuses a longer note.
     public let title: String
@@ -45,6 +47,7 @@ public struct PreparedDecision: Equatable, Sendable {
         org = item.org
         team = item.team
         answerWith = item.request.answerWith
+        kind = item.request.kind
         title = Self.clipped(item.request.title)
         self.text = text
         choice = option?.key

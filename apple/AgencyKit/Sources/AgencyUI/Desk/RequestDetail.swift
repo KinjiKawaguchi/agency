@@ -18,6 +18,8 @@ struct RequestDetail: View {
     let draft: DeskDraft
     let status: ReplyStatus
     let now: Date
+    /// This phone's key is added, so a decision can be signed.
+    var isDeviceReady = true
     /// Draws the note as plain text, for renderings that cannot draw an editable field.
     var isStatic = false
     let onText: @MainActor @Sendable (String) -> Void
@@ -31,7 +33,7 @@ struct RequestDetail: View {
     private var hasOptions: Bool { !request.options.isEmpty }
     private var isSent: Bool { if case .sent = status { true } else { false } }
     private var controls: ReplyControls {
-        ReplyControls(item: item, draft: draft, isSending: status == .sending, isSent: isSent)
+        ReplyControls(item: item, draft: draft, isSending: status == .sending, isSent: isSent, isDeviceReady: isDeviceReady)
     }
 
     var body: some View {
@@ -112,6 +114,9 @@ struct RequestDetail: View {
             }
             Text(hasOptions ? Ja.Paper.note : Ja.Paper.noteLabelOpen).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             note
+            if !isDeviceReady {
+                Label(Ja.Device.heading, systemImage: "iphone.badge.exclamationmark").font(.footnote).foregroundStyle(Theme.warning).wrapping()
+            }
             decideButton
             if controls.showsComment { commentSection }
             statusLine

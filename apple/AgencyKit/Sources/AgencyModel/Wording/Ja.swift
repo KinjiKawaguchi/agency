@@ -94,6 +94,12 @@ public enum Ja {
             }
         }
 
+        /// What Face ID says it is for: the action, then the request's title.
+        public static func faceIDReason(_ decision: PreparedDecision) -> String {
+            let action = decision.isComment ? "コメントを送る" : verb(decision.kind)
+            return "\(action): \(decision.title)"
+        }
+
         public static func sendWith(_ verb: String, choice: String) -> String { "「\(choice)」で\(verb)" }
         public static func stoppedBy(_ names: String) -> String { "\(names) は、これが決まるまで先に進めません" }
         public static func waitingOn(_ name: String) -> String { "\(name) さんの判断待ちです。ここで読むことはできますが、答えることはできません。" }
@@ -105,6 +111,21 @@ public enum Ja {
         public static func sendFailed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static func team(org: String, team: String) -> String { "\(org) / \(team)" }
         public static func thread(name: String, choice: String?) -> String { choice.map { "\(name) は「\($0)」を選びました" } ?? name }
+    }
+
+    public enum Device {
+        public static let heading = "この端末を追加してください"
+        public static let why = "決めたり、コメントしたりするには、この端末の鍵をあなたの組織に追加する必要があります。読むだけなら、今のままでも使えます。"
+        public static let add = "この端末を追加する"
+        public static let adding = "申し込み中…"
+        public static let waitingHeading = "確認を待っています"
+        public static let waitingBody = "すでに追加してある端末か、ノードのコマンドで、端末の申し込み一覧を開いてください。この画面と同じコードの申し込みがあれば、それを追加してください。"
+        public static let check = "確認できたか調べる"
+        public static let ready = "この端末は追加されています。"
+        public static let label = "iPhone"
+
+        public static func notAdded(org: String) -> String { "この端末は \(org) に追加されていません。先に端末を追加してください。" }
+        public static func failed(_ reason: String) -> String { "端末の状態を調べられませんでした: \(reason)" }
     }
 
     public enum Recent {

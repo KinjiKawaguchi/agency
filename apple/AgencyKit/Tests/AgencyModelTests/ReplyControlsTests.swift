@@ -11,8 +11,8 @@ struct ReplyControlsTests {
         try #require(Desk.openItems([team ?? self.team]).first { $0.request.id == id })
     }
 
-    private func controls(_ item: DeskItem, _ draft: DeskDraft = DeskDraft(), sending: Bool = false, sent: Bool = false) -> ReplyControls {
-        ReplyControls(item: item, draft: draft, isSending: sending, isSent: sent)
+    private func controls(_ item: DeskItem, _ draft: DeskDraft = DeskDraft(), sending: Bool = false, sent: Bool = false, ready: Bool = true) -> ReplyControls {
+        ReplyControls(item: item, draft: draft, isSending: sending, isSent: sent, isDeviceReady: ready)
     }
 
     @Test("with options: nothing to decide until one is picked; a note alone can only be a comment")
@@ -55,6 +55,18 @@ struct ReplyControlsTests {
         #expect(picked.decideLabel == "「\(question.request.options[1].text)」で答える")
         #expect(controls(try item(Teams.proposalID)).decideLabel == "決裁する")
         #expect(controls(try item(Teams.decisionID)).decideLabel == "判断を送る")
+    }
+
+    @Test("until this phone is added, the owner can read, pick and type, and cannot send")
+    func deviceNotReady() throws {
+        let question = try item(Teams.questionID)
+        let draft = DeskDraft(text: "x", optionKey: "a")
+        let waiting = controls(question, draft, ready: false)
+        #expect(waiting.canPick)
+        #expect(!waiting.canDecide && !waiting.canComment)
+        #expect(waiting.showsComment)
+        let words = controls(try item(Teams.decisionID), DeskDraft(text: "yes"), ready: false)
+        #expect(!words.canDecide)
     }
 
     @Test("nothing can be pressed while sending, after sending, or on a request for someone else")

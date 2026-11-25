@@ -3,7 +3,7 @@
 import Foundation
 import Testing
 
-private enum Fixture {
+enum Fixture {
     static func data(_ name: String, from file: String = #filePath) throws -> Data {
         var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }
