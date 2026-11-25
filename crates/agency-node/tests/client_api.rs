@@ -511,3 +511,56 @@ async fn orgs_the_account_does_not_belong_to_are_not_found() {
     .unwrap();
     assert_eq!(decided.status(), 404);
 }
+
+#[tokio::test]
+async fn the_session_gives_the_write_token_and_the_nodes_time() {
+    let (alice, _) = alice().await;
+    let response = get(&alice, "/api/session").send().await.unwrap();
+    assert_eq!(
+        response.headers()["cache-control"],
+        "no-store",
+        "the token is not kept by caches"
+    );
+    let (status, session) = body(response).await;
+    assert_eq!(status, 200);
+    assert_eq!(session, json!({ "writeToken": TOKEN, "now": common::T0 }));
+
+    let token = json!({ "token": "ab12".repeat(16), "environment": "sandbox", "label": "iPhone" });
+    let write = post(&alice, "/api/push/tokens", &token)
+        .header("x-agency-token", session["writeToken"].as_str().unwrap());
+    assert_eq!(
+        write.send().await.unwrap().status(),
+        200,
+        "the token it gives writes"
+    );
+}
+
+#[tokio::test]
+async fn through_access_the_session_needs_a_sign_in_and_its_token_writes_only_for_the_owner() {
+    let running = behind_access(None).await;
+    let session = |token: Option<String>| {
+        let request = get(&running, "/api/session").header("host", PUBLIC_HOST);
+        match token {
+            Some(token) => request.header("cf-access-jwt-assertion", token),
+            None => request,
+        }
+    };
+    assert_eq!(session(None).send().await.unwrap().status(), 403);
+    let carol = access_token("carol@example.com", |_| {});
+    let (status, read) = body(session(Some(carol.clone())).send().await.unwrap()).await;
+    assert_eq!(status, 200, "any reader Access lets in, as for the page");
+    let token = json!({ "token": "ab12".repeat(16), "environment": "sandbox", "label": "iPhone" });
+    let write = |jwt: String| {
+        post(&running, "/api/push/tokens", &token)
+            .header("host", PUBLIC_HOST)
+            .header("cf-access-jwt-assertion", jwt)
+            .header("x-agency-token", read["writeToken"].as_str().unwrap())
+    };
+    assert_eq!(
+        write(carol).send().await.unwrap().status(),
+        403,
+        "not the owner"
+    );
+    let alice = access_token("alice@example.com", |_| {});
+    assert_eq!(write(alice).send().await.unwrap().status(), 200);
+}

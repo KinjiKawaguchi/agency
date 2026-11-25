@@ -226,6 +226,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 
 | Method | Path | Answer |
 |---|---|---|
+| GET | `/api/session` | `Session`: `writeToken`, the value writes send in `x-agency-token` (it changes each time the node starts; a client that gets 403 "missing or wrong write token" asks again once), and `now`, the node's time, which a client uses for an envelope's `at`. For clients that do not load the page; admitted like any read, so it exposes nothing the page does not |
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
