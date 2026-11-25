@@ -53,6 +53,15 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
   useEffect(() => saveDrafts(drafts), [drafts])
 
+  /** Opens the document; where the paper sits below the pile, brings it into view so the tap visibly does something. */
+  const pick = useCallback(
+    (key: string) => {
+      onSelect(key)
+      if (window.matchMedia?.('(max-width: 960px)').matches) window.requestAnimationFrame(() => document.querySelector('article.paper')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
+    },
+    [onSelect],
+  )
+
   const items = useMemo(() => openItems(teams), [teams])
   const selectedKey = resolveSelection(items, requested)
   const current = items.find((item) => item.key === selectedKey)
@@ -109,13 +118,10 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       ))}
       <Briefing me={me} teams={teams} items={items} situation={situation} now={new Date()} />
       <div className="desk">
-        <div className="desk-left">
-          {isLoading && items.length === 0 ? <p className="muted">{t.app.loading}</p> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={onSelect} />}
-          <RecentDecisions me={me} />
+        <div className="desk-pile">
+          {isLoading && items.length === 0 ? <p className="muted">{t.app.loading}</p> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={pick} />}
         </div>
-        {current === undefined ? (
-          <article className="paper blank"><p>{t.desk.paper.blank}</p></article>
-        ) : (
+        {current === undefined ? null : (
           <Paper
             item={current}
             orgLabel={orgLabelOf(current.view.org)}
@@ -127,6 +133,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
             onSend={() => void send(current)}
           />
         )}
+        <RecentDecisions me={me} />
       </div>
     </>
   )

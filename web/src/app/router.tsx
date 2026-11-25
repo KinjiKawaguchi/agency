@@ -4,6 +4,7 @@ import { DevicesPage } from '../device/DevicesPage'
 import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
 import { PeoplePage } from '../people/PeoplePage'
+import { AddDeviceNotice } from '../device/AddDeviceNotice'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { AppBar } from './AppBar'
 
@@ -13,6 +14,7 @@ function Shell() {
       <AppBar />
       <main className="page">
         <SignInExpiredBanner />
+        <AddDeviceNotice />
         <Outlet />
       </main>
     </>

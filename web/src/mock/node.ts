@@ -34,6 +34,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** Starts with no request waiting on anyone, as a desk that has been cleared. */
+  nothingWaiting?: boolean
   /** Makes only the decision log calls fail with this status. */
   decisionLogFailsWith?: number
   /** Makes the team's node refuse every decision for this reason (HTTP 409). */
@@ -79,7 +81,8 @@ const teamKey = (org: string, team: string): string => `${org}/${team}`
 
 export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const now = options.now ?? new Date()
-  const app: TeamView = options.view ?? shiftTimes(sampleTeamView, now.getTime() - Date.parse(sampleTeamView.generatedAt))
+  const sample: TeamView = options.view ?? shiftTimes(sampleTeamView, now.getTime() - Date.parse(sampleTeamView.generatedAt))
+  const app: TeamView = options.nothingWaiting === true ? { ...sample, requests: [], people: sample.people.map(({ waitingOn: _waitingOn, ...rest }) => rest) } : sample
   let views = new Map<string, TeamView>([app, siteTeamView(app)].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
   let isSignInExpired = false

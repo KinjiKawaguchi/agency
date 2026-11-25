@@ -27,7 +27,7 @@ describe('devices screen', () => {
     renderApp({ path: '/devices' })
     expect((await screen.findByLabelText('Pairing code of this device')).textContent).toMatch(CODE)
     expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
-    expect(screen.getByText(/the node signs your decisions itself/)).toBeInTheDocument()
+    expect(screen.getByText(/Until you do, the node signs them for you/)).toBeInTheDocument()
   })
 
   it('shows the same code on a second visit, because the key is kept', async () => {
@@ -56,7 +56,7 @@ describe('devices screen', () => {
     await user.clear(field)
     await user.type(field, 'Work laptop')
     await user.click(screen.getByRole('button', { name: 'Add this device' }))
-    expect(await screen.findByText(/Waiting for you to confirm it/)).toBeInTheDocument()
+    expect(await screen.findByText(/Waiting for you to confirm this device/)).toBeInTheDocument()
     const key = await browserKey(keyStore)
     const { requests } = await createApiClient((request) => node.handle(request)).devices()
     expect(requests).toMatchObject([{ label: 'Work laptop', publicKey: key.publicKey, pairingCode: key.pairingCode }])
@@ -69,7 +69,7 @@ describe('devices screen', () => {
     const keyStore = memoryKeyStore()
     renderApp({ path: '/devices', node, keyStore })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    await screen.findByText(/Waiting for you to confirm it/)
+    await screen.findByText(/Waiting for you to confirm this device/)
     expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
     window.dispatchEvent(new Event('visibilitychange'))
     expect(await screen.findByText(/This device is added\./)).toBeInTheDocument()
@@ -153,5 +153,62 @@ describe('devices screen', () => {
     } finally {
       generateKey.mockRestore()
     }
+  })
+
+  it('tells a first-time person what to do while waiting: run the command on the node’s computer and compare the code', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices' })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    const steps = await screen.findAllByRole('listitem')
+    expect(steps.map((one) => one.textContent)).toEqual([
+      'On the computer that runs the node, run “agency device-add”.',
+      'Check that the code it shows is exactly the one above.',
+      'Confirm there.',
+    ])
+  })
+})
+
+describe('the prompt to add this device', () => {
+  it('leads from the first screen to adding it, in one sentence that says why', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/desk' })
+    const notice = (await screen.findByText('Add this device so your decisions are signed with a key that never leaves it.')).closest('.device-notice')
+    expect(notice).not.toBeNull()
+    await user.click(screen.getByRole('link', { name: 'Add this device' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Devices' })).toBeInTheDocument()
+    expect(screen.queryByText('Add this device so your decisions are signed with a key that never leaves it.', { selector: '.device-notice p' })).not.toBeInTheDocument()
+  })
+
+  it('says the device is waiting once it asked, and points to its code', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    const held = await browserKey(keyStore)
+    await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Browser', publicKey: held.publicKey })
+    renderApp({ path: '/desk', node, keyStore })
+    expect(await screen.findByText('This device is waiting to be added. Open it to see the code to confirm.')).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'See the code' }))
+    expect(await screen.findByLabelText('Pairing code of this device')).toHaveTextContent(held.pairingCode)
+  })
+
+  it('is gone once the device is added', async () => {
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    const held = await browserKey(keyStore)
+    await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Browser', publicKey: held.publicKey })
+    node.addDeviceFromTerminal(held.pairingCode)
+    renderApp({ path: '/desk', node, keyStore })
+    await screen.findByRole('option', { name: /Add a second frontend agent/ })
+    expect(document.querySelector('.device-notice')).toBeNull()
+  })
+})
+
+describe('an empty desk', () => {
+  it('says nothing waits, shows no blank paper to pick from, and has no one waiting on the viewer', async () => {
+    renderApp({ path: '/desk', nothingWaiting: true, earlierDecisions: false })
+    expect(await screen.findByText('Nothing is waiting for you. New requests from your team show up here.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Nothing needs your decision right now.')
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Pick a document/)).not.toBeInTheDocument()
   })
 })

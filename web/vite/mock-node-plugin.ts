@@ -23,8 +23,10 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
+  const isEmpty = query?.get('empty') === '1'
   return {
     usage: usage === '1',
+    ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
     ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),
   }
