@@ -35,14 +35,10 @@ public struct NavigationPolicy: Equatable, Sendable {
         guard let host = url.host?.lowercased(), !host.isEmpty else { return .block }
         let port = url.port ?? HomeNodeURL.defaultPort(forScheme: scheme)
 
-        if isHomeNode(scheme: scheme, host: host, port: port) || isAccessLogin(scheme: scheme, host: host, port: port) {
+        if homeNode.hasSameOrigin(url) || isAccessLogin(scheme: scheme, host: host, port: port) {
             return .allowInApp
         }
         return .openExternally
-    }
-
-    private func isHomeNode(scheme: String, host: String, port: Int) -> Bool {
-        scheme == homeNode.scheme && host == homeNode.host && port == homeNode.port
     }
 
     /// `<team>.cloudflareaccess.com`, where one-time PIN sign-in happens, before it sends the

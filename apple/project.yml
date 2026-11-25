@@ -21,6 +21,13 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Automatic
+  configs:
+    # The APNs environment the build is signed for. Release builds, including TestFlight, use
+    # production; builds run from Xcode use development (sandbox).
+    Debug:
+      APS_ENVIRONMENT: development
+    Release:
+      APS_ENVIRONMENT: production
 
 targets:
   Agency:
@@ -30,12 +37,18 @@ targets:
       - App
     dependencies:
       - package: AgencyKit
+    entitlements:
+      path: App/Agency.entitlements
+      properties:
+        aps-environment: $(APS_ENVIRONMENT)
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Agency
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Read at run time to tell the node which APNs host a device token belongs to.
+        AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
