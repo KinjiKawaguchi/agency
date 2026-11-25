@@ -46,10 +46,10 @@ describe('locale', () => {
   it('shows Japanese when asked and switches back from the language menu', async () => {
     const user = userEvent.setup()
     renderApp({ locale: 'ja' })
-    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 人があなたの返事を待っています。'))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 人の参加者があなたの返事を待っています。'))
     expect(document.documentElement.lang).toBe('ja')
     await user.selectOptions(screen.getByRole('combobox', { name: '言語' }), 'en')
-    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 person is waiting for your answer.'))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 participant is waiting for your answer.'))
     expect(document.documentElement.lang).toBe('en')
     expect(window.localStorage.getItem('agency.locale')).toBe('en')
   })

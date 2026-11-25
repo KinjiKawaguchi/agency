@@ -12,7 +12,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Account** (アカウント). One human's identity in the system: an id, a label, and an account key (Ed25519). It belongs to exactly one human and is never shared, because a device signature attributes a decision to the human behind the account. The account key signs reads, join requests, and the account's first device in an org. It never signs a decision.
 - **Home node** (ホームノード). The node an account lives on. It holds the account key, keeps replicas of what the account sees, and serves the account's clients under `/api`. A node's configuration holds exactly one account (`account` in `config.json`), so a node is the home node of one account, and an account's home node is the one node that holds its key. The code has no register of this, so "exactly one per account" is a rule for the owner, not a check.
 - **Member** (メンバー). An account's seat in one org: `id`, `label`, `account`, `publicKey`, `department`, `role`, and `devices`. An account has no member, or one, in each org (an org definition refuses two members with the same account), so it has as many members as orgs it belongs to. In the protocol a member is `people[]` of the org definition, with the type `Person`; the names stay for now. A member's `role` is `member` (reads and answers) or `answerer` (only answers).
-- **Participant** (参加者) *(proposed)*. One who takes part in a team's work: a human or an agent, as the team's runtime reports it (`TeamView.people[]`, the type `PersonStatus`, `kind` `human` or `agent`). A participant is named by the runtime's own name, not by a member id. The two are matched only through the hosted team's configuration. This is a third thing the protocol calls "person"; the screen "People and work" lists participants.
+- **Participant** (参加者). One who takes part in a team's work: a human or an agent, as the team's runtime reports it (`TeamView.people[]`, the type `PersonStatus`, `kind` `human` or `agent`). A participant is named by the runtime's own name, not by a member id. The two are matched only through the hosted team's configuration. This is a third thing the protocol calls "person"; the screen "Participants and work" (参加者と仕事) lists them. A participant's `role` is `lead` or `member`: a *team role*, reported by the team's runtime. The screens show only the lead (リード) and do not name the other role, because "member" is the org seat; the protocol keeps the value `member` for now. Do not confuse it with a member's org role (`member` or `answerer`).
 - **Owner**. Two uses, both in the code: the *team owner* is the member whose answer an unaddressed request waits for (`owner` of a hosted team, and the runtime name `owner`); the *node's owner* is the human whose email Cloudflare Access must show for writes (`ownerEmail`). Say which one when it is not clear.
 - **Viewer** (閲覧者 *(proposed)*). The account that reads a team: its runtime name in that team is `viewer`, and `mine` and `waitingOnViewer` are computed for it.
 
@@ -43,7 +43,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 ## Requests and decisions
 
 - **Request** (依頼). What a team asks of a member. Its kinds (`Request.kind`):
-  - **Proposal** (稟議, `proposal`): approval of a document, with options.
+  - **Proposal** (稟議, `proposal`): approval of a document, with options. 稟議書 means the document itself, and only that.
   - **Question** (質問, `question`): the team asks something, with options or free text.
   - **Pending decision** (判断待ち, `pendingDecision`): a board item is blocked until someone decides. It is answered with `judge`.
 - **Envelope**. The signed document that carries a decision to the team's node (`kind` `answer` or `judge`). Not shown to people.
@@ -65,12 +65,17 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 | Do not say | Say | Why |
 |---|---|---|
-| host, for a computer | machine (マシン) | A host is a name a node is reached at (`publicHost`), and the HTTP `Host` header keeps its name. |
+| host, for a computer; ホスト (ホスト名 is fine) | machine (マシン) | A host is a name a node is reached at (`publicHost`), and the HTTP `Host` header keeps its name. |
 | 拠点 | ノード or マシン | It does not say which. |
-| server, for a node | node (ノード) | A node is a peer. There is no central server. |
-| user | account (アカウント) for the identity; human (人) for the real person; member (メンバー) for the seat in an org | It does not say which of the three. |
+| computer; コンピュータ, コンピューター | machine (マシン) | One word for the computer a node runs on. |
+| server, for a node; サーバー, サーバ | node (ノード) | A node is a peer. There is no central service. |
+| user; ユーザー, ユーザ | account (アカウント) for the identity; human (人) for the real person; member (メンバー) for the seat in an org | It does not say which of the three. |
+| デバイス | 端末 | The Japanese name of a device is 端末. |
+| 判断のお願い | 判断待ち | The kind `pendingDecision` has one name. A sentence may say 「…さんの判断待ち」. |
 | person, for a member | member (メンバー) | "Person" stays for the human. |
-| person, for a participant | participant (参加者) | A participant may be an agent. |
+| person, for a participant; 人 for a participant or a count of them | participant (参加者) | A participant may be an agent. |
 | device, for a push token | push token | A device is a signing key. |
 
 "Host" is also fine as the verb of a node that runs a team's runtime (a *hosted team*), and in the `Host` header.
+
+`scripts/check-words.sh` fails the build on the words above that a machine can tell apart from a good use (the Japanese ones in `web/src/i18n/ja.ts` and `docs/*.ja.md`, and the English ones in `web/src/i18n/en.ts`). The others (人 for a participant, 稟議書 for anything but the document itself) are left to review. Three phrases are let through because they are not about a node or a machine of ours: ホスト名 (the public host name), セルフホスト (Cloudflare's self-hosted application type), and Apple のサーバー (Apple's own servers).

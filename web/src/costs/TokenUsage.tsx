@@ -45,10 +45,10 @@ function TokenReport({ view, days, report }: { view: TeamView; days: number; rep
       </div>
       <div className="card flush table-wrap">
         <table>
-          <caption className="sr-only">{t.costs.tokens.byPerson}</caption>
+          <caption className="sr-only">{t.costs.tokens.byParticipant}</caption>
           <thead>
             <tr>
-              <th scope="col">{text.person}</th>
+              <th scope="col">{text.participant}</th>
               <th scope="col" className="num">{text.cost}</th>
               <th scope="col" className="num">{text.output}</th>
               <th scope="col" className="num">{text.cacheRead}</th>

@@ -39,7 +39,7 @@ export function PersonCard({ person, team }: { person: PersonStatus; team: Team 
       <div className="mate-body">
         <div className="mate-top">
           <b className="mate-name">{person.label}</b>
-          <span className="mate-role">{t.people.roles[person.role]}</span>
+          {person.role === 'lead' ? <span className="mate-role">{t.people.roles.lead}</span> : null}
           {presence === 'idle' ? null : <span className={`mate-tag tag-${presence}`}>{t.people.stateTags[presence]}</span>}
         </div>
         <p className="mate-now">{person.status}</p>
