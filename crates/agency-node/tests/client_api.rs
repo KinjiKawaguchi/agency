@@ -57,6 +57,7 @@ async fn reads_and_decides_on_a_local_team() {
     );
     assert_eq!(snapshot["view"]["requests"][0]["id"], "r-1");
     assert_eq!(snapshot["mine"], json!(["r-1"]), "unaddressed: the owner's");
+    assert_eq!(snapshot["waitingOnViewer"], json!([]), "always sent");
 
     let (status, result) = body(
         post(&alice, ENVELOPES, &decision(&alice, &key, "r-1"))

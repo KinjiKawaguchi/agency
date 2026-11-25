@@ -166,6 +166,7 @@ People:
 
 - `state` says whether the person is active; `waitingOn` says who has to act before they can continue. A person can be `working` and still wait on someone, for example on a permission prompt: then `waitingOn` names the person who answers the prompt and `status` says it is a permission prompt.
 - `waitingOn.person` uses the same names as `Request.to`.
+- Who waits on the reader is decided by the reader's home node and given to clients as `TeamSnapshot.waitingOnViewer`: the `id`s of the people whose `waitingOn` is `person` with the reader's runtime name in that team (`viewer`). Unlike a request's `to`, a name that is not the reader's is never theirs, because `waitingOn` can name anyone on the team, agents included. A reader the team does not address (no `viewer`) has nobody waiting on them.
 
 Requests:
 
@@ -227,7 +228,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 |---|---|---|
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
-| GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
+| GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
