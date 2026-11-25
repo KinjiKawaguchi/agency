@@ -1,5 +1,6 @@
 import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
+import { DevicesPage } from '../device/DevicesPage'
 import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
 import { PeoplePage } from '../people/PeoplePage'
@@ -57,7 +58,9 @@ const orgRoute = createRoute({
 })
 const costsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/costs', component: CostsPage })
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, peopleRoute, orgRoute, costsRoute])
+const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
+
+const routeTree = rootRoute.addChildren([indexRoute, deskRoute, peopleRoute, orgRoute, costsRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })
