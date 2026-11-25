@@ -30,6 +30,10 @@ docs/glossary.md       The terms, in English and Japanese
 testdata/vectors.json  Language-independent test vectors (a key from a fixed seed, canonical JSON, a signature)
 ```
 
+## Install
+
+To install a node on a Mac, run it as a service, and reach it from outside behind Cloudflare Access, see [docs/install.md](docs/install.md) (in Japanese: [docs/install.ja.md](docs/install.ja.md)).
+
 ## Build and test
 
 ```sh
