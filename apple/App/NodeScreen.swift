@@ -18,7 +18,7 @@ struct NodeScreen: View {
                     FailureView(
                         failure: failure,
                         onReload: model.retry,
-                        onChangeHomeNode: onChangeHomeNode
+                        onChangeHomeNode: changeHomeNode
                     )
                 }
             }
@@ -35,6 +35,12 @@ struct NodeScreen: View {
 }
 
 extension NodeScreen {
+    /// The number on the icon belongs to the node that is being left.
+    private func changeHomeNode() {
+        push.setBadge(0)
+        onChangeHomeNode()
+    }
+
     private func startModel() {
         guard model == nil else { return }
         let model = NodeWebModel(
@@ -43,6 +49,7 @@ extension NodeScreen {
             startingAt: push.takePendingLink()
         )
         model.onHomeNodeReached = { push.noteSignedIn() }
+        model.onBadgeChange = { push.setBadge($0) }
         self.model = model
     }
 }
