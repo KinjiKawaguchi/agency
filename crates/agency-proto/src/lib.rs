@@ -13,6 +13,7 @@ pub mod org;
 pub mod runtime;
 pub mod signed;
 pub mod timestamp;
+pub mod usage;
 pub mod view;
 
 pub use envelope::{Envelope, EnvelopeKind, Payload};
@@ -23,4 +24,5 @@ pub use org::{OrgDefinition, Person, Role};
 pub use runtime::{RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, RUNTIME_VERSION};
 pub use signed::{Kind, Signed};
 pub use timestamp::{Date, Timestamp};
+pub use usage::TokenUsage;
 pub use view::TeamView;

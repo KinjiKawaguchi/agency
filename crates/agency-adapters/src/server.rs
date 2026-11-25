@@ -5,6 +5,7 @@ use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, receive};
 use agency_core::read_auth::ReadAuth;
+use agency_core::usage::hosted_usage;
 use agency_core::views::hosted_view;
 use agency_core::{Error, ErrorKind, Node};
 use agency_proto::org::SignedOrg;
@@ -127,6 +128,25 @@ async fn get_view(
     respond(result.await)
 }
 
+/// The token usage of a team on this node, for a signed read by a member of its org. The signature
+/// covers the path with its `days` query.
+async fn get_usage(
+    State(node): Shared,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        let days = query
+            .get("days")
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .ok_or_else(|| Error::bad_request("days must be a number"))?;
+        hosted_usage(&node, &org, &team, days, &read_auth(&headers)).await
+    };
+    respond(result.await)
+}
+
 async fn post_envelope(
     State(node): Shared,
     Path((org, team)): Path<(String, String)>,
@@ -151,6 +171,7 @@ pub fn router(node: Arc<Node>) -> Router {
         )
         .route("/fed/v1/orgs/{org}/join", post(post_join))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
+        .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(node)

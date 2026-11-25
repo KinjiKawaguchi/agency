@@ -58,6 +58,8 @@ A node that reads a team on another node adds these headers:
 - `x-agency-date`: the time
 - `x-agency-signature`: the signature of `agency/v1/read\n` + `<method>\n<path>\n<time>\n<account>`
 
+`<path>` is the request path without its query, except on a route that takes a query (`usage`): there it is the path with the query exactly as the route table writes it, built from the parsed values, so a signature covers the range it reads.
+
 The receiving node answers only when the time is within 5 minutes either way, the signature matches the account's public key in the org definition, and the account is a member of the team's org.
 A non-member gets 404, so it cannot tell whether the team exists.
 
@@ -88,6 +90,7 @@ A non-member gets 404, so it cannot tell whether the team exists.
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
+| GET | `/fed/v1/teams/<org>/<team>/usage?days=<n>` | A signed read of the path with its query, and membership (answers `TokenUsage`; 400 for a range outside 1 to 90; 404 when the team's runtime does not report usage) |
 | POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
 
 ## TeamView
@@ -160,11 +163,27 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text> }` |
 | `view` | none | TeamView |
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org person id>, "payload": { "text", "choice"? } }` | `{}` |
+| `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay). `by` is the org person who decided.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
+- `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
+
+## Token usage
+
+```
+TokenUsage  { org: Id, team: Id, days, generatedAt: Timestamp, byDay: DayCost[], byPerson: PersonUsage[] }
+DayCost     { date: Date, costUsd: { <runtime name>: number } }
+PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
+```
+
+- A report covers the last `days` calendar days, today included, in the team runtime's time zone. `byDay` is oldest first; days without use may be left out.
+- People are named by their runtime names, as in TeamView, not by org person ids.
+- `costUsd` is an estimate: tokens priced at API rates, in US dollars rounded to cents by the runtime, whatever actually pays for them (a subscription or an API key). It is the one exception to "numbers are non-negative integers": a non-negative JSON number. Token counts are non-negative integers.
+- The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every person has a name. A report that fails is 503.
+- The shared sample is `testdata/tokenusage.sample.json`.
 
 ## Client API
 
@@ -177,6 +196,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | POST | `/api/orgs/<org>/teams/<team>/decisions` | Body `DecisionInput` (`kind` and `target` from the request's `answerWith`, `text`, `choice`, and optionally the request's `title`, at most 200 characters, kept in the decision log). Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through; a refusal by the team's node is 409 |
+| GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
 
 Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.

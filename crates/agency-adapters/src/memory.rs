@@ -4,7 +4,7 @@ use agency_core::ports::{Clock, Random, TeamRuntime};
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, Request, RequestKind};
-use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp};
+use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -65,6 +65,11 @@ pub struct MemoryRuntimeState {
     /// Requests waiting for an answer: (id, title).
     pub requests: Vec<(String, String)>,
     pub applied: Vec<RuntimeDecision>,
+    /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
+    /// without `tokenUsage`.
+    pub usage: Option<TokenUsage>,
+    /// The ranges `token_usage` was asked for.
+    pub usage_days: Vec<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -137,5 +142,18 @@ impl TeamRuntime for MemoryRuntime {
         }
         state.applied.push(decision);
         Ok(())
+    }
+
+    async fn token_usage(&self, _team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError> {
+        let mut state = self.0.lock().map_err(|_| poisoned())?;
+        state.usage_days.push(days);
+        let usage = state
+            .usage
+            .clone()
+            .map(|usage| TokenUsage { days, ..usage });
+        usage.ok_or_else(|| RuntimeError {
+            status: 404,
+            message: "the memory runtime does not report token usage".into(),
+        })
     }
 }

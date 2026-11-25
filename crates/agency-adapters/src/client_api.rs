@@ -11,6 +11,7 @@
 use crate::access::{AccessVerifier, Identity};
 use crate::server::status_of;
 use agency_core::client::{decision_log, me, org_definition, submit_decision, team_snapshot};
+use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
 use agency_proto::client::DecisionInput;
 use agency_proto::Id;
@@ -220,6 +221,21 @@ async fn get_team(State(api): Shared, Path((org, team)): Path<(String, String)>)
     respond(result.await)
 }
 
+/// A team's token usage over the last `days` days (default 14, at most 90).
+async fn get_usage(
+    State(api): Shared,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { team_usage(&api.node, &parse_id(&org)?, &parse_id(&team)?, days).await };
+    respond(result.await)
+}
+
 async fn post_decision(
     State(api): Shared,
     Path((org, team)): Path<(String, String)>,
@@ -298,6 +314,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/decisions", get(get_decisions))
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
+        .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
         .route(
             "/api/orgs/{org}/teams/{team}/decisions",
             post(post_decision),

@@ -16,7 +16,7 @@ use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Id, OrgDefinition, Payload, Person, Timestamp};
 
 /// The org, if the node's account is a member of it.
-fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
+pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
     let not_found = || Error::not_found("not found");
     let doc = node.store().load_org(org).ok_or_else(not_found)?;
     let person = doc
@@ -28,7 +28,7 @@ fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
 }
 
 /// The hosted team, if the team runs on this node.
-fn local_team(node: &Node, org: &Id, place: &TeamPlace) -> Option<HostedTeam> {
+pub(crate) fn local_team(node: &Node, org: &Id, place: &TeamPlace) -> Option<HostedTeam> {
     let config = node.config();
     (place.node == config.url)
         .then(|| config.hosted(org, &place.id).cloned())

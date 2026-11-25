@@ -12,7 +12,7 @@ use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
-    Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp,
+    Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp, TokenUsage,
 };
 use async_trait::async_trait;
 
@@ -139,6 +139,12 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<FederatedView, PeerError>;
+    async fn get_usage(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<TokenUsage, PeerError>;
     async fn get_definition(
         &self,
         node: &str,
@@ -174,6 +180,9 @@ pub trait TeamRuntime: Send + Sync {
         team: &HostedTeam,
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError>;
+    /// The team's token usage over the last `days` days. A runtime that does not report usage
+    /// answers 404.
+    async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
 }
 
 /// Reads how much of a funding source has been used.

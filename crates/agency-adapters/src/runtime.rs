@@ -3,13 +3,14 @@
 use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
-use agency_proto::runtime::{Decided, Describe, RuntimeError};
+use agency_proto::runtime::{Decided, Describe, RuntimeError, TOKEN_USAGE_OP};
 use agency_proto::{
-    Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, RUNTIME_VERSION,
+    Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, TokenUsage,
+    RUNTIME_VERSION,
 };
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -71,10 +72,11 @@ async fn call<T: DeserializeOwned>(
     }
 }
 
-/// Runs each hosted team's command. Remembers which teams already described agency-runtime/1.
+/// Runs each hosted team's command. Remembers the description of each team that described
+/// agency-runtime/1.
 #[derive(Default)]
 pub struct CommandRuntime {
-    described: Mutex<HashSet<(Id, Id)>>,
+    described: Mutex<HashMap<(Id, Id), Describe>>,
 }
 
 fn request(team: &HostedTeam, call: RuntimeCall) -> RuntimeRequest {
@@ -82,16 +84,18 @@ fn request(team: &HostedTeam, call: RuntimeCall) -> RuntimeRequest {
 }
 
 impl CommandRuntime {
-    /// Calls `describe` once per team and refuses runtimes that do not speak agency-runtime/1.
-    async fn ensure_described(&self, team: &HostedTeam) -> Result<(), RuntimeError> {
+    /// Calls `describe` once per team, refuses runtimes that do not speak agency-runtime/1, and
+    /// returns its description.
+    async fn ensure_described(&self, team: &HostedTeam) -> Result<Describe, RuntimeError> {
         let key = (team.org.clone(), team.team.clone());
-        if self
+        let known = self
             .described
             .lock()
             .map_err(|_| unavailable("runtime state is poisoned"))?
-            .contains(&key)
-        {
-            return Ok(());
+            .get(&key)
+            .cloned();
+        if let Some(description) = known {
+            return Ok(description);
         }
         let description: Describe =
             call(&team.runtime, &request(team, RuntimeCall::Describe)).await?;
@@ -103,8 +107,8 @@ impl CommandRuntime {
         self.described
             .lock()
             .map_err(|_| unavailable("runtime state is poisoned"))?
-            .insert(key);
-        Ok(())
+            .insert(key, description.clone());
+        Ok(description)
     }
 }
 
@@ -130,5 +134,20 @@ impl TeamRuntime for CommandRuntime {
         )
         .await?;
         Ok(())
+    }
+
+    /// Called only if the runtime listed `tokenUsage` in `describe`; otherwise 404.
+    async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError> {
+        if !self.ensure_described(team).await?.supports(TOKEN_USAGE_OP) {
+            return Err(RuntimeError {
+                status: 404,
+                message: "the team runtime does not report token usage".into(),
+            });
+        }
+        call(
+            &team.runtime,
+            &request(team, RuntimeCall::TokenUsage { days }),
+        )
+        .await
     }
 }
