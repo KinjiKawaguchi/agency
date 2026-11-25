@@ -270,5 +270,5 @@ If Cloudflare Access protects the node's public host name, its policy must bypas
 
 ## Test vectors
 
-`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures.
+`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope and a comment (text without a choice). `canonical` lists values with the canonical text each must become: non-ASCII and astral characters, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed next to decomposed characters (never normalized), keys whose UTF-8 order differs from their UTF-16 order, nulls, and integers. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures.
 An implementation in another language must produce the same values.

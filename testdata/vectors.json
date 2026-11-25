@@ -1,4 +1,81 @@
 {
+  "canonical": [
+    {
+      "canonical": "{\"text\":\"リリースは来週に 🚀 Ünïcødé\"}",
+      "name": "non-ASCII",
+      "value": {
+        "text": "リリースは来週に 🚀 Ünïcødé"
+      }
+    },
+    {
+      "canonical": "{\"text\":\"\\\"quoted\\\" back\\\\slash /slash </script>\"}",
+      "name": "quotes, backslash, slash",
+      "value": {
+        "text": "\"quoted\" back\\slash /slash </script>"
+      }
+    },
+    {
+      "canonical": "{\"text\":\"line\\nnext\\ttab\\rreturn\\b\\f\\u0000\\u001f\"}",
+      "name": "control characters",
+      "value": {
+        "text": "line\nnext\ttab\rreturn\b\f\u0000\u001f"
+      }
+    },
+    {
+      "canonical": "{\"text\":\"café café ガ ガ\"}",
+      "name": "precomposed and decomposed, unnormalized",
+      "value": {
+        "text": "café café ガ ガ"
+      }
+    },
+    {
+      "canonical": "{\"text\":\"    \"}",
+      "name": "DEL and line separators",
+      "value": {
+        "text": "    "
+      }
+    },
+    {
+      "canonical": "{\"\":6,\"Z\":4,\"a\":5,\"日本\":3,\"～\":2,\"😀\":1}",
+      "name": "keys by UTF-8 bytes",
+      "value": {
+        "": 6,
+        "Z": 4,
+        "a": 5,
+        "日本": 3,
+        "～": 2,
+        "😀": 1
+      }
+    },
+    {
+      "canonical": "{\"b\":[null,1],\"c\":{}}",
+      "name": "nulls",
+      "value": {
+        "a": null,
+        "b": [
+          null,
+          1
+        ],
+        "c": {
+          "d": null
+        }
+      }
+    },
+    {
+      "canonical": "{\"max\":9007199254740991,\"negative\":-1,\"zero\":0}",
+      "name": "integers",
+      "value": {
+        "max": 9007199254740991,
+        "negative": -1,
+        "zero": 0
+      }
+    }
+  ],
+  "commentEnvelope": {
+    "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"id\":\"ffeeddccbbaa99887766554433221100\",\"kind\":\"answer\",\"org\":\"acme\",\"payload\":{\"text\":\"来週にしてください 🙏\\n\\\"理由\\\"は別途\"},\"target\":\"r-20260101-000000-abcd\",\"team\":\"app\"}",
+    "signature": "90igHPNmdu5a6clmp010a1D5Yq7mpfInwUQTkN1VL7RrIsq5OA1VOCLsu9y/DZe+yTD+IZNzXyLHxWaKEyOIBg==",
+    "signer": "laptop"
+  },
   "device": {
     "pairingCode": "dbc2-9825-1c51",
     "publicKey": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg=",

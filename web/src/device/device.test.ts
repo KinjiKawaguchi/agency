@@ -20,10 +20,19 @@ async function vectorKeyPair(): Promise<CryptoKeyPair> {
 const parse = (canonical: string): Json => JSON.parse(canonical) as Json
 
 describe('canonical JSON', () => {
-  it.each([['org', vectors.org.canonical], ['device change', vectors.deviceChange.canonical], ['envelope', vectors.envelope.canonical]])(
-    'reproduces the bytes of the %s vector from its parsed body',
-    (_name, canonical) => {
-      expect(canonicalJson(parse(canonical))).toBe(canonical)
+  it.each([
+    ['org', vectors.org.canonical],
+    ['device change', vectors.deviceChange.canonical],
+    ['envelope', vectors.envelope.canonical],
+    ['comment envelope', vectors.commentEnvelope.canonical],
+  ])('reproduces the bytes of the %s vector from its parsed body', (_name, canonical) => {
+    expect(canonicalJson(parse(canonical))).toBe(canonical)
+  })
+
+  it.each(vectors.canonical.map((one) => [one.name, one.value, one.canonical] as const))(
+    'writes the %s vector byte for byte',
+    (_name, value, canonical) => {
+      expect(canonicalJson(value as Json)).toBe(canonical)
     },
   )
 
@@ -72,6 +81,8 @@ describe('the device key', () => {
     const signed = await signDocument(key, 'envelope', parse(vectors.envelope.canonical), vectors.envelope.signer)
     expect(signed.signature).toBe(vectors.envelope.signature)
     expect(signed.signer).toBe('laptop')
+    const comment = await signDocument(key, 'envelope', parse(vectors.commentEnvelope.canonical), vectors.commentEnvelope.signer)
+    expect(comment.signature).toBe(vectors.commentEnvelope.signature)
   })
 
   it('signs under the kind line, so a signature for one kind is not valid for another', async () => {
