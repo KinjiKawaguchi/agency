@@ -36,3 +36,20 @@ export function trackErrors(page: Page): () => string[] {
 /** True when the page itself scrolls sideways. A chart may scroll inside its own frame, but the page may not. */
 export const pageScrollsSideways = (page: Page): Promise<boolean> =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+
+/**
+ * Adds this browser as a device, the way the owner does the first time: it asks the node, and the node's
+ * terminal confirms the code (`agency device-add`, stood in for by the mock). Decisions need it, since
+ * the node takes only decisions signed by a device. `origin` is for a page that is not under the base
+ * URL: a browser keeps its key per origin.
+ */
+export async function enrolBrowser(page: Page, request: APIRequestContext, origin = ''): Promise<string> {
+  await page.goto(`${origin}/devices`)
+  await page.getByRole('button', { name: 'Add this device' }).click()
+  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+  const code = (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
+  expect((await request.post(`/__mock/device-add?code=${code}`)).status()).toBe(204)
+  await page.reload()
+  await expect(page.getByText(/This device is added\./)).toBeVisible()
+  return code
+}

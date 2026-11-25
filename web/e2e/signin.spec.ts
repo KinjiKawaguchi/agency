@@ -1,12 +1,13 @@
 import { mkdirSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { resetNode } from './helpers'
+import { enrolBrowser, resetNode } from './helpers'
 
-// A tunnel serves the page under a host that is not loopback. `*.test` is mapped to this machine so the
-// preview server can be reached as one, and so can the "login" origin the expired session redirects to.
+// A tunnel serves the page under a named host, not the node's own address. `agency.localhost` reaches the
+// preview server as one while staying a secure context, which WebCrypto needs; `*.test` is mapped to this
+// machine so the "login" origin the expired session redirects to resolves too.
 const executablePath = process.env.AGENCY_CHROMIUM_PATH
 const PORT = 4173
-const PAGE = `http://agency.test:${PORT}`
+const PAGE = `http://agency.localhost:${PORT}`
 
 test.use({
   launchOptions: { args: ['--host-resolver-rules=MAP *.test 127.0.0.1'], ...(executablePath === undefined ? {} : { executablePath }) },
@@ -17,6 +18,7 @@ test.beforeEach(async ({ request }) => {
 })
 
 test('says the sign-in expired when the session ends, keeps the draft, and recovers after a reload', async ({ page, request }) => {
+  await enrolBrowser(page, request, PAGE)
   await page.goto(`${PAGE}/desk`)
   const paper = page.getByRole('article')
   await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()

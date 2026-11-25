@@ -50,8 +50,9 @@ async function verifies(device: Device, kind: SignedKind, signed: Signed<Record<
 
 const isFresh = (at: unknown, now: number): boolean => typeof at === 'string' && Date.parse(at) >= now - MAX_AGE && Date.parse(at) <= now + MAX_AHEAD
 
-export function createMockDevices(orgs: readonly string[], account: string): MockDevices {
-  let devices = new Map<string, readonly Device[]>(orgs.map((org) => [org, []]))
+export function createMockDevices(orgs: readonly string[], account: string, initial: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>> = []): MockDevices {
+  const seeded: readonly Device[] = initial.map((one) => ({ ...one, addedAt: timestampOf(new Date()) }))
+  let devices = new Map<string, readonly Device[]>(orgs.map((org) => [org, seeded]))
   let requests: readonly DeviceRequest[] = []
 
   const list = (): DeviceList => ({ orgs: [...devices].map(([org, held]) => ({ org, devices: [...held] })), requests: [...requests] })

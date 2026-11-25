@@ -578,3 +578,27 @@
     width: 100%;
   }
 }
+
+.doc-cannot-sign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--hold);
+  border-radius: var(--radius);
+  background: var(--raised);
+  font-weight: 600;
+}
+
+.doc-cannot-sign p {
+  margin: 0;
+}
+
+.doc-cannot-sign .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}

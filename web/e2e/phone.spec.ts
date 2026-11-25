@@ -63,7 +63,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('.device-notice')).toBeVisible()
     await shoot('first-screen')
 
-    await page.getByRole('link', { name: 'Add this device' }).click()
+    await page.locator('.device-notice').getByRole('link', { name: 'Add this device' }).click()
     await expect(page.getByRole('button', { name: 'Add this device' })).toBeVisible()
     await shoot('add-device')
 
