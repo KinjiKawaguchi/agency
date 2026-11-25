@@ -182,6 +182,45 @@ struct NodeClientTests {
         #expect(transport.requests[3].headers["x-agency-token"] == "w-2")
     }
 
+    @Test("the device list is a read; a device request is a write with the label and the key")
+    func devices() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/devices", fixture("device-list")),
+            ("GET /api/session", json(session)),
+            ("POST /api/devices/requests", fixture("device-request")),
+        ])
+        let node = client(transport)
+        #expect(try await node.devices().requests.count == 1)
+        let request = try await node.requestDevice(label: "iPhone", publicKey: "p256:AAAA")
+        #expect(request.pairingCode == "506e-f187-9d74")
+        let post = try #require(transport.requests.last)
+        #expect(post.headers["x-agency-token"] == "w-1")
+        #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"label":"iPhone","publicKey":"p256:AAAA"}"#)
+        #expect(transport.requests.first?.headers["x-agency-token"] == nil)
+    }
+
+    @Test("registering a push token is a write with the token, environment and label")
+    func pushToken() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(session)),
+            ("POST /api/push/tokens", fixture("push-token")),
+        ])
+        let registered = try await client(transport).registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone")
+        #expect(registered.environment == .production)
+        let post = try #require(transport.requests.last)
+        #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"environment":"sandbox","label":"iPhone","token":"ab12"}"#)
+        #expect(post.headers["x-agency-token"] == "w-1")
+    }
+
+    @Test("an id from the node never adds a segment or a query to the path")
+    func segments() async throws {
+        let transport = ScriptedTransport([("GET /api/orgs/a%2Fb/teams/c%3Fd%23e/view", fixture("team-snapshot-local"))])
+        _ = try await client(transport).teamSnapshot(org: "a/b", team: "c?d#e")
+        #expect(transport.requests.first?.path == "/api/orgs/a%2Fb/teams/c%3Fd%23e/view")
+        #expect(NodeClient.segment("acme-1.x_y~z") == "acme-1.x_y~z")
+        #expect(NodeClient.segment("日本") == "%E6%97%A5%E6%9C%AC")
+    }
+
     @Test("a 403 for another reason is the answer and is not sent again", arguments: [
         #"{"error":"writes are for the owner"}"#, #"{"error":"bad signature"}"#, #"{}"#, "",
     ])

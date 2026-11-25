@@ -6,17 +6,33 @@ import SwiftUI
 /// The desk tab: the pile, a request open, and the banners that say what is wrong.
 public struct DeskScreen: View {
     private let store: DeskStore
+    private let pairing: PairingStore?
+    private let notice: String?
     private let onSignInAgain: () -> Void
+    private let onSettings: () -> Void
+    @Binding private var openItemID: String?
+    @State private var path: [String] = []
 
     /// - Parameters:
+    ///   - pairing: whether this phone is added, and how to get it added; `nil` when this phone has no key.
+    ///   - notice: something the app has to say above the desk, such as why there is no key.
+    ///   - openItemID: a request to open (from a notification); the screen opens it and sets this back to `nil`.
     ///   - onSignInAgain: runs the Access sign-in again, when the session has ended.
-    public init(store: DeskStore, onSignInAgain: @escaping () -> Void) {
+    ///   - onSettings: opens the settings.
+    public init(
+        store: DeskStore, pairing: PairingStore?, notice: String? = nil, openItemID: Binding<String?>,
+        onSignInAgain: @escaping () -> Void, onSettings: @escaping () -> Void
+    ) {
         self.store = store
+        self.pairing = pairing
+        self.notice = notice
+        _openItemID = openItemID
         self.onSignInAgain = onSignInAgain
+        self.onSettings = onSettings
     }
 
     public var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     banners
@@ -27,17 +43,44 @@ public struct DeskScreen: View {
                 }
                 .padding(Theme.gutter)
             }
-            .refreshable { await store.refresh() }
+            .refreshable {
+                await store.refresh()
+                await pairing?.refresh()
+            }
             .navigationTitle(Ja.Desk.title)
             .navigationDestination(for: String.self) { id in
-                RequestDetailScreen(store: store, itemID: id)
+                RequestDetailScreen(store: store, isDeviceReady: pairing?.isReady ?? false, itemID: id)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: onSettings) { Image(systemName: "gearshape") }
+                        .accessibilityLabel(Ja.Desk.settings)
+                }
             }
         }
-        .task { await store.refresh() }
+        .onChange(of: openItemID, initial: true) { _, id in
+            guard let id else { return }
+            path = [id]
+            openItemID = nil
+        }
+        .task {
+            await pairing?.refresh()
+            await store.refresh()
+        }
     }
 
     @ViewBuilder
     private var banners: some View {
+        if let notice {
+            Text(notice).font(.subheadline).foregroundStyle(Theme.danger).wrapping().card()
+        }
+        if let pairing {
+            PairingCard(
+                status: pairing.status, isAsking: pairing.isAsking,
+                onAdd: { Task { await pairing.requestAdd() } },
+                onCheck: { Task { await pairing.refresh() } }
+            )
+        }
         if store.needsSignIn {
             VStack(alignment: .leading, spacing: 8) {
                 Text(Ja.Desk.signInEnded).font(.subheadline).wrapping()
@@ -70,13 +113,14 @@ public struct DeskScreen: View {
 /// A request open, wired to the store: the draft lives there, and so does the sending.
 struct RequestDetailScreen: View {
     let store: DeskStore
+    let isDeviceReady: Bool
     let itemID: String
 
     var body: some View {
         ScrollView {
             if let item = store.item(itemID) {
                 RequestDetail(
-                    item: item, draft: store.draft(for: itemID), status: status, now: Date(),
+                    item: item, draft: store.draft(for: itemID), status: status, now: Date(), isDeviceReady: isDeviceReady,
                     onText: { store.setText($0, for: itemID) },
                     onPick: { store.toggleOption($0, for: itemID) },
                     onDecide: { decide(item) },

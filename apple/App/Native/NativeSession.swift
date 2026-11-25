@@ -1,0 +1,82 @@
+import AgencyAPI
+import AgencyKit
+import AgencyModel
+import AgencyProtocol
+import Foundation
+import Observation
+
+/// Everything the native screens need for one home node: the API client with its Keychain token, this
+/// phone's Secure Enclave key, the desk and the pairing.
+@MainActor
+@Observable
+final class NativeSession {
+    let desk: DeskStore
+    /// `nil` when this phone cannot make the key that signs decisions (no Secure Enclave, or Face ID is not set up).
+    let pairing: PairingStore?
+    let keyProblem: String?
+    private(set) var signInProblem: String?
+
+    @ObservationIgnored private let client: NodeClient
+    @ObservationIgnored private let signIn: AccessSignInFlow
+    @ObservationIgnored private var registeredPush: PushRegistration?
+
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
+        self.signIn = signIn
+        let client = NodeClient(
+            transport: URLSessionTransport(homeNode: homeNode),
+            accessToken: { tokens.current()?.value }
+        )
+        self.client = client
+        let signer: SecureEnclaveSigner?
+        var problem: String?
+        do {
+            signer = try SecureEnclaveSigner.loadOrCreate(host: homeNode.host)
+        } catch {
+            signer = nil
+            problem = "\(error)"
+        }
+        keyProblem = problem
+        pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
+        desk = DeskStore(
+            source: client,
+            sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
+            storage: DraftDefaultsStorage(host: homeNode.host)
+        )
+    }
+
+    /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
+    func signInAgain() async {
+        signInProblem = nil
+        switch await signIn.signInAgain() {
+        case .signedIn:
+            await desk.refresh()
+            await pairing?.refresh()
+        case .canceled:
+            break
+        case .unavailable:
+            signInProblem = Ja.Desk.signInUnavailable
+        }
+    }
+
+    /// Tells the node this phone's push token, once the desk can be read. Registering a known token only updates it.
+    func registerPush(_ registration: PushRegistration) async {
+        guard registration != registeredPush, desk.loading == .loaded else { return }
+        do {
+            try await client.registerPushToken(token: registration.token, environment: registration.environment.rawValue, label: registration.label)
+            registeredPush = registration
+        } catch {
+            // Tried again at the next change or the next launch.
+        }
+    }
+}
+
+/// Stands in for the signer when this phone has no key: the desk can be read and nothing can be sent.
+private struct NoKeySender: DeskSender {
+    func send(_ decision: PreparedDecision) async throws -> DecisionResult {
+        throw NoKeyError()
+    }
+}
+
+private struct NoKeyError: Error, LocalizedError {
+    var errorDescription: String? { Ja.Device.noKey }
+}

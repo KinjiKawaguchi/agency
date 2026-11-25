@@ -15,6 +15,11 @@ public enum Ja {
         public static let reload = "再読み込み"
         public static let signInEnded = "サインインの有効期限が切れました。もう一度サインインしてください。"
         public static let signInAgain = "サインインし直す"
+        public static let signInUnavailable = "このノードでは、アプリからのサインインを使えません。ノードの設定を確認してください。"
+        public static let settings = "設定"
+        public static let changeNode = "ホームノードを変える"
+        public static let homeNode = "ホームノード"
+        public static let close = "閉じる"
 
         public static func group(_ group: DeskGroup) -> String {
             switch group {
@@ -56,7 +61,11 @@ public enum Ja {
         public static let notePlaceholderOpen = "答えを書いてください"
         public static let noteLabelOpen = "答え"
         public static let sendComment = "コメントだけ送る"
-        public static let commentExplain = "決裁はしません。この文章だけがチームに届きます。選択肢を選んでいても、選択は送られません。"
+        /// What the comment button does. 決裁 is a proposal's word; a question or a decision is "decided".
+        public static func commentExplain(_ kind: Request.Kind) -> String {
+            let nothing = kind == .proposal ? "決裁はしません。" : "決めません。"
+            return nothing + "この文章だけがチームに届きます。選択肢を選んでいても、選択は送られません。"
+        }
         public static let sending = "送信中…"
         public static let earlierMessages = "これまでのやりとり"
         public static let decisionLog = "決定の記録"
@@ -90,15 +99,42 @@ public enum Ja {
             }
         }
 
+        /// What Face ID says it is for: the action, then the request's title.
+        public static func faceIDReason(_ decision: PreparedDecision) -> String {
+            let action = decision.isComment ? "コメントを送る" : verb(decision.kind)
+            return "\(action): \(decision.title)"
+        }
+
         public static func sendWith(_ verb: String, choice: String) -> String { "「\(choice)」で\(verb)" }
         public static func stoppedBy(_ names: String) -> String { "\(names) は、これが決まるまで先に進めません" }
         public static func waitingOn(_ name: String) -> String { "\(name) さんの判断待ちです。ここで読むことはできますが、答えることはできません。" }
         public static func readDocument(characters: Int) -> String { "本文を読む (約 \(characters) 文字)" }
         public static func sent(to drafter: String) -> String { "送りました。\(drafter) に届きます。" }
-        public static func sentComment(to drafter: String) -> String { "コメントしました。\(drafter) に届きます。まだ決裁はされていません。" }
+        public static func sentComment(to drafter: String, kind: Request.Kind) -> String {
+            "コメントしました。\(drafter) に届きます。" + (kind == .proposal ? "まだ決裁はされていません。" : "まだ決まっていません。")
+        }
         public static func sendFailed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static func team(org: String, team: String) -> String { "\(org) / \(team)" }
         public static func thread(name: String, choice: String?) -> String { choice.map { "\(name) は「\($0)」を選びました" } ?? name }
+    }
+
+    public enum Device {
+        public static let heading = "この端末を追加してください"
+        public static let why = "決めたり、コメントしたりするには、この端末の鍵をあなたの組織に追加する必要があります。読むだけなら、今のままでも使えます。"
+        public static let add = "この端末を追加する"
+        public static let adding = "申し込み中…"
+        public static let waitingHeading = "確認を待っています"
+        public static let waitingBody = "すでに追加してある端末か、ノードのコマンドで、端末の申し込み一覧を開いてください。この画面と同じコードの申し込みがあれば、それを追加してください。"
+        public static let check = "確認できたか調べる"
+        public static let ready = "この端末は追加されています。"
+        public static let label = "iPhone"
+        public static let reset = "この端末の鍵を作り直す"
+        public static let resetConfirm = "作り直す"
+        public static let resetExplain = "Face ID の登録を変えたあとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
+        public static let noKey = "この端末では、決定に署名する鍵を作れません。Face ID を設定してから、アプリを開き直してください。"
+
+        public static func notAdded(org: String) -> String { "この端末は \(org) に追加されていません。先に端末を追加してください。" }
+        public static func failed(_ reason: String) -> String { "端末の状態を調べられませんでした: \(reason)" }
     }
 
     public enum Recent {

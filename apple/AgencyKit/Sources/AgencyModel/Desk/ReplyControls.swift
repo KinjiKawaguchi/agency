@@ -14,7 +14,9 @@ public struct ReplyControls: Equatable, Sendable {
     /// What the main button says: the verb, and with an option picked, that option.
     public let decideLabel: String
 
-    public init(item: DeskItem, draft: DeskDraft, isSending: Bool, isSent: Bool) {
+    /// - Parameter isDeviceReady: this phone's key is added to the org, so a decision can be signed.
+    ///   Picking and typing stay possible without it; sending does not.
+    public init(item: DeskItem, draft: DeskDraft, isSending: Bool, isSent: Bool, isDeviceReady: Bool) {
         let request = item.request
         let isLocked = !item.isMine || isSending || isSent
         let hasText = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -22,9 +24,9 @@ public struct ReplyControls: Equatable, Sendable {
         let picked = draft.optionKey.flatMap { key in request.options.first { $0.key == key } }
 
         canPick = !isLocked
-        canDecide = !isLocked && (hasOptions ? picked != nil : hasText)
+        canDecide = !isLocked && isDeviceReady && (hasOptions ? picked != nil : hasText)
         showsComment = hasOptions
-        canComment = !isLocked && hasOptions && hasText
+        canComment = !isLocked && isDeviceReady && hasOptions && hasText
         let verb = Ja.Paper.verb(request.kind)
         decideLabel = picked.map { Ja.Paper.sendWith(verb, choice: $0.text) } ?? verb
     }

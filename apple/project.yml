@@ -37,6 +37,15 @@ targets:
       - App
     dependencies:
       - package: AgencyKit
+        product: AgencyKit
+      - package: AgencyKit
+        product: AgencyProtocol
+      - package: AgencyKit
+        product: AgencyAPI
+      - package: AgencyKit
+        product: AgencyModel
+      - package: AgencyKit
+        product: AgencyUI
     entitlements:
       path: App/Agency.entitlements
       properties:
@@ -56,6 +65,7 @@ targets:
         # The host the app is built to return to after an Access sign-in; the app uses that sign-in
         # only for a home node on this host.
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
+        NSFaceIDUsageDescription: 決裁やコメントを送るとき、本人かどうかを Face ID で確認します。
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

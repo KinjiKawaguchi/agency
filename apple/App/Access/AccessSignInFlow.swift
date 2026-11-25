@@ -26,12 +26,14 @@ final class AccessSignInFlow: NSObject {
 
     private let homeNode: HomeNodeURL
     private let associatedHost: String
+    private let tokens: AccessTokenStore
     private let canHandOff: Bool
     private var gate = AccessSignInGate()
     private var session: ASWebAuthenticationSession?
 
-    init(homeNode: HomeNodeURL, associatedHost: String = AccessSignInFlow.configuredAssociatedHost) {
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, associatedHost: String = AccessSignInFlow.configuredAssociatedHost) {
         self.homeNode = homeNode
+        self.tokens = tokens
         self.associatedHost = associatedHost
         canHandOff = AccessHandoff(homeNode: homeNode, associatedHost: associatedHost) != nil
     }
@@ -42,7 +44,30 @@ final class AccessSignInFlow: NSObject {
     }
 
     /// Runs one sign-in. Call it after `next()` answered `.start`.
-    func run(cookies: WKHTTPCookieStore) async -> Outcome {
+    func run() async -> Outcome {
+        await perform()
+    }
+
+    /// Runs a sign-in the owner asked for (from the desk), which the loop guard does not hold back.
+    func signInAgain() async -> Outcome {
+        guard canHandOff else { return .unavailable }
+        return await perform()
+    }
+
+    /// Forgets the sign-in of the home node: the token and the cookie. The session in Safari is left alone.
+    func forget() async {
+        tokens.clear()
+        let cookies = WKWebsiteDataStore.default().httpCookieStore
+        for cookie in await cookies.allCookies() where cookie.name == AccessToken.cookieName {
+            let host = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+            if host.lowercased() == homeNode.host { await cookies.deleteCookie(cookie) }
+        }
+    }
+
+    /// The token goes to the Keychain, for the API calls, and to the web view as the cookie Access itself
+    /// would set, for the screens that are still web pages.
+    private func perform() async -> Outcome {
+        let cookies = WKWebsiteDataStore.default().httpCookieStore
         guard let handoff = AccessHandoff(homeNode: homeNode, associatedHost: associatedHost) else {
             gate.failed()
             return .unavailable
@@ -51,6 +76,7 @@ final class AccessSignInFlow: NSObject {
             let callback = try await authenticate(handoff)
             let token = try handoff.token(from: callback, now: Date())
             guard let httpCookie = Self.httpCookie(for: token) else { throw AccessHandoffError.malformedToken }
+            tokens.save(token)
             await cookies.setCookie(httpCookie)
             gate.signedIn(at: Date())
             return .signedIn

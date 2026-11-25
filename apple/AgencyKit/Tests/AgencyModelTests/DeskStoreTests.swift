@@ -3,7 +3,7 @@
 import Foundation
 import Testing
 
-private enum Fixture {
+enum Fixture {
     static func data(_ name: String, from file: String = #filePath) throws -> Data {
         var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }
@@ -131,6 +131,15 @@ struct DeskStoreTests {
         await store.refresh()
         #expect(!store.needsSignIn)
         #expect(store.loading == .loaded)
+    }
+
+    @Test("no Access token yet asks for a sign-in the same way")
+    func notSignedIn() async {
+        source.set(me: .failure(NodeError.notSignedIn))
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.needsSignIn)
+        #expect(store.items.isEmpty)
     }
 
     @Test("another failure shows the node's reason and keeps the desk")

@@ -27,6 +27,17 @@ struct Vectors {
     let deviceChange: Signed
     let org: Signed
     let canonicalCases: [CanonicalCase]
+    let p256: P256Vector
+
+    /// A P-256 device key made from a fixed private scalar, and the Rust side's signature over the comment envelope.
+    struct P256Vector {
+        let privateKey: Data
+        let publicKey: String
+        let fingerprint: String
+        let pairingCode: String
+        let deviceId: String
+        let commentSignature: Data
+    }
 
     static let shared = try! Vectors.load()
 
@@ -52,6 +63,11 @@ struct Vectors {
         let cases = root["canonical"]!.items.map {
             CanonicalCase(name: string($0["name"]), value: $0["value"]!, canonical: string($0["canonical"]))
         }
+        let p256 = root["p256Device"]!
+        let privateHex = string(p256["privateKey"])
+        let privateKey = Data(stride(from: 0, to: privateHex.count, by: 2).map {
+            UInt8(privateHex[privateHex.index(privateHex.startIndex, offsetBy: $0)...][..<privateHex.index(privateHex.startIndex, offsetBy: $0 + 2)], radix: 16)!
+        })
         return Vectors(
             accountPublicKey: Data(base64Encoded: string(root["publicKey"]))!,
             devicePublicKey: Data(base64Encoded: string(device["publicKey"]))!,
@@ -61,7 +77,12 @@ struct Vectors {
             commentEnvelope: signed("commentEnvelope"),
             deviceChange: signed("deviceChange"),
             org: signed("org"),
-            canonicalCases: cases
+            canonicalCases: cases,
+            p256: P256Vector(
+                privateKey: privateKey, publicKey: string(p256["publicKey"]), fingerprint: string(p256["fingerprint"]),
+                pairingCode: string(p256["pairingCode"]), deviceId: string(p256["deviceId"]),
+                commentSignature: Data(base64Encoded: string(p256["commentSignature"]))!
+            )
         )
     }
 

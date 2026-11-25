@@ -133,6 +133,32 @@ struct DeskSnapshotTests {
         expectFits(Snapshot.capture("detail-failed", detail(item, draft: draft, status: .failed("writes are for the owner"))), "failed")
     }
 
+    // MARK: Adding this phone
+
+    @Test("the pairing card in each state: not asked yet, waiting with the code, failed")
+    func pairing() {
+        func card(_ status: PairingStore.Status, asking: Bool = false) -> PairingCard {
+            PairingCard(status: status, isAsking: asking, onAdd: {}, onCheck: {})
+        }
+        for scheme in [ColorScheme.light, .dark] {
+            expectFits(Snapshot.capture("pairing-not-requested", card(.notRequested), scheme: scheme), "not requested (\(scheme))")
+            expectFits(Snapshot.capture("pairing-waiting", card(.waiting(code: "a652-124a-fda7")), scheme: scheme), "waiting (\(scheme))")
+        }
+        expectFits(Snapshot.capture("pairing-asking", card(.notRequested, asking: true)), "asking")
+        expectFits(Snapshot.capture("pairing-failed", card(.failed("HTTP 502"))), "failed")
+    }
+
+    @Test("a request opened on a phone that is not added yet can be read, and says so")
+    func detailBeforePairing() {
+        let team = UIFixtures.team()
+        let item = UIFixtures.item(Teams.q, in: team)
+        let view = RequestDetail(
+            item: item, draft: DeskDraft(text: "待ってください", optionKey: "a"), status: .idle, now: now, isDeviceReady: false, isStatic: true,
+            onText: { _ in }, onPick: { _ in }, onDecide: {}, onComment: {}
+        )
+        expectFits(Snapshot.capture("detail-not-added", view), "a request before the phone is added")
+    }
+
     // MARK: Recent decisions
 
     @Test("recent decisions: a queued one with its attempts, and the Japanese comment of the fixture")
