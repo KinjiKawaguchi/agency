@@ -34,6 +34,15 @@ export const ORG_DEFINITION: OrgDefinition = {
   at: '2026-11-24T12:00:00Z',
 }
 
+/** Work items with long refs and long titles, in English and in Japanese, all made up. */
+const MANY_ITEMS: TeamView['work'] = Array.from({ length: 14 }, (_, index) => ({
+  ref: `site-checkout#${1200 + index * 7}`,
+  title: index % 2 === 0 ? `Check that the order total stays right when a discount, a gift card, and a shipping change are applied together (case ${index + 1})` : `割引と贈り物のカードと配送先の変更が同時に入っても、注文の合計が正しいままであることを確かめる (その${index + 1})`,
+  status: 'inProgress' as const,
+  assignee: 'builder',
+  points: 2,
+}))
+
 /** A second, quiet team, so the org chart and the people screen show more than one. */
 export function siteTeamView(base: TeamView): TeamView {
   return {
@@ -42,11 +51,13 @@ export function siteTeamView(base: TeamView): TeamView {
     label: 'Site',
     people: [
       { id: 'designer', label: 'Designer', kind: 'agent', role: 'lead', state: 'working', since: base.generatedAt, status: 'Drafting the pricing page', holding: ['site#3'] },
+      // Holds more work than fits on a line, as a person on a busy team does.
+      { id: 'builder', label: 'Builder', kind: 'agent', role: 'member', state: 'working', since: base.generatedAt, status: 'Building the checkout flow', holding: MANY_ITEMS.map((item) => item.ref) },
       { id: 'assets', label: 'Assets', kind: 'agent', role: 'member', state: 'idle', status: 'Idle; nothing in Next', holding: [] },
       { id: 'owner', label: 'Alice', kind: 'human', role: 'member', state: 'unknown', status: 'Nothing is waiting for an answer', holding: [] },
     ],
     requests: [],
-    work: [{ ref: 'site#3', title: 'Redesign the pricing page', status: 'inProgress', assignee: 'designer', points: 3 }],
+    work: [{ ref: 'site#3', title: 'Redesign the pricing page', status: 'inProgress', assignee: 'designer', points: 3 }, ...MANY_ITEMS],
     epics: [],
   }
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { TeamView, WorkItem } from '../api/teamview'
 import { useI18n } from '../i18n'
 import { Face } from './Face'
@@ -40,6 +41,27 @@ function WorkRow({ item, view }: { item: WorkItem; view: TeamView }) {
   )
 }
 
+/** How many rows a list shows before the rest fold away. */
+const ROWS_SHOWN = 8
+
+function Rows({ items, view }: { items: readonly WorkItem[]; view: TeamView }) {
+  const { t } = useI18n()
+  const [isExpanded, setIsExpanded] = useState(false)
+  const shown = isExpanded ? items : items.slice(0, ROWS_SHOWN)
+  return (
+    <div className="work">
+      {shown.map((item) => (
+        <WorkRow key={item.ref} item={item} view={view} />
+      ))}
+      {items.length > shown.length ? (
+        <button className="work-more" type="button" onClick={() => setIsExpanded(true)}>
+          {t.people.moreWork(items.length - shown.length)}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 /** Work in progress, and below it the work that cannot move. */
 export function WorkList({ view }: { view: TeamView }) {
   const { t } = useI18n()
@@ -48,11 +70,11 @@ export function WorkList({ view }: { view: TeamView }) {
   return (
     <>
       <h3 className="sub-head">{t.people.workTitle}</h3>
-      {doing.length === 0 ? <p className="empty">{t.people.noWork}</p> : <div className="work">{doing.map((item) => <WorkRow key={item.ref} item={item} view={view} />)}</div>}
+      {doing.length === 0 ? <p className="empty">{t.people.noWork}</p> : <Rows items={doing} view={view} />}
       {blocked.length === 0 ? null : (
         <>
           <h3 className="sub-head">{t.people.blockedTitle}</h3>
-          <div className="work">{blocked.map((item) => <WorkRow key={item.ref} item={item} view={view} />)}</div>
+          <Rows items={blocked} view={view} />
         </>
       )}
     </>

@@ -47,6 +47,8 @@ export const ja: Messages = {
     stateTags: { 'needs-you': 'あなたの番', working: '作業中', waiting: '待ち', idle: '待機中', away: '離席' },
     since: (when) => `${when} から`,
     holding: '担当',
+    moreHeld: (count) => `ほか ${count} 件`,
+    moreWork: (count) => `あと ${count} 件を表示`,
     openDecisions: '決めることを開く',
     waitingForAnswer: 'あなたの返事を待っています',
     workTitle: '進行中の仕事',

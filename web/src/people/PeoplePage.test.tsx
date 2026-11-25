@@ -54,4 +54,35 @@ describe('people and work', () => {
     await user.click(await screen.findByRole('link', { name: 'Open decisions' }))
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('waiting for your answer')
   })
+
+  describe('a team with a lot of work', () => {
+    const builder = async () => within((await screen.findByText('Building the checkout flow')).closest('article') as HTMLElement)
+
+    it('shows the first refs a person holds and folds the rest behind a count', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/people' })
+      const card = await builder()
+      expect(card.getAllByText(/^site-checkout#/)).toHaveLength(6)
+      await user.click(card.getByRole('button', { name: '+8 more' }))
+      expect(card.getAllByText(/^site-checkout#/)).toHaveLength(14)
+      expect(card.queryByRole('button', { name: /more$/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps a person’s few refs as they were, with nothing to unfold', async () => {
+      renderApp({ path: '/people' })
+      const card = within((await screen.findByText('Permission prompt: run the database migration')).closest('article') as HTMLElement)
+      expect(card.getByText('app#12')).toBeInTheDocument()
+      expect(card.queryByRole('button', { name: /more$/ })).not.toBeInTheDocument()
+    })
+
+    it('shows the first rows of work in progress and folds the rest behind a count', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/people' })
+      await screen.findByText('Building the checkout flow')
+      const rows = () => screen.getAllByText(/^site-checkout#/, { selector: '.work-row .ref' })
+      expect(rows()).toHaveLength(7)
+      await user.click(screen.getByRole('button', { name: 'Show 7 more' }))
+      expect(rows()).toHaveLength(14)
+    })
+  })
 })
