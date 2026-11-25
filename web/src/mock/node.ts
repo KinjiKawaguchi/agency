@@ -1,6 +1,6 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionEntry, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { earlierDecisions, fundingSources, ORG_DEFINITION, siteTeamView, usageReport } from './fixtures.ts'
@@ -34,6 +34,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** Devices the account already has in its org, so a test can decide without going through adding one. */
+  devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
   /** Makes only the decision log calls fail with this status. */
@@ -71,11 +73,8 @@ const DECISIONS_PATH = '/api/decisions'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
-const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|decisions|usage|envelopes)$/
+const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|envelopes)$/
 const DEVICES_PATH = '/api/devices'
-
-const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string } =>
-  typeof body === 'object' && body !== null && 'kind' in body && 'target' in body && 'text' in body && typeof body.text === 'string'
 
 const teamKey = (org: string, team: string): string => `${org}/${team}`
 
@@ -115,17 +114,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return { body: await request.json().catch(() => null) }
   }
 
-  const decide = async (request: Request, view: TeamView): Promise<Response> => {
-    const write = await readWrite(request)
-    if (write instanceof Response) return write
-    const { body } = write
-    if (options.refuseDecisionsWith !== undefined) return failure(409, options.refuseDecisionsWith)
-    if (!isAnswerWith(body)) return failure(400, 'The decision body is malformed.')
-    return accept(view, body)
-  }
-
   /** The node's own account, with the devices it holds: the signed routes check against them. */
-  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id)
+  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
 
   const decideSigned = async (request: Request, view: TeamView): Promise<Response> => {
     const write = await readWrite(request)
@@ -168,7 +158,6 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const days = Number(url.searchParams.get('days') ?? 14)
       return Number.isInteger(days) && days >= 1 && days <= 90 ? json(usageReport(view, days, now)) : failure(400, 'days must be between 1 and 90.')
     }
-    if (request.method === 'POST' && action === 'decisions') return decide(request, view)
     return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
   }
 

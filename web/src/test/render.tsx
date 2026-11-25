@@ -3,6 +3,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { App } from '../app/App'
 import { createApiClient, type ApiClient } from '../api/client'
 import { createMockNode, type MockNode } from '../mock/node'
+import { createTestNode, testKeyStore } from './testDevice'
 import type { TeamView } from '../api/teamview'
 import type { KeyStore } from '../device/deviceKey'
 import type { Locale } from '../i18n/locale'
@@ -23,8 +24,10 @@ interface Options {
   node?: MockNode
   /** The client to use, to make calls fail in ways the mock node cannot. */
   client?: ApiClient
-  /** Where the device key is kept; a fresh one in memory unless given. */
+  /** Where the device key is kept. Unless given, the test device's, which the node already has; or a fresh one when `enrolled` is false. */
   keyStore?: KeyStore
+  /** False to render a browser whose device the node does not know yet, as on a first visit. */
+  enrolled?: boolean
   outcome?: 'applied' | 'delivered' | 'queued'
 }
 
@@ -42,8 +45,10 @@ export function memoryKeyStore(): KeyStore {
 
 /** Renders the whole app against a fresh mock node. */
 export function renderApp(options: Options = {}): RenderResult & { node: MockNode } {
-  const node = options.node ?? createMockNode({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }), ...(options.earlierDecisions === undefined ? {} : { earlierDecisions: options.earlierDecisions }), ...(options.nothingWaiting === undefined ? {} : { nothingWaiting: options.nothingWaiting }), ...(options.decisionLogFailsWith === undefined ? {} : { decisionLogFailsWith: options.decisionLogFailsWith }) })
+  const isEnrolled = options.enrolled ?? (options.node === undefined && options.keyStore === undefined)
+  const create = isEnrolled ? createTestNode : createMockNode
+  const node = options.node ?? create({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }), ...(options.earlierDecisions === undefined ? {} : { earlierDecisions: options.earlierDecisions }), ...(options.nothingWaiting === undefined ? {} : { nothingWaiting: options.nothingWaiting }), ...(options.decisionLogFailsWith === undefined ? {} : { decisionLogFailsWith: options.decisionLogFailsWith }) })
   const history = createMemoryHistory({ initialEntries: [options.path ?? '/desk'] })
-  const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? memoryKeyStore()} />)
+  const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? (isEnrolled ? testKeyStore() : memoryKeyStore())} />)
   return { ...result, node }
 }

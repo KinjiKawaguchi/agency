@@ -3,7 +3,9 @@ import { personOf } from '../people/viewer'
 import { type Draft } from './drafts'
 import { ChoiceCards } from './ChoiceCards'
 import { StampRoute } from './StampRoute'
+import { Link } from '@tanstack/react-router'
 import { Suspense, lazy } from 'react'
+import type { SigningState } from '../device/useDecide'
 import { useI18n } from '../i18n'
 
 /** The Markdown renderer is large and only needed once a document body is opened. */
@@ -17,6 +19,8 @@ export interface PaperProps {
   /** When the viewer's seal was pressed on this item, if it was. */
   sealedAt: string | null
   isSending: boolean
+  /** Whether this device can sign the decision; when it cannot, the form says to add the device instead of offering to send. */
+  signing: SigningState
   onChange: (change: Partial<Draft>) => void
   onSend: () => void
 }
@@ -38,7 +42,21 @@ function Thread({ item }: { item: DeskItem }) {
   )
 }
 
-function DecideForm({ item, draft, isSending, onChange, onSend }: Pick<PaperProps, 'item' | 'draft' | 'isSending' | 'onChange' | 'onSend'>) {
+function CannotSign({ signing }: { signing: 'not-added' | 'unsupported' }) {
+  const { t } = useI18n()
+  return (
+    <div className="doc-cannot-sign" role="status">
+      <p>{signing === 'unsupported' ? t.desk.paper.cannotSign.unsupported : t.desk.paper.cannotSign.prompt}</p>
+      {signing === 'not-added' ? (
+        <Link className="btn primary" to="/devices">
+          {t.desk.paper.cannotSign.add}
+        </Link>
+      ) : null}
+    </div>
+  )
+}
+
+function DecideForm({ item, draft, isSending, signing, onChange, onSend }: Pick<PaperProps, 'item' | 'draft' | 'isSending' | 'signing' | 'onChange' | 'onSend'>) {
   const { t } = useI18n()
   const { options, kind } = item.request
   const verb = t.desk.paper.verbs[kind]
@@ -54,15 +72,19 @@ function DecideForm({ item, draft, isSending, onChange, onSend }: Pick<PaperProp
         disabled={isSending}
         onChange={(event) => onChange({ text: event.target.value })}
       />
-      <div className="doc-actions">
-        <button className="btn primary big" type="button" disabled={isSending} onClick={onSend}>
-          {isSending ? t.desk.paper.sending : chosen === undefined ? t.desk.paper.send(verb) : t.desk.paper.sendWith(verb, chosen.text)}
-        </button>
-        <span className="hint">
-          <span className="kbd">⌘</span> <span className="kbd">Enter</span> {t.desk.paper.shortcutSend}
-          {options.length > 0 ? ` · ${t.desk.paper.shortcutPick}` : ''}
-        </span>
-      </div>
+      {signing === 'not-added' || signing === 'unsupported' ? (
+        <CannotSign signing={signing} />
+      ) : (
+        <div className="doc-actions">
+          <button className="btn primary big" type="button" disabled={isSending} onClick={onSend}>
+            {isSending ? t.desk.paper.sending : chosen === undefined ? t.desk.paper.send(verb) : t.desk.paper.sendWith(verb, chosen.text)}
+          </button>
+          <span className="hint">
+            <span className="kbd">⌘</span> <span className="kbd">Enter</span> {t.desk.paper.shortcutSend}
+            {options.length > 0 ? ` · ${t.desk.paper.shortcutPick}` : ''}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

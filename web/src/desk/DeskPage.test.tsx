@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MOCK_TOKEN } from '../mock/node'
+import { createApiClient } from '../api/client'
 import { renderApp } from '../test/render'
+import { createTestNode, decideAsTestDevice } from '../test/testDevice'
 import { withRequestFor } from '../test/views'
 
 const PROPOSAL = 'Add a second frontend agent'
@@ -110,16 +111,11 @@ describe('decision desk', () => {
 
   it('keeps the draft and reports the failure when the node refuses the answer', async () => {
     const user = userEvent.setup()
-    const { node } = renderApp()
+    const node = createTestNode()
+    renderApp({ node, enrolled: true })
     await user.click(await screen.findByRole('radio', { name: /Reject/ }))
     // Answer the request behind the viewer's back, so the node no longer has it.
-    await node.handle(
-      new Request('http://mock.local/api/orgs/acme/teams/app/decisions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-agency-token': MOCK_TOKEN },
-        body: JSON.stringify({ kind: 'answer', target: 'r-20261124-113000-c3d4', text: 'x' }),
-      }),
-    )
+    await decideAsTestDevice(createApiClient((request) => node.handle(request)), { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, text: 'x' })
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
     expect(await screen.findByText('Could not send: That request is not open.')).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Reject/ })).toBeChecked()

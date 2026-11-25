@@ -50,14 +50,59 @@ describe('deciding with the device key', () => {
     expect(row).toHaveTextContent('Chose “Approve”.')
   })
 
-  it('falls back to the node signing, while this device is not added yet, so the owner can still decide', async () => {
+  it('cannot decide while this device is not added: it says to add it, offers no send button, and keeps the draft', async () => {
     const user = userEvent.setup()
     const node = createMockNode()
-    renderApp({ node })
-    await approve(user)
-    await screen.findByText(/Alice approved this/)
+    renderApp({ node, enrolled: false })
+    await user.click(await screen.findByRole('radio', { name: /Approve/ }))
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Start next week.')
+    const prompt = await screen.findByText('Add this device to decide. What you wrote is kept.')
+    expect(prompt.closest('.doc-cannot-sign')?.querySelector('a')).toHaveAttribute('href', '/devices')
+    expect(screen.queryByRole('button', { name: /^Approve with/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
     expect(node.envelopes()).toHaveLength(0)
-    expect(node.decisions()).toHaveLength(1)
+  })
+
+  it('says so when the shortcut is used while this device is not added, and sends nothing', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    renderApp({ node, enrolled: false })
+    await user.click(await screen.findByRole('radio', { name: /Approve/ }))
+    await screen.findByText('Add this device to decide. What you wrote is kept.')
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+    expect(await screen.findAllByText('Add this device to decide. What you wrote is kept.')).toHaveLength(2)
+    expect(node.envelopes()).toHaveLength(0)
+    expect(screen.getByRole('radio', { name: /Approve/ })).toBeChecked()
+  })
+
+  it('lets the same draft be sent once the device is added', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ node, keyStore })
+    await user.click(await screen.findByRole('radio', { name: /Approve/ }))
+    await screen.findByText('Add this device to decide. What you wrote is kept.')
+    await enrol(node, keyStore)
+    window.dispatchEvent(new Event('visibilitychange'))
+    await user.click(await screen.findByRole('button', { name: 'Approve with “Approve”' }))
+    expect(await screen.findByText(/Alice approved this/)).toBeInTheDocument()
+    expect(node.envelopes()).toHaveLength(1)
+  })
+
+  it('says the browser cannot sign when it cannot make keys, with no way to add a device', async () => {
+    const generateKey = vi.spyOn(crypto.subtle, 'generateKey').mockRejectedValue(new Error('NotSupportedError'))
+    try {
+      renderApp({ node: createMockNode(), enrolled: false })
+      const user = userEvent.setup()
+      const prompt = await screen.findByText(/This browser cannot make the key that signs decisions\./, { selector: '.doc-cannot-sign p' })
+      expect(prompt.closest('.doc-cannot-sign')?.querySelector('a')).toBeNull()
+      // The shortcut says the same thing, not that the device should be added.
+      await user.click(screen.getByRole('radio', { name: /Approve/ }))
+      await user.keyboard('{Meta>}{Enter}{/Meta}')
+      expect(await screen.findAllByText(/This browser cannot make the key that signs decisions\./)).toHaveLength(2)
+    } finally {
+      generateKey.mockRestore()
+    }
   })
 
   it('does not fall back when the node refuses the signed decision, and keeps the draft', async () => {

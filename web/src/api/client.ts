@@ -1,5 +1,5 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -32,7 +32,6 @@ export interface ApiClient {
   onSession: (listener: (state: SessionState) => void) => () => void
   me: () => Promise<Me>
   teamSnapshot: (org: string, team: string) => Promise<TeamSnapshot>
-  decide: (answer: DecisionAnswer) => Promise<DecisionResult>
   orgDefinition: (org: string) => Promise<OrgDefinition>
   /** The account's recent decisions, newest first. */
   decisions: (limit: number) => Promise<DecisionLog>
@@ -104,7 +103,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {
-      // As for an unsigned decision, the label travels only with a choice, and both notes are trimmed and cut for the log.
+      // The label travels only with a choice, and both notes are trimmed and cut for the log.
       const label = envelope.body.payload.choice === undefined || choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }
       const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label }
       return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
@@ -112,11 +111,5 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     devices: () => get<DeviceList>('/api/devices'),
     requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
     submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),
-    decide: ({ org, team, answerWith, choice, choiceLabel, text, title }) => {
-      // The node refuses a label that comes without a choice, so the two travel together or not at all.
-      const chosen = choice === undefined ? {} : { choice, ...(choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }) }
-      const input: DecisionInput = { ...answerWith, text, title: forLog(title), ...chosen }
-      return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`, input)
-    },
   }
 }
