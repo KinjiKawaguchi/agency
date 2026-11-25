@@ -78,4 +78,4 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 "Host" is also fine as the verb of a node that runs a team's runtime (a *hosted team*), and in the `Host` header.
 
-`scripts/check-words.sh` fails the build on the words above that a machine can tell apart from a good use (the Japanese ones in `web/src/i18n/ja.ts` and `docs/*.ja.md`, and the English ones in `web/src/i18n/en.ts`). The others (人 for a participant, 稟議書 for anything but the document itself) are left to review.
+`scripts/check-words.sh` fails the build on the words above that a machine can tell apart from a good use (the Japanese ones in `web/src/i18n/ja.ts` and `docs/*.ja.md`, and the English ones in `web/src/i18n/en.ts`). The others (人 for a participant, 稟議書 for anything but the document itself) are left to review. Three phrases are let through because they are not about a node or a machine of ours: ホスト名 (the public host name), セルフホスト (Cloudflare's self-hosted application type), and Apple のサーバー (Apple's own servers).
