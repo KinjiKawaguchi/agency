@@ -29,6 +29,12 @@ public struct SentReply: Equatable, Sendable {
     public let outcome: DecisionResult.Outcome
     /// Why a decision was queued.
     public let message: String?
+
+    public init(isComment: Bool, outcome: DecisionResult.Outcome, message: String?) {
+        self.isComment = isComment
+        self.outcome = outcome
+        self.message = message
+    }
 }
 
 /// The desk: the pile, the owner's drafts, and what happens when one is sent.

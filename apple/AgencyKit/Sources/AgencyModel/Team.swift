@@ -20,6 +20,10 @@ public struct Team: Equatable, Sendable {
         waitingOnViewer = Set(snapshot.waitingOnViewer)
     }
 
+    public var isReplica: Bool {
+        if case .replica = source { true } else { false }
+    }
+
     /// `org/team`, unique across the orgs the node can reach.
     public var key: String { "\(view.org)/\(view.team)" }
 
