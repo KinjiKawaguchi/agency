@@ -8,6 +8,7 @@ use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, PersonStatus, Request, RequestKind};
 use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
 use async_trait::async_trait;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -66,6 +67,10 @@ impl Random for CountingRandom {
 pub struct MemoryRuntimeState {
     /// Requests waiting for an answer: (id, title).
     pub requests: Vec<(String, String)>,
+    /// The runtime name a request is addressed to (`to`), by request id; absent for the team's owner.
+    pub to: BTreeMap<String, String>,
+    /// Board items waiting for a decision (`pendingDecision`, judged by `repo#N`): (ref, title).
+    pub pending: Vec<(String, String)>,
     /// The people the view shows.
     pub people: Vec<PersonStatus>,
     pub applied: Vec<RuntimeDecision>,
@@ -86,7 +91,7 @@ fn poisoned() -> RuntimeError {
     }
 }
 
-fn question(id: &str, title: &str, at: &Timestamp) -> Request {
+fn question(id: &str, title: &str, to: Option<&String>, at: &Timestamp) -> Request {
     Request {
         id: id.to_owned(),
         kind: RequestKind::Question,
@@ -94,7 +99,7 @@ fn question(id: &str, title: &str, at: &Timestamp) -> Request {
         context: String::new(),
         document: None,
         from: "lead".into(),
-        to: None,
+        to: to.cloned(),
         created_at: at.clone(),
         issue: None,
         blocks: vec![],
@@ -107,6 +112,18 @@ fn question(id: &str, title: &str, at: &Timestamp) -> Request {
     }
 }
 
+fn pending_decision(item: &str, title: &str, to: Option<&String>, at: &Timestamp) -> Request {
+    Request {
+        id: format!("d-{item}"),
+        kind: RequestKind::PendingDecision,
+        answer_with: AnswerWith {
+            kind: EnvelopeKind::Judge,
+            target: item.to_owned(),
+        },
+        ..question(item, title, to, at)
+    }
+}
+
 #[async_trait]
 impl TeamRuntime for MemoryRuntime {
     async fn view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError> {
@@ -115,11 +132,15 @@ impl TeamRuntime for MemoryRuntime {
             status: 503,
             message: error.to_string(),
         })?;
-        let requests = state
+        let questions = state
             .requests
             .iter()
-            .map(|(id, title)| question(id, title, &at))
-            .collect();
+            .map(|(id, title)| question(id, title, state.to.get(id), &at));
+        let pending = state
+            .pending
+            .iter()
+            .map(|(item, title)| pending_decision(item, title, state.to.get(item), &at));
+        let requests = questions.chain(pending).collect();
         Ok(TeamView {
             org: team.org.clone(),
             team: team.team.clone(),
@@ -138,7 +159,11 @@ impl TeamRuntime for MemoryRuntime {
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError> {
         let mut state = self.0.lock().map_err(|_| poisoned())?;
-        if !state.requests.iter().any(|(id, _)| id == &decision.target) {
+        let waiting = match decision.kind {
+            EnvelopeKind::Answer => &state.requests,
+            EnvelopeKind::Judge => &state.pending,
+        };
+        if !waiting.iter().any(|(id, _)| id == &decision.target) {
             return Err(RuntimeError {
                 status: 404,
                 message: format!("no such request: {}", decision.target),

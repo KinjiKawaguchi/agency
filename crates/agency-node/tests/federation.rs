@@ -19,6 +19,7 @@ use common::{
 async fn invite_join_replica_and_signed_decision() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let bob_key = device(&bob).await;
     // alice's node also has the version with bob added (its one writer is alice's root key)
     assert!(alice
@@ -61,6 +62,7 @@ async fn invite_join_replica_and_signed_decision() {
 async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
     let (mut alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let bob_key = device(&bob).await;
     alice.stop().await;
     let outcome = decide_as(&bob, &bob_key, "r-1", answer("b")).await.unwrap();
@@ -109,6 +111,7 @@ async fn decisions_wait_while_the_team_node_sleeps_and_arrive_after() {
 async fn refuses_strangers_tampering_reused_invites_and_fake_nodes() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let bob_key = device(&bob).await;
     let http = reqwest::Client::new();
 

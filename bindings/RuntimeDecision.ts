@@ -12,6 +12,12 @@ export type RuntimeDecision = { kind: EnvelopeKind,
  */
 target: string, 
 /**
- * The org person who decided.
+ * The org member who decided.
  */
-by: Id, payload: Payload, };
+by: Id, 
+/**
+ * The decider's runtime name in this team: their key in the hosted team's `people`, or `owner`.
+ * The node applies a decision only from the request's addressee, and sends this so the runtime
+ * can check it too without knowing org member ids.
+ */
+byName?: string, payload: Payload, };

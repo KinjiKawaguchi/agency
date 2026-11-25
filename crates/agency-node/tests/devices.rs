@@ -258,6 +258,7 @@ async fn the_cli_device_decides_only_once_added() {
 async fn a_members_devices_are_added_and_removed_through_the_roots_node() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let (laptop, phone) = (AccountKey::generate(), AccountKey::generate());
 
     let added = add_device(&bob.node, "Laptop", &laptop.public(), None).await;

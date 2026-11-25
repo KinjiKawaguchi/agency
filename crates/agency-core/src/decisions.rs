@@ -1,9 +1,11 @@
 //! Decisions (kind `envelope`). A person's decision is signed with one of their devices; no node signs one.
 //! The team's node verifies it before applying it to the team runtime.
+use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
 use crate::unseen;
+use crate::views::{self, is_addressed_to, Reader};
 use agency_proto::device::envelope_key;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::Kind;
@@ -99,11 +101,42 @@ pub(crate) async fn send_envelope(
     })
 }
 
-/// The member who signed an envelope, with one of their devices; an account key never signs one. A
-/// non-member is not found, so a stranger cannot tell what exists.
-/// Verifies an envelope sent to a team on this node and applies it. Checked in order: shape, addressee,
-/// membership and signature, expiry, and replay. An unknown org or team, a non-member, an unknown
-/// device, and a wrong signature are all refused like an unknown team (see `unseen`).
+/// Only the request's addressee decides it, by the rule that also gives each reader their requests
+/// (`views::is_addressed_to`, the same rule as `mine`): the member the request's `to` names in the
+/// hosted team's `people`, or the team's owner when `to` is absent or unmapped. The request is the one
+/// whose `answerWith` is the envelope's kind and target, in the team's view now. A request that is not
+/// waiting and a request addressed to someone else get the same refusal, so an answerer, who reads only
+/// their own requests, cannot learn of others' from it.
+async fn check_addressee(
+    node: &Node,
+    hosted: &HostedTeam,
+    envelope: &Envelope,
+    person: &Id,
+) -> Result<()> {
+    let view = views::runtime_view(node, hosted).await?;
+    let reader = Reader::Hosted { hosted, person };
+    let is_addressee = view.requests.iter().any(|request| {
+        request.answer_with.kind == envelope.kind
+            && request.answer_with.target == envelope.target
+            && is_addressed_to(&reader, request)
+    });
+    if is_addressee {
+        Ok(())
+    } else {
+        Err(Error::new(
+            ErrorKind::Forbidden,
+            format!(
+                "no request {} waits for a decision from {person}",
+                envelope.target
+            ),
+        ))
+    }
+}
+
+/// Verifies an envelope sent to a team on this node and applies it. Checked in order: shape, where it
+/// was sent, membership and signature, expiry, replay, and that the decider is the request's addressee.
+/// An unknown org or team, a non-member, an unknown device, and a wrong signature are all refused like
+/// an unknown team (see `unseen`).
 pub async fn accept_envelope(
     node: &Node,
     org: &Id,
@@ -135,10 +168,12 @@ pub async fn accept_envelope(
     if node.store().is_applied(&envelope.id) {
         return Ok(Accepted::Duplicate);
     }
+    check_addressee(node, &hosted, envelope, &person.id).await?;
     let decision = RuntimeDecision {
         kind: envelope.kind,
         target: envelope.target.clone(),
         by: person.id.clone(),
+        by_name: views::viewer_name(&hosted, &person.id),
         payload: envelope.payload.clone(),
     };
     node.runtime()

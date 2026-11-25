@@ -185,6 +185,7 @@ fn envelope_from(running: &Running, signed: Signed<Envelope>, team: &str) -> Req
 async fn an_envelope_that_fails_its_check_looks_like_one_for_a_team_that_is_not_here() {
     let (alice, memory) = alice().await;
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let phone = device(&bob).await;
     let stranger = AccountKey::generate();
 

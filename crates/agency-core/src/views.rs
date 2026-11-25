@@ -9,7 +9,7 @@ use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{FederatedView, Request, WaitingOn};
-use agency_proto::{Id, TeamView};
+use agency_proto::{Id, Role, TeamView};
 use serde::{Deserialize, Serialize};
 
 /// A replica of a team on another node. When a read fails, the previous view stays and only the error is recorded.
@@ -122,10 +122,30 @@ pub async fn hosted_view(
     )?;
     let hosted = hosted.ok_or_else(unseen::not_found)?;
     let view = runtime_view(node, &hosted).await?;
+    let view = match reader.role {
+        Role::Member => view,
+        Role::Answerer => answerer_view(view, &hosted, &reader.id),
+    };
     Ok(FederatedView {
         view,
         viewer: viewer_name(&hosted, &reader.id),
     })
+}
+
+/// What an answerer reads of a team: only the requests addressed to them, which they need to answer,
+/// and nothing of the team's people, work, or epics. A member reads it all.
+pub fn answerer_view(view: TeamView, hosted: &HostedTeam, person: &Id) -> TeamView {
+    let reader = Reader::Hosted { hosted, person };
+    let requests = view.requests.into_iter();
+    TeamView {
+        requests: requests
+            .filter(|request| is_addressed_to(&reader, request))
+            .collect(),
+        people: vec![],
+        work: vec![],
+        epics: vec![],
+        ..view
+    }
 }
 
 async fn fetch_view(node: &Node, org: &Id, place: &TeamPlace) -> Result<FederatedView, String> {

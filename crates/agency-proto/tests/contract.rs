@@ -98,6 +98,7 @@ fn runtime_requests_carry_the_version_and_the_op_inline() {
         kind: EnvelopeKind::Judge,
         target: "app#14".into(),
         by: id("owner"),
+        by_name: Some("owner".into()),
         payload: Payload {
             text: "Drop it".into(),
             choice: None,
@@ -106,7 +107,7 @@ fn runtime_requests_carry_the_version_and_the_op_inline() {
     let decide = RuntimeRequest::new(id("acme"), id("app"), RuntimeCall::Decide { decision });
     let expected = json!({
         "runtime": "agency-runtime/1", "org": "acme", "team": "app", "op": "decide",
-        "decision": { "kind": "judge", "target": "app#14", "by": "owner", "payload": { "text": "Drop it" } }
+        "decision": { "kind": "judge", "target": "app#14", "by": "owner", "byName": "owner", "payload": { "text": "Drop it" } }
     });
     assert_eq!(serde_json::to_value(&decide).unwrap(), expected);
     assert_eq!(
