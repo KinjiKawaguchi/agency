@@ -68,7 +68,7 @@ async fn logs_local_decisions_as_applied() {
         .send()
         .await
         .unwrap();
-    assert_eq!(refused.status(), 404);
+    assert_eq!(refused.status(), 403, "no request r-404 waits for alice");
     assert_eq!(
         decisions(&alice, "").await["entries"]
             .as_array()
@@ -116,6 +116,7 @@ async fn logs_sent_decisions_with_their_delivery_state() {
         .requests
         .push(("r-2".into(), "Second".into()));
     let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
     let key = device(&bob).await;
     let path = ENVELOPES;
     alice.stop().await;

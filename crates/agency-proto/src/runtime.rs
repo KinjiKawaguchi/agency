@@ -61,8 +61,15 @@ pub struct RuntimeDecision {
     pub kind: EnvelopeKind,
     /// A request id (`answer`) or a work item ref `repo#N` (`judge`).
     pub target: String,
-    /// The org person who decided.
+    /// The org member who decided.
     pub by: Id,
+    /// The decider as a participant of this team: their runtime name, in the same name space as a
+    /// request's `to` (their key in the hosted team's `people`, or `owner`). The node applies a decision
+    /// only from the request's addressee, and sends this so the runtime can check it too without
+    /// knowing org member ids.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub by_participant: Option<String>,
     pub payload: Payload,
 }
 

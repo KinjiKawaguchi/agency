@@ -231,6 +231,19 @@ pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Ru
     running
 }
 
+/// Makes bob the one to decide `request` in alice's team: he is the runtime name `reviewer` there, and
+/// the request is addressed to that name. Only a request's addressee decides it.
+pub fn for_bob(alice: &Running, memory: &Arc<Mutex<MemoryRuntimeState>>, request: &str) {
+    alice
+        .node
+        .update_config(|config| {
+            config.teams[0].people.insert("reviewer".into(), id("bob"));
+        })
+        .unwrap();
+    let mut state = memory.lock().unwrap();
+    state.to.insert(request.into(), "reviewer".into());
+}
+
 pub async fn joined_bob(alice: &Running) -> Running {
     joined(alice, node("bob", memory_runtime().0).await).await
 }

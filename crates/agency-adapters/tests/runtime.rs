@@ -77,6 +77,7 @@ fn decision(text: &str) -> RuntimeDecision {
         kind: EnvelopeKind::Answer,
         target: "r-20261124-110000-a1b2".into(),
         by: id("bob"),
+        by_participant: None,
         payload: Payload {
             text: text.into(),
             choice: Some("a".into()),
