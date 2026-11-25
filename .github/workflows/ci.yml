@@ -13,6 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Conflict markers in Markdown build and pass every test, so they are checked on their own.
+  conflict-markers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-conflict-markers.sh
+
   rust:
     runs-on: ubuntu-latest
     steps:
