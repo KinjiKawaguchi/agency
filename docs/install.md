@@ -141,7 +141,7 @@ Clients sign in to Access, and the node checks Access's token on every request. 
 ### Change the node's address
 
 Other nodes reach a node at its `url`, and each org records where its teams run.
-When the node gets its public host name, set `"url": "https://agency.example.com"` in `~/.agency/config.json`, restart the node, and move each of its teams (on the org's root key node, which is this node for its own orgs):
+When the node gets its public host name, set `"url": "https://agency.example.com"` in `~/.agency/config.json`, restart the node, and move each of its teams (on the node that holds the org's root key, which is this node for the orgs it created):
 
 ```sh
 agency team-move --org acme --team app --node https://agency.example.com
@@ -242,7 +242,7 @@ The node writes these to `~/.agency/logs/serve.log`:
 | `agency: refused an Access request (cannot fetch the Access certs: …)`, `(unknown signing key)`, or `(the signature does not match)` | The node cannot get Access's keys from `teamDomain`, or the token was not made for this team domain. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
-| `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when a team on another node was last read. |
+| `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
 | `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd tries again every 10 seconds. |
 
 ### Answers from the node
@@ -267,6 +267,6 @@ Set up the harness by its own instructions. What the node needs from it:
 - A command that answers agency-runtime/1: `describe`, `view`, and `decide`, and `tokenUsage` for the costs screen. Each call must answer within 20 seconds.
 - The team's state directory, the same one as `team-add --state-dir`.
 - Every tool the runtime calls, on the `PATH` written into the launchd agent.
-- Requests for you leave `to` out or set it to `owner`. On a node where you are the only person, every request is yours. Someone waiting on you has `waitingOn` set to `{ "kind": "person", "person": "owner" }`.
+- Requests for you leave `to` out or set it to `owner`. In an org where you are the only member, every request is yours. A participant waiting on you has `waitingOn` set to `{ "kind": "person", "person": "owner" }`.
 
 While it runs, the node asks the runtime for the team's view every 30 seconds and each time a page reads the team, so `view` should be cheap.

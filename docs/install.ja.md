@@ -108,7 +108,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 最初の端末だけは、ノードのターミナルでノードのアカウント鍵を使って追加します。
 
 1. ブラウザで `http://127.0.0.1:4400/` を開きます。アドレスは常にこれを使ってください。ブラウザにとって `http://localhost:4400/` は別のサイトなので、そちらには別の鍵ができてしまいます。
-2. 「端末」を開き、「この端末を追加」を選びます。`8945-bea8-e6d8` のようなペアリングコードが表示されます。
+2. 「端末」を開き、「この端末を追加」を選びます。`8945-bea8-e6d8` のような照合コードが表示されます。
 3. ターミナルで `agency device-add` を実行します。`Add "<名前>" with pairing code 8945-bea8-e6d8?` と聞かれるので、ブラウザのコードと 1 文字残らず一致するときだけ `y` と答えます。
 4. ブラウザの画面に、端末を追加したと表示されます。
 
@@ -144,12 +144,12 @@ JSON が 1 行出力され、その `result.runtimes` に `agency-runtime/1` が
 ノードは引き続き `127.0.0.1` で待ち受け、同じ Mac で動くトンネルがそこへつなぎます。
 クライアントは Access にサインインし、ノードはリクエストのたびに Access のトークンを検証します。
 ほかのノードは Access にサインインできないため、リクエストごとに自分の鍵で署名します。
-そのため、ノード間のルートは Access を通さずに受け付けます。
+そのため、連合のルートは Access を通さずに受け付けます。
 
 ### ノードのアドレスを変える
 
 ほかのノードは、ノードの `url` を宛先にします。
-組織の定義には、各チームがどのノードで動いているかが記録されています。
+組織定義には、各チームがどのノードで動いているかが記録されています。
 公開ホスト名が決まったら、`~/.agency/config.json` の `url` を `"https://agency.example.com"` に変えてノードを再起動し、チームの置き場所を移します。
 この操作は組織のルート鍵を持つノードで行い、自分で作った組織ならこのノードがそれにあたります。
 
@@ -184,7 +184,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 次の二つのパスは、Access のサインインなしでノードに届く必要があります。
 それぞれのパスについて、アクションが Bypass の Access アプリケーション（またはポリシー）を追加します。
 
-- `agency.example.com/fed/*`：ノード間のルートです。ほかのノードは Access にサインインできないので、ノードは代わりに署名を検証します（[protocol.md](protocol.md) の「Federation routes」を参照）。
+- `agency.example.com/fed/*`：連合のルートです。ほかのノードは Access にサインインできないので、ノードは代わりに署名を検証します（[protocol.md](protocol.md) の「Federation routes」を参照）。
 - `agency.example.com/.well-known/apple-app-site-association`：iPhone アプリのサインインのために、Apple のサーバーがサインインなしで取得します。下の `appId` を設定するときだけ必要です。
 
 これ以外のパスは Bypass にしないでください。
@@ -205,7 +205,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
-- 新しいリクエストを iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。
+- 新しい依頼を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。
 
 設定の形式が正しくないと、起動時にログに出ます（[トラブルシューティング](#トラブルシューティング)を参照）。
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。
@@ -217,7 +217,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 鍵が端末の外に出ることはありません。
 
 1. 新しい端末で Web クライアントを開きます。ノードの Mac なら `http://127.0.0.1:4400/`、それ以外なら Access にサインインしてから `https://agency.example.com/` です。iPhone アプリも同じページを開きます（[apple.md](apple.md)）。
-2. 「端末」を開き、「この端末を追加」を選びます。ペアリングコードが表示されます。
+2. 「端末」を開き、「この端末を追加」を選びます。照合コードが表示されます。
 3. 次のどちらかでコードを確かめて承認します。
    - 追加済みの端末で「端末」を開き、依頼を見つけ、コードが一致すれば承認します。
    - ノードのターミナルで `agency device-add` を実行します。端末がまだ一つもなければノードのアカウント鍵で、追加済みの CLI の端末があればそれで署名します。
@@ -260,7 +260,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 | `agency: refused an Access request (cannot fetch the Access certs: …)`、`(unknown signing key)`、`(the signature does not match)` | ノードが `teamDomain` から Access の鍵を取得できないか、トークンがこのチームドメインのものではありません。 |
 | `agency: push notifications are off: …` | `push` のキーを読めません。通知は送られません。 |
 | `agency: a push notification was not sent: …` | APNs が通知を受け付けませんでした。30 秒後にもう一度送ります。 |
-| `agency: re-reading the replicas failed: …`、`agency: checking for new requests failed: …`、`agency: retrying the outbox failed: …` | ノードがデータディレクトリに書き込めませんでした（ディスクがいっぱいなど）。ほかのノードに届かないことはログに出ません。送信待ちのものは `agency status` に、ほかのノードのチームを最後に読めた時刻は Web クライアントに表示されます。 |
+| `agency: re-reading the replicas failed: …`、`agency: checking for new requests failed: …`、`agency: retrying the outbox failed: …` | ノードがデータディレクトリに書き込めませんでした（ディスクがいっぱいなど）。ほかのノードに届かないことはログに出ません。送信待ちのものは `agency status` に、ほかのノードにあるチームの写しをいつ読んだかは Web クライアントに表示されます。 |
 | `agency: <メッセージ>` のあとノードが止まる | `config.json` を読めないなどの理由で起動できませんでした。launchd は 10 秒ごとに起動し直します。 |
 
 ### ノードの応答
@@ -288,7 +288,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 - agency-runtime/1 の `describe`、`view`、`decide` に答えるコマンド。費用の画面を使うなら `tokenUsage` にも答えます。どの呼び出しにも 20 秒以内に答える必要があります。
 - `team-add --state-dir` に渡したものと同じ、チームの状態ディレクトリ。
 - チームランタイムが呼ぶすべてのツールが、launchd のエージェントに書かれた `PATH` から見つかること。
-- 自分あてのリクエストは、`to` を省くか `owner` にすること。組織の人が自分だけのノードでは、すべてのリクエストが自分あてになります。自分を待っている人は、`waitingOn` が `{ "kind": "person", "person": "owner" }` になります。
+- 自分あての依頼は、`to` を省くか `owner` にすること。自分のほかにメンバーがいない組織では、すべての依頼が自分あてになります。自分を待っている参加者は、`waitingOn` が `{ "kind": "person", "person": "owner" }` になります。
 
 ノードは動いているあいだ、30 秒ごとと、ページがチームを読むたびに、チームランタイムにビューを問い合わせます。
 そのため、`view` は軽い処理にしておく必要があります。
