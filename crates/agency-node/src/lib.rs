@@ -6,6 +6,7 @@ use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
+use agency_adapters::handoff;
 use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::runtime::CommandRuntime;
@@ -112,6 +113,9 @@ impl Opened {
         if !is_valid_config(&config) {
             eprintln!("agency: the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
             return Ok(None);
+        }
+        if config.app_id.is_some() && handoff::app_id(&config).is_none() {
+            eprintln!("agency: the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
         }
         let certs = match &self.certs {
             Some(certs) => certs.clone(),

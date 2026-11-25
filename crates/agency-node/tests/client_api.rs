@@ -1,26 +1,19 @@
 //! The Client API end to end: what a client reads and decides, and who is let in.
 mod common;
 
-use agency_adapters::access::CertSource;
-use agency_core::config::{AccessConfig, FundingConfig};
+use agency_core::config::FundingConfig;
 use agency_core::views::refresh;
 use agency_proto::client::FundingKind;
 use agency_proto::AccountKey;
-use async_trait::async_trait;
+use common::access::{
+    access_token, behind_access, EditClaims, AUDIENCE, PUBLIC_HOST, TEAM_DOMAIN, TEST_KEY_N,
+};
 use common::{
     alice, body, device, get, id, joined_bob, memory_runtime, node_with, post, signed_answer,
     Running, ENVELOPES, TOKEN,
 };
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
-use std::sync::Arc;
-
-/// A test-only RSA key (never used anywhere else) that signs the Access JWTs in these tests.
-const TEST_KEY_DER: &[u8] = include_bytes!("data/access-test-key.der");
-const TEST_KEY_N: &str = "tl3NspTl_6X-JUN7FcoQv4_Gn_HHgDB5U4_cp4DfyLxh18TCc7OLYSsXgk2NSjtm4kl_sOQUX1ad0-D6fIeC9-HhtQrzADP5tionvBkCHXDFRKq-H7HumYRk_492WzmY3WD65MLey16c8eJrU90imayZPzk4zeITH2pQAYzxahxUsd6coBQlg4nnILysy4XkF-uLYFpPT19p4n5Ff26agBLXG0naMmktH4GoXkHfxxiqtGX9HGnXLEB9-qDUSynKb73I3CpdrjCyZfhfI-y3mCSJZZE5fH1VgsUVby8yn-sRd8RoJqbEtKJF5kZIUvsAExuYT26doe9GO-1e3tiE-Q";
-const AUDIENCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const TEAM_DOMAIN: &str = "acme.cloudflareaccess.com";
-const PUBLIC_HOST: &str = "agency.example.com";
 
 /// A Client API body for an answer to `target`, signed by `key` as a device of the node's account.
 fn decision(running: &Running, key: &AccountKey, target: &str) -> Value {
@@ -334,62 +327,9 @@ async fn reports_funding_usage_from_the_usage_file() {
     assert_eq!(me["funding"], expected);
 }
 
-/// A change to a token's claims.
-type EditClaims = Box<dyn FnOnce(&mut Value)>;
-
-struct TestCerts;
-
-#[async_trait]
-impl CertSource for TestCerts {
-    async fn certs(&self, _team_domain: &str) -> Result<Value, String> {
-        Ok(
-            json!({ "keys": [{ "kid": "k1", "kty": "RSA", "alg": "RS256", "n": TEST_KEY_N, "e": "AQAB" }] }),
-        )
-    }
-}
-
-/// A token for `email`, valid around T0 unless `edit` changes the claims.
-fn access_token(email: &str, edit: impl FnOnce(&mut Value)) -> String {
-    let t0 = 1_795_521_600; // 2026-11-24T12:00:00Z
-    let mut claims = json!({ "aud": [AUDIENCE], "iss": format!("https://{TEAM_DOMAIN}"), "exp": t0 + 600, "nbf": t0 - 60, "email": email });
-    edit(&mut claims);
-    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
-    header.kid = Some("k1".into());
-    jsonwebtoken::encode(
-        &header,
-        &claims,
-        &jsonwebtoken::EncodingKey::from_rsa_der(TEST_KEY_DER),
-    )
-    .unwrap()
-}
-
-async fn behind_access() -> Running {
-    let (runtime, memory) = memory_runtime();
-    memory
-        .lock()
-        .unwrap()
-        .requests
-        .push(("r-1".into(), "Ship it?".into()));
-    let mut running = node_with("alice", runtime, Some(Arc::new(TestCerts))).await;
-    agency_core::orgs::create(&running.node, id("acme"), "Acme".into()).unwrap();
-    let access = AccessConfig {
-        public_host: PUBLIC_HOST.into(),
-        team_domain: TEAM_DOMAIN.into(),
-        audience: AUDIENCE.into(),
-        owner_email: "alice@example.com".into(),
-    };
-    running
-        .node
-        .update_config(|config| config.access = Some(access))
-        .unwrap();
-    running.stop().await;
-    running.start().await;
-    running
-}
-
 #[tokio::test]
 async fn through_access_only_valid_tokens_read_and_only_the_owner_writes() {
-    let running = behind_access().await;
+    let running = behind_access(None).await;
     let via_access = |token: String| {
         get(&running, "/api/me")
             .header("host", PUBLIC_HOST)

@@ -134,6 +134,11 @@ pub struct AccessConfig {
     /// Only this signed-in email may write: writes act for the node's account (they relay its
     /// decisions and device changes).
     pub owner_email: String,
+    /// The iOS app that may receive the Access session after a sign-in outside its web view,
+    /// `<team id>.<bundle id>`. Without it (or with a malformed one) the node has no handoff route and
+    /// no app association file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
 }
 
 impl NodeConfig {
