@@ -6,11 +6,12 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::is_root;
 use crate::outbox::Parcel;
+use crate::signed_decisions::decide_signed;
 use crate::views::{runtime_view, viewer_name};
 use agency_proto::client::{
     AccountRef, DecisionEntry, DecisionInput, DecisionLog, DecisionOutcome, DecisionResult,
-    DecisionState, Funding, Me, OrgRef, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
-    MAX_NOTE,
+    DecisionState, Funding, Me, OrgRef, SignedDecisionInput, SnapshotSource, TeamLocation, TeamRef,
+    TeamSnapshot, MAX_NOTE,
 };
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Id, OrgDefinition, Payload, Person, Timestamp};
@@ -181,6 +182,30 @@ pub async fn submit_decision(
         choice: input.choice,
     };
     let decided = decide_noted(node, org, team, input.kind, input.target, payload, note).await?;
+    result_of(decided)
+}
+
+/// Relays a decision signed by one of the account's devices. The node only checks and relays it.
+pub async fn submit_signed_decision(
+    node: &Node,
+    org: &Id,
+    team: &Id,
+    input: SignedDecisionInput,
+) -> Result<DecisionResult> {
+    membership(node, org)?;
+    let note = DecisionNote {
+        title: note_text(input.title, "title")?,
+        choice_label: note_text(input.choice_label, "choiceLabel")?,
+    };
+    if note.choice_label.is_some() && input.envelope.body.payload.choice.is_none() {
+        return Err(Error::bad_request("choiceLabel needs a choice"));
+    }
+    result_of(decide_signed(node, org, team, input.envelope, note).await?)
+}
+
+/// A refusal by the team's node is a conflict: the client should re-read the team, because the request
+/// has most likely been answered or closed.
+fn result_of(decided: Decided) -> Result<DecisionResult> {
     let (outcome, message) = match decided {
         Decided::Applied => (DecisionOutcome::Applied, None),
         Decided::Delivered => (DecisionOutcome::Delivered, None),

@@ -5,6 +5,7 @@
 pub mod client;
 pub mod config;
 pub mod decisions;
+pub mod devices;
 pub mod error;
 pub mod invites;
 pub mod node;
@@ -13,6 +14,7 @@ pub mod outbox;
 pub mod ports;
 pub mod read_auth;
 pub mod routes;
+pub mod signed_decisions;
 pub mod usage;
 pub mod views;
 

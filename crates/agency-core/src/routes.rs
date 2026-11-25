@@ -6,6 +6,10 @@ pub fn definition(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/definition")
 }
 
+pub fn devices(org: &Id) -> String {
+    format!("/fed/v1/orgs/{org}/devices")
+}
+
 pub fn join(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/join")
 }

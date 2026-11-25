@@ -1,12 +1,15 @@
-//! Decisions (kind `envelope`). A person's decision is signed with their account key. The team's node
-//! verifies it before applying it to the team runtime.
+//! Decisions (kind `envelope`). A person's decision is signed with one of their devices (or, until clients
+//! sign, agency#19, with their account key by their home node). The team's node verifies it before applying
+//! it to the team runtime.
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
 use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
+use agency_proto::device::envelope_signer;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::{
-    Envelope, EnvelopeId, EnvelopeKind, Id, Kind, Payload, RuntimeDecision, Signed,
+    Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, Payload, Person, RuntimeDecision,
+    Signed,
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +41,7 @@ pub struct DecisionNote {
 }
 
 impl DecisionRecord {
-    fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
+    pub(crate) fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
         Self {
             id: envelope.id.clone(),
             org: envelope.org.clone(),
@@ -163,11 +166,17 @@ pub async fn decide_noted(
     let record = DecisionRecord::of(&envelope, note, false);
     let signed = Signed::sign(Kind::Envelope, envelope, node.account(), node.key())
         .map_err(|error| Error::internal(error.to_string()))?;
-    let parcel = Parcel::new(
-        place.node,
-        ParcelBody::Envelope(Box::new(signed)),
-        &node.now_text(),
-    );
+    send_envelope(node, place.node, signed, record).await
+}
+
+/// Queues a signed envelope for the team's node, logs it, and tries to deliver it now.
+pub(crate) async fn send_envelope(
+    node: &Node,
+    to: String,
+    signed: Signed<Envelope>,
+    record: DecisionRecord,
+) -> Result<Decided> {
+    let parcel = Parcel::new(to, ParcelBody::Envelope(Box::new(signed)), &node.now_text());
     enqueue(node, &parcel)?;
     node.store().append_decision(&record)?;
     Ok(match deliver(node, &parcel).await? {
@@ -175,6 +184,25 @@ pub async fn decide_noted(
         Outcome::Unreachable(message) => Decided::Queued(message),
         Outcome::Refused(message) => Decided::Refused(message),
     })
+}
+
+/// The member who signed an envelope: with one of their devices, or, until clients sign (agency#19),
+/// with their account key. A non-member is not found, so a stranger cannot tell what exists.
+fn signer_of<'a>(definition: &'a OrgDefinition, signed: &Signed<Envelope>) -> Result<&'a Person> {
+    let envelope = &signed.body;
+    let person = definition
+        .member(&envelope.account)
+        .ok_or_else(|| Error::not_found("not found"))?;
+    if envelope_signer(definition, signed).is_ok() {
+        return Ok(person);
+    }
+    let is_account_signed =
+        signed.signer == envelope.account && signed.verify(Kind::Envelope, &person.public_key);
+    if is_account_signed {
+        Ok(person)
+    } else {
+        Err(Error::unauthorized("the signature does not match"))
+    }
 }
 
 /// Verifies an envelope sent to a team on this node and applies it. Checked in order: shape, addressee,
@@ -198,13 +226,7 @@ pub async fn accept_envelope(
         .cloned()
         .ok_or_else(|| Error::not_found("not found"))?;
     let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
-    let person = doc
-        .body
-        .member(&envelope.account)
-        .ok_or_else(|| Error::not_found("not found"))?;
-    if signed.signer != envelope.account || !signed.verify(Kind::Envelope, &person.public_key) {
-        return Err(Error::unauthorized("the signature does not match"));
-    }
+    let person = signer_of(&doc.body, &signed)?;
     if !envelope.is_fresh(node.now()) {
         return Err(Error::bad_request(
             "the envelope expired, or its time is too far ahead",

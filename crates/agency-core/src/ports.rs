@@ -1,6 +1,7 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
+use crate::devices::DeviceRequestRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
 use crate::outbox::Parcel;
@@ -12,7 +13,8 @@ use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
-    Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp, TokenUsage,
+    DeviceChange, Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView,
+    Timestamp, TokenUsage,
 };
 use async_trait::async_trait;
 
@@ -73,6 +75,12 @@ pub trait DecisionLogStore {
     fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
 }
 
+/// Devices waiting to be added, newest last.
+pub trait DeviceRequestStore {
+    fn device_requests(&self) -> Vec<DeviceRequestRecord>;
+    fn save_device_requests(&self, requests: &[DeviceRequestRecord]) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -86,6 +94,7 @@ pub trait Store:
     + OutboxStore
     + ReplicaStore
     + DecisionLogStore
+    + DeviceRequestStore
     + Send
     + Sync
 {
@@ -99,6 +108,7 @@ impl<
             + OutboxStore
             + ReplicaStore
             + DecisionLogStore
+            + DeviceRequestStore
             + Send
             + Sync,
     > Store for T
@@ -163,6 +173,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         doc: &SignedOrg,
     ) -> Result<(), PeerError>;
+    /// Sends a device change to the root's node, which answers with the version it wrote.
+    async fn post_device_change(
+        &self,
+        node: &str,
+        path: &str,
+        change: &Signed<DeviceChange>,
+    ) -> Result<SignedOrg, PeerError>;
     async fn post_join(
         &self,
         node: &str,

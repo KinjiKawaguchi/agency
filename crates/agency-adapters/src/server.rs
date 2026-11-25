@@ -2,6 +2,7 @@
 //! calls a use case in agency-core, and maps its error kind to an HTTP status.
 use crate::peers::{ACCOUNT, DATE, SIGNATURE};
 use agency_core::decisions::{accept_envelope, Accepted};
+use agency_core::devices::accept_device_change;
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, receive};
 use agency_core::read_auth::ReadAuth;
@@ -9,7 +10,7 @@ use agency_core::usage::hosted_usage;
 use agency_core::views::hosted_view;
 use agency_core::{Error, ErrorKind, Node};
 use agency_proto::org::SignedOrg;
-use agency_proto::{Envelope, Id, JoinRequest, Signed};
+use agency_proto::{DeviceChange, Envelope, Id, JoinRequest, Signed};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, Uri};
@@ -114,6 +115,20 @@ async fn post_join(State(node): Shared, Path(org): Path<String>, bytes: Bytes) -
     respond(result.await)
 }
 
+/// On the root key's node: a device change signed by the person, answered with the version it wrote.
+async fn post_device_change(
+    State(node): Shared,
+    Path(org): Path<String>,
+    bytes: Bytes,
+) -> Response {
+    let result = async {
+        let org = parse_id(&org)?;
+        let signed: Signed<DeviceChange> = parse_body(&bytes)?;
+        accept_device_change(&node, &org, signed).await
+    };
+    respond(result.await)
+}
+
 /// The TeamView of a team on this node, for a signed read by a member of its org.
 async fn get_view(
     State(node): Shared,
@@ -170,6 +185,7 @@ pub fn router(node: Arc<Node>) -> Router {
             get(get_definition).post(post_definition),
         )
         .route("/fed/v1/orgs/{org}/join", post(post_join))
+        .route("/fed/v1/orgs/{org}/devices", post(post_device_change))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))

@@ -181,6 +181,8 @@ pub async fn join(
         ));
     }
     node.store().save_org(&joined)?;
-    node.update_config(|config| config.trust(invite.org.clone(), invite.fp.clone()))?;
+    node.update_config(|config| {
+        config.trust_with_root_node(invite.org.clone(), invite.fp.clone(), invite.node.clone())
+    })?;
     Ok(joined)
 }

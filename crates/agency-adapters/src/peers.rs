@@ -3,7 +3,7 @@ use agency_core::ports::{DefinitionAccess, PeerError, Peers};
 use agency_core::read_auth::ReadAuth;
 use agency_proto::org::SignedOrg;
 use agency_proto::view::FederatedView;
-use agency_proto::{Envelope, JoinRequest, Signed, TokenUsage};
+use agency_proto::{DeviceChange, Envelope, JoinRequest, Signed, TokenUsage};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -151,6 +151,15 @@ impl Peers for HttpPeers {
     ) -> Result<(), PeerError> {
         let _: serde_json::Value = self.post(node, path, doc).await?;
         Ok(())
+    }
+
+    async fn post_device_change(
+        &self,
+        node: &str,
+        path: &str,
+        change: &Signed<DeviceChange>,
+    ) -> Result<SignedOrg, PeerError> {
+        self.post(node, path, change).await
     }
 
     async fn post_join(

@@ -1,4 +1,4 @@
-//! The outbox. Everything sent to another node (decision envelopes and new org versions) is queued here
+//! The outbox. Everything sent to another node (decision envelopes, new org versions, and device changes) is queued here
 //! first and removed once delivered. Unreachable nodes are retried with backoff; a parcel refused with a
 //! 4xx (other than 408 and 429) is not retried and moves to the refused box.
 use crate::error::Result;
@@ -8,7 +8,7 @@ use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::digest::sha256_hex;
 use agency_proto::org::SignedOrg;
-use agency_proto::{Envelope, Signed};
+use agency_proto::{DeviceChange, Envelope, Signed};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 pub enum ParcelBody {
     Envelope(Box<Signed<Envelope>>),
     Org(Box<SignedOrg>),
+    /// For the org's root node.
+    Device(Box<Signed<DeviceChange>>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,6 +53,7 @@ impl Parcel {
                 sha256_hex(format!("{to}\n{}\n{}", doc.body.org, doc.body.version).as_bytes())[..32]
                     .to_owned()
             }
+            ParcelBody::Device(change) => sha256_hex(change.signature.as_bytes())[..32].to_owned(),
         };
         Self {
             id,
@@ -93,9 +96,18 @@ async fn send(node: &Node, parcel: &Parcel) -> Outcome {
                 .post_definition(&parcel.to, &routes::definition(&doc.body.org), doc)
                 .await
         }
+        ParcelBody::Device(change) => node
+            .peers()
+            .post_device_change(&parcel.to, &routes::devices(&change.body.org), change)
+            .await
+            .map(|_| ()),
     };
+    outcome_of(sent)
+}
+
+pub(crate) fn outcome_of<T>(sent: Result<T, PeerError>) -> Outcome {
     match sent {
-        Ok(()) => Outcome::Delivered,
+        Ok(_) => Outcome::Delivered,
         Err(PeerError::Status { status, message }) if !is_retryable(status) => {
             Outcome::Refused(message)
         }
@@ -106,7 +118,14 @@ async fn send(node: &Node, parcel: &Parcel) -> Outcome {
 /// Delivers one parcel, then removes it, moves it to the refused box, or schedules its next attempt.
 pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
     let outcome = send(node, parcel).await;
-    match &outcome {
+    settle(node, parcel, &outcome)?;
+    Ok(outcome)
+}
+
+/// After an attempt: removes a delivered parcel, moves a refused one to the refused box, or schedules
+/// the next attempt.
+pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<()> {
+    match outcome {
         Outcome::Delivered => node.store().remove_parcel(&parcel.id)?,
         Outcome::Refused(message) => {
             node.store().refuse_parcel(&Parcel {
@@ -126,7 +145,7 @@ pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
             })?;
         }
     }
-    Ok(outcome)
+    Ok(())
 }
 
 /// Delivers, oldest first, every parcel whose next attempt is due.
