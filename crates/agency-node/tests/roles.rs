@@ -51,7 +51,7 @@ fn applied(memory: &Memory) -> Vec<(String, String)> {
     let decisions = state.applied.iter();
     decisions
         .map(|one| {
-            let name = one.by_name.clone().unwrap_or_default();
+            let name = one.by_participant.clone().unwrap_or_default();
             (one.target.clone(), format!("{} as {name}", one.by))
         })
         .collect()

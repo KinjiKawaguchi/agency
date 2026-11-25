@@ -63,12 +63,13 @@ pub struct RuntimeDecision {
     pub target: String,
     /// The org member who decided.
     pub by: Id,
-    /// The decider's runtime name in this team: their key in the hosted team's `people`, or `owner`.
-    /// The node applies a decision only from the request's addressee, and sends this so the runtime
-    /// can check it too without knowing org member ids.
+    /// The decider as a participant of this team: their runtime name, in the same name space as a
+    /// request's `to` (their key in the hosted team's `people`, or `owner`). The node applies a decision
+    /// only from the request's addressee, and sends this so the runtime can check it too without
+    /// knowing org member ids.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub by_name: Option<String>,
+    pub by_participant: Option<String>,
     pub payload: Payload,
 }
 

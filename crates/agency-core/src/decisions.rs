@@ -173,7 +173,7 @@ pub async fn accept_envelope(
         kind: envelope.kind,
         target: envelope.target.clone(),
         by: person.id.clone(),
-        by_name: views::viewer_name(&hosted, &person.id),
+        by_participant: views::viewer_name(&hosted, &person.id),
         payload: envelope.payload.clone(),
     };
     node.runtime()

@@ -213,11 +213,11 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 |---|---|---|
 | `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text> }` |
 | `view` | none | TeamView |
-| `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byName"?: <runtime name>, "payload": { "text", "choice"? } }` | `{}` |
+| `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
-- The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay, and that the decider is the request's addressee). `by` is the org member who decided, and `byName` their runtime name in the team (their key in the hosted team's `people`, otherwise `owner`). The node sends `byName` with every decision; a runtime should refuse (404) a decision on a request whose `to` names another runtime name. The node maps a `to` it does not know to the owner, and the runtime does not know the map, so for such a request only a decision with `byName` `owner` is the addressee's.
+- The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay, and that the decider is the request's addressee). `by` is the org member who decided, and `byParticipant` the same decider as a participant of the team: their runtime name, in the same name space as a request's `to` (their key in the hosted team's `people`, otherwise `owner`). The node sends `byParticipant` with every decision; a runtime should refuse (404) a decision on a request whose `to` names another runtime name. The node maps a `to` it does not know to the owner, and the runtime does not know the map, so for such a request only a decision with `byParticipant` `owner` is the addressee's.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
