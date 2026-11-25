@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
-import type { UsageReport } from '../api/clientApi'
+import type { TokenUsage } from '../api/clientApi'
 import { useApi } from '../api/context'
 import { usageQuery } from '../api/queries'
 import type { Team } from '../api/teams'
@@ -22,7 +22,7 @@ function Tile({ label, value, note }: { label: string; value: string; note: stri
 const PERIODS = [7, 14, 30] as const
 
 /** Totals, cost by day, and a table by person, from one usage report. */
-function TokenReport({ view, days, report }: { view: TeamView; days: number; report: UsageReport }) {
+function TokenReport({ view, days, report }: { view: TeamView; days: number; report: TokenUsage }) {
   const { t, fmt } = useI18n()
   const labelOf = (person: string): string => view.people.find((one) => one.id === person)?.label ?? person
   const series = seriesFor(report, view.people.map((one) => one.id), labelOf, t.costs.tokens.other)
@@ -78,15 +78,18 @@ interface TokenSectionProps {
 }
 
 /**
- * One team's token use under its heading. A node that does not serve token use yet answers 404, and
- * the section then says so instead of showing numbers.
+ * One team's token use under its heading. 404 means the team's runtime does not report it, and the
+ * section then says so instead of showing numbers. 503 means the team's node or runtime could not
+ * answer just now.
  */
 export function TokenSection({ team, days, onDaysChange }: TokenSectionProps) {
   const { t } = useI18n()
   const api = useApi()
   const { view } = team
   const usage = useQuery(usageQuery(api, view.org, view.team, days))
-  const isUnavailable = usage.error instanceof ApiError && usage.error.status === 404
+  const failure = usage.error instanceof ApiError ? usage.error : null
+  const isUnavailable = failure?.status === 404
+  const couldNotAnswer = failure?.status === 503
   return (
     <section>
       <h2 className="sub-head">{t.costs.tokens.title(view.label)}</h2>
@@ -106,7 +109,7 @@ export function TokenSection({ team, days, onDaysChange }: TokenSectionProps) {
             <TokenReport view={view} days={days} report={usage.data} />
           ) : (
             <p className={usage.error === null ? 'muted' : 'empty'} role={usage.error === null ? undefined : 'alert'}>
-              {usage.error === null ? t.costs.tokens.loading : t.app.unreachable(usage.error.message)}
+              {usage.error === null ? t.costs.tokens.loading : couldNotAnswer ? t.costs.tokens.couldNotAnswer(usage.error.message) : t.app.unreachable(usage.error.message)}
             </p>
           )}
         </>

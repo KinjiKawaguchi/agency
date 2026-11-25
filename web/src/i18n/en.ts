@@ -129,7 +129,8 @@ export const en = {
       columns: { person: 'Person', cost: 'API-priced', output: 'Output', cacheRead: 'Cache read', inputWrite: 'Input and cache write' },
       other: 'Other',
       loading: 'Loading token use…',
-      unavailable: 'Token usage is not available yet.',
+      unavailable: 'This team does not report token usage.',
+      couldNotAnswer: (reason: string) => `The team could not report its token usage right now: ${reason}`,
     },
   },
   desk: {

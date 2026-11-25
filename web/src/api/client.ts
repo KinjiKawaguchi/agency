@@ -1,4 +1,4 @@
-import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
+import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, Me, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -23,7 +23,7 @@ export interface ApiClient {
   orgDefinition: (org: string) => Promise<OrgDefinition>
   /** The account's recent decisions, newest first. */
   decisions: (limit: number) => Promise<DecisionLog>
-  usage: (org: string, team: string, days: number) => Promise<UsageReport>
+  usage: (org: string, team: string, days: number) => Promise<TokenUsage>
 }
 
 const segment = encodeURIComponent
@@ -54,7 +54,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request)): 
     me: () => get<Me>('/api/me'),
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
-    usage: (org, team, days) => get<UsageReport>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
+    usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decide: ({ org, team, answerWith, choice, text, title }) => {
       const input: DecisionInput = { ...answerWith, text, title: [...title].slice(0, MAX_TITLE).join(''), ...(choice === undefined ? {} : { choice }) }

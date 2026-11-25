@@ -125,7 +125,8 @@ export const ja: Messages = {
       columns: { person: '人', cost: 'API 換算', output: '出力', cacheRead: 'キャッシュ読み', inputWrite: '入力とキャッシュ書き込み' },
       other: 'その他',
       loading: 'トークンの集計を読み込み中…',
-      unavailable: 'トークンの使用量はまだ取得できません。',
+      unavailable: 'このチームはトークンの使用量を報告していません。',
+      couldNotAnswer: (reason) => `チームがいま使用量を返せませんでした: ${reason}`,
     },
   },
   desk: {

@@ -1,9 +1,10 @@
-import type { UsageReport } from '../api/clientApi'
+import type { TokenUsage } from '../api/clientApi'
+import sample from '../../../testdata/tokenusage.sample.json' with { type: 'json' }
 import { columnsFor, MAX_SERIES, seriesFor, totalsOf } from './usage'
 
 const tokens = { input: 10, output: 20, cacheRead: 80, cacheWrite: 10 }
 
-const report: UsageReport = {
+const report: TokenUsage = {
   org: 'acme',
   team: 'app',
   days: 2,
@@ -32,7 +33,7 @@ describe('seriesFor', () => {
   })
 
   it('folds people past the eighth into one other series instead of a ninth hue', () => {
-    const many: UsageReport = {
+    const many: TokenUsage = {
       ...report,
       byPerson: Array.from({ length: MAX_SERIES + 2 }, (_, index) => ({ person: `p${index}`, costUsd: 1, tokens })),
     }
@@ -72,5 +73,19 @@ describe('totalsOf', () => {
 
   it('does not divide by zero when nothing was used', () => {
     expect(totalsOf({ ...report, byDay: [], byPerson: [] })).toMatchObject({ costUsd: 0, perDay: 0, cacheShare: 0 })
+  })
+})
+
+describe('the shared sample report from the node', () => {
+  const shared = sample as TokenUsage
+
+  it('adds up to the cost per person and per day it states', () => {
+    const totals = totalsOf(shared)
+    expect(totals.costUsd).toBeCloseTo(13.3)
+    const series = seriesFor(shared, ['lead', 'backend'], (person) => person, 'Other')
+    expect(series.map((one) => one.person)).toEqual(['lead', 'backend', 'reviewer'])
+    const daily = columnsFor(shared, series).map((column) => column.total)
+    expect(daily[0]).toBeCloseTo(9.55)
+    expect(daily[1]).toBeCloseTo(3.75)
   })
 })

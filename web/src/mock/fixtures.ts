@@ -1,6 +1,6 @@
 // Mock org structure, funding, and token use for the mock node. Every name here is fictional.
 // The shapes are the ones the real node will serve; the numbers are made up.
-import type { DecisionEntry, Funding, OrgDefinition, UsageReport } from '../api/clientApi.ts'
+import type { DecisionEntry, Funding, OrgDefinition, TokenUsage } from '../api/clientApi.ts'
 import type { TeamView } from '../api/teamview.ts'
 
 const MINUTE = 60_000
@@ -86,7 +86,7 @@ function noise(seed: string): number {
 
 const DAILY_BASE_USD: Record<string, number> = { lead: 14, backend: 22, frontend: 9, docs: 4, designer: 11, assets: 3 }
 
-export function usageReport(view: TeamView, days: number, now: Date): UsageReport {
+export function usageReport(view: TeamView, days: number, now: Date): TokenUsage {
   const agents = view.people.filter((person) => person.kind === 'agent')
   const byDay = Array.from({ length: days }, (_, index) => {
     const date = new Date(now.getTime() - (days - 1 - index) * DAY).toISOString().slice(0, 10)
