@@ -29,6 +29,7 @@ impl HttpPeers {
     pub fn new() -> reqwest::Result<Self> {
         Ok(Self {
             http: reqwest::Client::builder()
+                .user_agent(crate::USER_AGENT)
                 .timeout(Duration::from_secs(8))
                 .build()?,
         })

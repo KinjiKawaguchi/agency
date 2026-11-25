@@ -1,5 +1,9 @@
 //! Adapters for agency-core's ports.
 
+/// Sent with every request this node makes. Some proxies (such as Cloudflare's Browser Integrity Check)
+/// refuse requests without one.
+pub const USER_AGENT: &str = concat!("agency-node/", env!("CARGO_PKG_VERSION"));
+
 pub mod access;
 pub mod client_api;
 pub mod files;
