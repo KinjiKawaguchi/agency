@@ -1,6 +1,6 @@
 # Agency for iPhone
 
-`apple/` holds a thin iPhone app. It opens the owner's home node in a web view, so everything the web client does works in it. Native features (push notifications, a device key held natively) are added on top, one at a time.
+`apple/` holds a thin iPhone app. It opens the owner's home node in a web view, so everything the web client does works in it. Push notifications are built on top of it.
 
 ```
 apple/
@@ -12,6 +12,9 @@ apple/
   ExportOptions.plist   Export settings for App Store Connect.
   project.yml           XcodeGen project definition.
   scripts/make-icon.swift  Draws the app icon.
+  scripts/register-bundle-id.sh  Registers the bundle ID and enables Push Notifications.
+  scripts/testflight.sh  Archives and uploads one build to TestFlight.
+  scripts/test/run.sh   Offline tests of the two scripts.
 ```
 
 ## How the app behaves
@@ -56,42 +59,57 @@ Copy `apple/Local.xcconfig.example` to `apple/Local.xcconfig` and set:
 
 `Local.xcconfig` is ignored by git. Without it the project builds with a placeholder bundle ID, which cannot be signed.
 
-## Archive and send to TestFlight
+## Release in two commands
 
-Once per app:
+Two scripts in `apple/scripts` take the app from a bundle ID to a TestFlight build. Both read the App Store Connect API key from the environment and from a file outside the repository, and print none of it.
 
-1. Create the app record in App Store Connect with the bundle ID from `Local.xcconfig`.
-2. Create an App Store Connect API key (Users and Access, Integrations) with the App Manager role, and keep the `.p8` file out of the repository. Note the key ID and the issuer ID.
+Once, by hand:
 
-For every build (the build number must be higher than the last one uploaded for this version, so derive it from the time):
+1. Create an App Store Connect API key (Users and Access, Integrations) with the App Manager role. Keep the `.p8` file outside the repository (the scripts refuse a key file inside it). Note the key ID and the issuer ID.
+2. Fill in `apple/Local.xcconfig` (see "Signing values").
+3. Create the app record in App Store Connect with that bundle ID. The API cannot create app records, so this one step is in the web page.
+
+Then set the key where the scripts can see it. Do not put these in a file in the repository:
 
 ```sh
-cd apple
-xcodegen generate
-
-KEY_PATH=~/path/to/AuthKey_XXXXXXXXXX.p8   # the API key file
-KEY_ID=XXXXXXXXXX                          # its key ID
-ISSUER_ID=00000000-0000-0000-0000-000000000000
-AUTH=(-allowProvisioningUpdates
-      -authenticationKeyPath "$KEY_PATH"
-      -authenticationKeyID "$KEY_ID"
-      -authenticationKeyIssuerID "$ISSUER_ID")
-
-xcodebuild archive -project Agency.xcodeproj -scheme Agency -configuration Release \
-  -destination 'generic/platform=iOS' -archivePath build/Agency.xcarchive \
-  CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" "${AUTH[@]}"
-
-xcodebuild -exportArchive -archivePath build/Agency.xcarchive \
-  -exportOptionsPlist ExportOptions.plist -exportPath build/export "${AUTH[@]}"
+export ASC_KEY_PATH=~/path/to/AuthKey_XXXXXXXXXX.p8   # the API key file
+export ASC_KEY_ID=XXXXXXXXXX                           # its 10 character key ID
+export ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000
 ```
 
-`-allowProvisioningUpdates` with the API key lets Xcode create the certificate and provisioning profile itself. With `destination` set to `upload` in `ExportOptions.plist`, the export step sends the build to App Store Connect. To keep an `.ipa` instead, set it to `export` and upload `build/export/Agency.ipa` with the Transporter app.
+**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications capability on it. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
+
+```
+Registered bundle ID com.acme.agency.
+Enabled Push Notifications.
+```
+
+The name of a new bundle ID is `Agency`; set `ASC_APP_NAME` to use another.
+
+**`apple/scripts/testflight.sh`** does everything for one build:
+
+1. generates the Xcode project (`xcodegen generate`),
+2. archives the Release configuration with a build number made from the current UTC time (`BUILD_NUMBER` overrides it; the number must be higher than the last one uploaded for this version),
+3. exports with `ExportOptions.plist`, whose `destination` is `upload` and `method` is `app-store-connect`, so the export step sends the build to App Store Connect,
+4. deletes `apple/build/` and this project's DerivedData folder, also when a step failed.
+
+Both archive and export run with `-allowProvisioningUpdates -authenticationKeyPath ... -authenticationKeyID ... -authenticationKeyIssuerID ...`, which lets Xcode create the certificate and provisioning profile itself.
+
+Both scripts stop before doing anything, and list every problem at once, when `apple/Local.xcconfig` is missing or still holds the placeholders, a key setting is missing or malformed, or the key file is unreadable or inside the repository.
 
 After processing (a few minutes), the build appears under TestFlight in App Store Connect. Add the owner as an internal tester. Internal testing needs no beta review.
 
+To keep an `.ipa` instead of uploading, set `destination` to `export` in `ExportOptions.plist`; the script deletes `build/` at the end, so run the two `xcodebuild` steps from the script by hand and upload the `.ipa` with the Transporter app.
+
 `MARKETING_VERSION` (the version the owner sees) is set in `project.yml`.
 
-Delete `build/` and the DerivedData folder afterwards: the archive and its symbols are large.
+### Tests for the scripts
+
+```sh
+apple/scripts/test/run.sh
+```
+
+It needs `bash`, `openssl`, `perl` and `jq`, and uses no Apple account, network, or Xcode: a generated key signs a token and the test verifies the signature with the public key, the argument checks are exercised, and stand-ins replace `curl`, `xcodegen` and `xcodebuild`. Continuous integration runs it on Linux. A run against Apple itself has only been done by hand.
 
 ## Push notifications
 

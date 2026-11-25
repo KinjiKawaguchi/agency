@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stand-in for xcodegen in the tests.
+printf 'xcodegen %s\n' "$*" >> "$FAKE_LOG"
