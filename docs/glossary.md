@@ -1,0 +1,76 @@
+# Glossary
+
+One word for one thing, in the documents, the code's comments, and the screens.
+Each term has its Japanese name: the one the UI uses, or, marked *(proposed)*, the one it should use.
+A term with no Japanese name is not shown to people.
+
+Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are part of the protocol and stay as they are, even where the word differs from the term here. The entries say so where it happens.
+
+## People and accounts
+
+- **Human** (人). A real person. The system does not represent humans. One human has one or more accounts, for example a personal one and a work one, one for each boundary the data must not cross. Nothing in the system links two accounts of one human; only a client that holds both does. (Today a client talks to one home node, so none does.)
+- **Account** (アカウント). One human's identity in the system: an id, a label, and an account key (Ed25519). It belongs to exactly one human and is never shared, because a device signature attributes a decision to the human behind the account. The account key signs reads, join requests, and the account's first device in an org. It never signs a decision.
+- **Home node** (ホームノード). The node an account lives on. It holds the account key, keeps replicas of what the account sees, and serves the account's clients under `/api`. A node's configuration holds exactly one account (`account` in `config.json`), so a node is the home node of one account, and an account's home node is the one node that holds its key. The code has no register of this, so "exactly one per account" is a rule for the owner, not a check.
+- **Member** (メンバー). An account's seat in one org: `id`, `label`, `account`, `publicKey`, `department`, `role`, and `devices`. An account has no member, or one, in each org (an org definition refuses two members with the same account), so it has as many members as orgs it belongs to. In the protocol a member is `people[]` of the org definition, with the type `Person`; the names stay for now. A member's `role` is `member` (reads and answers) or `answerer` (only answers).
+- **Participant** (参加者) *(proposed)*. One who takes part in a team's work: a human or an agent, as the team's runtime reports it (`TeamView.people[]`, the type `PersonStatus`, `kind` `human` or `agent`). A participant is named by the runtime's own name, not by a member id. The two are matched only through the hosted team's configuration. This is a third thing the protocol calls "person"; the screen "People and work" lists participants.
+- **Owner**. Two uses, both in the code: the *team owner* is the member whose answer an unaddressed request waits for (`owner` of a hosted team, and the runtime name `owner`); the *node's owner* is the human whose email Cloudflare Access must show for writes (`ownerEmail`). Say which one when it is not clear.
+- **Viewer** (閲覧者 *(proposed)*). The account that reads a team: its runtime name in that team is `viewer`, and `mine` and `waitingOnViewer` are computed for it.
+
+## Machines and nodes
+
+- **Machine** (マシン). The computer a node runs on. A machine can run several nodes (each with its own data directory).
+- **Node** (ノード). One running `agency` with its data directory: its account key, its replicas, its outbox, its configuration. It serves federation routes, the Client API, and the web client on one port.
+- **Node origin**. The URL other nodes reach a node at (`url` in `config.json`, `teams[].node`, an invite's `node`).
+- **Public host name** (ホスト名). The name a node is reached at from outside, through Cloudflare (`access.publicHost`). It is a name, never a machine. The node's origin and its public host name can be the same host name, but they are two settings.
+
+## Orgs and teams
+
+- **Org** (組織). A set of departments, members, and teams under one root key. Its definition is the signed `OrgDefinition`.
+- **Root key** (ルート鍵). The Ed25519 key that signs an org's definition versions. It is held by the root's node (`root` in the definition names its account and key).
+- **Org definition** (組織定義) and its **versions**. The signed body listing the org's departments, members, teams, and revoked keys. Version 1 starts it; each next version is one higher and refers to the one before (`prev`). Every piece is written only by the root key.
+- **Department** (部署). A unit of the org that groups members and teams, with an optional parent and an optional head (a member).
+- **Team** (チーム). One harness, running on exactly one node: the *team's node* (`teams[].node`). Requests, activity, and the board belong to a team, and the team's node is their only writer.
+
+## Devices and keys
+
+- **Device** (端末). A key held by a client (a browser, a phone, the CLI) that signs decisions and changes to the member's devices. It is listed under a member (`devices[]`), so it belongs to one member in one org. A device key is Ed25519 or P-256 and never leaves the client; a node never holds one.
+  - Per org or per account? In the data, per org: each org's definition lists the device under its member, and each addition is its own signed change for one org. A device key may be listed in several orgs, but is unique in one. Clients and `agency device-add` add a new device in every org the account belongs to, in one go, and a device request stays open until it is added everywhere. A device that is not listed in an org cannot sign there and cannot add anything there, so after joining another org, the account's first device there is added from the node's terminal with the account key, and later ones from a device that is listed in that org.
+- **Pairing code** (照合コード). The first 12 hex characters of a device key's fingerprint, in groups of 4. The person compares it on both devices before adding.
+- **Device id**. `d-` and the pairing code without dashes.
+- **Client** (クライアント). A program with device keys that talks to a home node: the web client, the iPhone app, the CLI on the node's terminal. A client is not a node.
+- **Push token**. An APNs token for the iPhone app to be notified at. Apple calls it a device token; the protocol does not, since a *device* here is a signing key.
+
+## Requests and decisions
+
+- **Request** (依頼). What a team asks of a member. Its kinds (`Request.kind`):
+  - **Proposal** (稟議, `proposal`): approval of a document, with options.
+  - **Question** (質問, `question`): the team asks something, with options or free text.
+  - **Pending decision** (判断待ち, `pendingDecision`): a board item is blocked until someone decides. It is answered with `judge`.
+- **Envelope**. The signed document that carries a decision to the team's node (`kind` `answer` or `judge`). Not shown to people.
+- **Decision** (決定). A member's answer to a request, sent as an envelope signed by one of the member's devices. It is also what the log lists ("Recently decided" / 最近の決定).
+- **Approval** (決裁). The decision on a proposal, and only on a proposal: the verb is 決裁する, the stamp 決裁. A question is answered (答える, 回答), and a pending decision is judged (判断を送る).
+- **Comment** (コメント). Text sent with no option picked, on a request that has options. The turn goes back to the team and nothing is decided. In the protocol it is an `answer` envelope with text and no `choice`; the protocol and the node do not name it, and a request without options takes its text as the answer, so the word belongs to the clients.
+- **Mine** and **waiting on the viewer**. Two lists the home node computes for a viewer (`TeamSnapshot.mine`, `TeamSnapshot.waitingOnViewer`); clients show them and never work them out.
+
+## How data moves
+
+- **Replica** (写し). A copy of a team's view, or of an org definition, that a node keeps of what another node writes. It is never edited, and says when it was read.
+- **Outbox**. A node's queue of envelopes, device changes, and org versions that could not be delivered yet; it retries with backoff. No UI name; if one is needed, 送信待ち.
+- **Federation** (連合). Nodes reading and writing each other's data through the `/fed/v1` routes, authenticated by signatures.
+- **Agent** (エージェント). A participant that is not a human: an AI that works in a team.
+- **Harness**. The program that runs a team's agents and keeps its work (for example the scrum harness). One team is one harness.
+- **Runtime**. The command a node runs for a hosted team to read its view and to pass a decision to it, speaking `agency-runtime/1`. The node never reads a harness's files; it talks to the runtime.
+
+## Do not use
+
+| Do not say | Say | Why |
+|---|---|---|
+| host, for a computer | machine (マシン) | A host is a name a node is reached at (`publicHost`), and the HTTP `Host` header keeps its name. |
+| 拠点 | ノード or マシン | It does not say which. |
+| server, for a node | node (ノード) | A node is a peer. There is no central server. |
+| user | account (アカウント) for the identity; human (人) for the real person; member (メンバー) for the seat in an org | It does not say which of the three. |
+| person, for a member | member (メンバー) | "Person" stays for the human. |
+| person, for a participant | participant (参加者) | A participant may be an agent. |
+| device, for a push token | push token | A device is a signing key. |
+
+"Host" is also fine as the verb of a node that runs a team's runtime (a *hosted team*), and in the `Host` header.
