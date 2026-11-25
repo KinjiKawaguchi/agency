@@ -31,11 +31,11 @@ describe('an expired sign-in', () => {
     const { client, state } = clientWithSignIn()
     renderApp({ client })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
-    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Start next week.')
+    await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
     state.isExpired = true
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
     expect(await screen.findAllByText(EXPIRED)).not.toHaveLength(0)
-    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
+    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
     expect(screen.queryByText(/Could not send/)).not.toBeInTheDocument()
   })
 

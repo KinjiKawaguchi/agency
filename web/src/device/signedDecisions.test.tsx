@@ -17,7 +17,7 @@ async function enrol(node: ReturnType<typeof createMockNode>, keyStore: ReturnTy
 
 async function approve(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.click(await screen.findByRole('radio', { name: /Approve/ }))
-  await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Start next week.')
+  await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
   await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
 }
 
@@ -38,6 +38,21 @@ describe('deciding with the device key', () => {
     expect(node.decisions()).toMatchObject([{ answerWith: { target: PROPOSAL }, title: 'Add a second frontend agent', choice: 'approve', choiceLabel: 'Approve' }])
   })
 
+  it('signs a comment with its text and no choice', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    await enrol(node, keyStore)
+    renderApp({ node, keyStore })
+    await user.type(await screen.findByLabelText(/^Notes/), 'Can we start in December instead?')
+    await user.click(screen.getByRole('button', { name: 'Send a comment' }))
+    await screen.findByText(/Alice commented on this/)
+    const [signed] = node.envelopes()
+    expect(signed?.body).toMatchObject({ kind: 'answer', target: PROPOSAL, payload: { text: 'Can we start in December instead?' } })
+    expect(signed?.body.payload).not.toHaveProperty('choice')
+    expect(node.decisions()[0]).not.toHaveProperty('choiceLabel')
+  })
+
   it('shows the signed decision in the log with the title and the label of its choice', async () => {
     const user = userEvent.setup()
     const node = createMockNode({ earlierDecisions: false })
@@ -55,11 +70,11 @@ describe('deciding with the device key', () => {
     const node = createMockNode()
     renderApp({ node, enrolled: false })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
-    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Start next week.')
+    await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
     const prompt = await screen.findByText('Add this device to decide. What you wrote is kept.')
     expect(prompt.closest('.doc-cannot-sign')?.querySelector('a')).toHaveAttribute('href', '/devices')
     expect(screen.queryByRole('button', { name: /^Approve with/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
+    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
     expect(node.envelopes()).toHaveLength(0)
   })
 
@@ -113,7 +128,7 @@ describe('deciding with the device key', () => {
     renderApp({ node, keyStore })
     await approve(user)
     expect(await screen.findByText('The team’s node refused the decision: The team’s node says no.')).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Start next week.')
+    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
     await waitFor(() => expect(node.envelopes()).toHaveLength(0))
   })
 })
