@@ -15,7 +15,7 @@ public enum EnvelopeError: Error, Equatable, Sendable {
 ///
 /// A comment is an answer with text and no choice: the team gets the message and nothing is decided.
 public struct DecisionEnvelope: Equatable, Sendable {
-    public enum Kind: String, Sendable {
+    public enum Kind: String, Sendable, Decodable {
         /// Answers a request (`target` is the request id).
         case answer
         /// Decides a board item that waits for a decision (`target` is `repo#N`).
