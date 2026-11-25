@@ -74,8 +74,7 @@ pub struct TeamSnapshot {
     pub viewer: Option<String>,
     /// The ids of the requests that are the viewer's to decide, by the rule in "Requests"
     /// (docs/protocol.md). Clients use this instead of working it out from `to`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mine: Option<Vec<String>>,
+    pub mine: Vec<String>,
     pub source: SnapshotSource,
 }
 
