@@ -113,7 +113,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
             person: &person.id,
         };
         return Ok(TeamSnapshot {
-            mine: Some(mine(&view, &reader)),
+            mine: mine(&view, &reader),
             view,
             viewer: viewer_name(&hosted, &person.id),
             source: SnapshotSource::Local,
@@ -138,7 +138,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         viewer: replica.viewer.as_deref(),
     };
     Ok(TeamSnapshot {
-        mine: Some(mine(&view, &reader)),
+        mine: mine(&view, &reader),
         view,
         viewer: replica.viewer,
         source,
