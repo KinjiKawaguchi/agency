@@ -1,7 +1,7 @@
 # Agency protocol between nodes (v1)
 
 Agency runs organizations in which AI agents and people work together, across many machines.
-There is no central server.
+There is no central service.
 The only central thing is authority (the key of the person who decides for the org); the data is split across machines.
 
 ## Units and writers
@@ -9,8 +9,8 @@ The only central thing is authority (the key of the person who decides for the o
 | Kind | Unit | Writer | Where it lives |
 |---|---|---|---|
 | Execution (activity, requests, decisions, board) | Team (one harness) | The node the harness runs on | The team's node |
-| Governance (departments, people, where teams run, revoked keys) | Org | The org's root key (the person who decides) | Copied to the nodes of the org's teams and of its members |
-| Person (key, memberships) | Account | That person | Their home node |
+| Governance (departments, members, where teams run, revoked keys) | Org | The org's root key (the person who decides) | Copied to the nodes of the org's teams and of its members |
+| Account (key, memberships) | Account | That account's human | Its home node |
 
 Every piece of data has exactly one writer.
 Other nodes only keep replicas and never change them.
@@ -18,7 +18,7 @@ To change something, send a signed envelope to its writer.
 
 ## Identifiers
 
-- Ids of accounts, orgs, teams, departments, and people: `[a-z0-9][a-z0-9-]{0,39}`
+- Ids of accounts, orgs, teams, departments, and members: `[a-z0-9][a-z0-9-]{0,39}`
 - Envelope id: 16 random bytes as hex (32 characters)
 - Time: RFC 3339 in UTC (`2026-11-24T12:00:00Z`)
 
@@ -30,8 +30,8 @@ To change something, send a signed envelope to its writer.
 - Every node must understand P-256 keys before a person adds a P-256 device: a node that does not refuses the org versions that list one.
 - Three kinds of key, each limited to what it may sign:
   - The root key, held by the root's node, signs org definition versions.
-  - A person's account key, held by their home node, signs reads, join requests, and that person's first device. It never signs a decision.
-  - A device key, held by one of the person's clients (a browser, a phone, or the CLI) and never by a node, signs decisions and changes to that person's devices.
+  - An account key, held by the account's home node, signs reads, join requests, and the account's first device in an org. It never signs a decision.
+  - A device key, held by a client (a browser, a phone, or the CLI) and never by a node, signs decisions and changes to its member's devices.
 - Fingerprint: the first 16 bytes of the SHA-256 of the public key's bytes (the 32 bytes of an Ed25519 key, the 65-byte point of a P-256 key, never the text), as hex (32 characters). Invite links carry it, so the invited node can check that the org's root key is genuine.
 - The signed text is a kind line followed by canonical JSON: `agency/v1/<kind>\n` and then the body's canonical JSON. The kinds are `envelope`, `org`, `join`, `read`, and `device`. Because of the kind line, a signature for one kind cannot be reused for another.
 - Canonical JSON: object keys sorted by bytes, no whitespace, strings escaped as standard JSON, integers only, and fields whose value is null left out.
@@ -56,13 +56,13 @@ To change something, send a signed envelope to its writer.
 - Versions start at 1 and grow by 1. `prev` is the hex SHA-256 (64 characters) of the canonical JSON of the previous signed version. Version 1 has no `prev`.
 - A node accepts only the next version of the one it has: the version is one higher, `prev` is the current version's fingerprint, and it is signed by the current root key. A new root is also signed by the previous root key.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
-- `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per person. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
+- `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers; in v1 it can read the same as a member).
 
 ## Devices (kind `device`)
 
-A device change adds or removes one of a person's devices:
+A device change adds or removes one of a member's devices:
 
 ```json
 { "org": "acme", "account": "bob", "op": "add",
@@ -71,12 +71,12 @@ A device change adds or removes one of a person's devices:
 { "org": "acme", "account": "bob", "op": "remove", "device": "phone", "at": "2026-11-24T12:00:00Z" }
 ```
 
-- Who signs: while the person has no devices, only their account key, and only to add the first device. After that, only one of their devices (named by `signer`), never the account key.
-- The person's home node checks the change against its copy of the definition and relays it to the org's root node with `POST /fed/v1/orgs/<org>/devices`. It knows where the root's node is from the invite it joined with, which only the root's node creates. If that node can't be reached, the change waits in the outbox. The root's node answers with the version it wrote, and the home node keeps it. The root node checks the signature, that `account` is a member, and that `at` is at most 7 days old and at most 5 minutes ahead, then applies the change and checks the result like any version. It writes the result as the next org definition version. Like every version, that one is signed by the root key and reaches the other nodes as usual.
+- Who signs: while the member has no devices, only the account key, and only to add the first device. After that, only one of the member's devices (named by `signer`), never the account key.
+- The account's home node checks the change against its copy of the definition and relays it to the org's root node with `POST /fed/v1/orgs/<org>/devices`. It knows where the root's node is from the invite it joined with, which only the root's node creates. If that node can't be reached, the change waits in the outbox. The root's node answers with the version it wrote, and the home node keeps it. The root node checks the signature, that `account` is a member, and that `at` is at most 7 days old and at most 5 minutes ahead, then applies the change and checks the result like any version. It writes the result as the next org definition version. Like every version, that one is signed by the root key and reaches the other nodes as usual.
 - Removing a device also adds its key to `revoked`, so a lost device can never sign again, under any id. A removal takes effect on each node as soon as it holds the new version, including for envelopes still waiting in outboxes.
 - Adding a device works like this:
   1. The new device asks its home node to add it, through the Client API. The node keeps the request for an hour, and at most 10 requests.
-  2. The person compares pairing codes. For the first device, the node's terminal shows the code (`agency device-add`) and signs the change with the account key. No Client API route signs with the account key. For later devices, one of the person's devices lists the request and signs the change. That device can be a client, or the CLI device on the node's terminal once it has been added.
+  2. The person compares pairing codes. For the first device, the node's terminal shows the code (`agency device-add`) and signs the change with the account key. No Client API route signs with the account key. For later devices, one of the member's devices lists the request and signs the change. That device can be a client, or the CLI device on the node's terminal once it has been added.
   3. A device's id is `d-` followed by its pairing code without dashes.
 - Pairing: a new device shows its pairing code, the first 12 hex characters of its key's fingerprint in groups of 4 (`dbc2-9825-1c51`). The person checks that the device that signs the add shows the same code for the key it is adding. The code has 48 bits, so a node that relays the key cannot find another key with the same code while the person is pairing.
 
@@ -101,7 +101,7 @@ A non-member gets 404, so it cannot tell whether the team exists.
 ```
 
 - `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is `repo#N`).
-- `signer` is the id of one of the deciding person's devices. The signature is checked with that device's key, found under the person whose `account` is the envelope's `account`. A signature by an account key is refused.
+- `signer` is the id of one of the deciding member's devices. The signature is checked with that device's key, found under the member whose `account` is the envelope's `account`. A signature by an account key is refused.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, and that its id has not been applied before. A repeated envelope is not applied again; the node answers that it received it.
 - The sending node keeps an envelope it could not deliver in its outbox and retries with backoff (15 s, 30 s, 1 min, 2 min, 5 min, then every 5 min). It does not retry when the receiver refuses with a 4xx (408 and 429 are retried).
 - Nodes accept envelopes signed by a device of the deciding member. The CLI signs with its CLI device, and clients send device-signed envelopes through `POST /api/orgs/<org>/teams/<team>/envelopes`. The home node checks them as the team's node will, and never signs them itself.
@@ -109,9 +109,9 @@ A non-member gets 404, so it cannot tell whether the team exists.
 ## Invites and joining (kind `join`)
 
 1. The root key's node creates an invite. Invite link: `agency:join?node=<node origin>&org=<org>&fp=<root key fingerprint>&code=<code>`. The code is 16 random bytes as base64url. The node keeps only the code's SHA-256. An invite expires after 7 days and can be used once.
-2. The invited person's node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
+2. The invited account's home node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
 3. When the invited person accepts, their node signs a join request and sends it to `POST <node>/fed/v1/orgs/<org>/join`. Body: `{ "org", "code", "account", "label", "publicKey", "at" }`. The signature is checked with the body's `publicKey`, and `at` must be within 10 minutes of the root node's clock.
-4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the person added at the place the invite set (department, role), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox.
+4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the new member added at the place the invite set (department, role), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox.
 
 ## Federation routes
 
@@ -127,7 +127,7 @@ A non-member gets 404, so it cannot tell whether the team exists.
 
 ## TeamView
 
-A TeamView is what a team runtime reports about its team: its people, the requests waiting for a decision, its work items, and its epic forecasts.
+A TeamView is what a team runtime reports about its team: its participants (`people`), the requests waiting for a decision, its work items, and its epic forecasts.
 The node reads it from the team runtime (`view` in agency-runtime/1), returns it from `GET /fed/v1/teams/<org>/<team>/view` as `{ "view": TeamView, "viewer"?: <runtime name> }`, and serves it to clients.
 `viewer` is the signed reader's name in the team runtime (see "Requests" below for the mapping); it is absent when the team does not address the reader.
 A node that reads another node's TeamView parses it into these types before keeping a replica, and drops it if it does not parse.
@@ -141,7 +141,7 @@ Conventions:
 - Keys are camelCase. Numbers are non-negative integers.
 - `Timestamp`: RFC 3339 in UTC, ending in `Z` (`2026-11-24T12:00:00Z`; fractional seconds are allowed). `Date`: a calendar date, `YYYY-MM-DD`. They are different types.
 - An optional field is omitted when absent. It is never written as `null`.
-- People and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org person ids. The team runtime does not know org person ids.
+- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids.
 - Unknown fields are ignored, so a team runtime may add fields before the contract names them.
 
 ```
@@ -165,18 +165,18 @@ EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reas
                 forecast?: { days, at: Timestamp }, basis }
 ```
 
-People:
+Participants (`people`, humans and agents):
 
-- `state` says whether the person is active; `waitingOn` says who has to act before they can continue. A person can be `working` and still wait on someone, for example on a permission prompt: then `waitingOn` names the person who answers the prompt and `status` says it is a permission prompt.
+- `state` says whether the participant is active; `waitingOn` says who has to act before they can continue. A participant can be `working` and still wait on someone, for example on a permission prompt: then `waitingOn` names the participant who answers the prompt and `status` says it is a permission prompt.
 - `waitingOn.person` uses the same names as `Request.to`.
-- Who waits on the reader is decided by the reader's home node and given to clients as `TeamSnapshot.waitingOnViewer`: the `id`s of the people whose `waitingOn` is `person` with the reader's runtime name in that team (`viewer`). Unlike a request's `to`, a name that is not the reader's is never theirs, because `waitingOn` can name anyone on the team, agents included. A reader the team does not address (no `viewer`) has nobody waiting on them.
+- Who waits on the reader is decided by the reader's home node and given to clients as `TeamSnapshot.waitingOnViewer`: the `id`s of the participants whose `waitingOn` is `person` with the reader's runtime name in that team (`viewer`). Unlike a request's `to`, a name that is not the reader's is never theirs, because `waitingOn` can name anyone on the team, agents included. A reader the team does not address (no `viewer`) has nobody waiting on them.
 
 Requests:
 
 - `question`: the team asks something. `proposal`: the team asks for approval of a document (`document`) with options. `pendingDecision`: a board item is blocked until someone decides.
 - `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
-- `to` absent means the team's owner. The node maps runtime names to org people through its hosted-team configuration: `owner` is the org person id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org person id>" }`). A `to` that is not in `people` goes to the owner.
-- In the other direction, an org person's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
+- `to` absent means the team's owner. The node maps runtime names to org members through its hosted-team configuration: `owner` is the org member id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org member id>" }`). A `to` that is not in `people` goes to the owner.
+- In the other direction, an org member's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
 - Which requests are a reader's to decide ("mine") is one rule, computed by the reader's home node and given to clients as `TeamSnapshot.mine`. The desk, the badge counts, and push notifications all use it.
   - In a team on that node, a request is the reader's when its addressee, as above, is the reader. So a request with no `to`, or with a `to` that is not in `people`, is the team owner's.
   - In a team on another node, the home node knows only the reader's runtime name there (`viewer`). A request is the reader's when its `to` is that name, or when it has no `to` and that name is `owner`. A reader who owns that team under another runtime name is not given the requests without `to`; this is a known limit until the team's node reports it.
@@ -199,11 +199,11 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 |---|---|---|
 | `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text> }` |
 | `view` | none | TeamView |
-| `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org person id>, "payload": { "text", "choice"? } }` | `{}` |
+| `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
-- The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay). `by` is the org person who decided.
+- The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay). `by` is the org member who decided.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
@@ -217,9 +217,9 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 ```
 
 - A report covers the last `days` calendar days, today included, in the team runtime's time zone. `byDay` is oldest first; days without use may be left out.
-- People are named by their runtime names, as in TeamView, not by org person ids.
+- Participants are named by their runtime names, as in TeamView, not by org member ids.
 - `costUsd` is an estimate: tokens priced at API rates, in US dollars rounded to cents by the runtime, whatever actually pays for them (a subscription or an API key). It is the one exception to "numbers are non-negative integers": a non-negative JSON number. Token counts are non-negative integers.
-- The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every person has a name. A report that fails is 503.
+- The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every participant has a name. A report that fails is 503.
 - The shared sample is `testdata/tokenusage.sample.json`.
 
 ## Client API
@@ -238,7 +238,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
 | POST | `/api/devices/changes` | Body `Signed<DeviceChange>` for the account, signed by one of its devices. Checked here, then written by the root's node. Answer `DeviceChangeResult`: `applied` (this node holds the root key), `delivered`, or `queued` (with `message`). A refusal by the root's node is 409 |
-| GET | `/api/push/tokens` | `PushTokenList`: the owner's registered APNs device tokens, each `token` shortened to its last 8 characters, with `environment`, `label`, `registeredAt` |
+| GET | `/api/push/tokens` | `PushTokenList`: the owner's registered APNs push tokens, each `token` shortened to its last 8 characters, with `environment`, `label`, `registeredAt` |
 | POST | `/api/push/tokens` | Body `PushTokenInput`: `token` (hex, 32 to 200 characters, stored lowercased), `environment` (`production` or `sandbox`, as the app was signed; the node never guesses), `label` (1 to 80 characters). Registering a known token updates it. Answer the `PushToken` |
 | DELETE | `/api/push/tokens/<token>` | 204, also for an unknown token. A DELETE needs the write token but has no body |
 | GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `choiceLabel`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
@@ -249,7 +249,7 @@ Funding: each configured source (`id`, `label`, `kind` `subscription` or `apiKey
 
 ### Push notifications
 
-When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `bundleId`), the node notifies the owner's registered device tokens through APNs. Without it, nothing is sent.
+When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `bundleId`), the node notifies the owner's registered push tokens through APNs. Without it, nothing is sent.
 
 - The node checks for new requests every 30 seconds. A request waits for the owner when it is the owner's to decide, by the rule in "Requests" (the same set as `TeamSnapshot.mine`, with the same limit for teams on other nodes).
 - Each request is notified once (by `org/team/request id`; the node remembers the last 1000). The first check after the node starts with an empty data directory only records the requests already waiting.
@@ -261,7 +261,7 @@ When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `b
 The node serves the federation routes, the Client API, and the web client on one port. The federation routes are checked only by signatures. The Client API and the web client admit a request only when:
 
 1. it is direct and local: the TCP peer is a loopback address, `Host` is `127.0.0.1:<port>` or `localhost:<port>`, and there is no `cf-ray` or `cf-connecting-ip` header. Any other `Host` gets 421, and a peer beyond loopback gets 403. The peer check is needed because the node may listen beyond loopback for federation, and the sender chooses `Host`; or
-2. it comes through Cloudflare (those headers) or names the configured public host, and carries a valid Cloudflare Access JWT in `Cf-Access-Jwt-Assertion`: RS256 only, signed by a key from `https://<team domain>/cdn-cgi/access/certs` (fetched again for an unknown key id, at most once a minute), the configured audience, issuer `https://<team domain>`, and `exp`/`nbf` within 60 seconds. Without an `access` setting, or with a malformed one, these requests get 403.
+2. it comes through Cloudflare (those headers) or names the configured public host name, and carries a valid Cloudflare Access JWT in `Cf-Access-Jwt-Assertion`: RS256 only, signed by a key from `https://<team domain>/cdn-cgi/access/certs` (fetched again for an unknown key id, at most once a minute), the configured audience, issuer `https://<team domain>`, and `exp`/`nbf` within 60 seconds. Without an `access` setting, or with a malformed one, these requests get 403.
 
 Writes (any method but GET and HEAD) also need:
 

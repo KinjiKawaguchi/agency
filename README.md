@@ -2,21 +2,21 @@
 
 A node for running organizations in which AI agents and people work together, across many machines.
 
-- Each team of agents runs in a harness on its own machine (your laptop, a lab server, a work PC).
+- Each team of agents runs in a harness on its own machine (your laptop, a lab machine, a work PC).
 - From their own node, a person answers what needs deciding (questions, proposals, pending decisions) in every org they belong to.
-- An answer becomes an envelope signed with the decider's key and is delivered to the team's node. If that node is asleep, the envelope waits in the outbox and is delivered when it wakes up (store-and-forward).
+- An answer becomes an envelope signed with a key of the deciding member's device and is delivered to the team's node. If that node is asleep, the envelope waits in the outbox and is delivered when it wakes up (store-and-forward).
 
-There is no central server.
+There is no central service.
 The only central thing is authority (the org's root key); the data is split across machines, and every piece of data has exactly one writer.
-The whole protocol is in [docs/protocol.md](docs/protocol.md).
+The whole protocol is in [docs/protocol.md](docs/protocol.md), and the words it uses are in [docs/glossary.md](docs/glossary.md).
 
 ## Units
 
 | Kind | Unit | Writer |
 |---|---|---|
 | Execution (activity, requests, decisions, board) | Team (one harness) | The node the harness runs on |
-| Governance (departments, people, where teams run, revoked keys) | Org | The org's root key |
-| Person (key, memberships) | Account | That person |
+| Governance (departments, members, where teams run, revoked keys) | Org | The org's root key |
+| Account (key, memberships) | Account | That account's human |
 
 ## Contents
 
@@ -26,6 +26,7 @@ crates/agency-core     Domain, use cases, and ports; no async runtime, network, 
 crates/agency-adapters Port adapters: data directory, HTTP in and out, team runtime commands, system clock, test doubles
 crates/agency-node     Wiring and the `agency` CLI
 docs/protocol.md       The protocol specification
+docs/glossary.md       The terms, in English and Japanese
 testdata/vectors.json  Language-independent test vectors (a key from a fixed seed, canonical JSON, a signature)
 ```
 
@@ -49,7 +50,7 @@ agency --dir ~/.agency invite --org acme --role member
 agency --dir ~/.agency serve
 ```
 
-Join from an invite link and answer (on the invited person's node):
+Join from an invite link and answer (on the invitee's home node):
 
 ```sh
 agency --dir ~/.agency init --account bob --label Bob --url https://bob.example
@@ -95,7 +96,9 @@ To notify the owner's iPhone of new requests, add the APNs key Apple issued for 
 
 ```json
 "push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
-``` See "Client API" in docs/protocol.md for what is checked.
+```
+
+See "Client API" in docs/protocol.md for what is checked.
 
 ## iPhone app
 
@@ -105,12 +108,12 @@ To notify the owner's iPhone of new requests, add the APNs key Apple issued for 
 
 The node never reads or writes a harness's files.
 For each team it hosts, it runs the team's runtime command and speaks agency-runtime/1 (`describe`, `view`, `decide`, and the optional `tokenUsage`) as JSON over stdin and stdout; see docs/protocol.md.
-`team-add --state-dir` configures the scrum harness's runtime, `<scrum> runtime` with `SCRUM_STATE_DIR`, owned by this node's account unless `--owner` names another org person.
+`team-add --state-dir` configures the scrum harness's runtime, `<scrum> runtime` with `SCRUM_STATE_DIR`, owned by this node's account unless `--owner` names another org member.
 
 ## Not yet
 
 - Department heads signing their own department's definition: today only the org's root key signs.
-- Flows for a lost account key, a person who leaves, or a person who loses every device (a lost device is removed from another of their devices).
+- Flows for a lost account key, a member who leaves, or a member who loses every device (a lost device is removed from another of the member's devices).
 
 ## License
 
