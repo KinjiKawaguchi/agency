@@ -170,6 +170,10 @@ The `AgencyModel` module is what the screens show, ported from the web client wi
 
 A reply is one of three things. **Choosing** an option decides the request, with an optional note. **Commenting** is text with no option on a request that has options: the team gets the message and nothing is decided, and the screen says so. **Answering** is words on a request that has no options. The title and the chosen option's label that go to the decision log are cut to 200 characters (Unicode scalars, as the node counts), because the node refuses a longer note.
 
+The `AgencyUI` module holds the SwiftUI screens (iOS and macOS, nothing UIKit-only), and the words are in `AgencyModel` (`Ja`, taken from the web client's Japanese where it has the text), so they are tested on every platform. `DeskStore` is the desk's state: it reads through `NodeClient`, keeps drafts per request across launches, and sends a prepared reply through a sender that signs it. `ReplyControls` decides what can be pressed, so the views only draw it. The rules of the layout come from the owner: no screen scrolls sideways, a long title or id wraps or is cut with the full text one tap away, and nothing explains a keyboard.
+
+The Linux CI job does not build `AgencyUI`. A change to it is checked on a Mac before it is merged: `xcodebuild -scheme AgencyUI -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` in `apple/AgencyKit`, and `swift test`, whose rendering tests draw each screen at a phone's width with `ImageRenderer` (offscreen, nothing launches) and fail when anything is wider than the screen. Set `AGENCY_SNAPSHOT_DIR` to a folder outside the repository to keep the PNGs. They are made from fixtures only.
+
 Two rules in the encoder come from the protocol and are easy to break. Keys sort by their UTF-8 bytes, which is not Swift's string order and not UTF-16 order. Text is never normalized: Swift treats `é` and `e` plus U+0301 as the same string, but they are different signed bytes, so objects keep their members as a list and compare bytes.
 
 ## Not in the app yet

@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "AgencyProtocol", targets: ["AgencyProtocol"]),
         .library(name: "AgencyAPI", targets: ["AgencyAPI"]),
         .library(name: "AgencyModel", targets: ["AgencyModel"]),
+        .library(name: "AgencyUI", targets: ["AgencyUI"]),
     ],
     dependencies: [
         // CryptoKit's API on every platform, so the signing code is tested on Linux too.
@@ -20,6 +21,8 @@ let package = Package(
         .target(name: "AgencyProtocol", dependencies: [.product(name: "Crypto", package: "swift-crypto")]),
         .target(name: "AgencyAPI", dependencies: ["AgencyProtocol"]),
         .target(name: "AgencyModel", dependencies: ["AgencyAPI", "AgencyProtocol"]),
+        .target(name: "AgencyUI", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),
+        .testTarget(name: "AgencyUITests", dependencies: ["AgencyUI", "AgencyModel", "AgencyAPI"]),
         .testTarget(name: "AgencyModelTests", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),
         .testTarget(name: "AgencyAPITests", dependencies: ["AgencyAPI", "AgencyProtocol"]),
         .testTarget(name: "AgencyProtocolTests", dependencies: ["AgencyProtocol", .product(name: "Crypto", package: "swift-crypto")]),

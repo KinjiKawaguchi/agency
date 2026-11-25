@@ -24,12 +24,20 @@ enum Teams {
         viewer: String? = "owner", mine: [String]? = nil, waitingOnViewer: [String]? = nil,
         source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = []
     ) -> Team {
+        Team(snapshot: snapshot(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests))
+    }
+
+    /// The same, as the node's answer.
+    static func snapshot(
+        viewer: String? = "owner", mine: [String]? = nil, waitingOnViewer: [String]? = nil,
+        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = []
+    ) -> TeamSnapshot {
         try! build(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests)
     }
 
     private static func build(
         viewer: String?, mine: [String]?, waitingOnViewer: [String]?, source: [String: Any], addRequests: [[String: Any]]
-    ) throws -> Team {
+    ) throws -> TeamSnapshot {
         var view = try sample()
         var requests = view["requests"] as! [[String: Any]]
         requests += addRequests
@@ -42,7 +50,7 @@ enum Teams {
         ]
         if let viewer { snapshot["viewer"] = viewer }
         let data = try JSONSerialization.data(withJSONObject: snapshot)
-        return Team(snapshot: try JSONDecoder().decode(TeamSnapshot.self, from: data))
+        return try JSONDecoder().decode(TeamSnapshot.self, from: data)
     }
 
     /// One more question, addressed to the person named `to`, with two options.
