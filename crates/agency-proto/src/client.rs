@@ -105,9 +105,14 @@ pub struct DecisionInput {
     /// The request's title, kept in the decision log for people to read (at most 200 characters).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The label of the chosen option, kept in the decision log for people to read (at most 200
+    /// characters). Only with `choice`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice_label: Option<String>,
 }
 
-pub const MAX_TITLE: usize = 200;
+/// The longest `title` and `choiceLabel`, in characters.
+pub const MAX_NOTE: usize = 200;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -206,6 +211,8 @@ pub struct DecisionEntry {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice_label: Option<String>,
     pub decided_at: Timestamp,
     pub state: DecisionState,
 }

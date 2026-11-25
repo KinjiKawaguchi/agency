@@ -8,4 +8,9 @@ export type DecisionInput = { kind: EnvelopeKind, target: string, text: string, 
 /**
  * The request's title, kept in the decision log for people to read (at most 200 characters).
  */
-title?: string, };
+title?: string, 
+/**
+ * The label of the chosen option, kept in the decision log for people to read (at most 200
+ * characters). Only with `choice`.
+ */
+choiceLabel?: string, };

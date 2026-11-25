@@ -1,7 +1,7 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
 use crate::config::HostedTeam;
-use crate::decisions::{decide_titled, Decided, DecisionRecord};
+use crate::decisions::{decide_noted, Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::is_root;
@@ -10,7 +10,7 @@ use crate::views::{runtime_view, viewer_name};
 use agency_proto::client::{
     AccountRef, DecisionEntry, DecisionInput, DecisionLog, DecisionOutcome, DecisionResult,
     DecisionState, Funding, Me, OrgRef, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
-    MAX_TITLE,
+    MAX_NOTE,
 };
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Id, OrgDefinition, Payload, Person, Timestamp};
@@ -144,6 +144,22 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
     })
 }
 
+/// A note's text, trimmed; empty is none. At most `MAX_NOTE` characters.
+fn note_text(raw: Option<String>, field: &str) -> Result<Option<String>> {
+    let text = raw
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+    if text
+        .as_ref()
+        .is_some_and(|text| text.chars().count() > MAX_NOTE)
+    {
+        return Err(Error::bad_request(format!(
+            "{field} is at most {MAX_NOTE} characters"
+        )));
+    }
+    Ok(text)
+}
+
 /// Decides as the node's account. A refusal by the team's node is a conflict: the client should
 /// re-read the team, because the request has most likely been answered or closed.
 pub async fn submit_decision(
@@ -153,23 +169,18 @@ pub async fn submit_decision(
     input: DecisionInput,
 ) -> Result<DecisionResult> {
     membership(node, org)?;
-    let title = input
-        .title
-        .map(|title| title.trim().to_owned())
-        .filter(|title| !title.is_empty());
-    if title
-        .as_ref()
-        .is_some_and(|title| title.chars().count() > MAX_TITLE)
-    {
-        return Err(Error::bad_request(format!(
-            "the title is at most {MAX_TITLE} characters"
-        )));
+    let note = DecisionNote {
+        title: note_text(input.title, "title")?,
+        choice_label: note_text(input.choice_label, "choiceLabel")?,
+    };
+    if note.choice_label.is_some() && input.choice.is_none() {
+        return Err(Error::bad_request("choiceLabel needs a choice"));
     }
     let payload = Payload {
         text: input.text,
         choice: input.choice,
     };
-    let decided = decide_titled(node, org, team, input.kind, input.target, payload, title).await?;
+    let decided = decide_noted(node, org, team, input.kind, input.target, payload, note).await?;
     let (outcome, message) = match decided {
         Decided::Applied => (DecisionOutcome::Applied, None),
         Decided::Delivered => (DecisionOutcome::Delivered, None),
@@ -239,6 +250,7 @@ pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
             title: record.title,
             text: record.payload.text,
             choice: record.payload.choice,
+            choice_label: record.choice_label,
             decided_at,
             state,
         })

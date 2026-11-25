@@ -12,4 +12,4 @@ id: string, org: Id, team: Id, kind: EnvelopeKind,
 /**
  * The request id or work item ref (`repo#N`) it answered.
  */
-target: string, title?: string, text: string, choice?: string, decidedAt: Timestamp, state: DecisionState, };
+target: string, title?: string, text: string, choice?: string, choiceLabel?: string, decidedAt: Timestamp, state: DecisionState, };

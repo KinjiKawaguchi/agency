@@ -21,21 +21,32 @@ pub struct DecisionRecord {
     pub target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice_label: Option<String>,
     pub payload: Payload,
     pub at: String,
     /// Applied to a team on this node; otherwise sent as an envelope, whose delivery the outbox tracks.
     pub is_local: bool,
 }
 
+/// What people read about a decision once its request is gone: the request's title and the label of the
+/// chosen option. Kept in the decision log only; never signed or sent.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DecisionNote {
+    pub title: Option<String>,
+    pub choice_label: Option<String>,
+}
+
 impl DecisionRecord {
-    fn of(envelope: &Envelope, title: Option<String>, is_local: bool) -> Self {
+    fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
         Self {
             id: envelope.id.clone(),
             org: envelope.org.clone(),
             team: envelope.team.clone(),
             kind: envelope.kind,
             target: envelope.target.clone(),
-            title,
+            title: note.title,
+            choice_label: note.choice_label,
             payload: envelope.payload.clone(),
             at: envelope.at.clone(),
             is_local,
@@ -81,18 +92,27 @@ pub async fn decide(
     target: String,
     payload: Payload,
 ) -> Result<Decided> {
-    decide_titled(node, org, team, kind, target, payload, None).await
+    decide_noted(
+        node,
+        org,
+        team,
+        kind,
+        target,
+        payload,
+        DecisionNote::default(),
+    )
+    .await
 }
 
-/// `decide`, keeping the request's title in the decision log.
-pub async fn decide_titled(
+/// `decide`, keeping a note for people in the decision log.
+pub async fn decide_noted(
     node: &Node,
     org: &Id,
     team: &Id,
     kind: EnvelopeKind,
     target: String,
     payload: Payload,
-    title: Option<String>,
+    note: DecisionNote,
 ) -> Result<Decided> {
     let doc = orgs::load(node, org)?;
     let person = doc
@@ -126,7 +146,7 @@ pub async fn decide_titled(
         .hosted(org, team)
         .filter(|_| place.node == node.url())
     {
-        let record = DecisionRecord::of(&envelope, title, true);
+        let record = DecisionRecord::of(&envelope, note, true);
         let decision = RuntimeDecision {
             kind,
             target: envelope.target,
@@ -140,7 +160,7 @@ pub async fn decide_titled(
         node.store().append_decision(&record)?;
         return Ok(Decided::Applied);
     }
-    let record = DecisionRecord::of(&envelope, title, false);
+    let record = DecisionRecord::of(&envelope, note, false);
     let signed = Signed::sign(Kind::Envelope, envelope, node.account(), node.key())
         .map_err(|error| Error::internal(error.to_string()))?;
     let parcel = Parcel::new(
