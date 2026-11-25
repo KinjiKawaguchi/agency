@@ -111,7 +111,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     view.team === 'site'
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
-  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: 'owner', source: sourceOf(view) })
+  // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
+  const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === 'owner').map((request) => request.id)
+  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: 'owner', mine: mineOf(view), source: sourceOf(view) })
 
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {

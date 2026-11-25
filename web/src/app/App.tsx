@@ -8,6 +8,7 @@ import { ApiProvider } from '../api/context'
 import { createApiClient, type ApiClient } from '../api/client'
 import { I18nProvider } from '../i18n'
 import type { Locale } from '../i18n/locale'
+import { NativeBadge } from '../native/NativeBadge'
 import { NativePushRegistration } from '../native/NativePushRegistration'
 import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { ToastProvider } from '../shared/Toasts'
@@ -34,6 +35,7 @@ export function App({ client, history, locale, keyStore }: AppProps) {
               <DeviceKeyProvider>
                 <ToastProvider>
                   <NativePushRegistration />
+                  <NativeBadge />
                   <RouterProvider router={router} />
                 </ToastProvider>
               </DeviceKeyProvider>

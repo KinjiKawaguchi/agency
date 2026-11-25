@@ -16,9 +16,9 @@ export interface DeskItem {
   view: TeamView
   /** Absent when the request comes from something that is not a person on the team, such as the board. */
   drafter: PersonStatus | undefined
-  /** The person it is addressed to. Absent `to` means the viewer. */
+  /** The person it is addressed to: the viewer when it is theirs, otherwise whoever `to` names. */
   decider: PersonStatus | undefined
-  /** True when the request is addressed to the viewer. */
+  /** True when the node lists the request as the viewer's to decide. */
   isMine: boolean
 }
 
@@ -27,16 +27,17 @@ export const canDecide = (item: DeskItem): boolean => item.isMine
 
 export const itemKey = (view: TeamView, request: TeamRequest): string => `${view.org}:${view.team}:${request.id}`
 
-function toItem({ view, viewer }: Team, request: TeamRequest): DeskItem {
-  const to = request.to ?? viewer
-  const isMine = to === viewer
+function toItem({ view, viewer, mine }: Team, request: TeamRequest): DeskItem {
+  // Whose it is is the node's call, because it knows how runtime names map to people; the desk only reads it.
+  const isMine = mine.has(request.id)
+  const to = isMine ? viewer : request.to
   return {
     key: itemKey(view, request),
     group: isMine ? request.kind : 'others',
     request,
     view,
     drafter: personOf(view, request.from),
-    decider: personOf(view, to),
+    decider: to === undefined ? undefined : personOf(view, to),
     isMine,
   }
 }
@@ -60,6 +61,9 @@ function compareItems(a: DeskItem, b: DeskItem): number {
 export function openItems(teams: readonly Team[]): DeskItem[] {
   return teams.flatMap((team) => team.view.requests.map((request) => toItem(team, request))).toSorted(compareItems)
 }
+
+/** The requests the viewer has to decide, across every team: the number on the desk's tab and on the app icon. */
+export const countWaitingOnOwner = (teams: readonly Team[]): number => openItems(teams).filter((item) => item.isMine).length
 
 export interface Situation {
   waitingOnYou: number

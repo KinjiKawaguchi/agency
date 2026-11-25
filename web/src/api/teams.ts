@@ -7,6 +7,8 @@ export interface Team {
   /** The team runtime's name for the person the viewer answers for. */
   viewer: string
   source: SnapshotSource
+  /** Ids of the requests that are the viewer's to decide: the node's rule (docs/protocol.md, "Requests"), never worked out here. */
+  mine: ReadonlySet<string>
 }
 
 /**
@@ -15,6 +17,6 @@ export interface Team {
  */
 export const viewerNameOf = (snapshot: TeamSnapshot): string => snapshot.viewer ?? 'owner'
 
-export const toTeam = (snapshot: TeamSnapshot): Team => ({ view: snapshot.view, viewer: viewerNameOf(snapshot), source: snapshot.source })
+export const toTeam = (snapshot: TeamSnapshot): Team => ({ view: snapshot.view, viewer: viewerNameOf(snapshot), source: snapshot.source, mine: new Set(snapshot.mine ?? []) })
 
 export const teamKey = (team: Team): string => `${team.view.org}/${team.view.team}`
