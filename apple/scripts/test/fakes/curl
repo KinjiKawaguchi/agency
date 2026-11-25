@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Stand-in for curl in the tests: records the request and answers from files in $FAKE_DIR.
+#   $FAKE_LOG          one line per request: METHOD URL BODY
+#   $FAKE_LOG.auth     the Authorization header curl was given on its standard input
+#   $FAKE_DIR/bundle_ids.json, capabilities.json   what the two GET requests answer
+#   $FAKE_DIR/status   when present, the HTTP status to answer instead of 200/201
+method=GET output="" body="" url="" read_config=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) output="$2"; shift 2 ;;
+    -X) method="$2"; shift 2 ;;
+    -d) body="$2"; shift 2 ;;
+    -K) read_config="$2"; shift 2 ;;
+    -w | -H) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+if [ "$read_config" = "-" ]; then
+  cat >> "$FAKE_LOG.auth"
+fi
+printf '%s %s %s\n' "$method" "$url" "$body" >> "$FAKE_LOG"
+
+status=200
+case "$method $url" in
+  "GET "*"/v1/bundleIds?"*) response=$(cat "$FAKE_DIR/bundle_ids.json") ;;
+  "GET "*"/bundleIdCapabilities"*) response=$(cat "$FAKE_DIR/capabilities.json") ;;
+  "POST "*"/v1/bundleIds") status=201 response='{"data":{"id":"NEW-BUNDLE"}}' ;;
+  "POST "*"/v1/bundleIdCapabilities") status=201 response='{"data":{"id":"NEW-CAPABILITY"}}' ;;
+  *) status=404 response='{"errors":[{"title":"Not found","detail":"no such route"}]}' ;;
+esac
+if [ -f "$FAKE_DIR/status" ]; then
+  status=$(cat "$FAKE_DIR/status")
+  response='{"errors":[{"title":"Forbidden","detail":"This key may not do that."}]}'
+fi
+printf '%s' "$response" > "$output"
+printf '%s' "$status"
