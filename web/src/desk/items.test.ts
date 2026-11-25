@@ -59,10 +59,24 @@ describe('whose a request is', () => {
   })
 
   it('lists exactly what the node lists, and none from a node that sends no `mine`, so nothing is decidable on a guess', () => {
-    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: [], source: { kind: 'local' } }).mine.size).toBe(0)
+    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: [], waitingOnViewer: [], source: { kind: 'local' } }).mine.size).toBe(0)
     const oldNode = { view: sampleTeamView, viewer: 'owner', source: { kind: 'local' } } as unknown as TeamSnapshot
     expect(toTeam(oldNode).mine.size).toBe(0)
-    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: ['x'], source: { kind: 'local' } }).mine).toEqual(new Set(['x']))
+    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: ['x'], waitingOnViewer: [], source: { kind: 'local' } }).mine).toEqual(new Set(['x']))
+  })
+})
+
+describe('a team that does not address the viewer', () => {
+  it('has nobody waiting on them, even if `waitingOn` names the owner, and nothing is theirs', () => {
+    const team = { ...teamOf(sampleTeamView), viewer: undefined, mine: new Set<string>(), waitingOnViewer: new Set<string>() }
+    expect(situationOf([team], openItems([team])).waitingOnYou).toBe(0)
+    expect(openItems([team]).every((item) => !item.isMine)).toBe(true)
+  })
+
+  it('counts the people the node lists as waiting on the viewer', () => {
+    const team = teamOf(sampleTeamView)
+    expect(situationOf([team], openItems([team])).waitingOnYou).toBe(1)
+    expect(situationOf([{ ...team, waitingOnViewer: new Set(['backend', 'lead']) }], []).waitingOnYou).toBe(2)
   })
 })
 

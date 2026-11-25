@@ -74,9 +74,9 @@ export interface Situation {
 
 /** The numbers behind the one-line summary. The viewer is not counted among the people. */
 export function situationOf(teams: readonly Team[], items: readonly DeskItem[]): Situation {
-  const others = teams.flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, viewer: team.viewer })))
+  const others = teams.flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, waitingOnViewer: team.waitingOnViewer })))
   return {
-    waitingOnYou: others.filter(({ person, viewer }) => presenceOf(person, viewer) === 'needs-you').length,
+    waitingOnYou: others.filter(({ person, waitingOnViewer }) => presenceOf(person, waitingOnViewer) === 'needs-you').length,
     working: others.filter(({ person }) => person.state === 'working').length,
     total: others.length,
     mine: items.filter((item) => item.isMine).length,

@@ -20,7 +20,7 @@ const RING_ORDER: readonly Presence[] = ['needs-you', 'working', 'waiting', 'idl
 function FaceRow({ teams }: { teams: readonly Team[] }) {
   const { t } = useI18n()
   const people = teams
-    .flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, presence: presenceOf(person, team.viewer) })))
+    .flatMap((team) => team.view.people.filter((person) => person.id !== team.viewer).map((person) => ({ person, presence: presenceOf(person, team.waitingOnViewer) })))
     .toSorted((a, b) => RING_ORDER.indexOf(a.presence) - RING_ORDER.indexOf(b.presence))
   return (
     <Link className="face-row" to="/people" aria-label={t.desk.briefing.seePeople}>

@@ -11,10 +11,10 @@ import './people.css'
 
 function TeamSection({ team }: { team: Team }) {
   const { t } = useI18n()
-  const { view, viewer } = team
+  const { view, viewer, waitingOnViewer } = team
   const others = view.people.filter((person) => person.id !== viewer)
   const working = others.filter((person) => person.state === 'working').length
-  const waiting = others.filter((person) => presenceOf(person, viewer) === 'needs-you').length
+  const waiting = others.filter((person) => presenceOf(person, waitingOnViewer) === 'needs-you').length
   return (
     <section className="crew">
       <header className="crew-head">
