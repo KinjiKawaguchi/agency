@@ -52,7 +52,7 @@ final class PushCoordinator {
 
     func acceptPrompt() {
         Task {
-            let isGranted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            let isGranted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
             if isGranted { UIApplication.shared.registerForRemoteNotifications() }
         }
     }
