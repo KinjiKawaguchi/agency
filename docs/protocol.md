@@ -258,13 +258,8 @@ The node serves the federation routes, the Client API, and the web client on one
 Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
-<<<<<<< HEAD
 - `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
-- through Access, the signed-in email must equal the configured `ownerEmail`, because the node signs decisions with its owner's account key.
-=======
-- `Content-Type: application/json` and a body of at most 64 KiB;
 - through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
->>>>>>> ba80d80 (feat(node)!: accept only device-signed decisions)
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access.
