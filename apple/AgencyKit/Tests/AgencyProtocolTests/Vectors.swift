@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Crypto
 import Foundation
 
@@ -10,40 +11,57 @@ struct Vectors {
         let signer: String
     }
 
+    /// A value and the exact canonical text it must encode to.
+    struct CanonicalCase {
+        let name: String
+        let value: JSONValue
+        let canonical: String
+    }
+
     let accountPublicKey: Data
     let devicePublicKey: Data
     let devicePairingCode: String
     let fingerprint: String
     let envelope: Signed
+    let commentEnvelope: Signed
     let deviceChange: Signed
     let org: Signed
+    let canonicalCases: [CanonicalCase]
 
     static let shared = try! Vectors.load()
 
-    private static func load() throws -> Vectors {
-        // Tests/AgencyProtocolTests/Vectors.swift: five levels up is the repository root.
-        var url = URL(fileURLWithPath: #filePath)
+    static func fileURL(_ path: String, from file: String = #filePath) -> URL {
+        // Tests/AgencyProtocolTests/<file>.swift: five levels up is the repository root.
+        var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }
-        let data = try Data(contentsOf: url.appendingPathComponent("testdata/vectors.json"))
-        let root = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        func object(_ key: String) -> [String: String] { root[key] as! [String: String] }
+        return url.appendingPathComponent(path)
+    }
+
+    private static func load() throws -> Vectors {
+        let root = try JSONParser.parse(Data(contentsOf: fileURL("testdata/vectors.json")))
+        func string(_ value: JSONValue?) -> String { value!.text! }
         func signed(_ key: String) -> Signed {
-            let fields = object(key)
+            let fields = root[key]!
             return Signed(
-                canonical: fields["canonical"]!,
-                signature: Data(base64Encoded: fields["signature"]!)!,
-                signer: fields["signer"] ?? ""
+                canonical: string(fields["canonical"]),
+                signature: Data(base64Encoded: string(fields["signature"]))!,
+                signer: fields["signer"]?.text ?? ""
             )
         }
-        let device = object("device")
+        let device = root["device"]!
+        let cases = root["canonical"]!.items.map {
+            CanonicalCase(name: string($0["name"]), value: $0["value"]!, canonical: string($0["canonical"]))
+        }
         return Vectors(
-            accountPublicKey: Data(base64Encoded: root["publicKey"] as! String)!,
-            devicePublicKey: Data(base64Encoded: device["publicKey"]!)!,
-            devicePairingCode: device["pairingCode"]!,
-            fingerprint: root["fingerprint"] as! String,
+            accountPublicKey: Data(base64Encoded: string(root["publicKey"]))!,
+            devicePublicKey: Data(base64Encoded: string(device["publicKey"]))!,
+            devicePairingCode: string(device["pairingCode"]),
+            fingerprint: string(root["fingerprint"]),
             envelope: signed("envelope"),
+            commentEnvelope: signed("commentEnvelope"),
             deviceChange: signed("deviceChange"),
-            org: signed("org")
+            org: signed("org"),
+            canonicalCases: cases
         )
     }
 

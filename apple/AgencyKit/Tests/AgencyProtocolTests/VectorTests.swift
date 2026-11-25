@@ -58,6 +58,30 @@ struct VectorTests {
         ))
     }
 
+    @Test("every canonical case of the vectors encodes to the Rust side's exact text")
+    func canonicalCases() throws {
+        #expect(vectors.canonicalCases.count >= 8)
+        for item in vectors.canonicalCases {
+            #expect(try CanonicalJSON.encode(item.value) == item.canonical, "\(item.name)")
+        }
+    }
+
+    @Test("a comment-only envelope in Japanese with an emoji, a newline and quotes encodes to the vector and verifies")
+    func commentEnvelope() throws {
+        let envelope = DecisionEnvelope(
+            id: "ffeeddccbbaa99887766554433221100", kind: .answer, org: "acme", team: "app",
+            target: "r-20260101-000000-abcd", text: "来週にしてください 🙏\n\"理由\"は別途", choice: nil,
+            account: "alice", at: "2026-11-24T12:00:00Z"
+        )
+        try envelope.validate()
+        let canonical = try CanonicalJSON.encode(envelope.json)
+        #expect(canonical == vectors.commentEnvelope.canonical)
+        #expect(!canonical.contains("choice"))
+        #expect(Vectors.verifies(
+            vectors.devicePublicKey, signature: vectors.commentEnvelope.signature, kind: "envelope", canonical: canonical
+        ))
+    }
+
     @Test("a signature for one kind does not verify as another")
     func kindIsPartOfTheText() {
         #expect(!Vectors.verifies(

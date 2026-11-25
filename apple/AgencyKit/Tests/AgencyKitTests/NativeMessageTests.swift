@@ -54,7 +54,7 @@ import JavaScriptCore
 @Suite("NativeMessage from JavaScript values")
 struct NativeMessageJavaScriptTests {
     private func parse(_ literal: String) -> NativeMessage? {
-        let context = JSContext()!
+        let context = JavaScript.makeContext()
         guard let body = context.evaluateScript("(\(literal))")?.toObject() else { return nil }
         return NativeMessage(body: body)
     }

@@ -160,6 +160,12 @@ What has to be in place outside the repository:
 
 The native screens of agency#77 build and sign decisions in Swift. The `AgencyProtocol` module of `apple/AgencyKit` holds that code: canonical JSON, the signed text (`agency/v1/<kind>`, a newline, the canonical JSON), the decision envelope with the shape checks the node makes, and the key fingerprint with the pairing code and device id. Its tests read `testdata/vectors.json`, which the Rust side produces: each body is built in Swift and has to encode to the vector's canonical JSON, and the vector's Ed25519 signatures have to verify over the bytes Swift made. A change of the protocol that the Swift code does not follow fails those tests.
 
+The `AgencyAPI` module is the client of the home node's Client API (`NodeClient`, with the transport behind a protocol) and the wire types it reads (`Me`, `TeamSnapshot` with its `TeamView`, `DecisionLog`, `DecisionResult`, `Session`). Each type decodes the node's real answer in `testdata/client/`, which the Rust tests record and fail on when it changes, so a field the node renames or drops fails a Swift test before it reaches a screen. A value the client does not know (a new request kind, a new decision state) fails to decode instead of being read as another. The client's rules:
+
+- Every request carries the Access token as `cf-access-token`. A redirect is Access ending the session: the client throws `sessionExpired` and never follows it.
+- A write also carries the write token from `GET /api/session`, fetched on first use and once more after a 403 (the token changes when the node restarts). A second 403 is the answer.
+- The same call gives the node's time. A signed envelope's `at` comes from `nodeNow()`, because the node refuses an envelope more than five minutes ahead of its own clock.
+
 Two rules in the encoder come from the protocol and are easy to break. Keys sort by their UTF-8 bytes, which is not Swift's string order and not UTF-16 order. Text is never normalized: Swift treats `é` and `e` plus U+0301 as the same string, but they are different signed bytes, so objects keep their members as a list and compare bytes.
 
 ## Not in the app yet
