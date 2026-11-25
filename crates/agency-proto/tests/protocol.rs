@@ -159,8 +159,67 @@ fn signature_is_bound_to_its_kind() {
     );
 }
 
+/// Canonical JSON edge cases another implementation must write byte for byte: text people type (non-ASCII,
+/// astral emoji, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed and
+/// decomposed characters, which are never normalized), keys whose UTF-8 order
+/// differs from their UTF-16 order, nulls, and integers.
+fn canonical_cases() -> serde_json::Value {
+    let cases = [
+        (
+            "non-ASCII",
+            serde_json::json!({ "text": "リリースは来週に 🚀 Ünïcødé" }),
+        ),
+        (
+            "quotes, backslash, slash",
+            serde_json::json!({ "text": "\"quoted\" back\\slash /slash </script>" }),
+        ),
+        (
+            "control characters",
+            serde_json::json!({ "text": "line\nnext\ttab\rreturn\u{8}\u{c}\u{0}\u{1f}" }),
+        ),
+        (
+            "precomposed and decomposed, unnormalized",
+            serde_json::json!({ "text": "caf\u{e9} cafe\u{301} \u{30ac} \u{30ab}\u{3099}" }),
+        ),
+        (
+            "DEL and line separators",
+            serde_json::json!({ "text": "\u{7f} \u{2028} \u{2029}" }),
+        ),
+        (
+            "keys by UTF-8 bytes",
+            serde_json::json!({ "😀": 1, "～": 2, "日本": 3, "Z": 4, "a": 5, "": 6 }),
+        ),
+        (
+            "nulls",
+            serde_json::json!({ "a": null, "b": [null, 1], "c": { "d": null } }),
+        ),
+        (
+            "integers",
+            serde_json::json!({ "zero": 0, "negative": -1, "max": 9_007_199_254_740_991_i64 }),
+        ),
+    ];
+    cases
+        .into_iter()
+        .map(|(name, value)| {
+            let text = agency_proto::canonical::canonical(&value);
+            serde_json::json!({ "name": name, "value": value, "canonical": text })
+        })
+        .collect()
+}
+
+/// A comment: text and no choice.
+fn comment_envelope() -> Envelope {
+    let mut body = envelope(AT);
+    body.id = EnvelopeId::try_from("ffeeddccbbaa99887766554433221100".to_owned()).unwrap();
+    body.payload = Payload {
+        text: "来週にしてください 🙏\n\"理由\"は別途".into(),
+        choice: None,
+    };
+    body
+}
+
 /// Test vectors: canonical JSON and signatures of fixed bodies with keys from fixed seeds: the account key (seed 7) signs
-/// the org definition and the first device change, and the device key (seed 9) signs the envelope. Another implementation
+/// the org definition and the first device change, and the device key (seed 9) signs the envelope and a comment. Another implementation
 /// must produce the same values.
 #[test]
 fn vectors_match_testdata() {
@@ -184,6 +243,9 @@ fn vectors_match_testdata() {
         at: Timestamp::parse(AT).unwrap(),
     };
     let change = Signed::sign(Kind::Device, first_device.clone(), id("alice"), &key).unwrap();
+    let comment = comment_envelope();
+    let signed_comment =
+        Signed::sign(Kind::Envelope, comment.clone(), id("laptop"), &device_key).unwrap();
     let actual = serde_json::json!({
         "seed": "0707070707070707070707070707070707070707070707070707070707070707",
         "publicKey": key.public().encoded(),
@@ -196,6 +258,8 @@ fn vectors_match_testdata() {
         "envelope": { "canonical": canonical_of(&body).unwrap(), "signer": "laptop", "signature": signed.signature },
         "deviceChange": { "canonical": canonical_of(&first_device).unwrap(), "signer": "alice", "signature": change.signature },
         "org": { "canonical": canonical_of(&org.body).unwrap(), "signature": org.signature, "digest": org.digest() },
+        "commentEnvelope": { "canonical": canonical_of(&comment).unwrap(), "signer": "laptop", "signature": signed_comment.signature },
+        "canonical": canonical_cases(),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
     if std::env::var("AGENCY_WRITE_VECTORS").is_ok() {
