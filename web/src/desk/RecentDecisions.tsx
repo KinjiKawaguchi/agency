@@ -44,7 +44,7 @@ function DecidedRow({ entry, teamLabel }: { entry: DecisionEntry; teamLabel: str
         <span className={`decided-tag tag-${kind}`}>{t.desk.recent.states[kind]}</span>
       </div>
       <p className="decided-answer">
-        {entry.choice === undefined ? null : <b>{t.desk.recent.chose(entry.choice)}</b>}
+        {entry.choice === undefined ? null : <b>{t.desk.recent.chose(entry.choiceLabel ?? entry.choice)}</b>}
         {entry.choice !== undefined && entry.text !== '' ? ' ' : null}
         {entry.text}
       </p>

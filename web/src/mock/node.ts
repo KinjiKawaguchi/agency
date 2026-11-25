@@ -66,7 +66,7 @@ const MAX_LIMIT = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|decisions|usage)$/
 
-const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string; title?: string } =>
+const isAnswerWith = (body: unknown): body is AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string } =>
   typeof body === 'object' && body !== null && 'kind' in body && 'target' in body && 'text' in body && typeof body.text === 'string'
 
 const teamKey = (org: string, team: string): string => `${org}/${team}`
@@ -106,13 +106,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (!isAnswerWith(body)) return failure(400, 'The decision body is malformed.')
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
-    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }) }]
+    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
     views = new Map([...views, [teamKey(view.org, view.team), { ...view, requests: view.requests.filter((one) => one !== target) }]])
     const outcome = options.outcome ?? 'applied'
     const state: DecisionEntry['state'] =
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
-      { id: `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }) },
+      { id: `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)

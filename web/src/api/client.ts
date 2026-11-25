@@ -41,8 +41,10 @@ export interface ApiClient {
 
 const segment = encodeURIComponent
 
-/** The longest title the node keeps in its decision log. */
-const MAX_TITLE = 200
+/** The longest title or option label the node keeps in its decision log. */
+const MAX_LOGGED_TEXT = 200
+
+const forLog = (text: string): string => [...text.trim()].slice(0, MAX_LOGGED_TEXT).join('')
 
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
@@ -89,8 +91,10 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
-    decide: ({ org, team, answerWith, choice, text, title }) => {
-      const input: DecisionInput = { ...answerWith, text, title: [...title].slice(0, MAX_TITLE).join(''), ...(choice === undefined ? {} : { choice }) }
+    decide: ({ org, team, answerWith, choice, choiceLabel, text, title }) => {
+      // The node refuses a label that comes without a choice, so the two travel together or not at all.
+      const chosen = choice === undefined ? {} : { choice, ...(choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }) }
+      const input: DecisionInput = { ...answerWith, text, title: forLog(title), ...chosen }
       return dispatch(
         new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
           method: 'POST',
