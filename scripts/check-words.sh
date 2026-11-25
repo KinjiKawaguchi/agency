@@ -9,16 +9,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 shopt -s nullglob
 
-# Japanese. ホスト is allowed only as part of ホスト名 (the public host name).
+# Japanese. ホスト is allowed only as part of ホスト名 (the public host name), and in two phrases that are not
+# about a node or a machine of ours: セルフホスト (Cloudflare's "self-hosted" application type) and
+# Apple のサーバー (Apple's own servers).
 JAPANESE='拠点|コンピュータ|サーバ|ユーザ|ホスト|デバイス|判断のお願い'
 # English: a computer is a machine, a server is a node, a user is an account, a human, or a member.
 ENGLISH='(^|[^A-Za-z])(computer|server|user|host)s?([^A-Za-z]|$)'
 
 failed=0
 
-# Prints the file's lines with comments and the allowed ホスト名 blanked out, so line numbers still match.
+# Prints the file's lines with comments and the allowed phrases blanked out, so line numbers still match.
 visible() {
-  sed -E 's|^[[:space:]]*//.*$||; s/ホスト名//g' "$1"
+  sed -E 's|^[[:space:]]*//.*$||; s/ホスト名//g; s/セルフホスト//g; s/Apple のサーバー//g' "$1"
 }
 
 check() {
