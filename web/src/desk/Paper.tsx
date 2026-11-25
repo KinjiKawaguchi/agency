@@ -79,7 +79,7 @@ function DecideForm({ item, draft, isSending, signing, onChange, onSend }: Pick<
           <button className="btn primary big" type="button" disabled={isSending} onClick={onSend}>
             {isSending ? t.desk.paper.sending : chosen === undefined ? t.desk.paper.send(verb) : t.desk.paper.sendWith(verb, chosen.text)}
           </button>
-          <span className="hint">
+          <span className="hint keys-only">
             <span className="kbd">⌘</span> <span className="kbd">Enter</span> {t.desk.paper.shortcutSend}
             {options.length > 0 ? ` · ${t.desk.paper.shortcutPick}` : ''}
           </span>
