@@ -24,12 +24,15 @@ To change something, send a signed envelope to its writer.
 
 ## Keys and signatures
 
-- Keys are Ed25519. A public key is written as its 32 bytes in standard base64 with `=` padding.
+- Root and account keys are Ed25519; a definition that lists any other kind is refused. A device key is Ed25519 or P-256, so a phone can keep it in hardware that only does P-256.
+- An Ed25519 public key is written as its 32 bytes in standard base64 with `=` padding. A P-256 public key is written as `p256:` and its 65-byte uncompressed point (`0x04`, x, y) in standard base64 with `=` padding. No other form is read (not the compressed point), so a key has one text, one fingerprint, and one device id.
+- An Ed25519 signature is its 64 bytes in standard base64. A P-256 signature is ECDSA with SHA-256 over the signed text, written as 64 bytes (`r` then `s`, 32 bytes each) in standard base64; either `s` is accepted (replay protection keys on the envelope id, not on the signature).
+- Every node must understand P-256 keys before a person adds a P-256 device: a node that does not refuses the org versions that list one.
 - Three kinds of key, each limited to what it may sign:
   - The root key, held by the root's node, signs org definition versions.
   - A person's account key, held by their home node, signs reads, join requests, and that person's first device. It never signs a decision.
   - A device key, held by one of the person's clients (a browser, a phone, or the CLI) and never by a node, signs decisions and changes to that person's devices.
-- Fingerprint: the first 16 bytes of the SHA-256 of the public key's 32 bytes, as hex (32 characters). Invite links carry it, so the invited node can check that the org's root key is genuine.
+- Fingerprint: the first 16 bytes of the SHA-256 of the public key's bytes (the 32 bytes of an Ed25519 key, the 65-byte point of a P-256 key, never the text), as hex (32 characters). Invite links carry it, so the invited node can check that the org's root key is genuine.
 - The signed text is a kind line followed by canonical JSON: `agency/v1/<kind>\n` and then the body's canonical JSON. The kinds are `envelope`, `org`, `join`, `read`, and `device`. Because of the kind line, a signature for one kind cannot be reused for another.
 - Canonical JSON: object keys sorted by bytes, no whitespace, strings escaped as standard JSON, integers only, and fields whose value is null left out.
 - A signed document: `{ "body": <body>, "signer": <id>, "signature": <base64> }`. `signer` is an account id, or, for a document signed with a device key, that device's id.
@@ -270,5 +273,5 @@ If Cloudflare Access protects the node's public host name, its policy must bypas
 
 ## Test vectors
 
-`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope and a comment (text without a choice). `canonical` lists values with the canonical text each must become: non-ASCII and astral characters, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed next to decomposed characters (never normalized), keys whose UTF-8 order differs from their UTF-16 order, nulls, and integers. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures.
+`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope and a comment (text without a choice). `canonical` lists values with the canonical text each must become: non-ASCII and astral characters, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed next to decomposed characters (never normalized), keys whose UTF-8 order differs from their UTF-16 order, nulls, and integers. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures. `p256Device` is a P-256 device key (private scalar `0b…`) with its text, fingerprint, pairing code, and device id, and its signature over the comment's signed text. ECDSA signatures from other signers differ byte for byte; a client checks that this one verifies and that its own signature over the same text verifies with the key.
 An implementation in another language must produce the same values.

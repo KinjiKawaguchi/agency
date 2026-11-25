@@ -207,6 +207,31 @@ fn canonical_cases() -> serde_json::Value {
         .collect()
 }
 
+/// A P-256 device key from a fixed private scalar, and its signature over the comment envelope's signed
+/// text. ECDSA here follows RFC 6979, so the signature repeats; signatures from other signers differ and
+/// must still verify.
+fn p256_device(comment: &str) -> serde_json::Value {
+    use base64::Engine;
+    use p256::ecdsa::signature::Signer;
+    let scalar = [0x0b_u8; 32];
+    let key = p256::ecdsa::SigningKey::from_slice(&scalar).unwrap();
+    let point = key.verifying_key().to_encoded_point(false);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(point.as_bytes());
+    let public = agency_proto::PublicKey::try_from(format!("p256:{encoded}")).unwrap();
+    let message = Kind::Envelope.message(comment);
+    let signature: p256::ecdsa::Signature = key.sign(&message);
+    let signature = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+    assert!(public.verify(&message, &signature));
+    serde_json::json!({
+        "privateKey": "0b".repeat(32),
+        "publicKey": public.encoded(),
+        "fingerprint": public.fingerprint(),
+        "pairingCode": public.pairing_code(),
+        "deviceId": public.device_id(),
+        "commentSignature": signature,
+    })
+}
+
 /// A comment: text and no choice.
 fn comment_envelope() -> Envelope {
     let mut body = envelope(AT);
@@ -219,7 +244,8 @@ fn comment_envelope() -> Envelope {
 }
 
 /// Test vectors: canonical JSON and signatures of fixed bodies with keys from fixed seeds: the account key (seed 7) signs
-/// the org definition and the first device change, and the device key (seed 9) signs the envelope and a comment. Another implementation
+/// the org definition and the first device change, the device key (seed 9) signs the envelope and a comment, and a
+/// P-256 device key signs the same comment. Another implementation
 /// must produce the same values.
 #[test]
 fn vectors_match_testdata() {
@@ -260,6 +286,7 @@ fn vectors_match_testdata() {
         "org": { "canonical": canonical_of(&org.body).unwrap(), "signature": org.signature, "digest": org.digest() },
         "commentEnvelope": { "canonical": canonical_of(&comment).unwrap(), "signer": "laptop", "signature": signed_comment.signature },
         "canonical": canonical_cases(),
+        "p256Device": p256_device(&canonical_of(&comment).unwrap()),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
     if std::env::var("AGENCY_WRITE_VECTORS").is_ok() {

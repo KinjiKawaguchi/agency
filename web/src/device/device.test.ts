@@ -93,6 +93,16 @@ describe('the device key', () => {
     expect(await crypto.subtle.verify('Ed25519', pair.publicKey, signature, signedText('device', body))).toBe(false)
   })
 
+  it('verifies the P-256 device vector with WebCrypto, which uses the same raw r and s', async () => {
+    const vector = vectors.p256Device
+    const point = fromBase64(vector.publicKey.replace(/^p256:/, ''))
+    const key = await crypto.subtle.importKey('raw', point, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+    const text = signedText('envelope', parse(vectors.commentEnvelope.canonical))
+    const ecdsa = { name: 'ECDSA', hash: 'SHA-256' }
+    expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.commentSignature), text)).toBe(true)
+    expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.commentSignature), signedText('device', parse(vectors.commentEnvelope.canonical)))).toBe(false)
+  })
+
   it('cannot be read out of the browser', async () => {
     const pair = await vectorKeyPair()
     await expect(crypto.subtle.exportKey('pkcs8', pair.privateKey)).rejects.toThrow()
