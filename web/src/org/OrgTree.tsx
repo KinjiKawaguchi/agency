@@ -2,20 +2,14 @@ import { useI18n } from '../i18n'
 import { AgentCard, DepartmentCard, PersonCard, TeamCard } from './OrgNodes'
 import type { OrgTree as Tree, TeamNode, UnitChild } from './tree'
 
-/** The agents of a team: the lead first, the others in a column beneath. */
+/** The agents of a team in one row under it, the lead first. */
 function Agents({ node }: { node: TeamNode }) {
   if (node.agents.length === 0) return null
-  const lead = node.agents.find((agent) => agent.isLead)
-  const members = node.agents.filter((agent) => agent !== lead)
+  const agents = [...node.agents.filter((agent) => agent.isLead), ...node.agents.filter((agent) => !agent.isLead)]
   return (
-    <ul className="oc-agents">
-      {lead === undefined ? null : (
-        <li>
-          <AgentCard agent={lead} />
-        </li>
-      )}
-      {members.map((agent) => (
-        <li key={agent.person.id} className={lead === undefined ? undefined : 'member'}>
+    <ul>
+      {agents.map((agent) => (
+        <li key={agent.person.id}>
           <AgentCard agent={agent} />
         </li>
       ))}
