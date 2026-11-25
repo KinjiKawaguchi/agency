@@ -1,3 +1,4 @@
+import { toTeam } from '../api/teams'
 import { sampleTeamView } from '../api/teamview'
 import { teamOf, withRequestFor } from '../test/views'
 import { blockedPeople, canDecide, openItems, resolveSelection, situationOf, stepSelection } from './items'
@@ -33,6 +34,32 @@ describe('the viewer in a team', () => {
       ['Drop support for the old export format?', true],
       ['Add a second frontend agent', false],
     ])
+  })
+})
+
+describe('whose a request is', () => {
+  const ids = sampleTeamView.requests.map((request) => request.id)
+
+  it('is the node’s call: what it lists as the viewer’s is theirs, whatever `to` says', () => {
+    // A request addressed to a runtime name the desk has never heard of, which the node gives to the owner.
+    const view = withRequestFor('someone-unmapped')
+    const extra = view.requests.at(-1)?.id ?? ''
+    const items = openItems([teamOf(view, 'owner', [...ids, extra])])
+    expect(items.every((item) => item.isMine)).toBe(true)
+    expect(items.find((item) => item.request.id === extra)?.group).toBe('question')
+  })
+
+  it('does not take a request for the viewer’s because `to` is absent, when the node does not list it', () => {
+    // A team where the viewer is not the owner: the node leaves the unaddressed requests out of `mine`.
+    const items = openItems([teamOf(sampleTeamView, 'lead', [])])
+    expect(items.map((item) => item.isMine)).toEqual([false, false, false])
+    expect(items.map((item) => item.group)).toEqual(['others', 'others', 'others'])
+    expect(items.every((item) => !canDecide(item))).toBe(true)
+  })
+
+  it('treats a snapshot without `mine` as listing none, so nothing is decidable on a guess', () => {
+    expect(toTeam({ view: sampleTeamView, viewer: 'owner', source: { kind: 'local' } }).mine.size).toBe(0)
+    expect(toTeam({ view: sampleTeamView, viewer: 'owner', mine: ['x'], source: { kind: 'local' } }).mine).toEqual(new Set(['x']))
   })
 })
 

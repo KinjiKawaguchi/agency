@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp } from '../test/render'
 import { en } from './en'
@@ -46,10 +46,10 @@ describe('locale', () => {
   it('shows Japanese when asked and switches back from the language menu', async () => {
     const user = userEvent.setup()
     renderApp({ locale: 'ja' })
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('1 人があなたの返事を待っています。')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 人があなたの返事を待っています。'))
     expect(document.documentElement.lang).toBe('ja')
     await user.selectOptions(screen.getByRole('combobox', { name: '言語' }), 'en')
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('1 person is waiting for your answer.')
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 person is waiting for your answer.'))
     expect(document.documentElement.lang).toBe('en')
     expect(window.localStorage.getItem('agency.locale')).toBe('en')
   })

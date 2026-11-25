@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useTeams } from '../api/queries'
-import { openItems } from '../desk/items'
+import { countWaitingOnOwner } from '../desk/items'
 import { useI18n } from '../i18n'
 import { LOCALES, LOCALE_NAMES, isLocale } from '../i18n/locale'
 import { Face } from '../people/Face'
@@ -18,7 +18,7 @@ export function AppBar() {
   const { t, locale, setLocale } = useI18n()
   const { theme, setTheme } = useTheme()
   const { me, teams } = useTeams()
-  const waiting = me === undefined ? 0 : openItems(teams).filter((item) => item.isMine).length
+  const waiting = me === undefined ? 0 : countWaitingOnOwner(teams)
   const themeLabels = THEME_LABELS(t)
 
   useEffect(() => {
