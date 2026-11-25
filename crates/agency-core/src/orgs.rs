@@ -26,7 +26,8 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
     doc.body.root.account == node.account() && doc.body.root.public_key == node.key().public()
 }
 
-/// Saves a new version and queues it for every other node that hosts one of the org's teams.
+/// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that
+/// run here are skipped even if their place names another origin.
 pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
     node.store().save_org(doc)?;
     let me = node.url();
@@ -34,6 +35,7 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
         .body
         .teams
         .iter()
+        .filter(|team| !node.runs_here(&doc.body.org, &team.id))
         .map(|team| team.node.clone())
         .filter(|url| url != &me)
         .collect();
@@ -122,6 +124,54 @@ pub fn add_team(node: &Node, org: &Id, team: TeamPlace) -> Result<SignedOrg> {
         body.teams.push(team);
         Ok(())
     })
+}
+
+/// Moves a team's place to another node origin: the next version, changed only there. A malformed origin
+/// fails the definition's own check (`validate`). Other nodes route
+/// to the team by its place, so after this node's URL changes, its teams are moved to the new origin.
+pub fn move_team(node: &Node, org: &Id, team: &Id, origin: String) -> Result<SignedOrg> {
+    amend(node, org, |body| {
+        let place = body
+            .teams
+            .iter_mut()
+            .find(|place| &place.id == team)
+            .ok_or_else(|| Error::not_found(format!("team {team} is not in org {org}")))?;
+        if place.node == origin {
+            return Err(Error::new(
+                ErrorKind::Conflict,
+                format!("team {team} is already at {origin}"),
+            ));
+        }
+        place.node = origin;
+        Ok(())
+    })
+}
+
+/// A team that runs on this node, while its org places it elsewhere (or not at all). It still runs and
+/// is served here, but other nodes look for it at `place`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Misplaced {
+    pub org: Id,
+    pub team: Id,
+    pub place: Option<String>,
+}
+
+/// The hosted teams whose place in their org is not this node's URL.
+pub fn misplaced_teams(node: &Node) -> Vec<Misplaced> {
+    let config = node.config();
+    let misplaced = config.teams.iter().filter_map(|hosted| {
+        let doc = node.store().load_org(&hosted.org);
+        let place = doc
+            .as_ref()
+            .and_then(|doc| doc.body.team(&hosted.team))
+            .map(|place| place.node.clone());
+        (place.as_deref() != Some(config.url.as_str())).then(|| Misplaced {
+            org: hosted.org.clone(),
+            team: hosted.team.clone(),
+            place,
+        })
+    });
+    misplaced.collect()
 }
 
 /// The org definition for a member's signed read, or for anyone with an open invite code.

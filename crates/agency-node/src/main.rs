@@ -74,6 +74,17 @@ enum Command {
         #[arg(long)]
         node: Option<String>,
     },
+    /// Moves a team's place in the org to another node origin (on the root key's node), for example after
+    /// this node's URL changed
+    TeamMove {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        team: String,
+        /// The node origin other nodes reach the team at (http(s)://host[:port])
+        #[arg(long)]
+        node: String,
+    },
     /// Creates an invite link to an org (on the root key's node)
     Invite {
         #[arg(long)]
@@ -230,6 +241,7 @@ fn status(node: &Node) {
             team.runtime.command.join(" ")
         );
     }
+    warn_misplaced(node, |line| println!("{line}"));
     for parcel in pending(node) {
         println!(
             "Outbox: {} -> {} ({} attempts, {})",
@@ -238,6 +250,17 @@ fn status(node: &Node) {
             parcel.attempts,
             parcel.last_error.unwrap_or_default()
         );
+    }
+}
+
+/// Says which teams run here while their org places them elsewhere, and how to fix it.
+fn warn_misplaced(node: &Node, write: impl Fn(String)) {
+    for misplaced in orgs::misplaced_teams(node) {
+        let place = misplaced.place.unwrap_or_else(|| "nowhere".to_owned());
+        write(format!(
+            "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
+            misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()
+        ));
     }
 }
 
@@ -260,6 +283,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let port = listener.local_addr()?.port();
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
+    warn_misplaced(&node, |line| eprintln!("agency: {line}"));
     println!("Web client: http://127.0.0.1:{port}/");
     let background = node.clone();
     tokio::spawn(async move {
@@ -359,6 +383,17 @@ async fn run(cli: Cli) -> Result<()> {
             }
             println!(
                 "Added team {team} to org {org} (version {})",
+                doc.body.version
+            );
+        }
+        Command::TeamMove {
+            org,
+            team,
+            node: origin,
+        } => {
+            let doc = orgs::move_team(&node, &id(&org)?, &id(&team)?, origin.clone())?;
+            println!(
+                "Moved team {team} of org {org} to {origin} (version {})",
                 doc.body.version
             );
         }

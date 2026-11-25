@@ -117,8 +117,13 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
 
 /// Takes a newer org definition from one of the org's other nodes, if it has one.
 async fn refresh_definition(node: &Node, doc: &SignedOrg) {
-    let me = node.url();
-    let Some(place) = doc.body.teams.iter().find(|place| place.node != me) else {
+    let org = &doc.body.org;
+    let Some(place) = doc
+        .body
+        .teams
+        .iter()
+        .find(|place| !node.runs_here(org, &place.id))
+    else {
         return;
     };
     let path = routes::definition(&doc.body.org);
@@ -140,7 +145,6 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
 
 /// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to.
 pub async fn refresh(node: &Node) -> Result<()> {
-    let me = node.url();
     let account = node.account();
     for doc in node
         .store()
@@ -148,8 +152,10 @@ pub async fn refresh(node: &Node) -> Result<()> {
         .into_iter()
         .filter(|doc| doc.body.member(&account).is_some())
     {
-        for place in doc.body.teams.iter().filter(|place| place.node != me) {
-            refresh_replica(node, &doc.body.org, place).await?;
+        let org = &doc.body.org;
+        let elsewhere = doc.body.teams.iter();
+        for place in elsewhere.filter(|place| !node.runs_here(org, &place.id)) {
+            refresh_replica(node, org, place).await?;
         }
         refresh_definition(node, &doc).await;
     }

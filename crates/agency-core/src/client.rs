@@ -1,6 +1,5 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
-use crate::config::HostedTeam;
 use crate::decisions::{decide_noted, Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
@@ -28,16 +27,8 @@ pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
     Ok((doc, person))
 }
 
-/// The hosted team, if the team runs on this node.
-pub(crate) fn local_team(node: &Node, org: &Id, place: &TeamPlace) -> Option<HostedTeam> {
-    let config = node.config();
-    (place.node == config.url)
-        .then(|| config.hosted(org, &place.id).cloned())
-        .flatten()
-}
-
 fn team_ref(node: &Node, org: &Id, place: &TeamPlace, person: &Person) -> TeamRef {
-    let (location, viewer) = match local_team(node, org, place) {
+    let (location, viewer) = match node.hosted(org, &place.id) {
         Some(hosted) => (TeamLocation::Local, viewer_name(&hosted, &person.id)),
         None => (
             TeamLocation::Remote,
@@ -115,7 +106,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         .body
         .team(team)
         .ok_or_else(|| Error::not_found("not found"))?;
-    if let Some(hosted) = local_team(node, org, place) {
+    if let Some(hosted) = node.hosted(org, &place.id) {
         let view = runtime_view(node, &hosted).await?;
         return Ok(TeamSnapshot {
             view,

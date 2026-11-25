@@ -144,11 +144,7 @@ pub async fn decide_noted(
         at: node.now_text(),
     };
     envelope.validate().map_err(Error::bad_request)?;
-    if let Some(hosted) = node
-        .config()
-        .hosted(org, team)
-        .filter(|_| place.node == node.url())
-    {
+    if let Some(hosted) = node.hosted(org, team) {
         let record = DecisionRecord::of(&envelope, note, true);
         let decision = RuntimeDecision {
             kind,
@@ -157,7 +153,7 @@ pub async fn decide_noted(
             payload: envelope.payload,
         };
         node.runtime()
-            .decide(hosted, decision)
+            .decide(&hosted, decision)
             .await
             .map_err(runtime_refusal)?;
         node.store().append_decision(&record)?;

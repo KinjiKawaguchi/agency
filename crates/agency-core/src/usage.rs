@@ -1,6 +1,6 @@
 //! Token usage per team: read from the runtime of a team on this node, and from the team's node over a
 //! signed read for a team elsewhere. Usage is never stored; each read asks the team's runtime.
-use crate::client::{local_team, membership};
+use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
@@ -72,7 +72,7 @@ pub async fn team_usage(node: &Node, org: &Id, team: &Id, days: Option<u32>) -> 
         .team(team)
         .ok_or_else(|| Error::not_found("not found"))?;
     let days = check_days(days.unwrap_or(DEFAULT_USAGE_DAYS))?;
-    match local_team(node, org, place) {
+    match node.hosted(org, &place.id) {
         Some(hosted) => runtime_usage(node, &hosted, days).await,
         None => remote_usage(node, org, place, days).await,
     }
