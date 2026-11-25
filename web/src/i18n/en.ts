@@ -158,6 +158,17 @@ export const en = {
       blocking: (count: number) => (count === 1 ? '1 person waiting' : `${count} people waiting`),
       showMore: (count: number) => `Show ${count} more`,
     },
+    recent: {
+      head: 'Recently decided',
+      states: { applied: 'Applied', delivered: 'Delivered', queued: 'Waiting to send', refused: 'Refused' },
+      chose: (choice: string) => `Chose “${choice}”.`,
+      queuedDetail: (attempts: number, retry: string | null) =>
+        `${attempts === 0 ? 'Not sent yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
+      underMinute: 'in under a minute',
+      lastError: (reason: string) => `Last error: ${reason}`,
+      refusedDetail: (reason: string) => `The team’s node refused it: ${reason}`,
+      unavailable: (reason: string) => `Recent decisions could not be loaded: ${reason}`,
+    },
     paper: {
       blank: 'Pick a document on the left to open it here.',
       types: { proposal: 'Proposal for approval', question: 'Question', pendingDecision: 'Request for a decision' },

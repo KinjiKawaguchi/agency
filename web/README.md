@@ -45,6 +45,6 @@ Files are grouped by feature: `api/`, `desk/`, `people/`, `markdown/`, `i18n/`, 
 `e2e/` runs the built client (`vite preview` with the mock node) in headless Chromium with Playwright. It covers the decision flow, the other screens, language and theme, and takes a screenshot of every screen in light and dark at desktop and phone width into `e2e-screenshots/`. CI runs it on every pull request and keeps the screenshots as the `web-screenshots` artifact.
 
 - The preview server sends the same security headers as the node (a Content-Security-Policy with `script-src 'self'` and `style-src 'self'`), so a change that needs an inline script or style fails here instead of in the owner's browser.
-- The mock node keeps its state in memory, so each test starts it over with `POST /__mock/reset` (options: `usage=1`, `siteError=<reason>`, `outcome=queued`).
+- The mock node keeps its state in memory, so each test starts it over with `POST /__mock/reset` (options: `usage=1`, `siteError=<reason>`, `outcome=queued`; the decision log starts with four earlier decisions, one in each state).
 - Locally, `npx playwright install chromium-headless-shell` fetches the browser. If a headless Chromium is already on the machine, set `AGENCY_CHROMIUM_PATH` to its executable instead. No browser window opens either way.
 

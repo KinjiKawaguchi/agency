@@ -13,6 +13,13 @@ export const TEAM_KEY = ['team'] as const
 export const teamQuery = (api: ApiClient, org: string, team: string) =>
   queryOptions({ queryKey: [...TEAM_KEY, org, team], queryFn: () => api.teamSnapshot(org, team).then(toTeam), refetchInterval: POLL_MS })
 
+export const DECISIONS_KEY = ['decisions'] as const
+
+export const RECENT_DECISIONS = 20
+
+export const decisionsQuery = (api: ApiClient) =>
+  queryOptions({ queryKey: [...DECISIONS_KEY, RECENT_DECISIONS], queryFn: () => api.decisions(RECENT_DECISIONS), refetchInterval: POLL_MS })
+
 export const orgDefinitionQuery = (api: ApiClient, org: string) =>
   queryOptions({ queryKey: ['org-definition', org], queryFn: () => api.orgDefinition(org), staleTime: POLL_MS })
 

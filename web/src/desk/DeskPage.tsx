@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
-import { TEAM_KEY, useTeams } from '../api/queries'
+import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
 import { useI18n } from '../i18n'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
 import { useToast } from '../shared/Toasts'
@@ -11,6 +11,7 @@ import { draftOf, withDraft, withoutDraft, type Draft, type Drafts } from './dra
 import { canDecide, openItems, resolveSelection, situationOf, stepSelection, type DeskItem } from './items'
 import { Paper } from './Paper'
 import { Pile } from './Pile'
+import { RecentDecisions } from './RecentDecisions'
 import { useDeskKeys } from './useDeskKeys'
 import './desk.css'
 
@@ -48,10 +49,11 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
+        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...(draft.choice === null ? {} : { choice: draft.choice }) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
         toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
+        void queryClient.invalidateQueries({ queryKey: DECISIONS_KEY })
         timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {
         const reason = failure instanceof Error ? failure.message : String(failure)
@@ -93,6 +95,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       <div className="desk">
         <div className="desk-left">
           {isLoading && items.length === 0 ? <p className="muted">{t.app.loading}</p> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={onSelect} />}
+          <RecentDecisions me={me} />
         </div>
         {current === undefined ? (
           <article className="paper blank"><p>{t.desk.paper.blank}</p></article>

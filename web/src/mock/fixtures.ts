@@ -1,6 +1,6 @@
 // Mock org structure, funding, and token use for the mock node. Every name here is fictional.
 // The shapes are the ones the real node will serve; the numbers are made up.
-import type { Funding, OrgDefinition, UsageReport } from '../api/clientApi.ts'
+import type { DecisionEntry, Funding, OrgDefinition, UsageReport } from '../api/clientApi.ts'
 import type { TeamView } from '../api/teamview.ts'
 
 const MINUTE = 60_000
@@ -104,4 +104,58 @@ export function usageReport(view: TeamView, days: number, now: Date): UsageRepor
     }
   })
   return { org: view.org, team: view.team, days, generatedAt: now.toISOString(), byDay, byPerson: byPerson.toSorted((a, b) => b.costUsd - a.costUsd) }
+}
+
+/** Decisions made before the mock node started, one in each state, newest first. */
+export function earlierDecisions(now: Date): DecisionEntry[] {
+  const ago = (ms: number): string => new Date(now.getTime() - ms).toISOString()
+  const ahead = (ms: number): string => new Date(now.getTime() + ms).toISOString()
+  return [
+    {
+      id: 'e-20261125-0910-0001',
+      org: 'acme',
+      team: 'site',
+      kind: 'answer',
+      target: 'r-20261125-090000-f1f1',
+      title: 'Which hosting plan should the landing page use?',
+      text: 'The free plan is enough until launch.',
+      choice: 'free',
+      decidedAt: ago(20 * MINUTE),
+      state: { kind: 'queued', attempts: 2, nextAt: ahead(6 * MINUTE), lastError: 'The team’s node did not answer.' },
+    },
+    {
+      id: 'e-20261124-1700-0002',
+      org: 'acme',
+      team: 'app',
+      kind: 'judge',
+      target: 'app#12',
+      title: 'Rename the export endpoint',
+      text: 'Keep the old name for one more release.',
+      decidedAt: ago(19 * HOUR),
+      state: { kind: 'refused', message: 'That request was already decided.' },
+    },
+    {
+      id: 'e-20261124-1030-0003',
+      org: 'acme',
+      team: 'app',
+      kind: 'judge',
+      target: 'app#9',
+      title: 'Adopt the new lint rules',
+      text: 'Approved.',
+      choice: 'approve',
+      decidedAt: ago(26 * HOUR),
+      state: { kind: 'applied' },
+    },
+    {
+      id: 'e-20261123-1500-0004',
+      org: 'acme',
+      team: 'site',
+      kind: 'answer',
+      target: 'r-20261123-140000-a9a9',
+      title: 'Use the dark logo on the home page?',
+      text: 'Yes, on dark backgrounds only.',
+      decidedAt: ago(2 * DAY),
+      state: { kind: 'delivered' },
+    },
+  ]
 }

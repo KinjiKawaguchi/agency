@@ -445,6 +445,98 @@
   font-weight: 600;
 }
 
+/* ── Recently decided: under the pile ── */
+.decided-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.decided {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.decided-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.decided-title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.decided-tag {
+  flex: none;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.decided-tag.tag-delivered,
+.decided-tag.tag-applied {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.decided-tag.tag-queued {
+  background: var(--raised);
+  color: var(--hold);
+}
+
+.decided-tag.tag-refused {
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+.decided-answer,
+.decided-detail,
+.decided-meta {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.decided-answer {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.decided-detail {
+  color: var(--ink);
+}
+
+.decided.state-queued {
+  border-color: var(--hold);
+}
+
+.decided.state-refused {
+  border-color: var(--seal);
+}
+
+.decided-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
 /* ── Phone and tablet: the paper opens below the pile ── */
 @media (max-width: 960px) {
   .desk {

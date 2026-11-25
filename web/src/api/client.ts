@@ -1,4 +1,4 @@
-import type { DecisionAnswer, DecisionInput, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
+import type { DecisionAnswer, DecisionInput, DecisionLog, DecisionResult, Me, OrgDefinition, TeamSnapshot, UsageReport } from './clientApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -21,10 +21,15 @@ export interface ApiClient {
   teamSnapshot: (org: string, team: string) => Promise<TeamSnapshot>
   decide: (answer: DecisionAnswer) => Promise<DecisionResult>
   orgDefinition: (org: string) => Promise<OrgDefinition>
+  /** The account's recent decisions, newest first. */
+  decisions: (limit: number) => Promise<DecisionLog>
   usage: (org: string, team: string, days: number) => Promise<UsageReport>
 }
 
 const segment = encodeURIComponent
+
+/** The longest title the node keeps in its decision log. */
+const MAX_TITLE = 200
 
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
@@ -50,8 +55,9 @@ export function createApiClient(send: FetchLike = (request) => fetch(request)): 
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<UsageReport>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
-    decide: ({ org, team, answerWith, choice, text }) => {
-      const input: DecisionInput = { ...answerWith, text, ...(choice === undefined ? {} : { choice }) }
+    decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
+    decide: ({ org, team, answerWith, choice, text, title }) => {
+      const input: DecisionInput = { ...answerWith, text, title: [...title].slice(0, MAX_TITLE).join(''), ...(choice === undefined ? {} : { choice }) }
       return send(
         new Request(url(`/api/orgs/${segment(org)}/teams/${segment(team)}/decisions`), {
           method: 'POST',

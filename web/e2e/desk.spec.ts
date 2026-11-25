@@ -40,6 +40,13 @@ test('decides a proposal: picks an option, sends it, sees the stamp and the outc
 
   const snapshot = (await (await request.get('/api/orgs/acme/teams/app/view')).json()) as { view: { requests: Array<{ id: string }> } }
   expect(snapshot.view.requests.map((one) => one.id)).not.toContain(PROPOSAL_ID)
+
+  // The request has left the team's view, but the log under the pile still names it, with where it stands.
+  const recent = page.getByRole('region', { name: /Recently decided/ })
+  await expect(recent.getByRole('listitem').first()).toContainText(PROPOSAL)
+  await expect(recent.getByRole('listitem').first()).toContainText('Applied')
+  const log = (await (await request.get('/api/decisions?limit=1')).json()) as { entries: Array<{ title?: string; target: string }> }
+  expect(log.entries[0]).toMatchObject({ title: PROPOSAL, target: PROPOSAL_ID })
 })
 
 test('works from the keyboard: j and k move, a number picks, Control+Enter sends', async ({ page, request }) => {
@@ -70,6 +77,7 @@ test('reports a decision the node queued for later', async ({ page, request }) =
   await page.getByRole('article').locator('label.choice').filter({ hasText: 'Approve' }).click()
   await page.getByRole('button', { name: 'Approve with “Approve”' }).click()
   await expect(page.getByText('Saved. The team’s node is asleep, so it will be delivered when it wakes.')).toBeVisible()
+  await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Waiting to send')
 })
 
 test('answers a pending decision in free text', async ({ page }) => {
