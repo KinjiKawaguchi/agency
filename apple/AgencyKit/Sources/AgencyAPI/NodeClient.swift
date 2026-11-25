@@ -70,7 +70,7 @@ public actor NodeClient {
     }
 
     public func teamSnapshot(org: String, team: String) async throws -> TeamSnapshot {
-        try await get("/api/orgs/\(org)/teams/\(team)/view")
+        try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/view")
     }
 
     public func decisions(limit: Int = 50) async throws -> DecisionLog {
@@ -91,7 +91,7 @@ public actor NodeClient {
     /// Sends a signed decision. The envelope's time must come from `nodeNow()`.
     public func submit(_ decision: SignedDecision, org: String, team: String) async throws -> DecisionResult {
         let body = Data(try CanonicalJSON.encode(decision.json).utf8)
-        return try await write("POST", "/api/orgs/\(org)/teams/\(team)/envelopes", body: body)
+        return try await write("POST", "/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/envelopes", body: body)
     }
 
     /// Asks the node to add this device. `label` is 1 to 80 characters. The answer carries the pairing
@@ -110,7 +110,22 @@ public actor NodeClient {
         return session
     }
 
+    /// Tells the node this phone's push token (`PushTokenInput`). Registering a known token updates it.
+    /// `environment` is `production` or `sandbox`, as the app was signed; `label` is 1 to 80 characters.
+    @discardableResult
+    public func registerPushToken(token: String, environment: String, label: String) async throws -> RegisteredPushToken {
+        let body = Data(try CanonicalJSON.encode(.object([
+            .init("token", .string(token)), .init("environment", .string(environment)), .init("label", .string(label)),
+        ])).utf8)
+        return try await write("POST", "/api/push/tokens", body: body)
+    }
+
     // MARK: Plumbing
+
+    /// One path segment, escaped so that an id from the node can never add a segment or a query.
+    static func segment(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")) ?? ""
+    }
 
     private func get<Answer: Decodable>(_ path: String) async throws -> Answer {
         try decode(try await send(HTTPRequest(method: "GET", path: path)))

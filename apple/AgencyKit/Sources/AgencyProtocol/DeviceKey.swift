@@ -19,8 +19,9 @@ public enum DevicePublicKey: Equatable, Sendable {
     /// Reads a key string; anything that is not exactly a key of one of the two kinds is refused.
     public init(string: String) throws {
         if string.hasPrefix(Self.p256Prefix) {
-            guard let bytes = Data(base64Encoded: String(string.dropFirst(Self.p256Prefix.count))), bytes.count == 65,
-                  bytes.first == 0x04, (try? P256.Signing.PublicKey(x963Representation: bytes)) != nil,
+            // CryptoKit accepts only the 65-byte uncompressed point (0x04 and two 32-byte coordinates) on the curve.
+            guard let bytes = Data(base64Encoded: String(string.dropFirst(Self.p256Prefix.count))),
+                  (try? P256.Signing.PublicKey(x963Representation: bytes)) != nil,
                   Self.p256Prefix + bytes.base64EncodedString() == string
             else { throw DeviceKeyError.malformedKey }
             self = .p256(bytes)

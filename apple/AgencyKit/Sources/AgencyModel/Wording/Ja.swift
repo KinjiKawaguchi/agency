@@ -15,6 +15,11 @@ public enum Ja {
         public static let reload = "再読み込み"
         public static let signInEnded = "サインインの有効期限が切れました。もう一度サインインしてください。"
         public static let signInAgain = "サインインし直す"
+        public static let signInUnavailable = "このノードでは、アプリからのサインインを使えません。ノードの設定を確認してください。"
+        public static let settings = "設定"
+        public static let changeNode = "ホームノードを変える"
+        public static let homeNode = "ホームノード"
+        public static let close = "閉じる"
 
         public static func group(_ group: DeskGroup) -> String {
             switch group {
@@ -123,6 +128,10 @@ public enum Ja {
         public static let check = "確認できたか調べる"
         public static let ready = "この端末は追加されています。"
         public static let label = "iPhone"
+        public static let reset = "この端末の鍵を作り直す"
+        public static let resetConfirm = "作り直す"
+        public static let resetExplain = "Face ID の登録を変えたあとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
+        public static let noKey = "この端末では、決定に署名する鍵を作れません。Face ID を設定してから、アプリを開き直してください。"
 
         public static func notAdded(org: String) -> String { "この端末は \(org) に追加されていません。先に端末を追加してください。" }
         public static func failed(_ reason: String) -> String { "端末の状態を調べられませんでした: \(reason)" }

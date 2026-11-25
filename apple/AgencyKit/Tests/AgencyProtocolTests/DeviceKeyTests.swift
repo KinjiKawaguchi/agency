@@ -102,6 +102,18 @@ struct DeviceKeyTests {
         #expect(throws: DeviceKeyError.malformedKey) { try DevicePublicKey(string: String(Data(repeating: 7, count: 32).base64EncodedString().dropLast())) }
     }
 
+    @Test("one key has one string: a base64 text with other padding bits is refused")
+    func nonCanonicalBase64() {
+        // The last data character carries 4 bits of the key and 2 padding bits: 's' and 't' differ only in those.
+        let p256 = vectors.p256.publicKey
+        #expect(p256.hasSuffix("5s="))
+        #expect(throws: DeviceKeyError.malformedKey) { try DevicePublicKey(string: String(p256.dropLast(2)) + "t=") }
+        let ed = vectors.devicePublicKey.base64EncodedString()
+        let last = ed[ed.index(ed.endIndex, offsetBy: -2)]
+        let variant = Character(UnicodeScalar(last.unicodeScalars.first!.value + 1)!)
+        #expect(throws: DeviceKeyError.malformedKey) { try DevicePublicKey(string: String(ed.dropLast(2)) + String(variant) + "=") }
+    }
+
     @Test("a key of one kind never verifies a signature of the other")
     func kindsDoNotMix() throws {
         let p256 = try DevicePublicKey(string: vectors.p256.publicKey)

@@ -7,7 +7,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if let homeNode = store.homeNode {
-                NodeScreen(homeNode: homeNode, push: push, onChangeHomeNode: store.clear)
+                HomeShell(homeNode: homeNode, push: push, onChangeHomeNode: store.clear)
                     .id(homeNode.url)
             } else {
                 SetupView(onSave: store.save)

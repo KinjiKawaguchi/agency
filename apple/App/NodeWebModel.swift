@@ -36,11 +36,12 @@ final class NodeWebModel: NSObject {
 
     /// - Parameters:
     ///   - push: this device's registration, for the page to hand to the node.
-    ///   - startingAt: the request a tapped notification is about; the front page when `nil`.
-    init(homeNode: HomeNodeURL, push: PushRegistration?, startingAt link: RequestLink?) {
+    ///   - accessSignIn: the one sign-in the whole app shares.
+    ///   - path: the page to open first, a path of the home node.
+    init(homeNode: HomeNodeURL, push: PushRegistration?, accessSignIn: AccessSignInFlow, path: String) {
         self.homeNode = homeNode
         policy = NavigationPolicy(homeNode: homeNode)
-        accessSignIn = AccessSignInFlow(homeNode: homeNode)
+        self.accessSignIn = accessSignIn
 
         userContentController.addUserScript(Self.bridgeScript(homeNode: homeNode, push: push))
         let configuration = WKWebViewConfiguration()
@@ -65,7 +66,23 @@ final class NodeWebModel: NSObject {
         refreshControl.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         webView.scrollView.refreshControl = refreshControl
 
-        webView.load(URLRequest(url: link?.url(on: homeNode) ?? homeNode.url))
+        webView.load(URLRequest(url: Self.url(of: path, on: homeNode)))
+    }
+
+    /// A path of the home node, never another address.
+    private static func url(of path: String, on homeNode: HomeNodeURL) -> URL {
+        guard path.hasPrefix("/"), !path.hasPrefix("//"), let url = URL(string: path, relativeTo: homeNode.url)?.absoluteURL,
+              homeNode.hasSameOrigin(url)
+        else { return homeNode.url }
+        return url
+    }
+
+    /// Shows another page of the home node, unless it is already the one shown.
+    func openPath(_ path: String) {
+        let url = Self.url(of: path, on: homeNode)
+        guard webView.url?.path != url.path || failure != nil else { return }
+        failure = nil
+        webView.load(URLRequest(url: url))
     }
 
     /// Tells the page this device's push registration, now and on every page the web view loads next.
@@ -88,21 +105,6 @@ final class NodeWebModel: NSObject {
         switch native {
         case .badge(let count): onBadgeChange?(count)
         }
-    }
-
-    /// Removes the Access cookie of the home node from the web view, when the owner leaves the node.
-    func forgetAccessSession() async {
-        let cookies = webView.configuration.websiteDataStore.httpCookieStore
-        for cookie in await cookies.allCookies() where cookie.name == AccessToken.cookieName {
-            let host = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
-            if host.lowercased() == homeNode.host { await cookies.deleteCookie(cookie) }
-        }
-    }
-
-    /// Opens the request a tapped notification is about.
-    func open(_ link: RequestLink) {
-        failure = nil
-        webView.load(URLRequest(url: link.url(on: homeNode)))
     }
 
     private static func bridgeScript(homeNode: HomeNodeURL, push: PushRegistration?) -> WKUserScript {
@@ -165,8 +167,7 @@ final class NodeWebModel: NSObject {
     }
 
     private func signInThroughSession(fallingBackTo loginPage: URL) async {
-        let cookies = webView.configuration.websiteDataStore.httpCookieStore
-        switch await accessSignIn.run(cookies: cookies) {
+        switch await accessSignIn.run() {
         case .signedIn:
             failure = nil
             webView.load(URLRequest(url: lastHomePage ?? homeNode.url))

@@ -107,6 +107,9 @@ public final class DeskStore {
         } catch NodeError.sessionExpired {
             needsSignIn = true
             loading = .failed("The sign-in has ended.")
+        } catch NodeError.notSignedIn {
+            needsSignIn = true
+            loading = .failed("Not signed in.")
         } catch {
             loading = .failed(Self.reason(error))
         }
