@@ -18,6 +18,7 @@ const SCREENS = [
   { name: 'people', path: '/people', ready: 'article.mate' },
   { name: 'org', path: '/org', ready: '.orgchart .oc-node.agent' },
   { name: 'costs', path: '/costs', ready: '.columns .column' },
+  { name: 'devices', path: '/devices', ready: '.pairing-code' },
 ] as const
 
 test.beforeAll(() => mkdirSync(DIRECTORY, { recursive: true }))

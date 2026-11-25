@@ -1,0 +1,87 @@
+.device-card {
+  max-width: 640px;
+  margin-top: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.device-card .sub-head {
+  margin-top: 0;
+}
+
+.device-lead {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+}
+
+.pairing-code {
+  margin: 8px 0 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.device-key summary {
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.device-key-text {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--raised);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.device-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.device-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.device-invalid {
+  margin: 8px 0 0;
+  color: var(--seal);
+  font-weight: 600;
+}
+
+.device-compare {
+  margin-top: 12px;
+  padding: 4px 14px 12px;
+  border: 1px solid var(--hold);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+
+.device-compare p:last-child {
+  margin: 0;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .pairing-code {
+    font-size: 26px;
+  }
+}

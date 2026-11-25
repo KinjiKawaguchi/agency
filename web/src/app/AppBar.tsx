@@ -52,7 +52,9 @@ export function AppBar() {
               <option key={one} value={one}>{LOCALE_NAMES[one]}</option>
             ))}
           </select>
-          {me === undefined ? null : <Face label={me.account.label} kind="human" size="sm" title={me.account.label} />}
+          <Link className="me-link" to="/devices" aria-label={t.nav.devices} title={t.nav.devices}>
+            {me === undefined ? t.nav.devices : <Face label={me.account.label} kind="human" size="sm" />}
+          </Link>
         </div>
       </div>
     </header>
