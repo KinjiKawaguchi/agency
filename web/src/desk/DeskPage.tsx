@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
-import { useApi } from '../api/context'
+import { useDecide } from '../device/useDecide'
 import { SignInExpiredError } from '../api/session'
 import type { Messages } from '../i18n/en'
 import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
@@ -43,7 +43,7 @@ interface DeskPageProps {
 export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD_MS }: DeskPageProps) {
   const { t } = useI18n()
   const { me, teams, isLoading, error } = useTeams()
-  const api = useApi()
+  const decide = useDecide()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [drafts, setDrafts] = useState<Drafts>(loadDrafts)
@@ -65,7 +65,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        const result = await api.decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
+        const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, new Date().toISOString()]]))
         toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : t.desk.paper.sent(item.drafter?.label ?? item.request.from))
@@ -78,7 +78,7 @@ export function DeskPage({ selected: requested, onSelect, sealHoldMs = SEAL_HOLD
         setSending((keys) => new Set([...keys].filter((key) => key !== item.key)))
       }
     },
-    [api, drafts, queryClient, sealHoldMs, t, toast],
+    [decide, drafts, queryClient, sealHoldMs, t, toast],
   )
 
   useDeskKeys({

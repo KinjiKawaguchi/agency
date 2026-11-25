@@ -24,3 +24,6 @@ export async function pairingCodeOf(publicKey: string): Promise<string> {
   const fingerprint = await fingerprintOf(publicKey)
   return [fingerprint.slice(0, 4), fingerprint.slice(4, 8), fingerprint.slice(8, 12)].join('-')
 }
+
+/** The id a device gets when it is added: `d-` and its pairing code without the dashes. */
+export const deviceIdOf = (pairingCode: string): string => `d-${pairingCode.replaceAll('-', '')}`

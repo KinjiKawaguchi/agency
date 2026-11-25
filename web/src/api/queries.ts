@@ -13,6 +13,12 @@ export const TEAM_KEY = ['team'] as const
 export const teamQuery = (api: ApiClient, org: string, team: string) =>
   queryOptions({ queryKey: [...TEAM_KEY, org, team], queryFn: () => api.teamSnapshot(org, team).then(toTeam), refetchInterval: POLL_MS })
 
+export const DEVICES_KEY = ['devices'] as const
+
+/** The account's devices. A device waiting to be added polls quickly, to notice when it is. */
+export const devicesQuery = (api: ApiClient, pollMs: number | false = POLL_MS) =>
+  queryOptions({ queryKey: DEVICES_KEY, queryFn: () => api.devices(), refetchInterval: pollMs })
+
 export const DECISIONS_KEY = ['decisions'] as const
 
 export const RECENT_DECISIONS = 20
