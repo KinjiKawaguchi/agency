@@ -4,6 +4,7 @@ import SwiftUI
 /// The home node in a web view, or the native page that offers a way out when it cannot be loaded.
 struct NodeScreen: View {
     let homeNode: HomeNodeURL
+    let push: PushCoordinator
     let onChangeHomeNode: () -> Void
 
     @State private var model: NodeWebModel?
@@ -23,9 +24,26 @@ struct NodeScreen: View {
             }
         }
         .background(Color(.systemBackground))
-        .task {
-            if model == nil { model = NodeWebModel(homeNode: homeNode) }
+        .task { startModel() }
+        .onChange(of: push.registration) { _, registration in
+            model?.updatePush(registration)
         }
+        .onChange(of: push.pendingLink) {
+            if let model, let link = push.takePendingLink() { model.open(link) }
+        }
+    }
+}
+
+extension NodeScreen {
+    private func startModel() {
+        guard model == nil else { return }
+        let model = NodeWebModel(
+            homeNode: homeNode,
+            push: push.registration,
+            startingAt: push.takePendingLink()
+        )
+        model.onHomeNodeReached = { push.noteSignedIn() }
+        self.model = model
     }
 }
 

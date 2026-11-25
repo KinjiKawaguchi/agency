@@ -55,6 +55,22 @@ public struct HomeNodeURL: Equatable, Sendable {
         self.url = url
     }
 
+    /// `scheme://host[:port]` as a browser reports it in `location.origin`: the port is left out when
+    /// it is the scheme's default.
+    public var origin: String {
+        let isDefaultPort = port == Self.defaultPort(forScheme: scheme)
+        return isDefaultPort ? "\(scheme)://\(host)" : "\(scheme)://\(host):\(port)"
+    }
+
+    /// Whether the address is on the home node: the same scheme, host and effective port.
+    public func hasSameOrigin(_ other: URL) -> Bool {
+        guard let otherScheme = other.scheme?.lowercased(), let otherHost = other.host?.lowercased() else {
+            return false
+        }
+        let otherPort = other.port ?? Self.defaultPort(forScheme: otherScheme)
+        return otherScheme == scheme && otherHost == host && otherPort == port
+    }
+
     /// The port a URL with this scheme reaches when it names none.
     public static func defaultPort(forScheme scheme: String) -> Int {
         scheme.lowercased() == "http" ? 80 : 443

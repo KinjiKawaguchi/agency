@@ -21,13 +21,23 @@ final class NodeWebModel: NSObject {
 
     @ObservationIgnored private let homeNode: HomeNodeURL
     @ObservationIgnored private let policy: NavigationPolicy
+    @ObservationIgnored private let userContentController = WKUserContentController()
 
-    init(homeNode: HomeNodeURL) {
+    /// Called each time a page of the home node has loaded. Such a page only loads once the owner has
+    /// signed in through Access.
+    @ObservationIgnored var onHomeNodeReached: (() -> Void)?
+
+    /// - Parameters:
+    ///   - push: this device's registration, for the page to hand to the node.
+    ///   - startingAt: the request a tapped notification is about; the front page when `nil`.
+    init(homeNode: HomeNodeURL, push: PushRegistration?, startingAt link: RequestLink?) {
         self.homeNode = homeNode
         policy = NavigationPolicy(homeNode: homeNode)
 
+        userContentController.addUserScript(Self.bridgeScript(homeNode: homeNode, push: push))
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configuration.userContentController = userContentController
         configuration.applicationNameForUserAgent = "AgencyApp"
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -46,7 +56,30 @@ final class NodeWebModel: NSObject {
         refreshControl.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         webView.scrollView.refreshControl = refreshControl
 
-        webView.load(URLRequest(url: homeNode.url))
+        webView.load(URLRequest(url: link?.url(on: homeNode) ?? homeNode.url))
+    }
+
+    /// Tells the page this device's push registration, now and on every page the web view loads next.
+    func updatePush(_ push: PushRegistration?) {
+        userContentController.removeAllUserScripts()
+        userContentController.addUserScript(Self.bridgeScript(homeNode: homeNode, push: push))
+        guard let url = webView.url, homeNode.hasSameOrigin(url) else { return }
+        let announcement = NativeBridge.script(homeNode: homeNode, push: push, announcesChange: true)
+        webView.evaluateJavaScript(announcement, completionHandler: nil)
+    }
+
+    /// Opens the request a tapped notification is about.
+    func open(_ link: RequestLink) {
+        failure = nil
+        webView.load(URLRequest(url: link.url(on: homeNode)))
+    }
+
+    private static func bridgeScript(homeNode: HomeNodeURL, push: PushRegistration?) -> WKUserScript {
+        WKUserScript(
+            source: NativeBridge.script(homeNode: homeNode, push: push, announcesChange: false),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
     }
 
     /// Loads again the page that failed, or the front page when none did.
@@ -143,6 +176,7 @@ extension NodeWebModel: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         finishRefreshing()
+        if let url = webView.url, homeNode.hasSameOrigin(url) { onHomeNodeReached?() }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

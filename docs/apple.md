@@ -93,7 +93,22 @@ After processing (a few minutes), the build appears under TestFlight in App Stor
 
 Delete `build/` and the DerivedData folder afterwards: the archive and its symbols are large.
 
+## Push notifications
+
+The node sends a notification when a request starts waiting for the owner. The app side:
+
+1. **Permission.** The app does not ask on the first launch. After the owner has signed in (the first time a page of the home node has loaded, which only happens past Access), it shows a one-line explanation and then the system prompt. "Not now" asks again after a week. A refusal in the system prompt is never asked again; the owner can change it in Settings. `PushPromptPolicy` holds the rule.
+2. **Token.** When permission is granted, the app registers for remote notifications on every launch, because the token can change.
+3. **Hand-over to the page.** The page registers the token with the node (`POST /api/push/tokens`, with the page's write token and the Access session), so the app never talks to the node itself. The app injects `window.agencyNative = { platform: "ios", push: null | { token, environment, label } }` before the page runs, only into the main frame of the home node's origin. When the state changes while the page is open, it sets the value again and dispatches `agency:native-push` with the new `push` as `detail`. `token` is the APNs device token in lowercase hex, `environment` is `sandbox` or `production`, and `label` is the device model (`iPhone`), never the device's name. The script is `NativeBridge` in `apple/AgencyKit`.
+4. **Tap.** A notification carries `agency: { org, team, request }`. Tapping it opens `/desk?item=<org>:<team>:<request>` on the home node, which is the route the web client already has. Values that are not plain identifiers (letters, digits, `.`, `_`, `-`) give no link, and the app just opens.
+
+`aps-environment` is `development` in Debug builds and `production` in Release builds (`APS_ENVIRONMENT` in `project.yml`). The same value goes to `Info.plist` as `AgencyAPNsEnvironment`, which is how the app tells the node which APNs host a token belongs to. TestFlight and App Store builds are Release, so they register as `production`; a build run from Xcode on a device registers as `sandbox`.
+
+What has to be in place outside the repository:
+
+- The App ID for the bundle ID has the Push Notifications capability. With automatic signing and the API key, `-allowProvisioningUpdates` normally enables it when the entitlement is present; check it on the first archive.
+- The node has an APNs key (a `.p8` from the developer account), its key ID, the team ID, and the same bundle ID as the topic. These are credentials: keep them out of the repository.
+
 ## Not in the app yet
 
-- Push notifications: the `aps-environment` entitlement and the node side are a separate change.
-- Device key: the web client's device key lives in the web view's storage. Whether it survives app restarts is checked in a separate change.
+- Device key: the web client's device key lives in the web view's storage. Whether it survives app restarts is checked on the phone with the web client's `/devices` screen.
