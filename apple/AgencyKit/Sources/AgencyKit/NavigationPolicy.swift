@@ -17,6 +17,7 @@ public enum NavigationDecision: Equatable, Sendable {
 /// holds the owner's session.
 public struct NavigationPolicy: Equatable, Sendable {
     public static let accessDomainSuffix = ".cloudflareaccess.com"
+    static let accessLoginPath = "/cdn-cgi/access/login"
 
     private static let externalSchemes: Set<String> = ["http", "https", "mailto", "tel"]
 
@@ -45,5 +46,13 @@ public struct NavigationPolicy: Equatable, Sendable {
     /// browser back to the node.
     private func isAccessLogin(scheme: String, host: String, port: Int) -> Bool {
         scheme == "https" && port == 443 && host.hasSuffix(Self.accessDomainSuffix)
+    }
+
+    /// The page Access sends a signed-out browser to (`/cdn-cgi/access/login/<node host>`), as
+    /// opposed to the other pages on its domain, such as the one that confirms a sign-out.
+    public func isAccessLoginPage(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return isAccessLogin(scheme: "https", host: host, port: url.port ?? 443)
+            && url.path.hasPrefix(Self.accessLoginPath)
     }
 }

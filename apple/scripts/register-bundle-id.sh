@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Registers the app's bundle ID in the developer account and enables Push Notifications for it,
-# through the App Store Connect API. Safe to run again: it only creates what is missing.
+# Registers the app's bundle ID in the developer account and enables the capabilities the app uses
+# (Push Notifications, Associated Domains) for it, through the App Store Connect API. Safe to run
+# again: it only creates what is missing.
 #
 #   ASC_KEY_PATH=...  ASC_KEY_ID=...  ASC_ISSUER_ID=...  apple/scripts/register-bundle-id.sh
 #
@@ -65,17 +66,24 @@ create_bundle_id() {
   jq -r '.data.id // empty' "$RESPONSE"
 }
 
-has_push_capability() {
+# The capability types the bundle ID already has, as a JSON array.
+list_capability_types() {
   asc_api GET "/v1/bundleIds/$1/bundleIdCapabilities"
-  jq -e '.data[]? | select(.attributes.capabilityType == "PUSH_NOTIFICATIONS")' "$RESPONSE" > /dev/null
+  jq -c '[.data[]?.attributes.capabilityType]' "$RESPONSE"
 }
 
-enable_push_capability() {
+# ensure_capability BUNDLE_RESOURCE_ID CURRENT_TYPES TYPE LABEL
+ensure_capability() {
+  if printf '%s' "$2" | jq -e --arg type "$3" 'index($type)' > /dev/null; then
+    printf '%s is already enabled.\n' "$4"
+    return
+  fi
   local body
-  body=$(jq -cn --arg id "$1" '{data: {type: "bundleIdCapabilities",
-    attributes: {capabilityType: "PUSH_NOTIFICATIONS"},
+  body=$(jq -cn --arg id "$1" --arg type "$3" '{data: {type: "bundleIdCapabilities",
+    attributes: {capabilityType: $type},
     relationships: {bundleId: {data: {type: "bundleIds", id: $id}}}}}')
   asc_api POST /v1/bundleIdCapabilities "$body"
+  printf 'Enabled %s.\n' "$4"
 }
 
 resource_id=$(find_bundle_id)
@@ -87,9 +95,6 @@ else
   printf 'Registered bundle ID %s.\n' "$BUNDLE_ID"
 fi
 
-if has_push_capability "$resource_id"; then
-  printf 'Push Notifications is already enabled.\n'
-else
-  enable_push_capability "$resource_id"
-  printf 'Enabled Push Notifications.\n'
-fi
+capability_types=$(list_capability_types "$resource_id")
+ensure_capability "$resource_id" "$capability_types" PUSH_NOTIFICATIONS "Push Notifications"
+ensure_capability "$resource_id" "$capability_types" ASSOCIATED_DOMAINS "Associated Domains"
