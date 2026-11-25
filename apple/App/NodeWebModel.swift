@@ -4,6 +4,7 @@ import UIKit
 import WebKit
 
 struct LoadFailure: Equatable {
+    var title = "Cannot reach your home node"
     let message: String
     /// The page to try again, or `nil` for the home node's front page.
     let url: URL?
@@ -22,6 +23,9 @@ final class NodeWebModel: NSObject {
     @ObservationIgnored private let homeNode: HomeNodeURL
     @ObservationIgnored private let policy: NavigationPolicy
     @ObservationIgnored private let userContentController = WKUserContentController()
+    @ObservationIgnored private let accessSignIn: AccessSignInFlow
+    /// The last page of the home node the web view was sent to, to come back to after signing in.
+    @ObservationIgnored private var lastHomePage: URL?
 
     /// Called each time a page of the home node has loaded. Such a page only loads once the owner has
     /// signed in through Access.
@@ -36,6 +40,7 @@ final class NodeWebModel: NSObject {
     init(homeNode: HomeNodeURL, push: PushRegistration?, startingAt link: RequestLink?) {
         self.homeNode = homeNode
         policy = NavigationPolicy(homeNode: homeNode)
+        accessSignIn = AccessSignInFlow(homeNode: homeNode)
 
         userContentController.addUserScript(Self.bridgeScript(homeNode: homeNode, push: push))
         let configuration = WKWebViewConfiguration()
@@ -82,6 +87,15 @@ final class NodeWebModel: NSObject {
         else { return }
         switch native {
         case .badge(let count): onBadgeChange?(count)
+        }
+    }
+
+    /// Removes the Access cookie of the home node from the web view, when the owner leaves the node.
+    func forgetAccessSession() async {
+        let cookies = webView.configuration.websiteDataStore.httpCookieStore
+        for cookie in await cookies.allCookies() where cookie.name == AccessToken.cookieName {
+            let host = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+            if host.lowercased() == homeNode.host { await cookies.deleteCookie(cookie) }
         }
     }
 
@@ -135,6 +149,39 @@ final class NodeWebModel: NSObject {
         return isUrlCancel || isPolicyStop
     }
 
+    /// Whether the app takes over a login page: the sign-in runs in the system session and the page
+    /// stays out of the web view.
+    private func startsAccessSignIn(for url: URL) -> Bool {
+        guard policy.isAccessLoginPage(url) else { return false }
+        switch accessSignIn.next() {
+        case .loadInWebView:
+            return false
+        case .wait:
+            return true
+        case .start:
+            Task { await signInThroughSession(fallingBackTo: url) }
+            return true
+        }
+    }
+
+    private func signInThroughSession(fallingBackTo loginPage: URL) async {
+        let cookies = webView.configuration.websiteDataStore.httpCookieStore
+        switch await accessSignIn.run(cookies: cookies) {
+        case .signedIn:
+            failure = nil
+            webView.load(URLRequest(url: lastHomePage ?? homeNode.url))
+        case .canceled:
+            failure = LoadFailure(
+                title: "Sign-in canceled",
+                message: "Reload to sign in again.",
+                url: homeNode.url
+            )
+            finishRefreshing()
+        case .unavailable:
+            webView.load(URLRequest(url: loginPage))
+        }
+    }
+
     /// Hands the address to the system without waiting for the result.
     private func openExternally(_ url: URL) {
         UIApplication.shared.open(url, options: [:], completionHandler: nil)
@@ -172,7 +219,8 @@ extension NodeWebModel: WKNavigationDelegate {
         guard isMainFrame, let url = navigationAction.request.url else { return .allow }
         switch policy.decide(for: url) {
         case .allowInApp:
-            return .allow
+            if homeNode.hasSameOrigin(url) { lastHomePage = url }
+            return startsAccessSignIn(for: url) ? .cancel : .allow
         case .openExternally:
             openExternally(url)
             return .cancel

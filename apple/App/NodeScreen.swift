@@ -35,10 +35,13 @@ struct NodeScreen: View {
 }
 
 extension NodeScreen {
-    /// The number on the icon belongs to the node that is being left.
+    /// The number on the icon and the sign-in belong to the node that is being left.
     private func changeHomeNode() {
         push.setBadge(0)
-        onChangeHomeNode()
+        Task {
+            await model?.forgetAccessSession()
+            onChangeHomeNode()
+        }
     }
 
     private func startModel() {
@@ -64,7 +67,7 @@ private struct FailureView: View {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 44))
                 .foregroundStyle(.secondary)
-            Text("Cannot reach your home node")
+            Text(failure.title)
                 .font(.title3.bold())
             Text(failure.message)
                 .font(.footnote)

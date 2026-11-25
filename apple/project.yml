@@ -2,7 +2,7 @@ name: Agency
 
 options:
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "17.4"
   generateEmptyDirectories: true
 
 configFiles:
@@ -41,6 +41,10 @@ targets:
       path: App/Agency.entitlements
       properties:
         aps-environment: $(APS_ENVIRONMENT)
+        # The node's host, for the universal link the Access sign-in returns through.
+        com.apple.developer.associated-domains:
+          - applinks:$(AGENCY_ASSOCIATED_HOST)
+          - webcredentials:$(AGENCY_ASSOCIATED_HOST)
     info:
       path: App/Info.plist
       properties:
@@ -49,6 +53,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Read at run time to tell the node which APNs host a device token belongs to.
         AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
+        # The host the app is built to return to after an Access sign-in; the app uses that sign-in
+        # only for a home node on this host.
+        AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

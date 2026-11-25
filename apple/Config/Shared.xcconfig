@@ -2,5 +2,7 @@
 // Real values go in apple/Local.xcconfig (see Local.xcconfig.example), which is not committed.
 PRODUCT_BUNDLE_IDENTIFIER = org.example.agency
 DEVELOPMENT_TEAM =
+// The node host the app is associated with; a placeholder that never resolves.
+AGENCY_ASSOCIATED_HOST = agency.invalid
 
 #include? "../Local.xcconfig"

@@ -173,7 +173,9 @@ check "it names the platform" contains "$LOG" '"platform":"IOS"'
 check "it enables Push Notifications on the new bundle ID" contains "$LOG" '"capabilityType":"PUSH_NOTIFICATIONS"'
 check "it links the capability to the new bundle ID" contains "$LOG" '"id":"NEW-BUNDLE"'
 check "it says what it did" contains "$OUTPUT" "Registered bundle ID com.acme.agency."
+check "it enables Associated Domains on the new bundle ID" contains "$LOG" '"capabilityType":"ASSOCIATED_DOMAINS"'
 check "it says it enabled Push Notifications" contains "$OUTPUT" "Enabled Push Notifications."
+check "it says it enabled Associated Domains" contains "$OUTPUT" "Enabled Associated Domains."
 AUTH_LINE=$(sed -n '1p' "$ROOT/../fake/log.auth")
 BEARER=${AUTH_LINE#*Bearer }
 BEARER=${BEARER%\"*}
@@ -184,18 +186,26 @@ check "the token is not on a command line" [ -z "$(grep -F "$BEARER" "$ROOT/../f
 
 ROOT=$(new_repository reg-existing)
 printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
-printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}}]}' > "$ROOT/../fake/capabilities.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}},{"attributes":{"capabilityType":"ASSOCIATED_DOMAINS"}}]}' > "$ROOT/../fake/capabilities.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
 check "everything in place: it succeeds" [ "$STATUS" -eq 0 ]
 check "everything in place: it only reads" [ -z "$(grep -E '^(POST|PUT|PATCH|DELETE)' "$ROOT/../fake/log")" ]
 check "everything in place: it says so" contains "$OUTPUT" "is already registered"
 check "everything in place: it says Push is on" contains "$OUTPUT" "Push Notifications is already enabled."
+check "everything in place: it says Associated Domains is on" contains "$OUTPUT" "Associated Domains is already enabled."
+
+ROOT=$(new_repository reg-no-domains)
+printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}}]}' > "$ROOT/../fake/capabilities.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "Push without Associated Domains: it enables only Associated Domains" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 1 ]
+check "Push without Associated Domains: it is the missing one" contains "$(cat "$ROOT/../fake/log")" '"capabilityType":"ASSOCIATED_DOMAINS"'
 
 ROOT=$(new_repository reg-no-push)
 printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
 printf '%s' '{"data":[{"attributes":{"capabilityType":"ICLOUD"}}]}' > "$ROOT/../fake/capabilities.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
-check "bundle ID without Push: it enables only the capability" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 1 ]
+check "bundle ID without Push: it enables both capabilities" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 2 ]
 check "bundle ID without Push: it uses the existing bundle ID" contains "$(cat "$ROOT/../fake/log")" '"id":"B1"'
 
 ROOT=$(new_repository reg-longer)

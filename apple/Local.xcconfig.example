@@ -6,3 +6,9 @@ DEVELOPMENT_TEAM = XXXXXXXXXX
 // The bundle ID of the app record in App Store Connect. If the node sends push notifications,
 // the node's configuration must name the same ID.
 PRODUCT_BUNDLE_IDENTIFIER = com.example.agency
+
+// The host name of your home node, such as agency.example.com (no scheme, no path). With it the
+// app signs in to Cloudflare Access in the system browser session, where passkeys work. The node
+// must serve /.well-known/apple-app-site-association for the app (see docs/apple.md). Without it,
+// or with another host, the app shows the Access login page in its own web view.
+AGENCY_ASSOCIATED_HOST = agency.example.com

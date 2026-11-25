@@ -22,7 +22,7 @@ apple/
 - On the first launch it asks for the home node address and keeps it in `UserDefaults`. Only the origin is kept: a pasted path is dropped. Plain `http` is accepted only for `localhost`, `127.0.0.1`, and `.local` names, so a node on the owner's machine can be tried.
 - It loads the node in a `WKWebView` that uses the default website data store, which is persistent. The Cloudflare Access session cookie and the web client's own storage survive app launches. How long the sign-in lasts is the session duration of the Access application.
 - Only the home node and `<team>.cloudflareaccess.com` (https) load inside the app. Any other `http(s)` address opens in Safari, `mailto:` and `tel:` go to the system, and every other scheme is ignored. A link with `target="_blank"` follows the same rule instead of opening a window. The rule is `NavigationPolicy` in `apple/AgencyKit`.
-- Sign-in through an identity provider other than the Access one-time PIN needs the provider's host on that allow list, or its pages open in Safari and the session never reaches the app.
+- Sign-in through an identity provider other than the Access one-time PIN needs the provider's host on that allow list, or its pages open in Safari and the session never reaches the app. When the app is built for the node's host (see "Signing in with a passkey"), it does not show the Access login page in the web view at all: it signs in in the system's web authentication session instead, where passkeys work.
 - Pull down to reload. When a page cannot be loaded, or the node answers its own page with HTTP 400 or higher, a native page offers Reload and Change home node.
 - The user agent carries `AgencyApp`, so the web client can tell it runs in the app.
 
@@ -56,6 +56,7 @@ Copy `apple/Local.xcconfig.example` to `apple/Local.xcconfig` and set:
 
 - `DEVELOPMENT_TEAM`: the Apple Developer team ID.
 - `PRODUCT_BUNDLE_IDENTIFIER`: the bundle ID of the app record in App Store Connect.
+- `AGENCY_ASSOCIATED_HOST`: the host name of your home node. It goes into the app's associated domains and tells the app which node may use the passkey sign-in. Optional: without it the app shows the Access login page in its web view.
 
 `Local.xcconfig` is ignored by git. Without it the project builds with a placeholder bundle ID, which cannot be signed.
 
@@ -77,11 +78,12 @@ export ASC_KEY_ID=XXXXXXXXXX                           # its 10 character key ID
 export ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000
 ```
 
-**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications capability on it. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
+**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications and Associated Domains capabilities on it. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
 
 ```
 Registered bundle ID com.acme.agency.
 Enabled Push Notifications.
+Enabled Associated Domains.
 ```
 
 The name of a new bundle ID is `Agency`; set `ASC_APP_NAME` to use another.
@@ -110,6 +112,31 @@ apple/scripts/test/run.sh
 ```
 
 It needs `bash`, `openssl`, `perl` and `jq`, and uses no Apple account, network, or Xcode: a generated key signs a token and the test verifies the signature with the public key, the argument checks are exercised, and stand-ins replace `curl`, `xcodegen` and `xcodebuild`. Continuous integration runs it on Linux. A run against Apple itself has only been done by hand.
+
+## Signing in with a passkey
+
+A `WKWebView` cannot run WebAuthn for the Access team domain (`<team>.cloudflareaccess.com`): iOS allows it only for a relying party that is one of the app's associated domains, and that file would have to be served by Cloudflare. So an Access application that offers passkeys fails in the app's web view with "The passkey prompt was canceled." The one-time PIN still works there.
+
+The app therefore signs in outside the web view, in an `ASWebAuthenticationSession`. It runs in Safari's context, so passkeys and password managers work, and it needs no password prompt of its own.
+
+1. The web view is about to load an Access login page (`/cdn-cgi/access/login/...`). The app cancels that navigation and starts the session on `https://<node host>/app/handoff?state=<state>`. The `state` is 256 random bits made for this sign-in.
+2. Access signs the owner in and returns to the handoff route, which sits behind Access. The node answers with a redirect to `https://<node host>/app/callback#token=<Access token>&state=<state>`.
+3. That address is a universal link, so iOS hands it only to the app that the node's `/.well-known/apple-app-site-association` file names. The app checks the host, the path, that `state` is its own, and that the token is a JWT that has not expired (`AccessHandoff` in `apple/AgencyKit`), then writes the token to the web view as the `CF_Authorization` cookie: host-only, path `/`, `Secure`, `HttpOnly`, expiring with the token, as Access sets it. The web view loads the page it was on.
+
+The token lives in the URL fragment so that it never reaches a server or a log. A callback that does not belong to a running session is ignored.
+
+Whether it is used is decided by the build and by the node:
+
+- The app uses it only when the home node is on `https` port 443 and its host is `AGENCY_ASSOCIATED_HOST`, because that is the only host a universal link can return from.
+- If the session cannot run, for example because the node has no handoff route, the app falls back to the Access login page in the web view for the rest of the launch. Closing the sheet is not a failure: the app shows Reload.
+- If Access asks for a login again within two minutes of a sign-in that worked, the token did not take and the login page loads in the web view, instead of looping.
+- Changing the home node removes the Access cookie of the old node from the web view. The web client has no sign-out of its own. The session in Safari is separate and is left alone.
+
+What it needs:
+
+- **The node:** the `/app/handoff` and `/app/callback` routes and the association file, with the app identifier (`<team id>.<bundle id>`) in the node's configuration.
+- **Cloudflare Access:** a bypass policy for the one path `/.well-known/apple-app-site-association`, because Apple's servers fetch the file without signing in. The Access application must not bind the cookie to the browser, because the token is made in Safari and used in the app.
+- **The build:** `AGENCY_ASSOCIATED_HOST` in `Local.xcconfig`. The project's minimum iOS is 17.4, the first version with `ASWebAuthenticationSession` callbacks on an https address.
 
 ## Push notifications
 

@@ -75,3 +75,30 @@ struct NavigationPolicyTests {
         #expect(decision(address) == expected)
     }
 }
+
+@Suite("NavigationPolicy Access login page")
+struct AccessLoginPageTests {
+    private let policy = NavigationPolicy(homeNode: try! HomeNodeURL(validating: "https://node.example.com"))
+
+    @Test("the login page of an Access team is recognized", arguments: [
+        "https://acme.cloudflareaccess.com/cdn-cgi/access/login/node.example.com?kid=1&redirect_url=%2F",
+        "https://ACME.cloudflareaccess.com:443/cdn-cgi/access/login/node.example.com",
+    ])
+    func loginPage(address: String) {
+        #expect(policy.isAccessLoginPage(URL(string: address)!))
+    }
+
+    @Test("other pages are not", arguments: [
+        "https://acme.cloudflareaccess.com/cdn-cgi/access/logout",
+        "https://acme.cloudflareaccess.com/cdn-cgi/access/callback?code=1",
+        "https://acme.cloudflareaccess.com/",
+        "https://node.example.com/cdn-cgi/access/login/node.example.com",
+        "https://evilcloudflareaccess.com/cdn-cgi/access/login/x",
+        "https://acme.cloudflareaccess.com:8443/cdn-cgi/access/login/x",
+        "http://acme.cloudflareaccess.com/cdn-cgi/access/login/x",
+        "https://acme.cloudflareaccess.com.evil.example/cdn-cgi/access/login/x",
+    ])
+    func otherPages(address: String) {
+        #expect(!policy.isAccessLoginPage(URL(string: address)!))
+    }
+}
