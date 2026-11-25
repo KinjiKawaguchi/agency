@@ -15,17 +15,35 @@ async function sent(notes: { title?: string; choiceLabel?: string }, choice?: st
 }
 
 describe('decideSigned', () => {
-  it('sends the request’s title, trimmed and cut to the 200 characters the node keeps', async () => {
-    const entry = await sent({ title: `  ${'あ'.repeat(199)}🙂🙂` })
+  it('sends a title of exactly 200 characters as it is', async () => {
+    expect((await sent({ title: `  ${'x'.repeat(200)}  ` }))?.title).toBe('x'.repeat(200))
+  })
+
+  it('cuts a title of 201 characters so that it and its ellipsis make 200, and the node accepts it', async () => {
+    const entry = await sent({ title: 'x'.repeat(201) })
+    expect(entry?.title).toBe(`${'x'.repeat(199)}…`)
     expect([...(entry?.title ?? '')]).toHaveLength(200)
-    expect(entry?.title).toBe(`${'あ'.repeat(199)}🙂`)
+  })
+
+  it('counts characters, not UTF-16 units: emoji near the limit are neither split nor over-counted', async () => {
+    // 200 emoji are 400 UTF-16 units but exactly 200 characters, so the node takes them whole.
+    expect((await sent({ title: '🙂'.repeat(200) }))?.title).toBe('🙂'.repeat(200))
+    // 201 are cut to 199 whole emoji and the ellipsis, never leaving half of one.
+    const cut = (await sent({ title: '🙂'.repeat(201) }))?.title
+    expect(cut).toBe(`${'🙂'.repeat(199)}…`)
+    expect([...(cut ?? '')]).toHaveLength(200)
+  })
+
+  it('does not leave a space before the ellipsis', async () => {
+    expect((await sent({ title: `${'x'.repeat(198)} ${'y'.repeat(10)}` }))?.title).toBe(`${'x'.repeat(198)}…`)
   })
 
   it('sends the label of the chosen option along with the choice, trimmed and cut to 200 characters', async () => {
     const entry = await sent({ choiceLabel: `  Approve ${'x'.repeat(300)}` }, 'approve')
     expect(entry).toMatchObject({ choice: 'approve' })
-    expect(entry?.choiceLabel).toHaveLength(200)
+    expect([...(entry?.choiceLabel ?? '')]).toHaveLength(200)
     expect(entry?.choiceLabel?.startsWith('Approve x')).toBe(true)
+    expect(entry?.choiceLabel?.endsWith('…')).toBe(true)
   })
 
   it('sends no label without a choice, which the node would refuse', async () => {

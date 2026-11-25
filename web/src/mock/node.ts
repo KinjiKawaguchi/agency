@@ -76,6 +76,9 @@ const SIGN_IN_URL = 'https://login.agency.test/cdn-cgi/access/login'
 const DECISIONS_PATH = '/api/decisions'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
+
+/** The longest `title` and `choiceLabel` the node takes. */
+const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|envelopes)$/
 const DEVICES_PATH = '/api/devices'
@@ -138,6 +141,10 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const signed = body.envelope as Signed<Envelope>
     const { kind, target, payload } = signed.body
     const notes = body as { title?: string; choiceLabel?: string }
+    // The node's note limit, counted in characters (Rust `chars`), not UTF-16 units.
+    for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel]] as const) {
+      if (text !== undefined && [...text.trim()].length > MAX_NOTE) return failure(400, `${field} is at most ${MAX_NOTE} characters`)
+    }
     const reply = await accept(view, { kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
     if (reply.ok) accepted = [...accepted, signed]
     return reply

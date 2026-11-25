@@ -53,7 +53,15 @@ const segment = encodeURIComponent
 /** The longest title or option label the node keeps in its decision log. */
 const MAX_LOGGED_TEXT = 200
 
-const forLog = (text: string): string => [...text.trim()].slice(0, MAX_LOGGED_TEXT).join('')
+/**
+ * Trimmed, and when longer than the node keeps, cut so that the text and its ellipsis fit. The node
+ * counts Unicode scalar values, as Rust `chars` does, so the count is by code point, not UTF-16 unit.
+ */
+export function forLog(text: string): string {
+  const characters = [...text.trim()]
+  if (characters.length <= MAX_LOGGED_TEXT) return characters.join('')
+  return `${characters.slice(0, MAX_LOGGED_TEXT - 1).join('').trimEnd()}…`
+}
 
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
