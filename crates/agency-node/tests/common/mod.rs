@@ -146,14 +146,14 @@ pub async fn node_with(
     running
 }
 
-/// alice の台: 組織 acme の根の鍵を持ち、チーム app を置く。チームには答え待ちの要求 r-1 がある
+/// alice's node: holds the root key of org acme and hosts team app, which has a waiting request r-1.
 pub async fn alice() -> (Running, Arc<Mutex<MemoryRuntimeState>>) {
     let (runtime, memory) = memory_runtime();
     memory
         .lock()
         .unwrap()
         .requests
-        .push(("r-1".into(), "鍵を作るか".into()));
+        .push(("r-1".into(), "Make a key?".into()));
     let running = node("alice", runtime).await;
     let node = &running.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();

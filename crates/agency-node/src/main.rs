@@ -1,4 +1,4 @@
-//! `agency`: Agency のノードの CLI。台を作り、組織を作り、招待し、参加し、動かす。
+//! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, decides, and serves.
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::{decide, Decided};
@@ -19,10 +19,10 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "agency",
-    about = "Agency のノード: AI エージェントと人の組織を、複数の機械にまたがって動かす"
+    about = "Agency's node: runs organizations of AI agents and people across many machines"
 )]
 struct Cli {
-    /// データのディレクトリ (既定は $AGENCY_DIR か ~/.agency)
+    /// The data directory (default: $AGENCY_DIR or ~/.agency)
     #[arg(long, global = true)]
     dir: Option<PathBuf>,
     #[command(subcommand)]
@@ -31,29 +31,29 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// この台を作る (アカウントの鍵を作り、設定を書く)
+    /// Creates this node (makes the account key and writes the configuration)
     Init {
         #[arg(long)]
         account: String,
         #[arg(long)]
         label: String,
-        /// ほかの台からの届け先 (http://127.0.0.1:4400 など)
+        /// Where other nodes reach this node (such as http://127.0.0.1:4400)
         #[arg(long)]
         url: String,
         #[arg(long, default_value = "127.0.0.1:4400")]
         listen: String,
-        /// ハーネスの CLI (scrum) のパス
+        /// The path of the harness CLI (scrum)
         #[arg(long, default_value = "scrum")]
         scrum: PathBuf,
     },
-    /// 組織を作る (この台のアカウントが根の鍵になる)
+    /// Creates an org (this node's account becomes its root key)
     OrgCreate {
         #[arg(long)]
         org: String,
         #[arg(long)]
         label: String,
     },
-    /// 組織にチームを足す (根の鍵の台で)。--node を省くと、この台に置く
+    /// Adds a team to an org (on the root key's node). Without --node, the team runs on this node
     TeamAdd {
         #[arg(long)]
         org: String,
@@ -70,43 +70,43 @@ enum Command {
         #[arg(long)]
         node: Option<String>,
     },
-    /// 組織への招待のリンクを作る (根の鍵の台で)
+    /// Creates an invite link to an org (on the root key's node)
     Invite {
         #[arg(long)]
         org: String,
         #[arg(long)]
         department: Option<String>,
-        /// member (読む、答える) か answerer (答えるだけ)
+        /// member (reads and answers) or answerer (only answers)
         #[arg(long, default_value = "member")]
         role: String,
     },
-    /// 招待のリンクから組織に参加する
+    /// Joins an org from an invite link
     Join {
         link: String,
-        /// 確かめずに参加する
+        /// Joins without asking for confirmation
         #[arg(long)]
         yes: bool,
     },
-    /// 要求に答える (この台のチームなら当て、ほかの台のチームなら署名して届ける)
+    /// Answers a request (applied directly to a team on this node; signed and delivered to a team on another node)
     Decide {
         #[arg(long)]
         org: String,
         #[arg(long)]
         team: String,
-        /// 要求の id
+        /// The request id
         #[arg(long)]
         request: String,
         #[arg(long)]
         choice: Option<String>,
-        /// 答えの文 (- で始まる文もそのまま受け取る)
+        /// The answer text (text starting with - is taken as is)
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         text: String,
     },
-    /// 写しを 1 回読み直し、送り箱を 1 回届け直す
+    /// Re-reads the replicas once and retries the outbox once
     Sync,
-    /// この台の様子 (アカウント、組織、置いているチーム、送り箱)
+    /// Shows this node: its account, orgs, hosted teams, and outbox
     Status,
-    /// 台を動かす (台どうしの道を待ち受け、写しと送り箱を回す)
+    /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
 
@@ -134,10 +134,10 @@ fn init(
     scrum: PathBuf,
 ) -> Result<()> {
     if data.config_path().exists() {
-        bail!("{} はもうある", data.config_path().display());
+        bail!("{} already exists", data.config_path().display());
     }
     if !is_node_origin(url) {
-        bail!("--url は http(s)://ホスト[:ポート] の形");
+        bail!("--url must be http(s)://host[:port]");
     }
     let key = data.create_key()?;
     data.save_config(&NodeConfig {
@@ -154,7 +154,7 @@ fn init(
         access: None,
     })?;
     println!(
-        "台を作った: {}\nアカウント {account} の鍵の指紋: {}",
+        "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
         key.public().fingerprint()
     );
@@ -164,22 +164,22 @@ fn init(
 fn status(node: &Node) {
     let config = node.config();
     println!(
-        "アカウント: {} ({}) 鍵の指紋 {}",
+        "Account: {} ({}), key fingerprint {}",
         config.account.id,
         config.account.label,
         node.key().public().fingerprint()
     );
-    println!("この台: {} (待ち受け {})", config.url, config.listen);
+    println!("This node: {} (listening on {})", config.url, config.listen);
     for doc in node.store().orgs() {
         let role = if orgs::is_root(node, &doc) {
-            "根の鍵"
+            "root key"
         } else if doc.body.member(&config.account.id).is_some() {
-            "所属"
+            "member"
         } else {
-            "写し"
+            "replica"
         };
         println!(
-            "組織 {} ({}) {} 版、{}、人 {} 人、チーム {}",
+            "Org {} ({}), version {}, {}, people: {}, teams: {}",
             doc.body.org,
             doc.body.label,
             doc.body.version,
@@ -204,7 +204,7 @@ fn status(node: &Node) {
     }
     for parcel in pending(node) {
         println!(
-            "送り箱: {} → {} ({} 回、{})",
+            "Outbox: {} -> {} ({} attempts, {})",
             parcel.id,
             parcel.to,
             parcel.attempts,
@@ -215,7 +215,7 @@ fn status(node: &Node) {
 
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     print!(
-        "組織「{}」({}) に参加しますか。根の鍵 {} の指紋はリンクと合っています [y/N] ",
+        "Join the org \"{}\" ({})? The fingerprint of root key {} matches the link. [y/N] ",
         definition.label, definition.org, definition.root.account
     );
     let _ = std::io::stdout().flush();
@@ -228,10 +228,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let listen = node.config().listen;
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
-        .with_context(|| format!("{listen} で待ち受けられない"))?;
+        .with_context(|| format!("cannot listen on {listen}"))?;
     let port = listener.local_addr()?.port();
     let app = opened.app(port)?;
-    println!("台を動かした: {} (待ち受け {listen})", node.url());
+    println!("Node running: {} (listening on {listen})", node.url());
     println!("Web client: http://127.0.0.1:{port}/");
     let background = node.clone();
     tokio::spawn(async move {
@@ -239,11 +239,11 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         loop {
             if tick.is_multiple_of(2) {
                 if let Err(error) = refresh(&background).await {
-                    eprintln!("agency: 写しの読み直しに失敗した: {error}");
+                    eprintln!("agency: re-reading the replicas failed: {error}");
                 }
             }
             if let Err(error) = deliver_due(&background).await {
-                eprintln!("agency: 送り箱の届け直しに失敗した: {error}");
+                eprintln!("agency: retrying the outbox failed: {error}");
             }
             tick += 1;
             tokio::time::sleep(Duration::from_secs(15)).await;
@@ -279,7 +279,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(
-                "組織 {} を作った。根の鍵の指紋: {}",
+                "Created org {}. Root key fingerprint: {}",
                 doc.body.org,
                 node.key().public().fingerprint()
             );
@@ -295,11 +295,11 @@ async fn run(cli: Cli) -> Result<()> {
             let (org, team) = (id(&org)?, id(&team)?);
             let place_url = place.unwrap_or_else(|| node.url());
             if !is_node_origin(&place_url) {
-                bail!("--node は http(s)://ホスト[:ポート] の形");
+                bail!("--node must be http(s)://host[:port]");
             }
             let is_here = place_url == node.url();
             if is_here && state_dir.is_none() {
-                bail!("この台に置くチームは --state-dir が要る");
+                bail!("a team on this node needs --state-dir");
             }
             let doc = orgs::add_team(
                 &node,
@@ -329,7 +329,7 @@ async fn run(cli: Cli) -> Result<()> {
                 })?;
             }
             println!(
-                "組織 {org} にチーム {team} を足した ({} 版)",
+                "Added team {team} to org {org} (version {})",
                 doc.body.version
             );
         }
@@ -341,7 +341,7 @@ async fn run(cli: Cli) -> Result<()> {
             let role = match role.as_str() {
                 "member" => Role::Member,
                 "answerer" => Role::Answerer,
-                _ => bail!("--role は member か answerer"),
+                _ => bail!("--role must be member or answerer"),
             };
             let department = department.as_deref().map(id).transpose()?;
             println!("{}", invites::invite(&node, &id(&org)?, department, role)?);
@@ -349,7 +349,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Join { link, yes } => {
             let doc = join(&node, &link, |definition| yes || confirm_join(definition)).await?;
             println!(
-                "組織 {} ({}) に参加した ({} 版)",
+                "Joined org {} ({}) (version {})",
                 doc.body.org, doc.body.label, doc.body.version
             );
         }
@@ -372,18 +372,22 @@ async fn run(cli: Cli) -> Result<()> {
             println!(
                 "{}",
                 match outcome {
-                    Decided::Applied => "この台のチームに当てた".to_owned(),
-                    Decided::Delivered => "署名して、チームの台に届けた".to_owned(),
-                    Decided::Queued(why) =>
-                        format!("チームの台に届かないので、送り箱にため置いた ({why})"),
-                    Decided::Refused(why) => format!("チームの台が断った: {why}"),
+                    Decided::Applied => "Applied to the team on this node".to_owned(),
+                    Decided::Delivered => "Signed and delivered to the team's node".to_owned(),
+                    Decided::Queued(why) => format!(
+                        "The team's node is unreachable; the decision waits in the outbox ({why})"
+                    ),
+                    Decided::Refused(why) => format!("The team's node refused: {why}"),
                 }
             );
         }
         Command::Sync => {
             refresh(&node).await?;
             let outcomes = deliver_due(&node).await?;
-            println!("写しを読み直し、送り箱を {} 件届けに行った", outcomes.len());
+            println!(
+                "Re-read the replicas and tried {} outbox deliveries",
+                outcomes.len()
+            );
         }
         Command::Status => status(&node),
         Command::Serve => serve(opened).await?,

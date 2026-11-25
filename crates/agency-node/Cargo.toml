@@ -1,6 +1,6 @@
 [package]
 name = "agency-node"
-description = "Agency のノード: 機械ごとに 1 つ。チームの様子を配り、署名した決裁を受け取り、ほかの台の写しと送り箱を持つ"
+description = "Agency's node, one per machine: serves its teams and the web client, accepts signed decisions, and keeps replicas of other nodes and an outbox"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
