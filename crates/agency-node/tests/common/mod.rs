@@ -4,7 +4,7 @@
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;
-use agency_adapters::memory::{ManualClock, MemoryRuntime, MemoryRuntimeState};
+use agency_adapters::memory::{ManualClock, MemoryNotifier, MemoryRuntime, MemoryRuntimeState};
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::invites::{self, join};
 use agency_core::ports::{ConfigStore, TeamRuntime};
@@ -56,6 +56,8 @@ pub fn id(raw: &str) -> Id {
 pub struct Running {
     pub node: Arc<Node>,
     pub clock: ManualClock,
+    /// Records the notifications the node sends; it sends none until a token is registered.
+    pub notifier: MemoryNotifier,
     opened: Opened,
     pub port: u16,
     server: Option<JoinHandle<()>>,
@@ -126,19 +128,23 @@ pub async fn node_with(
         trusted: vec![],
         funding: vec![],
         access: None,
+        push: None,
     })
     .unwrap();
     let clock = ManualClock::at(T0);
+    let notifier = MemoryNotifier::default();
     let overrides = Overrides {
         runtime: Some(runtime),
         clock: Some(Arc::new(clock.clone())),
         random: None,
         certs,
+        notifier: Some(Arc::new(notifier.clone())),
     };
     let opened = agency_node::open(data, overrides).unwrap();
     let mut running = Running {
         node: opened.node.clone(),
         clock,
+        notifier,
         opened,
         port,
         server: None,

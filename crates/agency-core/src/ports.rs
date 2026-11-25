@@ -5,9 +5,10 @@ use crate::devices::DeviceRequestRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
 use crate::outbox::Parcel;
+use crate::push::{Notice, PushError};
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
-use agency_proto::client::UsageWindow;
+use agency_proto::client::{PushToken, UsageWindow};
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
@@ -81,6 +82,15 @@ pub trait DeviceRequestStore {
     fn save_device_requests(&self, requests: &[DeviceRequestRecord]) -> Result<()>;
 }
 
+/// The owner's registered APNs device tokens, and the requests already notified.
+pub trait PushStore {
+    fn push_tokens(&self) -> Vec<PushToken>;
+    fn save_push_tokens(&self, tokens: &[PushToken]) -> Result<()>;
+    /// Keys (`org/team/request`) of requests already notified, oldest first. `None` until the first pass.
+    fn notified(&self) -> Option<Vec<String>>;
+    fn save_notified(&self, keys: &[String]) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -95,6 +105,7 @@ pub trait Store:
     + ReplicaStore
     + DecisionLogStore
     + DeviceRequestStore
+    + PushStore
     + Send
     + Sync
 {
@@ -109,6 +120,7 @@ impl<
             + ReplicaStore
             + DecisionLogStore
             + DeviceRequestStore
+            + PushStore
             + Send
             + Sync,
     > Store for T
@@ -206,4 +218,10 @@ pub trait TeamRuntime: Send + Sync {
 pub trait FundingSource: Send + Sync {
     /// The windows that could be read and when; nothing when the usage is unknown.
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
+}
+
+/// Sends a notification to one of the owner's devices (APNs). Without a configured key, it sends nothing.
+#[async_trait]
+pub trait Notifier: Send + Sync {
+    async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError>;
 }

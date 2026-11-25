@@ -87,7 +87,13 @@ To open it from elsewhere, put the node behind a Cloudflare Tunnel with Cloudfla
 "access": { "publicHost": "agency.example.com", "teamDomain": "acme.cloudflareaccess.com", "audience": "<64 hex characters>", "ownerEmail": "alice@example.com" }
 ```
 
-The Access policy must bypass `/fed/*` so other nodes can reach the federation routes. See "Client API" in docs/protocol.md for what is checked.
+The Access policy must bypass `/fed/*` so other nodes can reach the federation routes.
+
+To notify the owner's iPhone of new requests, add the APNs key Apple issued for the app (keep the `.p8` file outside the repository):
+
+```json
+"push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
+``` See "Client API" in docs/protocol.md for what is checked.
 
 ## iPhone app
 

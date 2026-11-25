@@ -90,6 +90,24 @@ pub struct NodeConfig {
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessConfig>,
+    /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push: Option<PushConfig>,
+}
+
+/// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
+/// outside the repository and is never copied into the data directory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PushConfig {
+    /// The `.p8` file Apple issued for the key.
+    pub key_path: PathBuf,
+    /// The key's id (10 characters).
+    pub key_id: String,
+    /// The Apple developer team id (10 characters).
+    pub team_id: String,
+    /// The app's bundle id, the APNs topic.
+    pub bundle_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
