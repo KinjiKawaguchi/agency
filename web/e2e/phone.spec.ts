@@ -46,6 +46,17 @@ test('opening a document from the pile brings it into view', async ({ page, requ
   await expect.poll(async () => (await page.getByRole('article').boundingBox())?.y ?? 9999, { timeout: 5000 }).toBeLessThan(200)
 })
 
+test('a person who holds a lot of work stays inside the page, folded and unfolded', async ({ page, request }) => {
+  await resetNode(request)
+  await page.goto('/people')
+  const card = page.locator('article.mate', { hasText: 'Building the checkout flow' })
+  await expect(card.locator('.mate-holding .ref')).toHaveCount(6)
+  await card.getByRole('button', { name: '+8 more' }).click()
+  await expect(card.locator('.mate-holding .ref')).toHaveCount(14)
+  await page.getByRole('button', { name: 'Show 7 more' }).click()
+  // The afterEach check: nothing makes the page scroll sideways.
+})
+
 test('an empty desk says nothing waits, with no blank paper', async ({ page, request }) => {
   await resetNode(request, { empty: true })
   await page.goto('/desk')

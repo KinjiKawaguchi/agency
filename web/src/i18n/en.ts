@@ -51,6 +51,8 @@ export const en = {
     stateTags: { 'needs-you': 'Your turn', working: 'Working', waiting: 'Waiting', idle: 'Idle', away: 'Away' },
     since: (when: string) => `Since ${when}`,
     holding: 'Holding',
+    moreHeld: (count: number) => `+${count} more`,
+    moreWork: (count: number) => `Show ${count} more`,
     openDecisions: 'Open decisions',
     waitingForAnswer: 'Waiting for your answer',
     workTitle: 'Work in progress',

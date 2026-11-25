@@ -14,7 +14,8 @@ const pile = async () => within(await screen.findByRole('listbox', { name: 'Docu
 describe('decision desk', () => {
   it('summarizes the situation and opens the most urgent document first', async () => {
     renderApp()
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(`1 person is waiting for your answer.Start by approving “${PROPOSAL}”.`)
+    // The heading appears once the account is known; its text settles when every team has loaded.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(`1 person is waiting for your answer.Start by approving “${PROPOSAL}”.`))
     const paper = screen.getByRole('article')
     expect(within(paper).getByRole('heading', { level: 2 })).toHaveTextContent(PROPOSAL)
     expect(within(paper).getByRole('group', { name: 'Drafted by Lead, Approved by Alice' })).toBeInTheDocument()
