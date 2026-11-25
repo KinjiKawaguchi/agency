@@ -61,6 +61,12 @@ final class PushCoordinator {
         defaults.set(Date(), forKey: Self.deferredAtKey)
     }
 
+    /// Shows the number of waiting requests on the app icon. Without the badge permission, iOS
+    /// ignores it.
+    func setBadge(_ count: Int) {
+        Task { try? await center.setBadgeCount(count) }
+    }
+
     func didRegister(deviceToken: Data) {
         guard let token = PushToken(deviceToken: deviceToken), let environment = Self.environment else {
             Self.logger.error("Cannot build a push registration: empty token or unknown environment")

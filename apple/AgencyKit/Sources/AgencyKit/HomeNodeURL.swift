@@ -64,11 +64,16 @@ public struct HomeNodeURL: Equatable, Sendable {
 
     /// Whether the address is on the home node: the same scheme, host and effective port.
     public func hasSameOrigin(_ other: URL) -> Bool {
-        guard let otherScheme = other.scheme?.lowercased(), let otherHost = other.host?.lowercased() else {
-            return false
-        }
-        let otherPort = other.port ?? Self.defaultPort(forScheme: otherScheme)
-        return otherScheme == scheme && otherHost == host && otherPort == port
+        guard let otherScheme = other.scheme, let otherHost = other.host else { return false }
+        return hasSameOrigin(scheme: otherScheme, host: otherHost, port: other.port ?? 0)
+    }
+
+    /// The same, for an origin given in parts, as WebKit reports a frame's origin. A port of 0 stands
+    /// for the scheme's default.
+    public func hasSameOrigin(scheme otherScheme: String, host otherHost: String, port otherPort: Int) -> Bool {
+        let scheme = otherScheme.lowercased()
+        let effectivePort = otherPort == 0 ? Self.defaultPort(forScheme: scheme) : otherPort
+        return scheme == self.scheme && otherHost.lowercased() == host && effectivePort == port
     }
 
     /// The port a URL with this scheme reaches when it names none.

@@ -13,7 +13,9 @@ private struct FakePage {
     init(origin: String) {
         context.evaluateScript("""
         var events = [];
+        var posted = [];
         var window = { location: { origin: \(origin.debugDescription) } };
+        window.webkit = { messageHandlers: { agency: { postMessage: function (message) { posted.push(message); } } } };
         window.dispatchEvent = function (event) { events.push({ type: event.type, detail: event.detail }); };
         function CustomEvent(type, init) { this.type = type; this.detail = init.detail; }
         """)
@@ -21,6 +23,9 @@ private struct FakePage {
     }
 
     func run(_ script: String) { context.evaluateScript(script) }
+
+    /// What the page has handed to the app's message handler, as JSON.
+    var postedMessages: String { context.evaluateScript("JSON.stringify(posted)").toString() }
 
     var native: JSValue { context.evaluateScript("window.agencyNative") }
     var eventCount: Int { Int(events.objectForKeyedSubscript("length").toInt32()) }
@@ -61,6 +66,33 @@ struct NativeBridgeTests {
         let event = page.events.atIndex(0)
         #expect(event?.forProperty("type").toString() == "agency:native-push")
         #expect(event?.forProperty("detail").forProperty("token").toString() == "abcd")
+    }
+
+    @Test("setBadge hands the number to the app's message handler")
+    func setBadge() {
+        let page = FakePage(origin: "https://node.example.com")
+        page.run(NativeBridge.script(homeNode: homeNode, push: nil, announcesChange: false))
+        page.run("window.agencyNative.setBadge(3); window.agencyNative.setBadge(0);")
+        #expect(page.postedMessages == #"[{"type":"badge","count":3},{"type":"badge","count":0}]"#)
+    }
+
+    @Test("setBadge still works after the state was replaced by an update")
+    func setBadgeAfterUpdate() {
+        let page = FakePage(origin: "https://node.example.com")
+        page.run(NativeBridge.script(homeNode: homeNode, push: nil, announcesChange: false))
+        page.run(NativeBridge.script(homeNode: homeNode, push: registration, announcesChange: true))
+        page.run("window.agencyNative.setBadge(5);")
+        #expect(page.postedMessages == #"[{"type":"badge","count":5}]"#)
+    }
+
+    @Test("setBadge does nothing, and does not throw, where there is no message handler")
+    func setBadgeWithoutHandler() {
+        let page = FakePage(origin: "https://node.example.com")
+        page.run("delete window.webkit;")
+        page.run(NativeBridge.script(homeNode: homeNode, push: nil, announcesChange: false))
+        page.run("window.agencyNative.setBadge(3);")
+        #expect(page.postedMessages == "[]")
+        #expect(page.context.exception == nil)
     }
 
     @Test("pages of any other origin get nothing", arguments: [
@@ -106,5 +138,18 @@ struct NativeBridgeOriginTests {
         #expect(!node.hasSameOrigin(URL(string: "https://node.example.com:8443/")!))
         #expect(!node.hasSameOrigin(URL(string: "https://sub.node.example.com/")!))
         #expect(!node.hasSameOrigin(URL(string: "mailto:alice@example.com")!))
+    }
+
+    @Test("an origin in parts, as WebKit reports a frame, treats port 0 as the default")
+    func originInParts() throws {
+        let node = try HomeNodeURL(validating: "https://node.example.com")
+        #expect(node.hasSameOrigin(scheme: "https", host: "node.example.com", port: 0))
+        #expect(node.hasSameOrigin(scheme: "HTTPS", host: "Node.Example.com", port: 443))
+        #expect(!node.hasSameOrigin(scheme: "http", host: "node.example.com", port: 0))
+        #expect(!node.hasSameOrigin(scheme: "https", host: "evil.example", port: 0))
+        #expect(!node.hasSameOrigin(scheme: "https", host: "node.example.com", port: 8443))
+        let local = try HomeNodeURL(validating: "http://localhost:3000")
+        #expect(local.hasSameOrigin(scheme: "http", host: "localhost", port: 3000))
+        #expect(!local.hasSameOrigin(scheme: "http", host: "localhost", port: 0))
     }
 }

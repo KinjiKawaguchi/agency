@@ -23,12 +23,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         push.didFailToRegister(error)
     }
 
-    /// A notification that arrives while the app is open still shows as a banner.
+    /// A notification that arrives while the app is open still shows as a banner and sets the badge.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .list]
+        [.banner, .list, .badge]
     }
 
     nonisolated func userNotificationCenter(

@@ -27,6 +27,9 @@ final class NodeWebModel: NSObject {
     /// signed in through Access.
     @ObservationIgnored var onHomeNodeReached: (() -> Void)?
 
+    /// Called with the number of requests waiting for the owner, when the page says so.
+    @ObservationIgnored var onBadgeChange: ((Int) -> Void)?
+
     /// - Parameters:
     ///   - push: this device's registration, for the page to hand to the node.
     ///   - startingAt: the request a tapped notification is about; the front page when `nil`.
@@ -42,6 +45,7 @@ final class NodeWebModel: NSObject {
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
 
+        userContentController.add(ScriptMessageRelay(model: self), name: NativeMessage.handlerName)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -66,6 +70,19 @@ final class NodeWebModel: NSObject {
         guard let url = webView.url, homeNode.hasSameOrigin(url) else { return }
         let announcement = NativeBridge.script(homeNode: homeNode, push: push, announcesChange: true)
         webView.evaluateJavaScript(announcement, completionHandler: nil)
+    }
+
+    /// A message from the page. The page is trusted only as far as its origin: the main frame of the
+    /// home node, and a message that is exactly one the app knows.
+    fileprivate func receive(_ message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame,
+              homeNode.hasSameOrigin(scheme: origin.protocol, host: origin.host, port: origin.port),
+              let native = NativeMessage(body: message.body)
+        else { return }
+        switch native {
+        case .badge(let count): onBadgeChange?(count)
+        }
     }
 
     /// Opens the request a tapped notification is about.
@@ -129,6 +146,20 @@ final class NodeWebModel: NSObject {
         case .openExternally: openExternally(url)
         case .block: break
         }
+    }
+}
+
+/// The web view's content controller keeps its handlers alive, so the handler holds the model weakly.
+@MainActor
+private final class ScriptMessageRelay: NSObject, WKScriptMessageHandler {
+    private weak var model: NodeWebModel?
+
+    init(model: NodeWebModel) {
+        self.model = model
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        model?.receive(message)
     }
 }
 
