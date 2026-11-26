@@ -384,6 +384,54 @@ struct NodeClientRedeemTests {
         #expect(request.headers["x-agency-token"] == nil)
     }
 
+    private let ownerSession = #"{"writeToken":"w-1","now":"2026-11-24T12:00:00Z"}"#
+    private func owner(_ transport: ScriptedTransport) -> NodeClient {
+        NodeClient(transport: transport, accessToken: { "access-jwt" }, clock: { Date(timeIntervalSince1970: 1_795_521_000) })
+    }
+
+    @Test("entering a number is a write with the write token and plain JSON: the value is a decimal, which canonical JSON has no place for")
+    func enterNumber() async throws {
+        let answer = #"{"kpi":"revenue","date":"2026-11-20","value":1350000.5,"source":{"kind":"manual"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner"}"#
+        let transport = ScriptedTransport([("GET /api/session", json(ownerSession)), ("POST /api/orgs/acme/outcomes/observations", json(answer))])
+        let saved = try await owner(transport).enterNumber(org: "acme", input: ObservationInput(kpi: "revenue", date: "2026-11-20", value: 1_350_000.5, note: "x"))
+        #expect(saved.value == 1_350_000.5)
+        let post = try #require(transport.requests.last)
+        #expect(post.headers["x-agency-token"] == "w-1" && post.headers["content-type"] == "application/json")
+        let data = try #require(post.body)
+        let object = try JSONSerialization.jsonObject(with: data)
+        let body = try #require(object as? [String: Any])
+        #expect(body["kpi"] as? String == "revenue" && body["date"] as? String == "2026-11-20" && body["value"] as? Double == 1_350_000.5 && body["note"] as? String == "x")
+        #expect(Set(body.keys) == ["kpi", "date", "value", "note"], "no field for who or when: the node sets them")
+    }
+
+    @Test("a number with no note sends none, a decimal stays a decimal, and a stale write token is renewed once")
+    func enterNumberShape() async throws {
+        let answer = #"{"kpi":"k","date":"2026-11-20","value":0.1,"source":{"kind":"manual"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner"}"#
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(ownerSession)),
+            ("POST /api/orgs/acme/outcomes/observations", json(#"{"error":"missing or wrong write token"}"#, status: 403)),
+            ("GET /api/session", json(#"{"writeToken":"w-2","now":"2026-11-24T12:00:00Z"}"#)),
+            ("POST /api/orgs/acme/outcomes/observations", json(answer)),
+        ])
+        _ = try await owner(transport).enterNumber(org: "acme", input: ObservationInput(kpi: "k", date: "2026-11-20", value: 0.1))
+        let post = try #require(transport.requests.last)
+        let sent = try #require(post.body)
+        let text = String(decoding: sent, as: UTF8.self)
+        #expect(!text.contains("note") && text.contains("0.1"))
+        #expect(post.headers["x-agency-token"] == "w-2")
+    }
+
+    @Test("the history is a read of the KPI's own path, newest first as the node gives it, and an id that would add a segment is escaped")
+    func numberHistory() async throws {
+        let answer = #"[{"kpi":"revenue","date":"2026-11-20","value":2,"source":{"kind":"connector","name":"export"},"enteredAt":"2026-11-22T09:00:00Z","enteredBy":"owner","note":"n"}]"#
+        let transport = ScriptedTransport([("GET /api/orgs/acme/outcomes/observations?kpi=revenue&limit=100", json(answer))])
+        let list = try await owner(transport).numberHistory(org: "acme", kpi: "revenue")
+        #expect(list.map(\.value) == [2] && list[0].source == .connector(name: "export"))
+        let escaped = ScriptedTransport([("GET /api/orgs/acme/outcomes/observations?kpi=a%2Fb&limit=5", json("[]"))])
+        _ = try await owner(escaped).numberHistory(org: "acme", kpi: "a/b", limit: 5)
+        #expect(escaped.requests.last?.path == "/api/orgs/acme/outcomes/observations?kpi=a%2Fb&limit=5")
+    }
+
     @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")
     func redeemIdentity() async throws {
         let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])

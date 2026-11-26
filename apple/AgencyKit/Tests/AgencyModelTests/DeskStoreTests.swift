@@ -263,6 +263,45 @@ struct DeskStoreTests {
         #expect(!store.isReadFailing)
     }
 
+    @Test("a started recovery the node names is on the desk until the node stops naming it, and a failed read leaves it")
+    func recoveries() async throws {
+        func me(_ recovery: String) throws -> Me {
+            let json = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[]\#(recovery)}]}"#
+            return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+        }
+        let store = makeStore()
+        #expect(store.recoveries.isEmpty)
+        source.set(me: .success(try me(#","recovery":{"takesEffectAt":"2026-11-29T09:30:00Z"}"#)))
+        await store.refresh()
+        #expect(store.recoveries.map(\.orgID) == ["acme"])
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.recoveries.map(\.orgID) == ["acme"], "a failed read says nothing of it: it stays")
+        source.set(me: .success(try me("")))
+        await store.refresh()
+        #expect(store.recoveries.isEmpty, "the node no longer says it waits: cancelled or taken")
+    }
+
+    @Test("a read that is cancelled after the account answered keeps the newer list of recoveries")
+    func recoveriesKeptWhenCancelledAfterTheAccount() async throws {
+        func me(_ recovery: String) throws -> Me {
+            let json = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[{"id":"app","label":"app","location":"local","viewer":"owner"}]\#(recovery)}]}"#
+            return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+        }
+        let store = makeStore()
+        source.set(me: .success(try me("")))
+        await store.refresh()
+        #expect(store.recoveries.isEmpty)
+        source.set(me: .success(try me(#","recovery":{}"#)))
+        source.hold(team: "app")
+        let reading = Task { await store.refresh() }
+        while !source.isHoldingTeam { await Task.yield() }
+        reading.cancel()
+        source.releaseTeam()
+        await reading.value
+        #expect(store.recoveries.map(\.orgID) == ["acme"], "what the account said stays, whatever became of the rest of the read")
+    }
+
     @Test("during the first read a team that has answered is shown, and the number is still unknown until the read has finished")
     func firstReadPartial() async throws {
         let two = """

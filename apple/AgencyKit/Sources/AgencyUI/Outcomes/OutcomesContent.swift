@@ -7,15 +7,19 @@ import SwiftUI
 struct OutcomesContent: View {
     let orgs: [OrgOutcomes]
     let days: Int
+    /// The histories that are open, by `org/kpi`.
+    var histories: [String: HistoryState] = [:]
     var onChoose: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
+    var onEnter: ((OrgOutcomes, KpiCard) -> Void)?
+    var onToggleHistory: ((OrgOutcomes, KpiCard) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
             Text(Ja.Outcomes.note).font(.footnote).foregroundStyle(.secondary).wrapping()
             period
             ForEach(orgs) { org in
-                OrgSection(org: org, showsName: orgs.count > 1, onTryAgain: onTryAgain)
+                OrgSection(org: org, showsName: orgs.count > 1, histories: histories, onTryAgain: onTryAgain, onEnter: onEnter, onToggleHistory: onToggleHistory)
             }
         }
     }
@@ -33,13 +37,26 @@ struct OutcomesContent: View {
 private struct OrgSection: View {
     let org: OrgOutcomes
     let showsName: Bool
+    let histories: [String: HistoryState]
     var onTryAgain: (() -> Void)?
+    var onEnter: ((OrgOutcomes, KpiCard) -> Void)?
+    var onToggleHistory: ((OrgOutcomes, KpiCard) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
             if showsName { Text(org.label).font(.title3.weight(.semibold)).wrapping().padding(.top, 8) }
             if org.cards.isEmpty { Text(Ja.Outcomes.noKpis).font(.subheadline).foregroundStyle(.secondary).wrapping() }
-            ForEach(org.cards) { KpiCardView(card: $0, from: org.from, until: org.until) }
+            ForEach(org.cards) { card in
+                VStack(alignment: .leading, spacing: 8) {
+                    KpiCardView(card: card, from: org.from, until: org.until)
+                    if let onEnter { Button(Ja.Outcomes.Enter.open) { onEnter(org, card) }.buttonStyle(.bordered).font(.subheadline) }
+                    if let onToggleHistory {
+                        NumberHistoryView(
+                            state: histories[OutcomesStore.historyKey(org: org.id, kpi: card.id)], onToggle: { onToggleHistory(org, card) }
+                        )
+                    }
+                }
+            }
             ReadingsSection(readings: org.readings, onTryAgain: onTryAgain).padding(.top, 8)
         }
     }

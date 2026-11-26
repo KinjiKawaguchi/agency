@@ -62,6 +62,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** The evaluation answer carries each team's participants, as it does for the team's owner (left out for anyone else). */
+  participants?: boolean
   /** Serves the evaluation numbers. Off by default, as the real node does not serve them yet and answers 404. */
   evaluation?: boolean
   /** Makes only the evaluation calls fail with this status. */
@@ -281,7 +283,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const all = known.teams.map((team) => team.id)
     const left = options.evaluationUnavailableTeam
     const teams = all.filter((team) => team !== left)
-    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now)
+    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now, options.participants === true)
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 

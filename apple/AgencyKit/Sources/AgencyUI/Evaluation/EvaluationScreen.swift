@@ -30,7 +30,7 @@ struct EvaluationPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.spacing) {
                 banner
-                if store.loading == .loaded || !store.orgs.isEmpty {
+                if store.hasAnswered || !store.orgs.isEmpty {
                     EvaluationContent(
                         orgs: store.orgs, org: store.org, days: store.days, state: store.state, effort: store.effort,
                         onChooseOrg: { id in Task { await store.choose(org: id) } },
@@ -59,7 +59,7 @@ struct EvaluationPage: View {
                 Button(Ja.Desk.reload) { Task { await store.refresh() } }.buttonStyle(.bordered)
             }
             .card()
-        } else if (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
+        } else if !store.hasAnswered && (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
             SkeletonCard()
         }
     }

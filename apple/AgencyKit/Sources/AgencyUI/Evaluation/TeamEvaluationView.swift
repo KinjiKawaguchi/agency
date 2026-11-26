@@ -13,6 +13,8 @@ struct TeamEvaluationView: View {
             Text(report.title).font(.title3.weight(.semibold)).wrapping()
             tiles
             ForEach(report.charts) { EvaluationChartView(chart: $0, selectedDay: selectedDay) }
+            // The owner's extra: after the charts, and only when the node gave participants.
+            if let participants = report.participants { ParticipantsView(section: participants).padding(.top, 8) }
         }
     }
 

@@ -3,13 +3,16 @@ import Foundation
 /// Where a tapped notification leads, from the `agency` keys of its payload.
 ///
 /// A request's payload has no `type` (`{ "agency": { "org", "team", "request" } }`); the others name it:
-/// `{ "agency": { "type": "device" } }` and `{ "agency": { "type": "decision", "org", "team", "id" } }`.
+/// `{ "agency": { "type": "device" } }`, `{ "agency": { "type": "decision", "org", "team", "id" } }` and
+/// `{ "agency": { "type": "recovery", "org" } }`.
 public enum NotificationLink: Equatable, Sendable {
     case request(RequestLink)
     /// A device asks to be added: the devices screen.
     case devices
     /// A decision was refused: the desk, where its team's requests are.
     case decision(org: String, team: String, id: String)
+    /// A recovery of an org was started: the desk, where it is said at the top.
+    case recovery(org: String)
 
     /// The org the notification is about, when it names one.
     public var org: String? {
@@ -35,6 +38,9 @@ public enum NotificationLink: Equatable, Sendable {
                   let id = RequestLink.identifier(keys["id"])
             else { return nil }
             self = .decision(org: org, team: team, id: id)
+        case let type as String where type == "recovery":
+            guard let org = RequestLink.identifier(keys["org"]) else { return nil }
+            self = .recovery(org: org)
         default:
             return nil
         }
