@@ -26,7 +26,8 @@ public struct OverviewScreen: View {
                     if !store.orgs.isEmpty || store.loading == .loaded {
                         OverviewContent(
                             sections: store.sections, waiting: store.waiting, funding: store.fundingSummaries(now: Date()),
-                            cost: store.weekCost(of:), now: Date(), onOpenDesk: onOpenDesk
+                            cost: store.weekCost(of:), now: Date(), onOpenDesk: onOpenDesk,
+                            onTryAgain: { Task { await store.refresh() } }
                         )
                     }
                 }
@@ -35,7 +36,7 @@ public struct OverviewScreen: View {
             .refreshable { await store.refresh() }
             .navigationTitle(Ja.Overview.title)
         }
-        .task { await store.refresh() }
+        .polling { await store.refresh() }
     }
 
     @ViewBuilder
@@ -53,7 +54,7 @@ public struct OverviewScreen: View {
             }
             .card()
         } else if store.loading == .loading && store.orgs.isEmpty {
-            ProgressView(Ja.Desk.loading)
+            ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }
 }

@@ -22,11 +22,13 @@ public final class PeopleStore {
     public private(set) var failures: [String: String] = [:]
 
     @ObservationIgnored private let source: any TeamSnapshotSource
+    @ObservationIgnored private let retry: RetryPolicy
     /// The last answer of each team that was read, so a later failed read does not take the team off the screen.
     @ObservationIgnored private var lastRead: [String: Team] = [:]
 
-    public init(source: any TeamSnapshotSource) {
+    public init(source: any TeamSnapshotSource, retry: RetryPolicy = .standard) {
         self.source = source
+        self.retry = retry
     }
 
     public func refresh() async {
@@ -36,7 +38,7 @@ public final class PeopleStore {
             let order = me.orgs.flatMap { org in org.teams.map { TeamReader.key(org: org.id, team: $0.id) } }
             var read = lastRead.filter { order.contains($0.key) }
             var failed: [String: TeamFailure] = [:]
-            await TeamReader.read(me.orgs, from: source) { key, result in
+            await TeamReader.read(me.orgs, from: source, retry: retry) { key, result in
                 switch result {
                 case .success(let snapshot): read[key] = Team(snapshot: snapshot)
                 case .failure(let error):

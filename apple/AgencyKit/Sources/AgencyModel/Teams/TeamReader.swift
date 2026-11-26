@@ -40,9 +40,11 @@ enum TeamReader {
     /// `org/team`, the key a team is known by across orgs.
     static func key(org: String, team: String) -> String { "\(org)/\(team)" }
 
+    /// A team whose view is not ready is asked again (`retry`) while the others are shown; only a read that
+    /// keeps failing is handed over as a failure.
     @MainActor
     static func read(
-        _ orgs: [OrgRef], from source: some TeamSnapshotSource,
+        _ orgs: [OrgRef], from source: some TeamSnapshotSource, retry: RetryPolicy,
         each: @MainActor (String, Result<TeamSnapshot, Error>) -> Void
     ) async {
         await withTaskGroup(of: (String, Result<TeamSnapshot, Error>).self) { group in
@@ -50,12 +52,16 @@ enum TeamReader {
                 for team in org.teams {
                     let key = key(org: org.id, team: team.id)
                     group.addTask {
-                        do { return (key, .success(try await source.teamSnapshot(org: org.id, team: team.id))) }
+                        do { return (key, .success(try await retry.run { try await source.teamSnapshot(org: org.id, team: team.id) })) }
                         catch { return (key, .failure(error)) }
                     }
                 }
             }
-            for await (key, result) in group { each(key, result) }
+            for await (key, result) in group {
+                // A read that was cancelled (the screen went away) says nothing about the team.
+                if case .failure(let error) = result, error is CancellationError || (error as? URLError)?.code == .cancelled { continue }
+                each(key, result)
+            }
         }
     }
 }

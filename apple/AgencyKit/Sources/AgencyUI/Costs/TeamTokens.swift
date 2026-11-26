@@ -7,19 +7,18 @@ import SwiftUI
 struct TeamTokens: View {
     let team: CostsTeam
     var selectedDay: String?
+    var onTryAgain: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
             Text(Ja.Costs.tokensTitle(team.team.view.label)).font(.title3.weight(.semibold)).wrapping()
             switch team.usage {
             case .loading:
-                Text(Ja.Costs.loading).font(.subheadline).foregroundStyle(.secondary).wrapping()
+                SkeletonCard()
             case .unavailable:
                 Text(Ja.Costs.unavailable).font(.subheadline).foregroundStyle(.secondary).wrapping()
-            case .couldNotAnswer(let reason):
-                Text(Ja.Costs.couldNotAnswer(reason)).font(.subheadline).foregroundStyle(Theme.warning).wrapping()
-            case .failed(let reason):
-                Text(Ja.Desk.loadFailed(reason)).font(.subheadline).foregroundStyle(Theme.danger).wrapping()
+            case .couldNotAnswer(let reason), .failed(let reason):
+                FailedRegion(what: Ja.Costs.tokensTitle(team.team.view.label), why: reason, onTryAgain: onTryAgain)
             case .ready:
                 if let report = team.report { ReportView(report: report, selectedDay: selectedDay) }
             }

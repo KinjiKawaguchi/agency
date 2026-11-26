@@ -24,7 +24,8 @@ public struct PeopleScreen: View {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     banner
                     if store.loading == .loaded || !store.sections.isEmpty {
-                        PeopleContent(sections: store.sections, failures: store.failures, now: Date(), onOpenDesk: onOpenDesk)
+                        PeopleContent(sections: store.sections, failures: store.failures, now: Date(), onOpenDesk: onOpenDesk,
+                                      onTryAgain: { Task { await store.refresh() } })
                     }
                 }
                 .padding(Theme.gutter)
@@ -32,7 +33,7 @@ public struct PeopleScreen: View {
             .refreshable { await store.refresh() }
             .navigationTitle(Ja.People.title)
         }
-        .task { await store.refresh() }
+        .polling { await store.refresh() }
     }
 
     @ViewBuilder
@@ -50,7 +51,7 @@ public struct PeopleScreen: View {
             }
             .card()
         } else if store.loading == .loading && store.sections.isEmpty {
-            ProgressView(Ja.Desk.loading)
+            ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }
 }
