@@ -3,9 +3,7 @@ import Foundation
 import Observation
 
 /// Where the desk reads from: the home node's Client API. `NodeClient` is the real one.
-public protocol DeskSource: Sendable {
-    func me() async throws -> Me
-    func teamSnapshot(org: String, team: String) async throws -> TeamSnapshot
+public protocol DeskSource: TeamSnapshotSource {
     func decisions(limit: Int) async throws -> DecisionLog
 }
 
@@ -67,19 +65,22 @@ public final class DeskStore {
     @ObservationIgnored private let sender: any DeskSender
     @ObservationIgnored private let storage: any DraftStorage
     @ObservationIgnored private let afterSend: @Sendable () async -> Void
+    @ObservationIgnored private let retry: RetryPolicy
     /// The last view read of each team, kept when a later read of it fails.
     @ObservationIgnored private var lastRead: [String: Team] = [:]
 
     /// - Parameter afterSend: runs after a decision was sent and before the desk is read again, to drop
     ///   what a shared cache holds from before it.
+    /// - Parameter retry: how a team whose view is not ready is asked again, while the others are shown.
     public init(
         source: any DeskSource, sender: any DeskSender, storage: any DraftStorage,
-        afterSend: @escaping @Sendable () async -> Void = {}
+        afterSend: @escaping @Sendable () async -> Void = {}, retry: RetryPolicy = .standard
     ) {
         self.source = source
         self.sender = sender
         self.storage = storage
         self.afterSend = afterSend
+        self.retry = retry
         drafts = storage.load()
     }
 
@@ -96,21 +97,14 @@ public final class DeskStore {
         loading = .loading
         do {
             let me = try await source.me()
-            let source = source
-            var snapshots: [(key: String, result: Result<TeamSnapshot, Error>)] = []
-            await withTaskGroup(of: (String, Result<TeamSnapshot, Error>).self) { group in
-                for org in me.orgs {
-                    for team in org.teams {
-                        group.addTask {
-                            do { return ("\(org.id)/\(team.id)", .success(try await source.teamSnapshot(org: org.id, team: team.id))) }
-                            catch { return ("\(org.id)/\(team.id)", .failure(error)) }
-                        }
-                    }
-                }
-                for await one in group { snapshots.append((key: one.0, result: one.1)) }
-            }
             let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
-            apply(snapshots.sorted { $0.key < $1.key }, keys: keys)
+            var snapshots: [(key: String, result: Result<TeamSnapshot, Error>)] = []
+            // Each team is shown as soon as it answers, so one that is not ready does not hold back the others.
+            await TeamReader.read(me.orgs, from: source, retry: retry) { key, result in
+                snapshots.append((key: key, result: result))
+                apply(snapshots, keys: keys)
+            }
+            apply(snapshots, keys: keys)
             await refreshRecent()
             needsSignIn = false
             loading = .loaded
@@ -137,7 +131,7 @@ public final class DeskStore {
             }
         }
         lastRead = read
-        let loaded = snapshots.compactMap { read[$0.key] }
+        let loaded = keys.sorted().compactMap { read[$0] }
         teams = loaded
         teamFailures = failures
         items = Desk.openItems(loaded)

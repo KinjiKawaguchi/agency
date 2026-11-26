@@ -1,0 +1,27 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  display: grid;
+  min-height: 100dvh;
+  margin: 0;
+  place-items: center;
+  background: light-dark(#eceef1, #0c0d10);
+  color: light-dark(#121418, #eef0f3);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+}
+
+main {
+  max-width: 32rem;
+  padding: 1.5rem;
+}
+
+h1 {
+  font-size: 1.25rem;
+}
+
+p {
+  color: light-dark(#424853, #b0b6c1);
+  line-height: 1.6;
+}
