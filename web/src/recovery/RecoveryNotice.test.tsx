@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
+import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { createFormatters } from '../i18n/format'
 import { heldNode } from '../test/heldNode'
@@ -7,6 +8,15 @@ import { recoveriesOf } from './provisional'
 
 const AT = '2026-12-01T09:30:00Z'
 const STARTED = { takesEffectAt: AT, newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true }
+/** The same node, which says of these orgs that this node does not hold their root key (the viewer is a member, not the root's owner). */
+const heldByOthers = (node: ReturnType<typeof createMockNode>, ...orgs: string[]) =>
+  createApiClient(async (request) => {
+    const reply = await node.handle(request)
+    if (new URL(request.url, 'http://mock.local').pathname !== '/api/me') return reply
+    const me = (await reply.json()) as { orgs: Array<{ id: string; isRoot: boolean }> }
+    return new Response(JSON.stringify({ ...me, orgs: me.orgs.map((org) => (orgs.includes(org.id) ? { ...org, isRoot: false } : org)) }), { headers: { 'content-type': 'application/json' } })
+  })
+const note = () => screen.findByRole('status', { name: /Recovery of an org|組織のルート鍵の回復/ })
 const notice = () => screen.findByRole('alert', { name: /Recovery of an org|組織のルート鍵の回復/ })
 const noticeOf = async (text: string) => (await screen.findAllByRole('alert', { name: /Recovery of an org|組織のルート鍵の回復/ })).find((one) => one.textContent?.includes(text))
 
@@ -89,17 +99,62 @@ describe('a recovery of an org that waits', () => {
   })
 })
 
+describe('a recovery of an org whose root key is on another node', () => {
+  it('is told as under way, with when it takes effect and that its owner can cancel it, and with no command to run', async () => {
+    const node = createMockNode({ recoveries: { acme: STARTED } })
+    renderApp({ node, client: heldByOthers(node, 'acme'), path: '/desk', enrolled: true })
+    const one = await note()
+    const time = createFormatters('en').dateTime(AT)
+    expect(one).toHaveTextContent(`Acme’s root key is being recovered; it takes effect at ${time}.`)
+    expect(one).toHaveTextContent('Its owner can cancel it.')
+    expect(one).toHaveTextContent('New root key: b7c8d9e0f1a2')
+    expect(one).toHaveTextContent('It also replaces the recovery key.')
+    expect(one.textContent).not.toMatch(/root-cancel-recovery|If this wasn/)
+    expect(one.querySelector('code')).toBeNull()
+    expect(within(one).queryAllByRole('button')).toHaveLength(0)
+    expect(screen.queryByRole('alert', { name: /Recovery of an org/ })).not.toBeInTheDocument()
+  })
+
+  it('leaves the time out when the node kept no record of the start, and keeps the last sentence', async () => {
+    const node = createMockNode({ recoveries: { acme: {} } })
+    renderApp({ node, client: heldByOthers(node, 'acme'), path: '/desk', enrolled: true })
+    expect((await note()).textContent).toBe('⚠︎Acme’s root key is being recovered.Its owner can cancel it.')
+  })
+
+  it('is told apart for each org: the command for the org it holds, and none for the other', async () => {
+    const node = createMockNode({ moreOrgs: true, recoveries: { acme: {}, lab: {} } })
+    renderApp({ node, client: heldByOthers(node, 'lab'), path: '/desk', enrolled: true })
+    expect(await note()).toHaveTextContent('Lab’s root key is being recovered.')
+    expect(await noticeOf('Acme')).toHaveTextContent('--org acme')
+    expect(screen.getAllByText(/root-cancel-recovery/)).toHaveLength(1)
+  })
+
+  it('says it in Japanese with the words the Apple apps use', async () => {
+    const node = createMockNode({ recoveries: { acme: STARTED } })
+    renderApp({ node, client: heldByOthers(node, 'acme'), path: '/desk', enrolled: true, locale: 'ja' })
+    const one = await note()
+    const time = createFormatters('ja').dateTime(AT)
+    expect(one).toHaveTextContent(`Acme のルート鍵の回復が進んでいます。${time} に有効になります。`)
+    expect(one).toHaveTextContent('取り消せるのは、そのルート鍵の持ち主です。')
+    expect(one.textContent).not.toMatch(/root-cancel-recovery|心当たり/)
+  })
+})
+
 describe('how the node says a recovery waits', () => {
   const org = { id: 'acme', label: 'Acme', isRoot: true, teams: [] }
+
+  it('is for the root’s owner only when the node says it holds the root key, and for no one else when it does not say', () => {
+    for (const isRoot of [false, undefined, null, 'true', 1]) expect(recoveriesOf({ ...me({}), orgs: [{ ...org, isRoot, recovery: {} }] } as never)[0]?.isRoot, String(isRoot)).toBe(false)
+  })
   const me = (recovery: unknown) => ({ account: { id: 'alice', label: 'Alice', fingerprint: 'a1' }, orgs: [{ ...org, recovery }], funding: [] })
 
   it('reads an object, and nothing else counts', () => {
-    expect(recoveriesOf(me({}) as never)).toEqual([{ org: { id: 'acme', label: 'Acme' }, replacesRecoveryKey: false }])
+    expect(recoveriesOf(me({}) as never)).toEqual([{ org: { id: 'acme', label: 'Acme' }, isRoot: true, replacesRecoveryKey: false }])
     for (const recovery of [undefined, null, 'soon', 7, true]) expect(recoveriesOf(me(recovery) as never), String(recovery)).toEqual([])
   })
 
   it('takes a time and a key only when they are text, and the replacement only when it is true', () => {
-    expect(recoveriesOf(me({ takesEffectAt: AT, newRootKey: 'ab', replacesRecoveryKey: true }) as never)[0]).toEqual({ org: { id: 'acme', label: 'Acme' }, takesEffectAt: AT, newRootKey: 'ab', replacesRecoveryKey: true })
-    expect(recoveriesOf(me({ takesEffectAt: '', newRootKey: 5, replacesRecoveryKey: 'yes' }) as never)[0]).toEqual({ org: { id: 'acme', label: 'Acme' }, replacesRecoveryKey: false })
+    expect(recoveriesOf(me({ takesEffectAt: AT, newRootKey: 'ab', replacesRecoveryKey: true }) as never)[0]).toEqual({ org: { id: 'acme', label: 'Acme' }, isRoot: true, takesEffectAt: AT, newRootKey: 'ab', replacesRecoveryKey: true })
+    expect(recoveriesOf(me({ takesEffectAt: '', newRootKey: 5, replacesRecoveryKey: 'yes' }) as never)[0]).toEqual({ org: { id: 'acme', label: 'Acme' }, isRoot: true, replacesRecoveryKey: false })
   })
 })

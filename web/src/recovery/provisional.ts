@@ -20,6 +20,8 @@ const text = (value: unknown): string | undefined => (typeof value === 'string' 
 /** One org's recovery as the page shows it, with the org's label and the id the command takes. */
 export interface Recovery {
   org: { id: string; label: string }
+  /** Whether this node holds the org's root key: only its owner can cancel the recovery, and the others are only told of it. */
+  isRoot: boolean
   takesEffectAt?: string
   newRootKey?: string
   replacesRecoveryKey: boolean
@@ -33,6 +35,6 @@ export function recoveriesOf(me: Me): Recovery[] {
     const { takesEffectAt, newRootKey, replacesRecoveryKey } = started as Record<string, unknown>
     const at = text(takesEffectAt)
     const key = text(newRootKey)
-    return [{ org: { id: org.id, label: org.label }, ...(at === undefined ? {} : { takesEffectAt: at }), ...(key === undefined ? {} : { newRootKey: key }), replacesRecoveryKey: replacesRecoveryKey === true }]
+    return [{ org: { id: org.id, label: org.label }, isRoot: org.isRoot === true, ...(at === undefined ? {} : { takesEffectAt: at }), ...(key === undefined ? {} : { newRootKey: key }), replacesRecoveryKey: replacesRecoveryKey === true }]
   })
 }
