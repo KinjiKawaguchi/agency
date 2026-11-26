@@ -48,6 +48,7 @@ fn alice() -> Fixture {
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
     let place = TeamPlace {
+        plan: None,
         id: id("app"),
         label: "app".into(),
         department: None,
@@ -313,6 +314,7 @@ async fn the_outbox_retries_only_when_the_backoff_is_due() {
         label: "Far".into(),
         department: None,
         node: NOWHERE.into(),
+        plan: None,
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     let (key, key_id) = (laptop(), laptop().public().device_id());

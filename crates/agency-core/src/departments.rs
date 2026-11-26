@@ -1,9 +1,9 @@
-//! An org's departments, and the department each team is in. Like everything in an org's definition,
+//! An org's departments, the department each team is in, and what the org intends for each team. Like everything in an org's definition,
 //! only the root key's node changes them, by signing the next version (`orgs::amend`).
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::amend;
-use agency_proto::org::{Department, SignedOrg};
+use agency_proto::org::{Department, SignedOrg, TeamPlan};
 use agency_proto::{Id, OrgDefinition};
 
 /// What to change in a department. `None` leaves a field as it is; `Some(None)` clears it.
@@ -118,6 +118,34 @@ pub fn place_team(node: &Node, org: &Id, team: &Id, department: Option<Id>) -> R
             ));
         }
         place.department = department;
+        Ok(())
+    })
+}
+
+/// Sets what the org intends for a team (its plan), or with `None` clears it. The allocation must add
+/// up to 100.
+pub fn plan_team(node: &Node, org: &Id, team: &Id, plan: Option<TeamPlan>) -> Result<SignedOrg> {
+    if let Some(plan) = &plan {
+        let total = plan.allocation.total();
+        if total != 100 {
+            return Err(Error::bad_request(format!(
+                "the allocation adds up to {total}, not 100"
+            )));
+        }
+    }
+    amend(node, org, |body| {
+        let place = body
+            .teams
+            .iter_mut()
+            .find(|one| &one.id == team)
+            .ok_or_else(|| not_found("team", team, org))?;
+        if place.plan == plan {
+            return Err(Error::new(
+                ErrorKind::Conflict,
+                format!("team {team} already has that plan"),
+            ));
+        }
+        place.plan = plan;
         Ok(())
     })
 }
