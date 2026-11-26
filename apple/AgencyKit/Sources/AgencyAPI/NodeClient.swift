@@ -181,6 +181,21 @@ public actor NodeClient {
         return try await write("POST", "/api/push/tokens", body: body)
     }
 
+    /// Enters one number of a KPI for a day (`POST /api/orgs/<org>/outcomes/observations`): owner only, with the write token. A second
+    /// number for the same KPI and day replaces the first in every reading, and the first stays in the history. The node sets who
+    /// entered it and when. The body is plain JSON, not canonical JSON: that has integers only, and a number here is a decimal.
+    @discardableResult
+    public func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation {
+        let body = try JSONEncoder().encode(input)
+        return try await write("POST", "/api/orgs/\(Self.segment(org))/outcomes/observations", body: body)
+    }
+
+    /// Every number entered for a KPI, newest first, the ones a later entry replaced included (`GET .../outcomes/observations`; owner
+    /// only). `limit` is 1 to 500.
+    public func numberHistory(org: String, kpi: String, limit: Int = 100) async throws -> [KpiObservation] {
+        try await get("/api/orgs/\(Self.segment(org))/outcomes/observations?kpi=\(Self.segment(kpi))&limit=\(limit)")
+    }
+
     /// The Access token a sign-in made for `code`, given the verifier whose SHA-256 the sign-in was started with
     /// (`POST /app/redeem`). It needs no Access token and no write token: the app has none yet, which is what it asks
     /// for, and the node admits the code and the verifier. A refusal is the same for every cause (`NodeError.http`

@@ -15,4 +15,11 @@ public struct CachedOutcomesSource<Client: OutcomesSource>: OutcomesSource {
     public func me() async throws -> Me { try await cache.me() }
     public func outcomes(org: String, days: Int) async throws -> Outcomes { try await client.outcomes(org: org, days: days) }
     public func readings(org: String) async throws -> Readings { try await client.readings(org: org) }
+    public func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation {
+        try await client.enterNumber(org: org, input: input)
+    }
+
+    public func numberHistory(org: String, kpi: String, limit: Int) async throws -> [KpiObservation] {
+        try await client.numberHistory(org: org, kpi: kpi, limit: limit)
+    }
 }

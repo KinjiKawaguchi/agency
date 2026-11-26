@@ -11,6 +11,13 @@ private final class FakeOutcomesSource: OutcomesSource, @unchecked Sendable {
     private var gate: CheckedContinuation<Void, Never>?
     private var holdsNext = false
     private(set) var daysAsked: [Int] = []
+    private var _enter: @Sendable (ObservationInput) throws -> KpiObservation = { input in
+        let json = #"{"kpi":"\#(input.kpi)","date":"\#(input.date)","value":\#(input.value),"source":{"kind":"manual"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner"}"#
+        return try JSONDecoder().decode(KpiObservation.self, from: Data(json.utf8))
+    }
+    private var _history: @Sendable (String, String) throws -> [KpiObservation] = { _, _ in [] }
+    private(set) var entered: [ObservationInput] = []
+    private(set) var historyReads = 0
 
     static let twoOrgs = """
     {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[
@@ -21,6 +28,18 @@ private final class FakeOutcomesSource: OutcomesSource, @unchecked Sendable {
     func set(me: Result<Me, Error>) { lock.withLock { _me = me } }
     func set(outcomes: @escaping @Sendable (String, Int) throws -> Outcomes) { lock.withLock { _outcomes = outcomes } }
     func set(readings: @escaping @Sendable (String) throws -> Readings) { lock.withLock { _readings = readings } }
+    func set(enter: @escaping @Sendable (ObservationInput) throws -> KpiObservation) { lock.withLock { _enter = enter } }
+    func set(history: @escaping @Sendable (String, String) throws -> [KpiObservation]) { lock.withLock { _history = history } }
+
+    func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation {
+        let make = lock.withLock { entered.append(input); return _enter }
+        return try make(input)
+    }
+
+    func numberHistory(org: String, kpi: String, limit: Int) async throws -> [KpiObservation] {
+        let make = lock.withLock { historyReads += 1; return _history }
+        return try make(org, kpi)
+    }
     func holdNext() { lock.withLock { holdsNext = true } }
     func release() { lock.withLock { let waiting = gate; gate = nil; return waiting }?.resume() }
     var isHolding: Bool { lock.withLock { gate != nil } }
@@ -216,6 +235,104 @@ struct OutcomesStoreTests {
         source.set(outcomes: { _, _ in try OutcomeSamples.outcomes() })
         await store.refresh()
         #expect(!store.needsSignIn && store.loading == .loaded)
+    }
+
+    // MARK: Entering a number
+
+    private let revenue = try! OutcomeSamples.outcomes().series[0].kpi
+
+    @Test("a number that is saved is checked first, sent once with the node's day as today, said in words, and the numbers are read again")
+    func enterSaves() async throws {
+        let store = makeStore()
+        await store.refresh()
+        let readsBefore = source.daysAsked.count
+        let outcome = await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "1400000"))
+        guard case .saved(let words) = outcome else { Issue.record("not saved: \(outcome)"); return }
+        #expect(words.contains("1,400,000") && words.contains("11月24日") && words.hasSuffix("を保存しました。"))
+        #expect(source.entered == [ObservationInput(kpi: "revenue", date: "2026-11-24", value: 1_400_000)])
+        #expect(source.daysAsked.count > readsBefore, "the numbers are read again after a save")
+    }
+
+    @Test("what is not a number the node takes is said before anything is sent")
+    func enterProblems() async {
+        let store = makeStore()
+        await store.refresh()
+        #expect(await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-30", value: "1")) == .problem(.date))
+        #expect(await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "1e3")) == .problem(.value))
+        #expect(await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "1", note: "a\nb")) == .problem(.note))
+        #expect(source.entered.isEmpty, "nothing was sent")
+    }
+
+    @Test("the node's refusals are said in words: full, not the owner, the node's own reason, and a failure to reach it")
+    func enterRefusals() async {
+        let store = makeStore()
+        await store.refresh()
+        let form = NumberForm(date: "2026-11-24", value: "1")
+        for (status, message, expected) in [
+            (409, "full", Ja.Outcomes.Enter.full), (403, "no", Ja.Outcomes.Enter.forbidden),
+            (400, "the day is in the future", Ja.Outcomes.Enter.refused("the day is in the future")),
+            (404, "no such kpi", Ja.Outcomes.Enter.refused("no such kpi")),
+        ] {
+            source.set(enter: { _ in throw NodeError.http(status: status, message: message) })
+            #expect(await store.enter(org: "acme", kpi: revenue, form: form) == .failed(expected), Comment(rawValue: "\(status)"))
+        }
+        source.set(enter: { _ in throw NodeError.http(status: 503, message: "down") })
+        #expect(await store.enter(org: "acme", kpi: revenue, form: form) == .failed("down"))
+        source.set(enter: { _ in throw NodeError.http(status: 400, message: nil) })
+        #expect(await store.enter(org: "acme", kpi: revenue, form: form) == .failed(Ja.Outcomes.Enter.refused("HTTP 400")))
+        let readsBefore = source.daysAsked.count
+        #expect(source.entered.count == 6)
+        #expect(source.daysAsked.count == readsBefore, "a refusal reads nothing again")
+    }
+
+    @Test("a session that ended while saving asks for the sign-in again, and a failed save does not hide what was shown")
+    func enterSignIn() async {
+        let store = makeStore()
+        await store.refresh()
+        source.set(enter: { _ in throw NodeError.sessionExpired })
+        #expect(await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "1")) == .failed(Ja.Desk.signInEnded))
+        #expect(store.needsSignIn && store.isAvailable && !store.orgs.isEmpty)
+    }
+
+    @Test("an org the page does not show cannot be entered into")
+    func enterUnknownOrg() async {
+        let store = makeStore()
+        await store.refresh()
+        let outcome = await store.enter(org: "nowhere", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "1"))
+        guard case .failed = outcome else { Issue.record("not refused: \(outcome)"); return }
+        #expect(source.entered.isEmpty)
+    }
+
+    @Test("a history is read when opened, listed with what a later entry replaced, kept only while open, and read again after a save")
+    func history() async throws {
+        let store = makeStore()
+        await store.refresh()
+        func entry(_ date: String, _ value: Double, _ at: String) throws -> KpiObservation {
+            try JSONDecoder().decode(KpiObservation.self, from: Data(#"{"kpi":"revenue","date":"\#(date)","value":\#(value),"source":{"kind":"manual"},"enteredAt":"\#(at)","enteredBy":"owner"}"#.utf8))
+        }
+        let list = [try entry("2026-11-20", 2, "2026-11-22T09:00:00Z"), try entry("2026-11-20", 1, "2026-11-21T09:00:00Z")]
+        source.set(history: { _, _ in list })
+        let key = OutcomesStore.historyKey(org: "acme", kpi: "revenue")
+        #expect(store.histories[key] == nil)
+        await store.showHistory(org: "acme", kpi: revenue)
+        guard case .entries(let shown)? = store.histories[key] else { Issue.record("no entries"); return }
+        #expect(shown.map(\.isReplaced) == [false, true])
+        let reads = source.historyReads
+        _ = await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "5"))
+        #expect(source.historyReads == reads + 1, "an open history is read again after a save")
+        store.hideHistory(org: "acme", kpi: "revenue")
+        #expect(store.histories[key] == nil)
+        _ = await store.enter(org: "acme", kpi: revenue, form: NumberForm(date: "2026-11-24", value: "6"))
+        #expect(source.historyReads == reads + 1, "a closed history is not read")
+    }
+
+    @Test("a history that cannot be read says why, and one closed meanwhile shows nothing")
+    func historyFails() async {
+        let store = makeStore()
+        await store.refresh()
+        source.set(history: { _, _ in throw NodeError.http(status: 503, message: "down") })
+        await store.showHistory(org: "acme", kpi: revenue)
+        #expect(store.histories[OutcomesStore.historyKey(org: "acme", kpi: "revenue")] == .failed("down"))
     }
 
     @Test("an account with no orgs has answered with nothing, and the page is not offered")

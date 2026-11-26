@@ -196,3 +196,21 @@ public struct AimReading: Decodable, Equatable, Sendable {
         overlapping = try values.decodeIfPresent([String].self, forKey: .overlapping) ?? []
     }
 }
+
+/// What the owner enters: one number of a KPI for one day (`ObservationInput`). The node sets who entered it and when, so there is
+/// no field for either.
+public struct ObservationInput: Encodable, Equatable, Sendable {
+    public let kpi: String
+    /// The calendar day the number is as of, `YYYY-MM-DD`.
+    public let date: String
+    public let value: Double
+    /// At most 200 characters, with no control character; left out when there is none.
+    public let note: String?
+
+    public init(kpi: String, date: String, value: Double, note: String? = nil) {
+        self.kpi = kpi
+        self.date = date
+        self.value = value
+        self.note = note
+    }
+}
