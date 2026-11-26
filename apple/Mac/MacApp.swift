@@ -9,7 +9,8 @@ struct MacApp: App {
     @State private var waiting = WaitingStatus()
 
     var body: some Scene {
-        WindowGroup(id: Self.windowID) {
+        // One window, so there is one session: a second window would be a second session reading and signing.
+        Window("Agency", id: Self.windowID) {
             RootView(store: store, push: appDelegate.push)
                 .frame(minWidth: 820, minHeight: 560)
                 .environment(\.waitingStatus, waiting)
