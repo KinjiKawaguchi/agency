@@ -109,6 +109,21 @@ test('confirms a second device from the first, by comparing codes', async ({ pag
   }
 })
 
+test('tells the owner on another screen that a device asks to be added, and marks the avatar', async ({ page, request, browser }) => {
+  await confirmInTerminal(request, await askToBeAdded(page, 'Laptop'))
+  await page.goto('/overview')
+  await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
+  const phoneContext = await browser.newContext({ baseURL: page.url().replace(/\/overview.*$/, '') })
+  try {
+    await askToBeAdded(await phoneContext.newPage(), 'Phone')
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.getByText('Phone asks to be added as a device.')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Devices, 1 waiting to be approved' })).toBeVisible()
+  } finally {
+    await phoneContext.close()
+  }
+})
+
 // The states of the flow, kept as screenshots next to those of the screens.
 const VIEWS = [
   { name: 'desktop', width: 1440, height: 900, theme: 'light' },

@@ -24,7 +24,7 @@ describe('reading what the node answered', () => {
         org: { id: 'acme' },
         teams: [
           { ref: { id: 'app' }, state: { status: 'ready', team: ready } },
-          { ref: { id: 'site' }, state: { status: 'failed', error: new Error('no') } },
+          { ref: { id: 'site' }, state: { status: 'failed', error: new Error('no'), at: 0 } },
           { ref: { id: 'docs' }, state: { status: 'loading' } },
         ],
       },
@@ -48,7 +48,7 @@ describe('reading what the node answered', () => {
   it('makes no event when a team that failed comes back with what it had, and one for the request that arrived meanwhile', () => {
     const before = teamOf(sampleTeamView)
     const first = advance(START, { teams: teamReadings([{ org: { id: 'acme' }, teams: [{ ref: { id: 'app' }, state: { status: 'ready', team: before } }] }]), devices: [], decisions: [] }, own)
-    const failed = advance(first.state, { teams: teamReadings([{ org: { id: 'acme' }, teams: [{ ref: { id: 'app' }, state: { status: 'failed', error: new Error('no') } }] }]), devices: null, decisions: null }, own)
+    const failed = advance(first.state, { teams: teamReadings([{ org: { id: 'acme' }, teams: [{ ref: { id: 'app' }, state: { status: 'failed', error: new Error('no'), at: 0 } }] }]), devices: null, decisions: null }, own)
     expect(failed.events).toEqual([])
     const again = advance(failed.state, { teams: teamReadings([{ org: { id: 'acme' }, teams: [{ ref: { id: 'app' }, state: { status: 'ready', team: before } }] }]), devices: [], decisions: [] }, own)
     expect(again.events).toEqual([])
