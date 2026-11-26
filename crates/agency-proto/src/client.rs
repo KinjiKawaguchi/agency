@@ -35,6 +35,12 @@ pub struct Me {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, type = "boolean")]
     pub hides_titles: bool,
+    /// This node's id as it names itself in a push (`agency.node`, `node_id` of its `url`), so that an app
+    /// maps a push to the node it talks to without working the id out from the address it signed in with,
+    /// which may not be the node's own `url`. Left out when the node's `url` is not a home node's origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub node_id: Option<String>,
     /// The other home nodes of the same human, for their other accounts, as the node's owner
     /// configured them. Given only to the owner, and absent when there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,6 +115,25 @@ pub fn home_node_origin(url: &str) -> Option<String> {
         Some(port) => format!("{scheme}://{host}:{port}"),
         None => format!("{scheme}://{host}"),
     })
+}
+
+/// The id a node puts in its pushes (`agency.node`), so that an app with several home nodes knows which one sent it without
+/// the push naming the host to Apple: the first 16 bytes of the SHA-256 of `agency-node:` and the node's origin
+/// (`home_node_origin`), as 32 lowercase hex characters. `None` when `url` is not a home node's origin. The apps work out the
+/// same id for each node they know (`testdata/node-id.json`).
+pub fn node_id(url: &str) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+    let origin = home_node_origin(url)?;
+    let digest = Sha256::digest(format!("agency-node:{origin}").as_bytes());
+    Some(
+        digest[..16]
+            .iter()
+            .fold(String::with_capacity(32), |mut id, byte| {
+                let _ = write!(id, "{byte:02x}");
+                id
+            }),
+    )
 }
 
 /// Whether `url` can be a home node's origin for a client (`home_node_origin`).
@@ -556,6 +581,24 @@ pub struct PushSubscription {
     pub events: Vec<PushEvent>,
     /// The `keyId` of the node's VAPID key it was made with.
     pub key_id: String,
+    /// When the push service last took a notice for this browser; left out until it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_succeeded_at: Option<Timestamp>,
+    /// The last time the push service did not take one, and why (the host and the status it answered, or that it
+    /// could not be reached; never what it said). Left out until there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_failure: Option<PushFailure>,
+}
+
+/// A notice the push service did not take: when, and the reason the node can give without the service's words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushFailure {
+    pub at: Timestamp,
+    pub reason: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

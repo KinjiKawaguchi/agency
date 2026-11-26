@@ -98,7 +98,26 @@ export function teamEvaluation(team: string, days: number, now: Date): TeamEvalu
   return { team, from: dates[0] ?? '', until: dates.at(-1) ?? '', summary: summaryOf(byDay), byDay }
 }
 
-export function evaluationReport(org: string, teams: readonly string[], days: number, now: Date): Evaluation {
+/** What the team's owner reads besides the team's numbers: how each participant spent the period, and what it cost. */
+function withParticipants(numbers: TeamEvaluation, days: number): TeamEvaluation {
+  const merged = Object.values(numbers.summary.merged).reduce((sum, count) => sum + count, 0) + numbers.summary.reverts
+  const share = (part: number): number => Math.round((merged * part) / 10)
+  const [backend, lead] = [share(5), share(3)]
+  const hours = (count: number): number => count * 3600 * Math.max(1, days / 14)
+  const person = (name: string, busy: number, waiting: number, idle: number, cost: number, count: number) => ({
+    name,
+    busySeconds: hours(busy),
+    waitingSeconds: hours(waiting),
+    idleSeconds: hours(idle),
+    costUsd: cost,
+    tokens: { input: Math.round(cost * 14000), output: Math.round(cost * 5300), cacheRead: Math.round(cost * 280000), cacheWrite: Math.round(cost * 21000) },
+    merged: count,
+    ...(count === 0 ? {} : { costPerMergedPrUsd: Math.round((cost / count) * 100) / 100 }),
+  })
+  return { ...numbers, participants: [person('backend', 8.5, 0.7, 1.3, 8.45 * Math.max(1, days / 14), backend), person('lead', 5, 2.4, 3.1, 4.1 * Math.max(1, days / 14), lead), person('reviewer', 2, 0.5, 6, 1.6 * Math.max(1, days / 14), 0)], unattributedMerged: Math.max(0, merged - backend - lead) }
+}
+
+export function evaluationReport(org: string, teams: readonly string[], days: number, now: Date, isOwner = false): Evaluation {
   const date = (daysAgo: number): string => new Date(now.getTime() - daysAgo * DAY_MS).toISOString().slice(0, 10)
-  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEvaluation(team, days, now)), unavailable: [] }
+  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => (isOwner ? withParticipants(teamEvaluation(team, days, now), days) : teamEvaluation(team, days, now))), unavailable: [] }
 }

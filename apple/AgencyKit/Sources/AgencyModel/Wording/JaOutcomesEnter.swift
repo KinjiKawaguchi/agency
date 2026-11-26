@@ -1,3 +1,4 @@
+import AgencyAPI
 import Foundation
 
 extension Ja.Outcomes {
@@ -19,6 +20,18 @@ extension Ja.Outcomes {
         public static let hintRatio = "単位のない数です。1.5 は 1.5 倍です。"
         public static let hintSeconds = "単位は秒です。"
         public static let hintUnknown = "単位のない数です。"
+        /// In which unit to write a number of a KPI.
+        public static func hint(for unit: Kpi.Unit) -> String {
+            switch unit {
+            case .money(let currency): hint(currency: currency)
+            case .percent: hintPercent
+            case .count: hintCount
+            case .ratio: hintRatio
+            case .seconds: hintSeconds
+            case .unknown: hintUnknown
+            }
+        }
+
         public static let again = "同じ日に 2 つ目を入れると、どの読み取りでも 2 つ目が使われます。1 つ目は履歴に残ります。"
 
         public static let problemDate = "日付は実在する日で、今日より 1 日先までの、10 年以内の日付にしてください。"

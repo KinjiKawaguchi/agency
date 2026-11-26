@@ -30,6 +30,12 @@ public enum DeviceChangeSenderError: Error, Equatable, LocalizedError, Sendable 
     }
 }
 
+/// A later org's change failed after the node had answered the changes before it: what it answered is not lost with the failure.
+public struct DeviceChangePartlyAnswered: Error, Sendable {
+    public let answered: [DeviceChangeResult]
+    public let cause: any Error
+}
+
 /// Adds another device to the person's orgs: for each org that lacks it and that holds this device, a
 /// change is built, stamped with the node's time, signed after Face ID, and posted. This device signs
 /// as the id the node gave it in that org.
@@ -43,6 +49,7 @@ public struct DeviceChangeSender: Sendable {
     }
 
     /// - Returns: what the node answered for each org, in the order they were added.
+    /// - Throws: `DeviceChangePartlyAnswered` when a change fails after an earlier one was answered; the failure itself otherwise.
     public func add(_ request: DeviceRequest) async throws -> [DeviceChangeResult] {
         let key = try verified(request)
         _ = try await poster.refreshSession()
@@ -64,7 +71,11 @@ public struct DeviceChangeSender: Sendable {
             let text = try signedText(kind: .device, body: change.json)
             let signature = try await signer.sign(text, reason: Ja.Devices.faceIDReason(request.label))
             let signed = SignedDeviceChange(change: change, signer: target.signer, signature: signature.base64EncodedString())
-            results.append(try await poster.submitDeviceChange(signed))
+            do {
+                results.append(try await poster.submitDeviceChange(signed))
+            } catch where !results.isEmpty {
+                throw DeviceChangePartlyAnswered(answered: results, cause: error)
+            }
         }
         return results
     }

@@ -10,6 +10,7 @@ use crate::push_events::{
 };
 use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader};
+use crate::web_push::{record_sends, Sent};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
@@ -260,11 +261,26 @@ async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Resu
         ..Outcome::default()
     };
     let answers = node.notifier().send_web_many(&wanting, notice).await;
+    let results: Vec<(&str, Sent<'_>)> = wanting
+        .iter()
+        .zip(&answers)
+        .filter_map(|(subscription, answer)| Some((subscription.id.as_str(), sent_of(answer)?)))
+        .collect();
+    record_sends(node, &results)?;
     for (subscription, answer) in wanting.iter().zip(answers) {
         outcome.record(&subscription.id, answer, pass);
     }
     crate::web_push::remove_subscriptions(node, &outcome.gone)?;
     Ok(outcome)
+}
+
+/// How an answer of a push service is kept in the subscription's record; a subscription that is gone is removed, not recorded.
+pub(crate) fn sent_of(answer: &std::result::Result<(), PushError>) -> Option<Sent<'_>> {
+    match answer {
+        Ok(()) => Some(Sent::Taken),
+        Err(PushError::Failed(why)) => Some(Sent::NotTaken(why)),
+        Err(PushError::Gone) => None,
+    }
 }
 
 /// Sends one notice to every token and browser subscription that wants its kind. It counts as delivered

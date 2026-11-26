@@ -22,6 +22,13 @@ struct NotificationLinkTests {
         #expect(NotificationLink(userInfo: payload(["type": "decision", "org": "acme", "team": "app", "id": "dc-1"])) == .decision(org: "acme", team: "app", id: "dc-1"))
     }
 
+    @Test("a recovery payload names the org, and a missing or odd one gives no link")
+    func recovery() {
+        #expect(NotificationLink(userInfo: payload(["type": "recovery", "org": "acme"])) == .recovery(org: "acme"))
+        #expect(NotificationLink(userInfo: payload(["type": "recovery"])) == nil)
+        #expect(NotificationLink(userInfo: payload(["type": "recovery", "org": "a b"])) == nil)
+    }
+
     @Test("a decision payload with a missing or odd value gives no link", arguments: [
         ["type": "decision", "team": "app", "id": "dc-1"],
         ["type": "decision", "org": "acme", "id": "dc-1"],

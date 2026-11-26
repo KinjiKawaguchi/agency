@@ -23,7 +23,7 @@ public struct OverviewScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     banner
-                    if !store.orgs.isEmpty || store.loading == .loaded {
+                    if !store.orgs.isEmpty || store.hasAnswered {
                         OverviewContent(
                             sections: store.sections, waiting: store.waiting, funding: store.fundingSummaries(now: Date()),
                             cost: store.weekCost(of:), now: Date(), onOpenDesk: onOpenDesk,
@@ -53,7 +53,7 @@ public struct OverviewScreen: View {
                 Button(Ja.Desk.reload) { Task { await store.refresh() } }.buttonStyle(.bordered)
             }
             .card()
-        } else if (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
+        } else if !store.hasAnswered && (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
             ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }

@@ -30,7 +30,7 @@ struct CostsPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.spacing) {
                 banner
-                if store.loading == .loaded || !store.teams.isEmpty {
+                if store.hasAnswered || !store.teams.isEmpty {
                     CostsContent(
                         funding: store.fundingSummaries(now: Date()), teams: store.teams, days: store.days, now: Date(),
                         onChoose: { days in Task { await store.choose(days: days) } },
@@ -58,7 +58,7 @@ struct CostsPage: View {
                 Button(Ja.Desk.reload) { Task { await store.refresh() } }.buttonStyle(.bordered)
             }
             .card()
-        } else if (store.loading == .loading || store.loading == .idle) && store.teams.isEmpty {
+        } else if !store.hasAnswered && (store.loading == .loading || store.loading == .idle) && store.teams.isEmpty {
             SkeletonCard()
         }
     }

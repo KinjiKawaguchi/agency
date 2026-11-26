@@ -4,6 +4,7 @@ import { Columns } from './Columns'
 import { DayTable } from './DayTable'
 import { durationAxis, formatDuration } from './duration'
 import { countMax, fillDays, niceMax, PULL_REQUEST_TYPES, rollingCostPerPullRequest, rollingMedian, allMerged, REVERT_COLOR, TYPE_COLORS } from './series'
+import { ParticipantsSection } from './ParticipantsSection'
 import { SummaryTiles } from './SummaryTiles'
 import { HOUR_SECONDS } from './time'
 import { TrendChart } from './TrendChart'
@@ -122,6 +123,7 @@ export function TeamEvaluation({ label, numbers, days }: Props) {
       </div>
 
       <DayTable team={label} rows={rows} />
+      {numbers.participants === undefined ? null : <ParticipantsSection participants={numbers.participants} unattributedMerged={numbers.unattributedMerged} />}
     </section>
   )
 }
