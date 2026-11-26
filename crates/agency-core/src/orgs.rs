@@ -125,6 +125,21 @@ fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Resul
 
 /// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
 /// trust this node keeps for the org moves to the new root, so a later first copy is checked against it.
+/// A root key this node made for a recovery that was then cancelled will sign nothing: it is forgotten.
+fn forget_cancelled_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) {
+    let made = previous
+        .body
+        .root
+        .pending
+        .as_ref()
+        .and_then(|one| one.public_key.as_ref());
+    let Some(made) = made else { return };
+    let is_cancelled = next.body.root.pending.is_none() && &next.body.root.public_key != made;
+    if is_cancelled && node.root_keys().holds(&next.body.org, made) {
+        let _ = node.root_keys().forget(&next.body.org, made);
+    }
+}
+
 fn follow_new_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) -> Result<()> {
     let (old, new) = (&previous.body.root.public_key, &next.body.root.public_key);
     if old == new {
@@ -240,6 +255,7 @@ pub fn amend(
     edit(&mut body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
+    forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;
     forget_removed(node, &current.body, &doc.body)?;
     Ok(doc)
@@ -386,6 +402,7 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
     node.store().save_org(&doc)?;
+    forget_cancelled_root(node, &current, &doc);
     forget_removed(node, &current.body, &doc.body)
 }
 

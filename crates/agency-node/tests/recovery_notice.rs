@@ -202,3 +202,53 @@ async fn a_second_org_takes_the_same_words_only_when_they_prove_the_first_orgs_k
     let doc = recovery::add_same_as(&alice.node, &id("beta"), &id("acme"), &words).unwrap();
     assert_eq!(doc.body.root.recovery, Some(words.public()));
 }
+
+#[tokio::test]
+async fn a_recovery_finishes_only_where_its_new_root_key_is_and_a_cancel_forgets_that_key() {
+    use agency_core::ports::RootKeys;
+    let (alice, _) = alice().await;
+    let org = id("acme");
+    let words = AccountKey::from_seed([0x3b; 32]);
+    recovery::add(&alice.node, &org, words.public()).unwrap();
+    let start = recovery::start(&alice.node, &org, &words, recovery::Recovering::RootKey)
+        .await
+        .unwrap();
+    let made = start.body.root.pending.clone().unwrap().public_key.unwrap();
+    alice.clock.advance(agency_proto::clock::Duration::seconds(
+        agency_proto::org::RECOVERY_WAIT_SECONDS,
+    ));
+    alice.root_keys.forget(&org, &made).unwrap();
+    let elsewhere = recovery::finish(&alice.node, &org, &words)
+        .await
+        .unwrap_err();
+    assert_eq!(elsewhere.kind, ErrorKind::Conflict);
+    assert!(
+        elsewhere.message.contains("where it was started"),
+        "{elsewhere:?}"
+    );
+
+    let (bob_like, _) = common::alice().await;
+    recovery::add(&bob_like.node, &org, words.public()).unwrap();
+    let start = recovery::start(&bob_like.node, &org, &words, recovery::Recovering::RootKey)
+        .await
+        .unwrap();
+    let made = start.body.root.pending.clone().unwrap().public_key.unwrap();
+    assert!(bob_like.root_keys.holds(&org, &made));
+    recovery::cancel(&bob_like.node, &org).unwrap();
+    assert!(
+        !bob_like.root_keys.holds(&org, &made),
+        "the cancelled start's key is forgotten"
+    );
+}
+
+#[tokio::test]
+async fn the_node_logs_a_started_recovery_even_with_no_device() {
+    let (alice, _) = alice().await;
+    notify_waiting(&alice.node).await.unwrap();
+    started(&alice).await;
+    let pass = notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(pass.recoveries.len(), 1, "{:?}", pass.recoveries);
+    assert!(
+        pass.recoveries[0].contains("acme") && pass.recoveries[0].contains("root-cancel-recovery")
+    );
+}

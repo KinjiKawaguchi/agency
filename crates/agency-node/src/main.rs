@@ -268,6 +268,20 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        if let Some(pending) = &doc.body.root.pending {
+            let at = orgs::recovery_takes_effect(node, &doc)
+                .map(agency_proto::clock::format)
+                .unwrap_or_else(|| "a time this node has no record of".to_owned());
+            let what = if pending.public_key.is_some() {
+                "a new root key"
+            } else {
+                "a new recovery key"
+            };
+            println!(
+                "  A RECOVERY WAITS: it moves {} to {what} at {at}. If you did not start it, run `agency root-cancel-recovery --org {}` now.",
+                doc.body.org, doc.body.org
+            );
+        }
         let lines = dept_cli::department_lines(&doc.body);
         let plans = dept_cli::plan_lines(&doc.body);
         for line in lines
@@ -382,6 +396,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
                 }
                 match notify_waiting(&background).await {
                     Ok(pass) => {
+                        for recovery in pass.recoveries {
+                            logger.warn("recovery", &recovery);
+                            eprintln!("agency: {recovery}");
+                        }
                         for failure in pass.failures {
                             logger.warn(
                                 "push",

@@ -119,6 +119,18 @@ pub async fn finish(node: &Node, org: &Id, words_key: &AccountKey) -> Result<Sig
             format!("no recovery of org {org} waits"),
         ));
     };
+    // The new root key was made where the recovery was started; finished anywhere else, every node would move
+    // to a root key that nobody holds.
+    if let Some(key) = &pending.public_key {
+        if !node.root_keys().holds(org, key) {
+            return Err(Error::new(
+                ErrorKind::Conflict,
+                format!(
+                    "this node does not hold the new root key of org {org}; finish the recovery on the node where it was started"
+                ),
+            ));
+        }
+    }
     let root = &current.body.root;
     let mut body = OrgDefinition::successor_of(&current, node.now_text());
     body.root = Root {

@@ -204,6 +204,9 @@ async fn waiting_for_owner(node: &Node, is_hidden: bool) -> Vec<Candidate> {
 pub struct Pass {
     pub sent: usize,
     pub failures: Vec<String>,
+    /// The recoveries this pass found started, worded for the node's log: a channel that is never empty,
+    /// for a node with no device registered.
+    pub recoveries: Vec<String>,
 }
 
 /// What sending one notice to one kind of destination came to.
@@ -393,6 +396,14 @@ async fn send_fresh(
             badge,
             ..one.notice
         };
+        if let NoticeKind::Recovery {
+            org,
+            takes_effect_at,
+        } = &notice.kind
+        {
+            let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
+            pass.recoveries.push(format!("{title}. {body}"));
+        }
         let delivery = send_to_all(node, &notice, pass).await?;
         if delivery.is_done {
             pass.sent += 1;
