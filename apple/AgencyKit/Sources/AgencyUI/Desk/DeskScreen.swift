@@ -67,6 +67,17 @@ public struct DeskScreen: View {
             await pairing?.refresh()
             await store.refresh()
         }
+        // A phone waiting to be approved asks again by itself, so the card goes away when it is.
+        .task(id: isWaitingToBeAdded) {
+            while isWaitingToBeAdded, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                await pairing?.refresh()
+            }
+        }
+    }
+
+    private var isWaitingToBeAdded: Bool {
+        if case .waiting? = pairing?.status { true } else { false }
     }
 
     @ViewBuilder

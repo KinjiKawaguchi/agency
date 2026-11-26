@@ -14,7 +14,7 @@ extension Ja {
         public static let requests = "追加を待っている端末"
         public static let noRequests = "追加を待っている端末はありません。"
         public static let compare = "このコードを新しい端末のコードと見比べてください。1 文字でも違えば、追加しないでください。"
-        public static let confirm = "コードが一致したので追加する"
+        public static let confirm = "コードが一致したので承認する"
         public static let confirming = "追加しています…"
         public static let faceID = "追加するときに Face ID で確認します。"
         public static let nowhereToAdd = "追加できる組織がありません。この端末が追加されている組織が必要です。"

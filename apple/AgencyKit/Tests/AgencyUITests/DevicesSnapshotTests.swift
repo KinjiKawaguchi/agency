@@ -39,7 +39,7 @@ struct DevicesSnapshotTests {
         for scheme in [ColorScheme.light, .dark] {
             expectFits(Snapshot.capture("devices-not-added", content(pairing: .notRequested), scheme: scheme), "not added (\(scheme))")
         }
-        expectFits(Snapshot.capture("devices-waiting", content(pairing: .waiting(code: "a652-124a-fda7"))), "waiting")
+        expectFits(Snapshot.capture("devices-waiting", content(pairing: .waiting(code: "a652-124a-fda7", approval: .fromDevices(labels: ["MacBook", "iPad"])))), "waiting")
         expectFits(Snapshot.capture("devices-asking", content(pairing: .notRequested, isAsking: true)), "asking")
     }
 
