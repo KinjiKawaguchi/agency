@@ -18,6 +18,7 @@ pub mod push;
 pub mod read_auth;
 pub mod routes;
 pub mod signed_decisions;
+pub mod teams;
 pub mod unseen;
 pub mod usage;
 pub mod views;
