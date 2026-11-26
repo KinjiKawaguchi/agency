@@ -12,6 +12,7 @@ use agency_adapters::peers::HttpPeers;
 use agency_adapters::runtime::CommandRuntime;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
+use agency_adapters::usage_collector;
 use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
@@ -47,6 +48,7 @@ fn notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
 /// The node and the parts its HTTP server needs.
 pub struct Opened {
     pub node: Arc<Node>,
+    data_dir: std::path::PathBuf,
     clock: Arc<dyn Clock>,
     random: Arc<dyn Random>,
     certs: Option<Arc<dyn CertSource>>,
@@ -55,6 +57,7 @@ pub struct Opened {
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let key = data.load_key()?;
+    let data_dir = data.root().to_owned();
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let notifier = match overrides.notifier {
@@ -70,12 +73,13 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         clock: clock.clone(),
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
-        funding: Arc::new(UsageFiles::new(clock.clone())),
+        funding: Arc::new(UsageFiles::new(data_dir.clone())),
         notifier,
     };
     let node = Arc::new(Node::open(ports, key)?);
     Ok(Opened {
         node,
+        data_dir,
         clock,
         random,
         certs: overrides.certs,
@@ -97,6 +101,16 @@ impl Assets for EmbeddedWeb {
 }
 
 impl Opened {
+    /// Starts reading the usage of the funding sources that have a collector, for as long as the
+    /// node runs.
+    pub fn start_usage_collector(&self) {
+        tokio::spawn(usage_collector::run(
+            self.node.clone(),
+            self.data_dir.clone(),
+            self.clock.clone(),
+        ));
+    }
+
     /// A fresh write token for the page: 32 random bytes as hex.
     fn new_token(&self) -> String {
         [self.random.bytes16(), self.random.bytes16()]

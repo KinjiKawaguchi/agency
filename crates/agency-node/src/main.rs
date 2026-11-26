@@ -304,6 +304,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     println!("Node running: {} (listening on {listen})", node.url());
     warn_misplaced(&node, |line| eprintln!("agency: {line}"));
     println!("Web client: http://127.0.0.1:{port}/");
+    opened.start_usage_collector();
     let background = node.clone();
     tokio::spawn(async move {
         let mut tick = 0u64;

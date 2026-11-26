@@ -309,17 +309,24 @@ async fn reports_funding_usage_from_the_usage_file() {
         r#"{"five_hour":{"utilization":41.6,"resets_at":"2026-11-24T15:00:00Z"}}"#,
     )
     .unwrap();
+    // `readAt` is when the file was written, not when it was asked for.
+    let written = "2026-11-24T11:57:00Z";
+    file.as_file()
+        .set_modified(agency_proto::clock::parse(written).unwrap().into())
+        .unwrap();
     let with_file = FundingConfig {
         id: id("max"),
         label: "Max".into(),
         kind: FundingKind::Subscription,
         usage_file: Some(file.path().into()),
+        collector: None,
     };
     let without = FundingConfig {
         id: id("api"),
         label: "API".into(),
         kind: FundingKind::ApiKey,
         usage_file: None,
+        collector: None,
     };
     alice
         .node
@@ -327,7 +334,7 @@ async fn reports_funding_usage_from_the_usage_file() {
         .unwrap();
     let (_, me) = body(get(&alice, "/api/me").send().await.unwrap()).await;
     let expected = json!([
-        { "id": "max", "label": "Max", "kind": "subscription", "windows": [{ "name": "fiveHour", "lengthHours": 5, "utilization": 42, "resetsAt": "2026-11-24T15:00:00Z" }], "readAt": "2026-11-24T12:00:00Z" },
+        { "id": "max", "label": "Max", "kind": "subscription", "windows": [{ "name": "fiveHour", "lengthHours": 5, "utilization": 42, "resetsAt": "2026-11-24T15:00:00Z" }], "readAt": "2026-11-24T11:57:00Z" },
         { "id": "api", "label": "API", "kind": "apiKey", "windows": [] }
     ]);
     assert_eq!(me["funding"], expected);
