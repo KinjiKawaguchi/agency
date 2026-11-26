@@ -12,4 +12,8 @@ id: string, org: Id, team: Id, kind: EnvelopeKind,
 /**
  * The request id or work item's item reference it answered.
  */
-target: string, title?: string, text: string, choice?: string, choiceLabel?: string, decidedAt: Timestamp, state: DecisionState, };
+target: string, title?: string, text: string, choice?: string, choiceLabel?: string, 
+/**
+ * Whom the decision was made for, when it answered for a seat or an external party.
+ */
+relayedFor?: string, decidedAt: Timestamp, state: DecisionState, };

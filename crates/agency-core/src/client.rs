@@ -1,6 +1,6 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
-use crate::config::NodeConfig;
+use crate::config::{HostedTeam, NodeConfig};
 use crate::decisions::{Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
@@ -8,7 +8,7 @@ use crate::orgs::is_root;
 use crate::outbox::Parcel;
 use crate::push::is_hiding_titles;
 use crate::signed_decisions::decide_signed;
-use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
+use crate::views::{addressed_party, mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
     home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
     DecisionState, Funding, HomeNode, Me, OrgRef, SignedDecisionInput, SnapshotSource,
@@ -16,7 +16,8 @@ use agency_proto::client::{
 };
 use agency_proto::clock;
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::{Id, OrgDefinition, Person, PublicKey, Timestamp};
+use agency_proto::{Id, OrgDefinition, Person, PublicKey, TeamView, Timestamp};
+use std::collections::BTreeMap;
 
 /// The org, if the node's account is a member of it.
 pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
@@ -127,10 +128,13 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         let reader = Reader::Hosted {
             hosted: &hosted,
             person: &person.id,
+            definition: &doc.body,
         };
         let viewer = viewer_name(&hosted, &person.id);
+        let mine = mine(&view, &reader);
         return Ok(TeamSnapshot {
-            mine: mine(&view, &reader),
+            relayed_for: relayed_for(&doc.body, &hosted, &view, &mine),
+            mine,
             waiting_on_viewer: waiting_on_viewer(&view, viewer.as_deref()),
             view,
             viewer,
@@ -158,10 +162,27 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
     Ok(TeamSnapshot {
         mine: mine(&view, &reader),
         waiting_on_viewer: waiting_on_viewer(&view, replica.viewer.as_deref()),
+        relayed_for: BTreeMap::new(),
         view,
         viewer: replica.viewer,
         source,
     })
+}
+
+/// For each of the reader's requests that is addressed to a seat or an external party: whom it is for.
+fn relayed_for(
+    definition: &OrgDefinition,
+    hosted: &HostedTeam,
+    view: &TeamView,
+    mine: &[String],
+) -> BTreeMap<String, String> {
+    let requests = view.requests.iter().filter(|one| mine.contains(&one.id));
+    requests
+        .filter_map(|request| {
+            let (_, label) = addressed_party(definition, hosted, request.to.as_deref())?;
+            Some((request.id.clone(), label.to_owned()))
+        })
+        .collect()
 }
 
 /// A note's text, trimmed; empty is none. At most `MAX_NOTE` characters.
@@ -191,6 +212,7 @@ pub async fn submit_signed_decision(
     let note = DecisionNote {
         title: note_text(input.title, "title")?,
         choice_label: note_text(input.choice_label, "choiceLabel")?,
+        relayed_for: note_text(input.relayed_for, "relayedFor")?,
     };
     if note.choice_label.is_some() && input.envelope.body.payload.choice.is_none() {
         return Err(Error::bad_request("choiceLabel needs a choice"));
@@ -271,6 +293,7 @@ pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
             text: record.payload.text,
             choice: record.payload.choice,
             choice_label: record.choice_label,
+            relayed_for: record.relayed_for,
             decided_at,
             state,
         })

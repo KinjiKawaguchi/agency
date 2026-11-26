@@ -8,6 +8,7 @@ use crate::signed::Signed;
 use crate::timestamp::Timestamp;
 use crate::view::TeamView;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// What a client needs before it writes: the write token, and the node's clock, which an envelope's `at`
@@ -191,6 +192,12 @@ pub struct TeamSnapshot {
     pub mine: Vec<String>,
     /// The `id`s of the team's people whose `waitingOn` is the viewer (see "People" in docs/protocol.md).
     pub waiting_on_viewer: Vec<String>,
+    /// For each of the viewer's `mine` requests that is addressed to a seat or an external party the viewer
+    /// answers for: the request id and the label of whom it is for, so that a client can say "Answer for
+    /// Erin (outside counsel)". Left out when there is none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<std::collections::BTreeMap<String, String>>", optional)]
+    pub relayed_for: BTreeMap<String, String>,
     pub source: SnapshotSource,
 }
 
@@ -316,6 +323,9 @@ pub struct DecisionEntry {
     pub choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    /// Whom the decision was made for, when it answered for a seat or an external party.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relayed_for: Option<String>,
     pub decided_at: Timestamp,
     pub state: DecisionState,
 }
@@ -355,6 +365,11 @@ pub struct SignedDecisionInput {
     /// The label of the chosen option, kept in the decision log like `title`. Only with a choice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    /// Whom the decision was made for, when the request was addressed to a seat or an external party the
+    /// account answers for (the label from the snapshot's `relayedFor`), kept in the decision log like
+    /// `title`. Never signed or sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relayed_for: Option<String>,
 }
 
 /// A new device asking to be added. One of the account's devices (or, for the first device, the node's

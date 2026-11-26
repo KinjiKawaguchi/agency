@@ -332,6 +332,7 @@ fn status(node: &Node) {
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
+    warn_unknown_addressees(node, |line| println!("{line}"));
     for parcel in pending(node) {
         println!(
             "Outbox: {} -> {} ({} attempts, {})",
@@ -356,6 +357,17 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
         write(format!(
             "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
             misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()
+        ));
+    }
+}
+
+/// Says which entries of a team's `people` name no member, seat, or external party of its org, so that a
+/// request addressed to one is not left for no one. It is a warning: a typo here must not stop a node.
+fn warn_unknown_addressees(node: &Node, write: impl Fn(String)) {
+    for unknown in orgs::unknown_addressees(node) {
+        write(format!(
+            "team {}/{}: the people entry \"{}\" names {}, who is not a member, seat, or external party of org {}, so a request addressed to {} is answered by no one",
+            unknown.org, unknown.team, unknown.name, unknown.id, unknown.org, unknown.name
         ));
     }
 }
@@ -386,6 +398,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         &format!("node running: {} (listening on {listen})", node.url()),
     );
     warn_misplaced(&node, |line| logger.warn("placement", &line));
+    warn_unknown_addressees(&node, |line| logger.warn("placement", &line));
     for line in agency_core::client::home_nodes(&node.config()).1 {
         logger.warn("placement", &line);
     }

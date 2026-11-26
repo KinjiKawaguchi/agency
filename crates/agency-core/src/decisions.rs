@@ -9,7 +9,9 @@ use crate::views::{self, is_addressed_to, Reader};
 use agency_proto::device::envelope_key;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::Kind;
-use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Payload, RuntimeDecision, Signed};
+use agency_proto::{
+    Envelope, EnvelopeId, EnvelopeKind, Id, OrgDefinition, Payload, RuntimeDecision, Signed,
+};
 use serde::{Deserialize, Serialize};
 
 /// A decision this node's account made, as kept in the decision log.
@@ -25,6 +27,8 @@ pub struct DecisionRecord {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relayed_for: Option<String>,
     pub payload: Payload,
     pub at: String,
     /// Applied to a team on this node; otherwise sent as an envelope, whose delivery the outbox tracks.
@@ -37,6 +41,8 @@ pub struct DecisionRecord {
 pub struct DecisionNote {
     pub title: Option<String>,
     pub choice_label: Option<String>,
+    /// Whom the decision answered for, when its request was a seat's or an external party's.
+    pub relayed_for: Option<String>,
 }
 
 impl DecisionRecord {
@@ -49,6 +55,7 @@ impl DecisionRecord {
             target: envelope.target.clone(),
             title: note.title,
             choice_label: note.choice_label,
+            relayed_for: note.relayed_for,
             payload: envelope.payload.clone(),
             at: envelope.at.clone(),
             is_local,
@@ -107,29 +114,38 @@ pub(crate) async fn send_envelope(
 /// whose `answerWith` is the envelope's kind and target, in the team's view now. A request that is not
 /// waiting and a request addressed to someone else get the same refusal, so an answerer, who reads only
 /// their own requests, cannot learn of others' from it.
+///
+/// It gives the id of the seat or external party the request is addressed to when the decider answers for it.
 async fn check_addressee(
     node: &Node,
     hosted: &HostedTeam,
+    definition: &OrgDefinition,
     envelope: &Envelope,
     person: &Id,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let view = views::runtime_view(node, hosted).await?;
-    let reader = Reader::Hosted { hosted, person };
-    let is_addressee = view.requests.iter().any(|request| {
+    let reader = Reader::Hosted {
+        hosted,
+        person,
+        definition,
+    };
+    let found = view.requests.iter().find(|request| {
         request.answer_with.kind == envelope.kind
             && request.answer_with.target == envelope.target
             && is_addressed_to(&reader, request)
     });
-    if is_addressee {
-        Ok(())
-    } else {
-        Err(Error::new(
+    match found {
+        Some(request) => Ok(
+            views::addressed_party(definition, hosted, request.to.as_deref())
+                .map(|(id, _)| id.to_string()),
+        ),
+        None => Err(Error::new(
             ErrorKind::Forbidden,
             format!(
                 "no request {} waits for a decision from {person}",
                 envelope.target
             ),
-        ))
+        )),
     }
 }
 
@@ -193,12 +209,14 @@ pub async fn accept_envelope(
     if node.store().is_applied(&envelope.id) {
         return Ok(Accepted::Duplicate);
     }
-    check_addressee(node, &hosted, envelope, &person.id).await?;
+    let definition = definition.ok_or_else(|| Error::internal("the org's definition is gone"))?;
+    let on_behalf_of = check_addressee(node, &hosted, definition, envelope, &person.id).await?;
     let decision = RuntimeDecision {
         kind: envelope.kind,
         target: envelope.target.clone(),
         by: person.id.clone(),
         by_participant: views::viewer_name(&hosted, &person.id),
+        on_behalf_of,
         payload: envelope.payload.clone(),
     };
     node.runtime()

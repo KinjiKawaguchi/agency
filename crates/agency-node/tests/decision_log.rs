@@ -86,6 +86,7 @@ async fn logs_local_decisions_as_applied() {
         target: "r-9".into(),
         title: None,
         choice_label: None,
+        relayed_for: None,
         payload: agency_proto::Payload {
             text: "x".into(),
             choice: None,
