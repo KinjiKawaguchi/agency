@@ -384,6 +384,7 @@ export const en = {
     period: 'Period',
     days: (count: number) => `${count} days`,
     noOrgs: 'You belong to no org yet.',
+    retry: 'Try again',
     measures: 'Measures',
     noMeasures: 'This org states no measure yet.',
     noNumbers: 'No number in this period.',

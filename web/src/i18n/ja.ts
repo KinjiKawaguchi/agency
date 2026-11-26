@@ -380,6 +380,7 @@ export const ja: Messages = {
     period: '期間',
     days: (count) => `${count} 日`,
     noOrgs: 'まだどの組織にも属していません。',
+    retry: 'もう一度試す',
     measures: '指標',
     noMeasures: 'この組織には、まだ指標がありません。',
     noNumbers: 'この期間の数値はありません。',

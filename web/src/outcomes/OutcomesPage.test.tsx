@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createApiClient } from '../api/client'
 import { heldNode } from '../test/heldNode'
 import { renderApp } from '../test/render'
 import { createTestNode } from '../test/testDevice'
@@ -14,6 +15,29 @@ describe('the owner’s outcomes page', () => {
     expect(outcomesTab()).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.queryByText(/Outcomes/)).not.toBeInTheDocument()
+  })
+
+  it('is not taken from the owner by a failure: the page stays, says so, and tries again, and the menu shows no entry meanwhile', async () => {
+    const node = createTestNode({ outcomes: true })
+    let isDown = true
+    const client = createApiClient((request) => (isDown && new URL(request.url, 'http://mock.local').pathname.includes('/outcomes') ? Promise.resolve(new Response(JSON.stringify({ error: 'The node is busy.' }), { status: 500, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    const user = userEvent.setup()
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    expect(await screen.findByRole('alert')).toHaveTextContent('The node is busy.')
+    expect(screen.queryByRole('heading', { level: 1, name: 'Overview' }), 'the owner is not sent away').not.toBeInTheDocument()
+    expect(outcomesTab()).not.toBeInTheDocument()
+    isDown = false
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Outcomes' })).toBeInTheDocument()
+    expect(outcomesTab()).toBeInTheDocument()
+  })
+
+  it('treats 404 like 403: not the owner’s, nothing to show', async () => {
+    const node = createTestNode({ outcomes: true })
+    const client = createApiClient((request) => (new URL(request.url, 'http://mock.local').pathname.includes('/outcomes') ? Promise.resolve(new Response(JSON.stringify({ error: 'No such organization.' }), { status: 404, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('is in the Results menu once the owner’s read has answered, and not before', async () => {

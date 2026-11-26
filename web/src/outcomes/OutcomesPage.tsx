@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
@@ -15,6 +15,20 @@ interface PageProps {
   org: string | undefined
   days: number | undefined
   onChange: (next: { org: string; days: number }) => void
+}
+
+/** The first read failed in a way that does not say the viewer is not the owner: the failure and a way to try again, in place, and the page stays. */
+function OutcomesUnavailable({ error }: { error: Error }) {
+  const { t } = useI18n()
+  const queryClient = useQueryClient()
+  return (
+    <div role="alert" className="empty">
+      <p>{failureText(t, error)}</p>
+      <button className="btn small" type="button" onClick={() => void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'outcomes' || query.queryKey[0] === 'me' })}>
+        {t.outcomes.retry}
+      </button>
+    </div>
+  )
 }
 
 function OutcomesSkeleton() {
@@ -44,6 +58,7 @@ export function OutcomesPage({ org, days, onChange }: PageProps) {
     if (access.status === 'none') void navigate({ to: '/overview', replace: true })
   }, [access.status, navigate])
   if (access.status === 'loading') return <OutcomesSkeleton />
+  if (access.status === 'unknown') return <OutcomesUnavailable error={access.error} />
   if (access.status === 'none' || me === undefined) return null
   const chosen = access.orgs.find((one) => one === org) ?? access.orgs[0]
   if (chosen === undefined) return null

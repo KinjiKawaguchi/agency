@@ -24,7 +24,9 @@ function text(value: unknown, what: string): string {
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 function day(value: unknown, what: string): string {
   const found = text(value, what)
-  if (!DAY.test(found)) throw new MalformedAnswer(what)
+  // A day of the calendar: 2026-13-45 and 2026-02-30 have the shape but are not days, and would draw as an invalid date.
+  const parsed = new Date(`${found}T00:00:00Z`)
+  if (!DAY.test(found) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== found) throw new MalformedAnswer(what)
   return found
 }
 

@@ -47,8 +47,9 @@ export function formatKpiAxis(value: number, kpi: KpiInfo, locale: Locale, units
 
 /** A change in the KPI's own unit, with its sign: +4 points (of a percent), −3, +1.2×. */
 export function formatKpiChange(change: number, kpi: KpiInfo, locale: Locale, units: DurationUnits): string {
-  const sign = change === 0 ? '' : change > 0 ? '+' : '−'
   // The change of a percent KPI is a number of points, not a percent of a percent.
-  if (kpi.unit === 'percent') return `${sign}${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Math.abs(change))}${locale === 'ja' ? 'ポイント' : ' points'}`
-  return `${sign}${formatKpiValue(Math.abs(change), kpi, locale, units)}`
+  const shown = kpi.unit === 'percent' ? `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Math.abs(change))}${locale === 'ja' ? 'ポイント' : ' points'}` : formatKpiValue(Math.abs(change), kpi, locale, units)
+  // A change that is written as 0 has no sign: "+0 points" would say a direction the number does not have.
+  const isZero = !/[1-9]/.test(shown.replace(/ポイント|points/, ''))
+  return `${isZero ? '' : change > 0 ? '+' : '−'}${shown}`
 }
