@@ -92,6 +92,6 @@ test('draws the first request of the desk within the budget, cold and warm', asy
   console.log(line)
   if (process.env.GITHUB_STEP_SUMMARY !== undefined) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n**Web client load**: ${line}\n`)
   const budget = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'budget.json'), 'utf8')) as { firstDeskMs: { cold: number; warm: number } }
-  expect(numbers.cold.firstDeskMs, 'cold: the first request of the desk').toBeLessThan(budget.firstDeskMs.cold)
-  expect(numbers.warm.firstDeskMs, 'warm: the first request of the desk').toBeLessThan(budget.firstDeskMs.warm)
+  expect(numbers.cold.firstDeskMs, `cold: the first request of the desk. ${line}`).toBeLessThan(budget.firstDeskMs.cold)
+  expect(numbers.warm.firstDeskMs, `warm: the first request of the desk. ${line}`).toBeLessThan(budget.firstDeskMs.warm)
 })
