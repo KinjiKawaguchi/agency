@@ -27,6 +27,7 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "agency",
+    version,
     about = "Agency's node: runs organizations of AI agents and people across many machines"
 )]
 struct Cli {

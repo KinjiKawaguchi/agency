@@ -18,6 +18,10 @@ on:
       - .github/workflows/release.yml
       - scripts/systemd-unit.sh
       - scripts/release/**
+      - docs/install.md
+      - docs/install.ja.md
+      - LICENSE-MIT
+      - LICENSE-APACHE
 
 permissions:
   contents: read
@@ -75,17 +79,9 @@ jobs:
           scripts/release/debian-package.sh target/release/agency "${{ matrix.arch }}" dist "${args[@]}"
       - name: Check the Debian package
         run: |
-          package=$(find dist -name '*.deb' -print -quit)
-          dpkg-deb --info "$package"
-          dpkg-deb --contents "$package"
-          sudo dpkg -i "$package"
-          agency --version
-          sudo dpkg -r agency
-      - name: Lint the Debian package
-        run: |
           sudo apt-get update
           sudo apt-get install --yes lintian
-          lintian --fail-on error dist/*.deb
+          scripts/release/debian-check.sh dist/*.deb
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.package.outputs.name }}

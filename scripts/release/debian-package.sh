@@ -6,7 +6,7 @@
 #
 # Writes <output directory>/agency_<version>_<architecture>.deb and its .sha256. With --release,
 # the version comes from the v<version> tag at HEAD. A non-release build has a Debian version that
-# sorts before that release and carries the short commit.
+# sorts after that release and carries the short commit.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -42,13 +42,23 @@ if [ "$release" -eq 1 ]; then
     *) echo "release tag $tag does not match Cargo.toml version $cargo_version" >&2; exit 1 ;;
   esac
 else
-  version="$cargo_version~git$(git rev-parse --short=7 HEAD)"
+  version="$cargo_version+git$(git rev-parse --short=7 HEAD)"
 fi
 
 # The newest GLIBC symbol version is the oldest libc that can run this binary.
 glibc_version="$(readelf --version-info --wide "$binary" \
   | sed -n 's/.*GLIBC_\([0-9][0-9.]*\).*/\1/p' | sort -Vu | tail -n 1)"
 [ -n "$glibc_version" ] || { echo "$binary has no GLIBC version requirement" >&2; exit 1; }
+dependencies=()
+while read -r library; do
+  case "$library" in
+    libc.so.6) dependencies+=("libc6 (>= $glibc_version)") ;;
+    libgcc_s.so.1) dependencies+=(libgcc-s1) ;;
+    *) echo "unmapped dynamic dependency: $library" >&2; exit 1 ;;
+  esac
+done < <(readelf --dynamic --wide "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
+[ "${#dependencies[@]}" -gt 0 ] || { echo "$binary has no dynamic dependencies" >&2; exit 1; }
+depends="$(IFS=', '; echo "${dependencies[*]}")"
 
 name="agency_${version}_${deb_arch}.deb"
 stage="$(mktemp -d)"
@@ -73,11 +83,13 @@ Package: agency
 Version: $version
 Architecture: $deb_arch
 Maintainer: Agency Project <agency@agency.invalid>
-Depends: libc6 (>= $glibc_version)
+Section: utils
+Priority: optional
+Depends: $depends
 Description: Agency node
  A node for Agency: it serves an account's clients and runs hosted teams.
 EOF
-dpkg-deb --root-owner-group --build "$stage" "$out/$name" >/dev/null
+dpkg-deb -Zxz --root-owner-group --build "$stage" "$out/$name" >/dev/null
 if command -v sha256sum >/dev/null; then
   (cd "$out" && sha256sum "$name" > "$name.sha256")
 else

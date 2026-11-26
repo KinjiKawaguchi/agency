@@ -47,7 +47,7 @@ Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` whe
 
 ### A release build
 
-Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with the glibc version its package declares. [releasing.md](releasing.md) says how releases are made.
+Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). Linux builds need glibc 2.35 or later, so Debian 12 or later and Ubuntu 22.04 or later can install the Debian package. [releasing.md](releasing.md) says how releases are made.
 
 #### Debian package (Linux)
 
@@ -63,6 +63,7 @@ agency --version
 ```
 
 Then create the systemd user unit in [Run it with systemd](#run-it-with-systemd-linux), using `/usr/share/doc/agency/systemd-unit.sh` and `--agency /usr/bin/agency`.
+Installing a newer downloaded package with `sudo apt install ./agency_*.deb` upgrades it in place. `sudo apt remove agency` leaves `~/.agency` and your systemd user unit alone.
 
 #### Tarball (macOS or Linux)
 

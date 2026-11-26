@@ -51,7 +51,7 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 
 ### リリースビルド
 
-ソースからビルドする代わりに、リリースビルドを使えます。リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドは、パッケージが指定するバージョンの glibc があるシステムで動きます。リリースの作り方は [releasing.md](releasing.md) にあります。
+ソースからビルドする代わりに、リリースビルドを使えます。リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドには glibc 2.35 以降が必要です。Debian 12 以降と Ubuntu 22.04 以降なら Debian パッケージを入れられます。リリースの作り方は [releasing.md](releasing.md) にあります。
 
 #### Debian パッケージ（Linux）
 
@@ -67,6 +67,7 @@ agency --version
 ```
 
 次に、[systemd で動かす](#systemd-で動かすlinux)の手順で systemd の個人用ユニットを作ります。そのときは `/usr/share/doc/agency/systemd-unit.sh` を使い、`--agency /usr/bin/agency` を指定してください。
+新しいダウンロード済みパッケージに `sudo apt install ./agency_*.deb` を実行すると、その場でアップグレードできます。`sudo apt remove agency` を実行しても、`~/.agency` と systemd の個人用ユニットは残ります。
 
 #### tarball（macOS または Linux）
 
