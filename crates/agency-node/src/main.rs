@@ -1,6 +1,7 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
 mod dept_cli;
 mod device_cli;
+mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
@@ -8,6 +9,7 @@ mod outcome_cli;
 mod peer_cli;
 mod recovery_cli;
 mod root_sign_cli;
+mod seat_cli;
 mod seen_cli;
 mod team_cli;
 
@@ -37,6 +39,7 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "agency",
+    version,
     about = "Agency's node: runs organizations of AI agents and people across many machines"
 )]
 struct Cli {
@@ -94,6 +97,13 @@ enum Command {
     DeptAdd(dept_cli::DeptAdd),
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
+    Directory(directory_cli::DirectoryArgs),
+    SeatAdd(seat_cli::SeatAdd),
+    SeatSet(seat_cli::SeatSet),
+    SeatRemove(seat_cli::SeatRemove),
+    ExternalAdd(seat_cli::ExternalAdd),
+    ExternalSet(seat_cli::ExternalSet),
+    ExternalRemove(seat_cli::ExternalRemove),
     TeamDept(dept_cli::TeamDept),
     TeamPlan(dept_cli::TeamPlanArgs),
     OutcomeAdd(outcome_cli::OutcomeAdd),
@@ -261,7 +271,7 @@ fn status(node: &Node) {
         println!(
             "Org {} ({}), version {}, {}, people: {}, teams: {}",
             doc.body.org,
-            doc.body.label,
+            agency_proto::org::printable(&doc.body.label),
             doc.body.version,
             role,
             doc.body.people.len(),
@@ -303,6 +313,7 @@ fn status(node: &Node) {
             .into_iter()
             .chain(plans)
             .chain(kpi_cli::kpi_lines(&doc.body))
+            .chain(seat_cli::seat_lines(&doc.body))
             .chain(peer_cli::peer_lines(node, &doc.body.org))
         {
             println!("{line}");
@@ -321,7 +332,7 @@ fn status(node: &Node) {
             println!(
                 "Device in {}: {} ({}), pairing code {}",
                 doc.body.org,
-                device.label,
+                agency_proto::org::printable(&device.label),
                 device.id,
                 device.public_key.pairing_code()
             );
@@ -368,7 +379,9 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     print!(
         "Join the org \"{}\" ({})? The fingerprint of root key {} matches the link. [y/N] ",
-        definition.label, definition.org, definition.root.account
+        agency_proto::org::printable(&definition.label),
+        definition.org,
+        definition.root.account
     );
     let _ = std::io::stdout().flush();
     let mut answer = String::new();
@@ -536,6 +549,13 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptAdd(args) => dept_cli::dept_add(&node, args)?,
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
+        Command::Directory(args) => directory_cli::run(&node, args)?,
+        Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
+        Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
+        Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
+        Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
+        Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
         Command::OutcomeAdd(args) => outcome_cli::outcome_add(&node, args).await?,
@@ -590,7 +610,7 @@ async fn run(cli: Cli) -> Result<()> {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
                 Joined::Member(doc) => println!(
                     "Joined org {} ({}) (version {})",
-                    doc.body.org, doc.body.label, doc.body.version
+                    doc.body.org, agency_proto::org::printable(&doc.body.label), doc.body.version
                 ),
                 Joined::Waiting(message) => println!(
                     "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."

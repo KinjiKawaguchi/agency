@@ -79,7 +79,7 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             "the join request's signature does not match",
         ));
     }
-    let is_label_valid = agency_proto::org::label_ok(&request.label);
+    let is_label_valid = agency_proto::org::label_ok_to_write(&request.label);
     let is_fresh = clock::parse(&request.at)
         .is_some_and(|at| (node.now() - at).whole_seconds().abs() <= JOIN_SKEW_SECONDS);
     if !is_label_valid || !is_fresh {

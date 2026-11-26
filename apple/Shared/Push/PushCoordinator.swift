@@ -14,7 +14,7 @@ final class PushCoordinator {
     /// Set once Apple has given this device a token.
     private(set) var registration: PushRegistration?
     /// Where a tapped notification leads, until the shell takes it.
-    private(set) var pendingLink: NotificationLink?
+    private(set) var pendingTap: NotificationTap?
     /// Whether the one-line explanation is on screen.
     var isShowingPrompt = false
 
@@ -41,13 +41,14 @@ final class PushCoordinator {
         Task { await refresh() }
     }
 
-    func open(_ link: NotificationLink) {
-        pendingLink = link
+    func open(_ tap: NotificationTap) {
+        pendingTap = tap
     }
 
-    func takePendingLink() -> NotificationLink? {
-        defer { pendingLink = nil }
-        return pendingLink
+    @discardableResult
+    func takePendingTap() -> NotificationTap? {
+        defer { pendingTap = nil }
+        return pendingTap
     }
 
     func acceptPrompt() {
@@ -59,12 +60,6 @@ final class PushCoordinator {
 
     func deferPrompt() {
         defaults.set(Date(), forKey: Self.deferredAtKey)
-    }
-
-    /// Shows the number of waiting requests on the app icon. Without the badge permission, iOS
-    /// ignores it.
-    func setBadge(_ count: Int) {
-        Task { try? await center.setBadgeCount(count) }
     }
 
     func didRegister(deviceToken: Data) {

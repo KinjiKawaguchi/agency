@@ -5,7 +5,9 @@
 use crate::error::{Error, Result};
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
-use crate::push_events::{decision_candidates, device_candidates, recovery_candidates};
+use crate::push_events::{
+    decision_candidates, device_candidates, recovery_candidates, root_change_candidates,
+};
 use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader};
 use crate::web_push::{record_sends, Sent};
@@ -442,6 +444,7 @@ async fn send_fresh(
         if let NoticeKind::Recovery {
             org,
             takes_effect_at,
+            ..
         } = &notice.kind
         {
             let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
@@ -475,6 +478,7 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
     let mut waiting: Vec<String> = requests.iter().map(|one| one.key.clone()).collect();
     waiting.sort();
     let mut others = device_candidates(node, is_hidden);
+    others.extend(root_change_candidates(node, is_hidden));
     others.extend(decision_candidates(node, is_hidden));
     let Some(mut notified) = node.store().notified() else {
         let mut keys: Vec<String> = requests.into_iter().map(|one| one.key).collect();

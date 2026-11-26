@@ -52,6 +52,18 @@ struct MenuBarWordingTests {
         #expect(Ja.MenuBar.accessibility(.count(4, isStale: false)) == "Agency: 4 件があなたを待っています")
         #expect(Ja.MenuBar.accessibility(.count(4, isStale: true)) == "Agency: 4 件があなたを待っています。最新の数を読み込めませんでした。前に読み込んだときの数です")
     }
+
+    @Test("a started recovery turns the symbol into a warning, whatever else the item says, and is said to a screen reader")
+    func recovery() {
+        for state in [MenuBarState.noHomeNode, .notRead, .readFailed, .count(0, isStale: false), .count(3, isStale: true)] {
+            #expect(Ja.MenuBar.symbol(state, hasRecovery: true) == "exclamationmark.triangle.fill")
+        }
+        #expect(Ja.MenuBar.symbol(.count(0, isStale: false), hasRecovery: false) == "tray")
+        #expect(Ja.MenuBar.symbol(.count(3, isStale: false), hasRecovery: false) == "tray.full")
+        #expect(Ja.MenuBar.symbol(.notRead, hasRecovery: false) == "tray")
+        #expect(Ja.MenuBar.accessibility(.count(2, isStale: false), recoveries: ["アクミ のルート鍵の回復が始まりました。"]) == "Agency: 2 件があなたを待っています。アクミ のルート鍵の回復が始まりました。")
+        #expect(Ja.MenuBar.accessibility(.count(2, isStale: false), recoveries: []) == "Agency: 2 件があなたを待っています")
+    }
 }
 
 private extension MenuBarState {

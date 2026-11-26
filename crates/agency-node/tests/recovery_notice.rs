@@ -72,11 +72,16 @@ async fn the_owner_is_told_once_on_every_device_and_sees_it_until_it_is_cancelle
     let NoticeKind::Recovery {
         org,
         takes_effect_at,
+        started_at,
     } = &told[0]
     else {
         unreachable!()
     };
     assert_eq!(org, &id("acme"));
+    assert!(
+        started_at.is_some(),
+        "the node noted when it took the start"
+    );
     let shown = me(&alice.node);
     let recovery = shown.orgs[0].recovery.clone().expect("the desk shows it");
     assert_eq!(&recovery.takes_effect_at, takes_effect_at);

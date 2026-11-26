@@ -148,6 +148,8 @@ Names start at what came after the first release: every node has what the first 
 | `orgAims` | signed field | `teams[].plan.aims`: the epics a plan aims at a KPI. |
 | `orgKpis` | signed field | `kpis`: what the org measures. |
 | `orgRecovery` | signed field | `root.recovery` and `root.pending`: the org's recovery key, and a recovery that was started and waits. |
+| `orgSeats` | signed field | `seats`: places in the org that no one has taken yet (see Seat in the glossary). |
+| `orgExternals` | signed field | `externals`: people the org works with who never take a seat. |
 | `webPush` | feature | A browser's Web Push subscriptions, and the notices sent to them. |
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |
@@ -158,3 +160,4 @@ Names start at what came after the first release: every node has what the first 
 - **Fixtures:** `testdata/client/` must equal what the node answers.
 - **Earlier versions:** the fixtures and vectors of each released version are kept, and today's code must still decode them (an app's decoding tests, and a node's reading of older org versions and replicas).
 - **Bindings:** `bindings/` must equal what the Rust types generate.
+- **Unknown words (Apple apps):** every enum the Swift package decodes reads a word it does not know as its own `unknown` (`OpenWireEnum`, or a decoder of its own with an `unknown` case), so that a new value never fails the whole answer and is never taken for a known one. `OpenWireEnumsGuardTests` reads the sources and fails for a decoded enum that does not, unless it is named there with why it is not a word of a node's (what the app keeps on the device for itself).

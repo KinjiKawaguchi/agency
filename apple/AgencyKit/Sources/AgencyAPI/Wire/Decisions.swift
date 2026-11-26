@@ -31,6 +31,8 @@ public enum DecisionState: Decodable, Equatable, Sendable {
     case delivered
     case queued(attempts: Int, nextAt: Instant, lastError: String?)
     case refused(message: String)
+    /// A state a newer node names: read, never taken for one of the others (a success among them).
+    case unknown(String)
 
     private enum Keys: String, CodingKey { case kind, attempts, nextAt, lastError, message }
 
@@ -46,15 +48,14 @@ public enum DecisionState: Decodable, Equatable, Sendable {
                 lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
             )
         case "refused": self = .refused(message: try container.decode(String.self, forKey: .message))
-        case let other:
-            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown decision state \(other)")
+        case let other: self = .unknown(other)
         }
     }
 }
 
 /// The answer to `POST /api/orgs/<org>/teams/<team>/envelopes`.
 public struct DecisionResult: Decodable, Equatable, Sendable {
-    public enum Outcome: String, Decodable, Sendable { case applied, delivered, queued }
+    public enum Outcome: String, OpenWireEnum { case applied, delivered, queued, unknown }
 
     public let outcome: Outcome
     /// Why a decision was queued.

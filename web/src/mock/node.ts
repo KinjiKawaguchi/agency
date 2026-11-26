@@ -4,10 +4,9 @@ import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
-import type { OrgWithRecovery, StartedRecovery } from '../recovery/provisional'
-import type { RootChangeRef } from '../rootchange/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { answererView, isRefusedToGuest, type MockGuest } from './guest.ts'
@@ -57,7 +56,7 @@ interface MockNodeOptions {
   /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
   pendingRoot?: boolean
   /** Changes that wait for the root key's signature, as `GET /api/me` tells the owner. */
-  rootChanges?: readonly RootChangeRef[]
+  rootChanges?: readonly HeldChange[]
   /** Orgs (by id) whose recovery was started and waits, as `GET /api/me` says it. */
   recoveries?: Readonly<Record<string, StartedRecovery>>
   /** The moment the sample is shifted to, so times read as "an hour ago" whenever the node starts. */
@@ -172,7 +171,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
 
   let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
-  let rootChanges: readonly RootChangeRef[] = options.rootChanges ?? []
+  let rootChanges: readonly HeldChange[] = options.rootChanges ?? []
 
   const ownerMe: Me = {
     account: { id: 'alice', label: 'Alice', fingerprint: 'a1b2c3d4e5f6' },
@@ -199,7 +198,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
           account: { id: options.guest.member, label: options.guest.label, fingerprint: 'c0ffee123456' },
           orgs: [{ id: app.org, label: ORG_DEFINITION.label, isRoot: false, teams: [{ id: app.team, label: app.label, location: 'local', viewer: options.guest.member }] }],
           funding: [],
-          guest: { member: options.guest.member },
+          guest: { member: options.guest.member, org: app.org },
         }
   const viewerName = options.guest?.member ?? 'owner'
 
@@ -363,7 +362,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
-    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgWithRecovery => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
+    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgRef => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')

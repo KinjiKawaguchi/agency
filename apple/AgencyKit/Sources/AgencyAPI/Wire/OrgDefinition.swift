@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// `GET /api/orgs/<org>`: the org's signed definition, as far as a screen draws it: its departments, its members
@@ -36,7 +37,7 @@ public struct OrgDepartment: Decodable, Equatable, Sendable {
 /// An account's seat in the org (`Person` in the protocol).
 public struct OrgMember: Decodable, Equatable, Sendable {
     /// `member` reads and answers; `answerer` only answers.
-    public enum Role: String, Decodable, Sendable { case member, answerer }
+    public enum Role: String, OpenWireEnum { case member, answerer, unknown }
 
     public let id: String
     public let label: String

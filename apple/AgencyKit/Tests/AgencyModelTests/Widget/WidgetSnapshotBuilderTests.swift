@@ -77,6 +77,7 @@ struct WidgetSnapshotBuilderTests {
             case .proposal: .proposal
             case .question: .question
             case .pendingDecision: .pendingDecision
+            case .unknown: .other
             }
             #expect(listed.kind == expected)
         }

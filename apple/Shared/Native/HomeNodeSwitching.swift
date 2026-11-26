@@ -17,6 +17,14 @@ protocol HomeNodeSwitching: AnyObject {
     func leave()
     /// What the current node says about the owner's other nodes.
     func note(configured: [HomeNodeRef])
+    /// The id the current node says it puts in its pushes.
+    func note(nodeID: String?, of node: HomeNodeURL)
+    /// The id a push from `node` carries.
+    func nodeID(of node: HomeNodeURL) -> String
+    /// Whether `node` has said its id.
+    func hasSaidID(of node: HomeNodeURL) -> Bool
+    /// The open node's count of requests waiting, for the number on the icon.
+    func recordWaiting(_ count: Int, for node: HomeNodeURL)
 }
 
 extension HomeNodeStore: HomeNodeSwitching {

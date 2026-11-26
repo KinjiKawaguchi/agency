@@ -22,6 +22,8 @@ public enum DeskReplyError: Error, Equatable, Sendable {
     case textRequired
     /// A request that has no options takes its answer as text.
     case noOptionsToChoose
+    /// The node names a kind of envelope this app does not know how to make.
+    case cannotAnswerHere
 }
 
 /// A reply, ready to be put into an envelope and sent.
@@ -80,6 +82,7 @@ extension DeskItem {
     /// Checks a reply against the request and prepares it. Nothing here asks the owner for anything or sends anything.
     public func prepare(_ reply: DeskReply) throws -> PreparedDecision {
         guard isMine else { throw DeskReplyError.notYours }
+        guard isAnswerableHere else { throw DeskReplyError.cannotAnswerHere }
         let options = request.options
         switch reply {
         case .choose(let key, let note):

@@ -112,13 +112,17 @@ struct WireTypeTests {
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(TeamSnapshot.self, from: Data(broken.utf8)) }
     }
 
-    @Test("a value the client does not know fails, instead of being read as another")
+    @Test("a value the client does not know is read as unknown, instead of failing the answer or being read as another")
     func unknownEnumValues() throws {
         let text = try Fixtures.text("team-snapshot-local")
-        let broken = text.replacingOccurrences(of: "\"question\"", with: "\"riddle\"")
-        #expect(throws: DecodingError.self) { try JSONDecoder().decode(TeamSnapshot.self, from: Data(broken.utf8)) }
+        let future = text.replacingOccurrences(of: "\"question\"", with: "\"riddle\"")
+        let snapshot = try JSONDecoder().decode(TeamSnapshot.self, from: Data(future.utf8))
+        #expect(snapshot.view.requests.contains { $0.kind == .unknown })
+        #expect(!snapshot.view.requests.contains { $0.kind == .question })
         let state = try Fixtures.text("decision-log").replacingOccurrences(of: "\"applied\"", with: "\"lost\"")
-        #expect(throws: DecodingError.self) { try JSONDecoder().decode(DecisionLog.self, from: Data(state.utf8)) }
+        let log = try JSONDecoder().decode(DecisionLog.self, from: Data(state.utf8))
+        #expect(log.entries.contains { $0.state == .unknown("lost") })
+        #expect(!log.entries.contains { $0.state == .applied })
     }
 
     @Test("a time that is not RFC 3339 fails")

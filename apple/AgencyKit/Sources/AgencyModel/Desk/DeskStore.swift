@@ -1,4 +1,5 @@
 import AgencyAPI
+import AgencyProtocol
 import Foundation
 import Observation
 
@@ -248,6 +249,7 @@ public final class DeskStore {
         case NodeError.notSignedIn: "Not signed in."
         case NodeError.sessionExpired: "The sign-in has ended."
         case NodeError.unreadable: "The node's answer was not understood."
+        case EnvelopeError.unknownKind: "This kind of request cannot be answered in this version of the app."
         case let error as DeskReplyError: String(describing: error)
         default: error.localizedDescription
         }
