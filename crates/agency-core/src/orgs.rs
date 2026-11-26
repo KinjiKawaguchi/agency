@@ -9,7 +9,7 @@ use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace, Versions};
-use agency_proto::{Id, Kind, OrgDefinition, Person, Role, Signed};
+use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Role, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
     node.store()
@@ -17,15 +17,45 @@ pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
         .ok_or_else(|| Error::not_found(format!("no definition of org {org}")))
 }
 
+/// Signs a version with the root key it names: version 1, or any next version that keeps the root.
 pub(crate) fn sign(node: &Node, body: OrgDefinition) -> Result<SignedOrg> {
-    body.validate().map_err(Error::bad_request)?;
-    Signed::sign(Kind::Org, body, node.account(), node.key())
-        .map_err(|error| Error::internal(error.to_string()))
+    let key = body.root.public_key.clone();
+    sign_as(node, body, &key)
 }
 
-/// Whether this node holds the org's root key.
+/// Signs a version with `key`, a root key this node holds: the org's own root key (`RootKeys`), or the
+/// account key for an org made before root keys were kept apart. A rotation signs the version that
+/// names the new root with the current one.
+fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOrg> {
+    body.validate().map_err(Error::bad_request)?;
+    let signer = node.account();
+    if key == &node.key().public() {
+        return Signed::sign(Kind::Org, body, signer, node.key())
+            .map_err(|error| Error::internal(error.to_string()));
+    }
+    let (org, purpose) = (
+        body.org.clone(),
+        format!("Sign version {} of {}", body.version, body.label),
+    );
+    let signed = Signed::sign_with(Kind::Org, body, signer, |text| {
+        node.root_keys().sign(&org, key, text, &purpose)
+    })
+    .map_err(|error| Error::internal(error.to_string()))?;
+    signed.map_err(|why| {
+        Error::new(
+            ErrorKind::Forbidden,
+            format!("the root key of {org} did not sign: {why}"),
+        )
+    })
+}
+
+/// Whether this node holds the org's root key: its own root key, or the account key for an org made
+/// before root keys were kept apart.
 pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
-    doc.body.root.account == node.account() && doc.body.root.public_key == node.key().public()
+    let root = &doc.body.root;
+    root.account == node.account()
+        && (root.public_key == node.key().public()
+            || node.root_keys().holds(&doc.body.org, &root.public_key))
 }
 
 /// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that
@@ -81,6 +111,17 @@ fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Resul
     queue_for(node, doc, targets)
 }
 
+/// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
+/// trust this node keeps for the org moves to the new root, so a later first copy is checked against it.
+fn follow_new_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) -> Result<()> {
+    let (old, new) = (&previous.body.root.public_key, &next.body.root.public_key);
+    if old == new {
+        return Ok(());
+    }
+    let (org, from, to) = (&next.body.org, old.fingerprint(), new.fingerprint());
+    node.update_config(|config| config.retrust(org, &from, to))
+}
+
 /// A team the org removed has no view to keep: this node's replica of it is deleted.
 fn forget_removed(node: &Node, previous: &OrgDefinition, next: &OrgDefinition) -> Result<()> {
     for team in removed_teams(previous, next) {
@@ -100,19 +141,22 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
     }
     let config = node.config();
     let account = config.account.id.clone();
-    let public_key = node.key().public();
+    let root_key = node
+        .root_keys()
+        .create(&org)
+        .map_err(|why| Error::internal(format!("cannot make a root key for {org}: {why}")))?;
     let me = Person {
         id: account.clone(),
         label: config.account.label,
         account: account.clone(),
-        public_key: public_key.clone(),
+        public_key: node.key().public(),
         department: None,
         role: Role::Member,
         devices: vec![],
     };
     let root = Root {
         account,
-        public_key: public_key.clone(),
+        public_key: root_key.clone(),
     };
     let body = OrgDefinition {
         kpis: vec![],
@@ -129,7 +173,44 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
     };
     let doc = sign(node, body)?;
     node.store().save_org(&doc)?;
-    node.update_config(|config| config.trust(org, public_key.fingerprint()))?;
+    node.update_config(|config| config.trust(org, root_key.fingerprint()))?;
+    Ok(doc)
+}
+
+/// Moves an org to a new root key: the next version names it and is signed by the current root key,
+/// and every later version by the new one. The new key is made here (`RootKeys`); the old one is
+/// forgotten once the version naming the new one is published. Other nodes check it as any next
+/// version (`verify_successor`: signed by the root of the version they have).
+pub fn rotate_root(node: &Node, org: &Id) -> Result<SignedOrg> {
+    let current = load(node, org)?;
+    if !is_root(node, &current) {
+        return Err(Error::new(
+            ErrorKind::Forbidden,
+            format!("this node does not hold the root key of org {org}"),
+        ));
+    }
+    let old = current.body.root.public_key.clone();
+    let new = node
+        .root_keys()
+        .create(org)
+        .map_err(|why| Error::internal(format!("cannot make a root key for {org}: {why}")))?;
+    let mut body = OrgDefinition::successor_of(&current, node.now_text());
+    body.root.public_key = new.clone();
+    let doc = match sign_as(node, body, &old) {
+        Ok(doc) => doc,
+        Err(error) => {
+            let _ = node.root_keys().forget(org, &new);
+            return Err(error);
+        }
+    };
+    publish(node, &doc)?;
+    let (old_fingerprint, new_fingerprint) = (old.fingerprint(), new.fingerprint());
+    node.update_config(|config| config.retrust(org, &old_fingerprint, new_fingerprint))?;
+    if old != node.key().public() {
+        node.root_keys()
+            .forget(org, &old)
+            .map_err(|why| Error::internal(format!("the old root key stays: {why}")))?;
+    }
     Ok(doc)
 }
 
@@ -271,6 +352,7 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     }
     verify_successor(&current, &doc).map_err(Error::bad_request)?;
     node.store().save_org(&doc)?;
+    follow_new_root(node, &current, &doc)?;
     forget_removed(node, &current.body, &doc.body)
 }
 

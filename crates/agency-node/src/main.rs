@@ -97,6 +97,12 @@ enum Command {
     PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
+    /// Moves an org to a new root key (on the root key's node): the next version names it, signed by the
+    /// current root key; the old key is forgotten once it is published
+    RootRotate {
+        #[arg(long)]
+        org: String,
+    },
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
     /// this node's URL changed
     TeamMove {
@@ -461,6 +467,14 @@ async fn run(cli: Cli) -> Result<()> {
         Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
+        Command::RootRotate { org } => {
+            let doc = orgs::rotate_root(&node, &id(&org)?)?;
+            println!(
+                "Org {org} has a new root key, fingerprint {} (version {})",
+                doc.body.root.public_key.fingerprint(),
+                doc.body.version
+            );
+        }
         Command::TeamMove {
             org,
             team,

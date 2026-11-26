@@ -11,6 +11,7 @@ use agency_adapters::handoff;
 use agency_adapters::launch::Launch;
 use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
+use agency_adapters::root_keys::FileRootKeys;
 use agency_adapters::runtime::CommandRuntime;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
@@ -18,7 +19,7 @@ use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
 use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore as _;
-use agency_core::ports::{Clock, DeliverySource, Notifier, Random, TeamRuntime};
+use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
 use agency_core::{Node, Ports};
 use axum::Router;
 use std::borrow::Cow;
@@ -38,6 +39,8 @@ pub struct Overrides {
     pub delivery: Option<Arc<dyn DeliverySource>>,
     /// The program and data directory a client tells the owner to run (default: this process).
     pub launch: Option<Launch>,
+    /// Where the org root keys this node holds are kept (default: files outside the data directory).
+    pub root_keys: Option<Arc<dyn RootKeys>>,
 }
 
 /// APNs when the node has a push setting whose key can be read; otherwise nothing is sent to tokens.
@@ -142,6 +145,9 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
             ))
         }),
         notifier,
+        root_keys: overrides
+            .root_keys
+            .unwrap_or_else(|| Arc::new(FileRootKeys::new(FileRootKeys::default_dir()))),
     };
     let node = Arc::new(Node::open(ports, key)?);
     Ok(Opened {

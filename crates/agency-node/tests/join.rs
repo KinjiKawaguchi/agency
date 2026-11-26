@@ -49,7 +49,8 @@ async fn a_link_to_another_org_with_the_same_id_changes_nothing() {
 #[tokio::test]
 async fn a_node_that_only_trusts_an_id_joins_only_that_org() {
     let (alice, _) = alice().await;
-    let fingerprint = alice.node.key().public().fingerprint();
+    let root = alice.node.store().load_org(&id("acme")).unwrap().body.root;
+    let fingerprint = root.public_key.fingerprint();
 
     let host = node("carol", memory_runtime().0).await;
     host.node

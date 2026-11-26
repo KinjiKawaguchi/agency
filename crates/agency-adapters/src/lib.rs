@@ -16,6 +16,7 @@ pub mod launch;
 pub mod memory;
 pub mod peers;
 pub mod refusal_log;
+pub mod root_keys;
 pub mod runtime;
 pub mod server;
 mod swr;
