@@ -77,12 +77,12 @@ public final class NewsStore {
         self.own = own
     }
 
-    /// Reads once and makes the banners for what is new. A read that fails is no news: the engine keeps
-    /// the last answer of that part.
+    /// Reads once and makes the banners for what is new. A read that fails is no news, and is not asked again
+    /// here, because the next poll is soon. The engine keeps the last answer of that part.
     public func poll() async {
         guard let me = try? await source.me() else { return }
         var teams: [NotificationReading.TeamReading] = []
-        await TeamReader.read(me.orgs, from: source) { key, result in
+        await TeamReader.read(me.orgs, from: source, retry: .never) { key, result in
             let parts = key.split(separator: "/", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { return }
             switch result {
