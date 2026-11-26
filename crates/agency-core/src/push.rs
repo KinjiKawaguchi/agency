@@ -248,8 +248,8 @@ async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Resu
         wanting: wanting.len(),
         ..Outcome::default()
     };
-    for subscription in &wanting {
-        let answer = node.notifier().send_web(subscription, notice).await;
+    let answers = node.notifier().send_web_many(&wanting, notice).await;
+    for (subscription, answer) in wanting.iter().zip(answers) {
         outcome.record(&subscription.id, answer, pass);
     }
     crate::web_push::remove_subscriptions(node, &outcome.gone)?;

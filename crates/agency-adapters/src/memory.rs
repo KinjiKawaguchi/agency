@@ -6,7 +6,7 @@ use agency_core::push::{Notice, PushError};
 use agency_core::web_push::WebSubscription;
 use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::{PushToken, VapidKey};
-use agency_proto::clock::{Duration, OffsetDateTime};
+use agency_proto::clock::{Duration, OffsetDateTime, UtcOffset};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, EpicForecast, PersonStatus, Request, RequestKind};
 use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
@@ -17,13 +17,22 @@ use std::sync::{Arc, Mutex};
 
 /// A clock that stays where it is until `advance` or `set`.
 #[derive(Clone)]
-pub struct ManualClock(Arc<Mutex<OffsetDateTime>>);
+pub struct ManualClock(Arc<Mutex<OffsetDateTime>>, Arc<Mutex<UtcOffset>>);
 
 impl ManualClock {
     pub fn at(raw: &str) -> Self {
-        Self(Arc::new(Mutex::new(
-            clock::parse(raw).expect("an RFC 3339 time"),
-        )))
+        Self(
+            Arc::new(Mutex::new(clock::parse(raw).expect("an RFC 3339 time"))),
+            Arc::new(Mutex::new(UtcOffset::UTC)),
+        )
+    }
+
+    /// Puts the clock in a time zone, UTC until it is set (the days of the delivery reports are its days).
+    pub fn set_utc_offset(&self, offset: UtcOffset) {
+        *self
+            .1
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = offset;
     }
 
     pub fn advance(&self, by: Duration) {
@@ -47,6 +56,13 @@ impl Clock for ManualClock {
     fn now(&self) -> OffsetDateTime {
         *self
             .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn utc_offset(&self) -> UtcOffset {
+        *self
+            .1
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -112,9 +128,9 @@ pub struct MemoryRuntimeState {
     /// The epics the view shows.
     pub epics: Vec<EpicForecast>,
     pub applied: Vec<RuntimeDecision>,
-    /// The participant metrics it reports, with `days` and the time zone set to those asked for; `None`
-    /// answers 404 like a runtime without `participantMetrics`. The ranges and time zones asked for are
-    /// in `participant_asks`.
+    /// The participant metrics it reports, with `days` set to the range asked for, and its own time zone as
+    /// it is; `None` answers 404 like a runtime without `participantMetrics`. The ranges and time zones
+    /// asked for are in `participant_asks`.
     pub participants: Option<agency_proto::participant_metrics::ParticipantMetrics>,
     pub participant_asks: Vec<(u32, i32)>,
     /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
@@ -243,11 +259,7 @@ impl TeamRuntime for MemoryRuntime {
         let mut state = self.0.lock().map_err(|_| poisoned())?;
         state.participant_asks.push((days, utc_offset_minutes));
         let metrics = state.participants.clone().map(|metrics| {
-            agency_proto::participant_metrics::ParticipantMetrics {
-                days,
-                utc_offset_minutes,
-                ..metrics
-            }
+            agency_proto::participant_metrics::ParticipantMetrics { days, ..metrics }
         });
         metrics.ok_or_else(|| RuntimeError {
             status: 404,

@@ -108,6 +108,25 @@ fn cut(text: &str) -> String {
     text.chars().take(TEXT_CHARS).collect()
 }
 
+/// A reference of a request or a decision is a string a runtime chose: it travels, and builds an address and a tag in the
+/// browser, only when it is a plain identifier (letters, digits, `.`, `_`, `-`, at most 200). Anything else is left out, and the
+/// notification then opens the desk.
+fn is_plain(text: &str) -> bool {
+    (1..=200).contains(&text.len())
+        && text != "."
+        && text != ".."
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn identified(mut agency: Value, key: &str, reference: &str) -> Value {
+    if let (true, Some(object)) = (is_plain(reference), agency.as_object_mut()) {
+        object.insert(key.to_owned(), Value::String(reference.to_owned()));
+    }
+    agency
+}
+
 /// What the browser's worker is told, as the iPhone's payload is: the `agency` keys it opens the notice
 /// with and the badge, and the text only when the node has it (`hideTitles` leaves it out). A request has
 /// a `title` (the team's label) and a `body` (its title); a device or a refused decision has a `detail`
@@ -121,7 +140,7 @@ pub fn payload(notice: &Notice) -> Value {
             team_label,
             title,
         } => (
-            json!({ "org": org, "team": team, "request": request }),
+            identified(json!({ "org": org, "team": team }), "request", request),
             match (team_label, title) {
                 (Some(label), Some(title)) => json!({ "title": cut(label), "body": cut(title) }),
                 _ => json!({}),
@@ -137,7 +156,11 @@ pub fn payload(notice: &Notice) -> Value {
             id,
             title,
         } => (
-            json!({ "type": "decision", "org": org, "team": team, "id": id }),
+            identified(
+                json!({ "type": "decision", "org": org, "team": team }),
+                "id",
+                id,
+            ),
             json!({ "detail": title.as_deref().map(cut) }),
         ),
     };
@@ -205,6 +228,9 @@ impl WebPush {
     }
 }
 
+/// How many subscriptions are sent to at once: a push service that is slow (each is given 10 seconds) must not hold the others.
+const AT_ONCE: usize = 4;
+
 impl WebPush {
     pub fn key(&self) -> VapidKey {
         VapidKey {
@@ -247,6 +273,24 @@ impl WebPush {
     }
 }
 
+impl WebPush {
+    /// Sends one notice to each subscription, a few at once, and gives the answers in the order of the subscriptions.
+    pub async fn send_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        use futures_util::stream::{self, StreamExt};
+        let mut answers: Vec<(usize, Result<(), PushError>)> = stream::iter(0..subscriptions.len())
+            .map(|index| async move { (index, self.send(&subscriptions[index], notice).await) })
+            .buffer_unordered(AT_ONCE)
+            .collect()
+            .await;
+        answers.sort_by_key(|(index, _)| *index);
+        answers.into_iter().map(|(_, answer)| answer).collect()
+    }
+}
+
 /// The node's notifier when Web Push is set up: APNs (or nothing) for tokens, and a browser's push
 /// service for subscriptions.
 pub struct WithWebPush {
@@ -278,6 +322,14 @@ impl Notifier for WithWebPush {
         notice: &Notice,
     ) -> Result<(), PushError> {
         self.web.send(subscription, notice).await
+    }
+
+    async fn send_web_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        self.web.send_many(subscriptions, notice).await
     }
 }
 

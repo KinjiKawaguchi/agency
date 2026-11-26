@@ -36,19 +36,13 @@ struct Keys {
 }
 
 fn org(keys: &Keys) -> OrgDefinition {
-    OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), keys.alice.public()),
-        departments: vec![],
-        people: vec![person("alice", &keys.alice), person("bob", &keys.bob)],
-        teams: vec![],
-        revoked: vec![],
-        at: AT.into(),
-    }
+    OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), keys.alice.public()),
+        AT.into(),
+    )
+    .with_people(vec![person("alice", &keys.alice), person("bob", &keys.bob)])
 }
 
 fn device(name: &str, key: &AccountKey) -> Device {
