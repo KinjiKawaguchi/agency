@@ -76,9 +76,9 @@ describe('evaluation', () => {
     expect(screen.getByRole('link', { name: '評価' })).toBeInTheDocument()
   })
 
-  it('is in the main menu after the costs', async () => {
-    renderApp({ path: '/desk' })
-    const links = within(await screen.findByRole('navigation', { name: 'Main menu' })).getAllByRole('link').map((link) => link.textContent)
-    expect(links.indexOf('Evaluation')).toBe(links.indexOf('Costs') + 1)
+  it('is in the menu of the Results pages, after the costs', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    const links = within(await screen.findByRole('navigation', { name: 'Results pages' })).getAllByRole('link').map((link) => link.textContent)
+    expect(links).toEqual(['Costs', 'Evaluation'])
   })
 })

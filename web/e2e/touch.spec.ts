@@ -36,6 +36,10 @@ for (const width of WIDTHS) {
       await expect(page.locator(route.ready).first()).toBeVisible()
       expect(await pageScrollsSideways(page)).toBe(false)
       expect(await stickingOut(page)).toEqual([])
+      // The menus show all their entries: none has to be scrolled to.
+      const menus = await page.locator('.mainnav, .subnav').evaluateAll((all) => all.map((one) => one.scrollWidth <= one.clientWidth))
+      expect(menus.length).toBeGreaterThan(0)
+      expect(menus.every(Boolean)).toBe(true)
     })
   }
 }
