@@ -1,0 +1,61 @@
+name: release
+
+# Release builds of the node. Each build is a workflow artifact: a tarball with the binary, the systemd
+# unit script, the install guides, and the licenses, and its SHA-256. Run it by hand from the Actions
+# tab, or push a tag `v*`. A pull request that changes this file runs it too, so the file is tested
+# before it is merged.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/systemd-unit.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built on Ubuntu 22.04 so that the binary runs on any system with glibc 2.35 or later.
+          - { arch: x86_64, runner: ubuntu-22.04 }
+          - { arch: arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # The node embeds the web client, so it is built first.
+      - name: Build the web client
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build the node
+        run: cargo build --release --locked -p agency-node
+      - name: Check that the build runs and serves the web client
+        run: scripts/release/smoke-test.sh target/release/agency
+      - name: Package
+        id: package
+        run: scripts/release/package-linux.sh target/release/agency "${{ matrix.arch }}" dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30

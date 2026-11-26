@@ -23,6 +23,19 @@ pub enum ErrorKind {
 pub struct Error {
     pub kind: ErrorKind,
     pub message: String,
+    /// Why the request was really refused, when `message` hides it (see `unseen`). For the node's own
+    /// log; never sent to the caller.
+    pub reason: Option<Reason>,
+}
+
+/// The real reason behind a refusal that looks like "not found" to the caller.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reason {
+    pub text: String,
+    /// The request carried a valid signature by a member of the org (or by its root): a peer that
+    /// ought to get through, for example one whose clock is off. Always logged; other reasons may be
+    /// dropped when they come in a flood.
+    pub is_from_member: bool,
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -32,6 +45,7 @@ impl Error {
         Self {
             kind,
             message: message.into(),
+            reason: None,
         }
     }
 

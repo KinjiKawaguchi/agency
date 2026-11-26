@@ -81,7 +81,7 @@ private struct ReadyBody: View {
         Text(summary.participants == 0 ? Ja.Overview.noParticipants : Ja.Overview.working(summary.working, of: summary.participants))
             .font(.subheadline).wrapping()
         if summary.blockedCount > 0 {
-            reasons(Ja.Overview.blocked(summary.blockedCount), summary.blocked.map { "\(Ja.Overview.blockedReason($0.reason)) (\($0.count))" })
+            reasons(Ja.Overview.blocked(summary.blockedCount), summary.blocked.map { "\(Ja.Work.blockedReason($0.reason)) (\($0.count))" })
         }
         if summary.attention == .idle {
             reasons(Ja.Overview.nobodyWorking, summary.quiet)

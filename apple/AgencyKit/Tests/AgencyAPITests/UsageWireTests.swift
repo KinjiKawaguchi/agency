@@ -22,7 +22,7 @@ private final class OneAnswerTransport: HTTPTransport, @unchecked Sendable {
 struct UsageWireTests {
     @Test("the usage answer decodes: days, the cost of each day by participant, and each participant's tokens")
     func decodes() throws {
-        let usage = try JSONDecoder().decode(TokenUsage.self, from: Fixtures.data("funding"))
+        let usage = try JSONDecoder().decode(TokenUsage.self, from: Fixtures.data("usage"))
         #expect(usage.org == "acme")
         #expect(usage.team == "app")
         #expect(usage.days == 7)
@@ -35,7 +35,7 @@ struct UsageWireTests {
 
     @Test("the client asks for the team's usage over a number of days, with the ids escaped")
     func request() async throws {
-        let transport = OneAnswerTransport(HTTPResponse(status: 200, body: try Fixtures.data("funding")))
+        let transport = OneAnswerTransport(HTTPResponse(status: 200, body: try Fixtures.data("usage")))
         let client = NodeClient(transport: transport, accessToken: { "access-jwt" })
         let usage = try await client.usage(org: "a/b", team: "app", days: 7)
         #expect(usage.days == 7)

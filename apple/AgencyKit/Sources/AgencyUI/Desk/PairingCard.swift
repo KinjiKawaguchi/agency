@@ -25,22 +25,23 @@ struct PairingCard: View {
                 .controlSize(.large)
                 .disabled(isAsking)
             }
-        case .waiting(let code):
+        case .waiting(let code, let approval):
             card {
-                Text(Ja.Device.waitingHeading).font(.headline)
+                Text(Ja.Pairing.waitingHeading).font(.headline)
                 Text(code)
-                    .font(.system(size: 30, weight: .bold, design: .monospaced))
+                    .font(.system(size: 34, weight: .bold, design: .monospaced))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .accessibilityLabel(code.replacingOccurrences(of: "-", with: " "))
-                Text(Ja.Device.waitingBody).font(.subheadline).wrapping()
+                    .accessibilityLabel(Ja.Pairing.codeCaption + " " + code.replacingOccurrences(of: "-", with: " "))
+                Text(Ja.Pairing.instruction(approval)).font(.subheadline).wrapping()
+                Text(Ja.Pairing.compare).font(.footnote).foregroundStyle(Theme.warning).wrapping()
+                Text(Ja.Pairing.autoUpdate).font(.footnote).foregroundStyle(.secondary).wrapping()
                 Button(action: onCheck) {
-                    Text(Ja.Device.check).font(.headline).frame(maxWidth: .infinity)
+                    Text(Ja.Pairing.checkNow).font(.subheadline).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.large)
             }
         case .failed(let reason):
             card {

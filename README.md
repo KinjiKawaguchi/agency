@@ -63,9 +63,11 @@ agency --dir ~/.agency team-add --org acme --team web --label web --node https:/
 agency --dir ~/.agency team-dept --org acme --team app --dept dev
 agency --dir ~/.agency dept-set --org acme --dept clients --label "Client apps" --no-parent
 agency --dir ~/.agency dept-remove --org acme --dept clients
+agency --dir ~/.agency team-set --org acme --team web --label "Web client"
+agency --dir ~/.agency team-remove --org acme --team web
 ```
 
-`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `agency status` lists each org's departments and their teams.
+`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `team-set` renames a team, and `team-remove` takes it out of the org's definition; it refuses while the team is still in this node's `config.json`, so remove it there first and a team that runs here is never left outside the org. `agency status` lists each org's departments and their teams.
 
 Join from an invite link and answer (on the invitee's home node):
 

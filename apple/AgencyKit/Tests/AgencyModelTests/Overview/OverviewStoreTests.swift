@@ -25,7 +25,7 @@ private final class FakeOverviewSource: OverviewSource, @unchecked Sendable {
     func usage(org: String, team: String, days: Int) async throws -> TokenUsage {
         try lock.withLock {
             asked.append("\(org)/\(team)?days=\(days)")
-            return try (usages["\(org)/\(team)"] ?? .success(Fixture.decode(TokenUsage.self, "funding"))).get()
+            return try (usages["\(org)/\(team)"] ?? .success(Fixture.decode(TokenUsage.self, "usage"))).get()
         }
     }
 }
@@ -116,6 +116,17 @@ struct OverviewStoreTests {
         #expect(store.needsSignIn)
         #expect(store.loading == .failed(Ja.Desk.signInEnded))
         #expect(store.sections.isEmpty)
+    }
+
+    @Test("a session that ends while the teams are read is a sign-in to run again, not only a failure of each team")
+    func endsMidway() async {
+        let source = FakeOverviewSource()
+        source.set(me: .success(twoOrgs))
+        source.set(snapshot: .failure(NodeError.sessionExpired), for: "zed/ops")
+        let store = OverviewStore(source: source)
+        await store.refresh()
+        #expect(store.needsSignIn)
+        #expect(store.loading == .loaded)
     }
 
     @Test("a team that was read keeps its last answer when a later read fails")

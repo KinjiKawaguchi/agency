@@ -261,15 +261,30 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
     let now = alice.node.now();
     for offset in [-300, 300] {
         assert!(
-            verify_read(Some(&definition), &signed_at(offset), "GET", path, now).is_ok(),
+            verify_read(
+                Some(&definition),
+                true,
+                &signed_at(offset),
+                "GET",
+                path,
+                now
+            )
+            .is_ok(),
             "{offset}"
         );
     }
     for offset in [-301, 301] {
         assert_eq!(
-            verify_read(Some(&definition), &signed_at(offset), "GET", path, now)
-                .unwrap_err()
-                .kind,
+            verify_read(
+                Some(&definition),
+                true,
+                &signed_at(offset),
+                "GET",
+                path,
+                now
+            )
+            .unwrap_err()
+            .kind,
             ErrorKind::NotFound,
             "{offset}: refused like an unknown org"
         );
@@ -277,6 +292,7 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
     assert!(
         verify_read(
             Some(&definition),
+            true,
             &signed_at(0),
             "GET",
             "/fed/v1/teams/acme/other/view",

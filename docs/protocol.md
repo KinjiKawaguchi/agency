@@ -58,6 +58,7 @@ To change something, send a signed envelope to its writer.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
 - `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - Departments form a tree: a department's `parent` is another department of the org (or absent at the top), following parents never leads back to the department, and `head` is a member's `id`. A member's and a team's `department` is one of the org's departments. The root's node changes them with `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept` (and `team-add --department`), each a new version.
+- A team's `label` is changed with `agency team-set`, and a team leaves the definition with `agency team-remove`, each a new version written by the root's node. A node refuses `team-remove` for a team that is still in its own configuration: it runs a team from that configuration whatever the definition says, so removing the team from the definition first would leave it running outside its org.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers). Either decides only the requests addressed to them (see "Requests"). An answerer also reads only those: a team's node serves an answerer a TeamView with just the requests addressed to it, and no people, work items, or epics, and does not serve it token usage (403).
 
@@ -141,6 +142,8 @@ Every request that fails before that gets `404` with the body `{"error":"not fou
 
 A node never follows a redirect in an answer to its own requests (to other nodes, to the Access certs, or to APNs): others choose where it sends, and a redirect would carry its signed requests elsewhere. A 3xx answer is a failed one.
 
+The node writes the real reason for such a refusal to its own log, never to the caller: at most 20 lines a minute, then a count of the rest, except that a refusal of a request with a valid signature by a member (for example one whose clock is off) is always written.
+
 Once the request is authenticated, refusals are specific (an expired envelope, a version that is not the next one, a node that does not hold the root key).
 A request whose signature is well formed spends one signature check even when the org, team, member, or device is missing, so the time of an answer does not tell either (apart from reading the node's files).
 The checks that do not depend on what the node holds come first and answer as they always do: a malformed body (400), an envelope whose org and team differ from the path (400), and a join request (whose invite code is its credential: 403 for an unknown, used, or expired code, also in an org the node does not have).
@@ -163,7 +166,7 @@ Conventions:
 - Keys are camelCase. Numbers are non-negative integers.
 - `Timestamp`: RFC 3339 in UTC, ending in `Z` (`2026-11-24T12:00:00Z`; fractional seconds are allowed). `Date`: a calendar date, `YYYY-MM-DD`. They are different types.
 - An optional field is omitted when absent. It is never written as `null`.
-- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids.
+- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids, except the one the node gives it in a decision (`by`), which is why a thread message can carry it (below).
 - Unknown fields are ignored, so a team runtime may add fields before the contract names them.
 
 ```
@@ -178,7 +181,7 @@ Request       { id, kind: "question" | "proposal" | "pendingDecision", title, co
                 issue?: string, blocks: string[], options: RequestOption[], thread?: ThreadMessage[],
                 answerWith: { kind: "answer" | "judge", target } }
 RequestOption { key, text, isRecommended: boolean, detail?: string }
-ThreadMessage { from, text, choice?: string, at: Timestamp }
+ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
@@ -205,6 +208,7 @@ Requests:
   - A reader the team does not address (no `viewer`) has none.
 - `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
 - `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
+  - `from` is the runtime's name of the participant the message is from. `by` is optional and, when a message carries a decision, names the org member who decided: an `Id`, the `by` of the decision the node passed to the runtime (see "agency-runtime/1"), never a participant name. A message the team wrote has no `by`. A `by` that is not a valid `Id` makes the whole view fail to parse, like any other malformed field.
 
 ## agency-runtime/1
 
@@ -341,7 +345,7 @@ A web view in the iOS app cannot use passkeys for the Access team domain, so the
 
 ## Test vectors
 
-`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope and a comment (text without a choice). `canonical` lists values with the canonical text each must become: non-ASCII and astral characters, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed next to decomposed characters (never normalized), keys whose UTF-8 order differs from their UTF-16 order, nulls, and integers. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures. `p256Device` is a P-256 device key (private scalar `0b…`) with its text, fingerprint, pairing code, and device id, and its signature over the comment's signed text. ECDSA signatures from other signers differ byte for byte; a client checks that this one verifies and that its own signature over the same text verifies with the key.
+`testdata/vectors.json` holds keys from fixed seeds and the canonical JSON and signature of fixed bodies. The account key (seed `07…`) signs an org definition and a first-device change. The device key (seed `09…`, with its pairing code) signs a decision envelope and a comment (text without a choice). `canonical` lists values with the canonical text each must become: non-ASCII and astral characters, quotes, backslashes, slashes, control characters, U+007F, U+2028, precomposed next to decomposed characters (never normalized), keys whose UTF-8 order differs from their UTF-16 order, nulls, and integers. Ed25519 signatures are deterministic, so a client that imports the same seed (for example through WebCrypto) must produce the same signatures. `p256Device` is a P-256 device key (private scalar `0b…`) with its text, fingerprint, pairing code, and device id, and its signature over the comment's signed text. `deviceChangeP256` holds two device changes signed by that P-256 device: an add with a nested `device` (a second P-256 key) and a remove with a bare device id, each with its canonical JSON, its signed text (`agency/v1/device\n` and the canonical JSON), the signer's device id, and the signature, and the signer's key as `signerKey`. ECDSA signatures from other signers differ byte for byte; a client checks that these verify and that its own signature over the same text verifies with the key.
 An implementation in another language must produce the same values.
 
-`testdata/client/` holds the Client API's answers as two test nodes give them: alice's, which hosts `acme/app`, and bob's, a member that reads it as a replica. The nodes use fixed keys, counted ids, a fixed clock, and fixed ports, so the files repeat byte for byte. `cargo test` fails when a file differs from what the node answers; `AGENCY_WRITE_FIXTURES=1 cargo test -p agency-node --test fixtures` writes them again. Clients decode these files in their tests, so a change to an answer shows up as a change to a file.
+`testdata/client/` holds the Client API's answers as two test nodes give them: alice's, which hosts `acme/app`, and bob's, a member that reads it as a replica. The nodes use fixed keys, counted ids, a fixed clock, and fixed ports, so the files repeat byte for byte. `cargo test` fails when a file differs from what the node answers; `AGENCY_WRITE_FIXTURES=1 cargo test -p agency-node --test fixtures` writes them again. Clients decode these files in their tests, so a change to an answer shows up as a change to a file. Besides the plain answers, it holds `me-funding.json` (`/api/me` with two funding sources), `usage.json` (a team's token usage), `device-change-result.json` and `device-change-result-queued.json` (a device change the root's node applied, and one queued while it is down), and `device-list-p256.json` (devices with an Ed25519 and a P-256 key, and a pending request from a P-256 key).

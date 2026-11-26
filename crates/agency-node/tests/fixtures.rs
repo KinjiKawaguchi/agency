@@ -4,11 +4,17 @@
 mod common;
 
 use agency_adapters::memory::MemoryRuntimeState;
+use agency_core::config::FundingConfig;
 use agency_core::views::refresh;
-use agency_proto::{AccountKey, Payload};
+use agency_proto::client::FundingKind;
+use agency_proto::{
+    AccountKey, Device, DeviceChange, DeviceOp, Kind, Payload, PublicKey, Signed, Timestamp,
+};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use common::{
     alice_on, body, decide_as, get, id, joined, memory_runtime, post, seeded_node, signed_answer,
-    Running, ENVELOPES, TOKEN,
+    Running, ENVELOPES, T0, TOKEN,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -46,6 +52,104 @@ fn waiting_person(id: &str, on: &str) -> Value {
             "waitingOn": { "kind": "person", "person": on }, "status": format!("Waiting on {on}"), "holding": ["app#7"] })
 }
 
+/// The public key of a P-256 device whose private scalar is `byte` repeated, as an iPhone's hardware key
+/// is written (`p256:` and the uncompressed point).
+fn p256_public(byte: u8) -> PublicKey {
+    let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
+    let point = key.verifying_key().to_encoded_point(false);
+    PublicKey::try_from(format!("p256:{}", STANDARD.encode(point.as_bytes()))).unwrap()
+}
+
+/// A device change that adds `key` to `account`'s devices, signed by the device `signer`.
+fn signed_add(account: &str, label: &str, key: &PublicKey, signer: &AccountKey) -> Value {
+    let at = Timestamp::parse(T0).unwrap();
+    let device = Device {
+        id: key.device_id(),
+        label: label.into(),
+        public_key: key.clone(),
+        added_at: at.clone(),
+    };
+    let change = DeviceChange {
+        org: id("acme"),
+        account: id(account),
+        op: DeviceOp::Add {
+            device: Box::new(device),
+        },
+        at,
+    };
+    let signer_id = signer.public().device_id();
+    json!(Signed::sign(Kind::Device, change, signer_id, signer).unwrap())
+}
+
+/// alice's `/api/me` with two funding sources: a subscription whose usage file holds both windows, and
+/// an API key, which has none. The usage file is written at a fixed time, so `readAt` repeats.
+async fn me_with_funding(alice: &Running) -> Value {
+    let dir = tempfile::TempDir::new().unwrap();
+    let usage_file = dir.path().join("max.json");
+    let usage = r#"{"five_hour":{"utilization":41.6,"resets_at":"2026-11-24T15:00:00Z"},"seven_day":{"utilization":63.2,"resets_at":"2026-11-30T00:00:00Z"}}"#;
+    std::fs::write(&usage_file, usage).unwrap();
+    let written = agency_proto::clock::parse("2026-11-24T11:57:00Z").unwrap();
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&usage_file)
+        .unwrap();
+    file.set_modified(written.into()).unwrap();
+    let source = |name: &str, label: &str, kind, usage_file| FundingConfig {
+        id: id(name),
+        label: label.into(),
+        kind,
+        usage_file,
+        collector: None,
+        seven_day_threshold: None,
+    };
+    let sources = vec![
+        source("max", "Max", FundingKind::Subscription, Some(usage_file)),
+        source("api", "API", FundingKind::ApiKey, None),
+    ];
+    alice
+        .node
+        .update_config(|config| config.funding = sources)
+        .unwrap();
+    let me = read(alice, "/api/me").await;
+    alice
+        .node
+        .update_config(|config| config.funding = vec![])
+        .unwrap();
+    me
+}
+
+/// Bob's node reads alice's newest org definition. It takes only the next version of the one it has, so
+/// this runs after each change of alice's, and a second after the clock moved on: a node accepts a
+/// signed read once, and a manual clock repeats the time of the last one.
+async fn catch_up(bob: &Running) {
+    bob.clock.advance(agency_proto::clock::Duration::seconds(1));
+    refresh(&bob.node).await.unwrap();
+}
+
+/// What alice's node answers to device changes signed by her laptop: the phone that asked is added
+/// (`applied`, since her node holds the root key), then a P-256 device is added, and a P-256 key asks.
+async fn alice_device_changes(alice: &Running, bob: &Running, laptop: &AccountKey) -> Answers {
+    catch_up(bob).await;
+    let phone = AccountKey::from_seed([10; 32]).public();
+    let added = write(
+        alice,
+        "/api/devices/changes",
+        &signed_add("alice", "iPhone", &phone, laptop),
+    )
+    .await;
+    catch_up(bob).await;
+    let hardware = signed_add("alice", "iPad", &p256_public(0x0b), laptop);
+    write(alice, "/api/devices/changes", &hardware).await;
+    catch_up(bob).await;
+    bob.clock.set(T0);
+    let tablet = json!({ "label": "Tablet", "publicKey": p256_public(0x0c) });
+    write(alice, "/api/devices/requests", &tablet).await;
+    vec![
+        ("device-change-result", added),
+        ("device-list-p256", read(alice, "/api/devices").await),
+    ]
+}
+
 /// alice's node hosts acme/app with two requests, two people waiting (one on the owner, one on the
 /// reviewer), and token usage; bob's node is a member that reads it as the reviewer.
 async fn nodes() -> (Running, Running, Arc<Mutex<MemoryRuntimeState>>) {
@@ -72,7 +176,7 @@ async fn nodes() -> (Running, Running, Arc<Mutex<MemoryRuntimeState>>) {
 
 /// What alice's node answers after an answer and a comment from her laptop, a decision sent through the
 /// Client API, a device request, and a push token.
-async fn alice_answers(alice: &Running) -> Answers {
+async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     let key = AccountKey::from_seed([9; 32]);
     let added = agency_core::devices::add_device(&alice.node, "Laptop", &key.public(), None).await;
     assert_eq!(added.len(), 1, "{added:?}");
@@ -94,8 +198,9 @@ async fn alice_answers(alice: &Running) -> Answers {
     let registered = write(alice, "/api/push/tokens", &token).await;
     let (status, error) = body(get(alice, "/api/orgs/other").send().await.unwrap()).await;
     assert_eq!(status, 404);
-    vec![
+    let mut answers = vec![
         ("me", read(alice, "/api/me").await),
+        ("me-funding", me_with_funding(alice).await),
         ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),
         (
@@ -109,11 +214,13 @@ async fn alice_answers(alice: &Running) -> Answers {
         ("push-token", registered),
         ("push-token-list", read(alice, "/api/push/tokens").await),
         (
-            "funding",
+            "usage",
             read(alice, "/api/orgs/acme/teams/app/usage?days=7").await,
         ),
         ("error", error),
-    ]
+    ];
+    answers.extend(alice_device_changes(alice, bob, &key).await);
+    answers
 }
 
 /// What bob's node answers: its replica of acme/app, and a decision queued while alice's node is down.
@@ -132,7 +239,12 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
     )
     .await;
     assert_eq!(queued["outcome"], "queued", "{queued}");
+    let phone = AccountKey::from_seed([13; 32]).public();
+    let change = signed_add("bob", "iPhone", &phone, &key);
+    let change_queued = write(bob, "/api/devices/changes", &change).await;
+    assert_eq!(change_queued["outcome"], "queued", "{change_queued}");
     vec![
+        ("device-change-result-queued", change_queued),
         ("team-snapshot-replica", replica),
         ("me-member", me),
         ("decision-result-queued", queued),
@@ -143,7 +255,7 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
 #[tokio::test]
 async fn the_client_fixtures_are_what_the_node_answers() {
     let (mut alice, bob, _memory) = nodes().await;
-    let mut answers = alice_answers(&alice).await;
+    let mut answers = alice_answers(&alice, &bob).await;
     answers.extend(bob_answers(&mut alice, &bob).await);
     let dir = fixture_dir();
     let is_writing = std::env::var("AGENCY_WRITE_FIXTURES").is_ok_and(|value| value == "1");

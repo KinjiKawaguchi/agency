@@ -71,8 +71,93 @@ struct PairingStoreTests {
         let client = FakeClient(list: list(devices: [("acme", "other")], requests: ["p256:other", key.string]))
         let store = store(client)
         await store.refresh()
-        #expect(store.status == .waiting(code: "a652-124a-fda7"))
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .fromDevices(labels: ["x"])))
         #expect(!store.isReady)
+    }
+
+    private func listWithDevices(_ devices: [(org: String, id: String, label: String, at: String)], requests: [String] = []) -> Result<DeviceList, Error> {
+        let orgs = Dictionary(grouping: devices, by: \.org).map { org, items in
+            #"{"org":"\#(org)","devices":[\#(items.map { #"{"addedAt":"\#($0.at)","id":"\#($0.id)","label":"\#($0.label)","publicKey":"k-\#($0.id)"}"# }.joined(separator: ","))]}"#
+        }
+        let reqs = requests.map { #"{"deviceId":"d-r","label":"iPhone","pairingCode":"a652-124a-fda7","publicKey":"\#($0)","requestedAt":"2026-11-24T12:00:00Z"}"# }
+        return .success(try! JSONDecoder().decode(DeviceList.self, from: Data(#"{"orgs":[\#(orgs.joined(separator: ","))],"requests":[\#(reqs.joined(separator: ","))]}"#.utf8)))
+    }
+
+    @Test("with devices already, approval is from them, named by their labels, oldest first, each once")
+    func approvalFromDevices() async {
+        let client = FakeClient(list: listWithDevices([
+            ("acme", "d-2", "iPad", "2026-11-25T12:00:00Z"), ("acme", "d-1", "MacBook", "2026-11-24T12:00:00Z"),
+            ("beta", "d-1", "MacBook", "2026-11-24T12:00:00Z"),
+        ], requests: [key.string]))
+        let store = store(client)
+        await store.refresh()
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .fromDevices(labels: ["MacBook", "iPad"])))
+    }
+
+    @Test("with no device in any org, approval is at the node's machine with the command")
+    func approvalAtNode() async {
+        let client = FakeClient(list: list(devices: [("acme", key.string)].filter { _ in false }, requests: [key.string]))
+        let store = store(client)
+        await store.refresh()
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: PairingStore.defaultCommand)))
+        #expect(PairingStore.defaultCommand == "agency device-add")
+    }
+
+    private func listWithNode(command: String?, requests: [String]) -> Result<DeviceList, Error> {
+        let node = command.map { #","node":{"url":"https://agency.example","dataDir":"/srv/agency","command":\#(String(decoding: try! JSONEncoder().encode($0), as: UTF8.self))}"# } ?? ""
+        let reqs = requests.map { #"{"deviceId":"d-r","label":"iPhone","pairingCode":"a652-124a-fda7","publicKey":"\#($0)","requestedAt":"2026-11-24T12:00:00Z"}"# }
+        return .success(try! JSONDecoder().decode(DeviceList.self, from: Data(#"{"orgs":[],"requests":[\#(reqs.joined(separator: ","))]\#(node)}"#.utf8)))
+    }
+
+    @Test("the node's own command is shown when it gave one, and the default when it did not")
+    func nodeCommand() async {
+        let given = store(FakeClient(list: listWithNode(command: "/opt/agency/bin/agency --dir /srv/agency device-add", requests: [key.string])))
+        await given.refresh()
+        #expect(given.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: "/opt/agency/bin/agency --dir /srv/agency device-add")))
+        let absent = store(FakeClient(list: listWithNode(command: nil, requests: [key.string])))
+        await absent.refresh()
+        #expect(absent.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: "agency device-add")))
+    }
+
+    @Test("a command that is empty, too long, or holds a control character is ignored", arguments: [
+        "", "   ", String(repeating: "a", count: 501), "agency device-add\u{07}", "agency\ndevice-add", "agency\u{1B}[2Jdevice-add",
+    ])
+    func badCommand(command: String) async {
+        let store = store(FakeClient(list: listWithNode(command: command, requests: [key.string])))
+        await store.refresh()
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: "agency device-add")))
+    }
+
+    @Test("a command of exactly 500 characters is shown")
+    func longestCommand() async {
+        let command = String(repeating: "a", count: 500)
+        let store = store(FakeClient(list: listWithNode(command: command, requests: [key.string])))
+        await store.refresh()
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: command)))
+    }
+
+    @Test("when the account has devices the node's command is not needed")
+    func devicesBeatCommand() async {
+        let json = #"{"orgs":[{"org":"acme","devices":[{"addedAt":"2026-11-24T12:00:00Z","id":"d-1","label":"MacBook","publicKey":"k1"}]}],"requests":[{"deviceId":"d-r","label":"iPhone","pairingCode":"a652-124a-fda7","publicKey":"\#(key.string)","requestedAt":"2026-11-24T12:00:00Z"}],"node":{"command":"agency device-add"}}"#
+        let store = store(FakeClient(list: .success(try! JSONDecoder().decode(DeviceList.self, from: Data(json.utf8)))))
+        await store.refresh()
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .fromDevices(labels: ["MacBook"])))
+    }
+
+    @Test("asking when the account has devices says to approve from them")
+    func askingWithDevices() async {
+        let client = FakeClient(list: listWithDevices([("acme", "d-1", "MacBook", "2026-11-24T12:00:00Z")]))
+        let store = store(client)
+        await store.requestAdd()
+        #expect(store.status == .waiting(code: "506e-f187-9d74", approval: .fromDevices(labels: ["MacBook"])))
+    }
+
+    @Test("when the list cannot be read right after asking, the node's machine is the way that always works")
+    func askingWithoutTheList() async {
+        let client = FakeClient(list: .failure(NodeError.http(status: 503, message: nil)))
+        let store = store(client)
+        await store.requestAdd()
+        #expect(store.status == .waiting(code: "506e-f187-9d74", approval: .atTheNode(command: PairingStore.defaultCommand)))
     }
 
     @Test("a key nobody has seen is not requested yet")
@@ -105,7 +190,7 @@ struct PairingStoreTests {
         #expect(client.requests.count == 1)
         #expect(client.requests[0].label == "iPhone")
         #expect(client.requests[0].key == key.string)
-        #expect(store.status == .waiting(code: "506e-f187-9d74"))
+        #expect(store.status == .waiting(code: "506e-f187-9d74", approval: .atTheNode(command: "agency device-add")))
         #expect(!store.isAsking)
     }
 
@@ -117,7 +202,7 @@ struct PairingStoreTests {
         #expect(store.status == .failed("label is too long"))
         client.requestAnswer = .success(Fixture.decode(DeviceRequest.self, "device-request"))
         await store.requestAdd()
-        #expect(store.status == .waiting(code: "506e-f187-9d74"))
+        #expect(store.status == .waiting(code: "506e-f187-9d74", approval: .atTheNode(command: "agency device-add")))
     }
 
     @Test("while a request is out, asking again sends nothing more")
@@ -139,7 +224,7 @@ struct PairingStoreTests {
         let client = FakeClient(list: list(requests: [key.string]))
         let store = store(client)
         await store.refresh()
-        #expect(store.status == .waiting(code: "a652-124a-fda7"))
+        #expect(store.status == .waiting(code: "a652-124a-fda7", approval: .atTheNode(command: "agency device-add")))
         client.list = list(devices: [("acme", key.string)])
         await store.refresh()
         #expect(store.isReady)

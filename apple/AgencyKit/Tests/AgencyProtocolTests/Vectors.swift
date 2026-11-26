@@ -28,6 +28,19 @@ struct Vectors {
     let org: Signed
     let canonicalCases: [CanonicalCase]
     let p256: P256Vector
+    let deviceChangeSignerKey: String
+    let deviceChangeAdd: SignedDeviceChangeVector
+    let deviceChangeRemove: SignedDeviceChangeVector
+
+    /// A device change by the P-256 device: its canonical JSON, the signed text, and the signature.
+    struct SignedDeviceChangeVector {
+        let canonical: String
+        let signedText: String
+        let signature: Data
+        let signer: String
+        /// The change as parsed from the canonical text.
+        let body: JSONValue
+    }
 
     /// A P-256 device key made from a fixed private scalar, and the Rust side's signature over the comment envelope.
     struct P256Vector {
@@ -68,6 +81,16 @@ struct Vectors {
         let privateKey = Data(stride(from: 0, to: privateHex.count, by: 2).map {
             UInt8(privateHex[privateHex.index(privateHex.startIndex, offsetBy: $0)...][..<privateHex.index(privateHex.startIndex, offsetBy: $0 + 2)], radix: 16)!
         })
+        let changes = root["deviceChangeP256"]!
+        func change(_ key: String) -> SignedDeviceChangeVector {
+            let fields = changes[key]!
+            let canonical = string(fields["canonical"])
+            return SignedDeviceChangeVector(
+                canonical: canonical, signedText: string(fields["signedText"]),
+                signature: Data(base64Encoded: string(fields["signature"]))!, signer: string(fields["signer"]),
+                body: try! JSONParser.parse(Data(canonical.utf8))
+            )
+        }
         return Vectors(
             accountPublicKey: Data(base64Encoded: string(root["publicKey"]))!,
             devicePublicKey: Data(base64Encoded: string(device["publicKey"]))!,
@@ -82,7 +105,10 @@ struct Vectors {
                 privateKey: privateKey, publicKey: string(p256["publicKey"]), fingerprint: string(p256["fingerprint"]),
                 pairingCode: string(p256["pairingCode"]), deviceId: string(p256["deviceId"]),
                 commentSignature: Data(base64Encoded: string(p256["commentSignature"]))!
-            )
+            ),
+            deviceChangeSignerKey: string(changes["signerKey"]),
+            deviceChangeAdd: change("add"),
+            deviceChangeRemove: change("remove")
         )
     }
 

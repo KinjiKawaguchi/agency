@@ -70,7 +70,7 @@
         { "key": "b", "text": "PostgreSQL", "isRecommended": false }
       ],
       "thread": [
-        { "from": "owner", "text": "What does the load test cover?", "at": "2026-11-24T11:10:00Z" },
+        { "from": "owner", "text": "What does the load test cover?", "by": "owner", "at": "2026-11-24T11:10:00Z" },
         { "from": "backend", "text": "Ten times the current peak traffic for one hour.", "at": "2026-11-24T11:20:00Z" }
       ],
       "answerWith": { "kind": "answer", "target": "r-20261124-110000-a1b2" }

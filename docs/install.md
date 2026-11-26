@@ -1,8 +1,8 @@
 # Installing a node
 
-This guide installs an Agency node on a Mac from source, runs it as a launchd agent, and adds your first device.
+This guide installs an Agency node on a Mac or a Linux machine from source (or from a release build on Linux), runs it as a launchd agent or a systemd unit, and adds your first device.
 It then shows how to make the node reachable from other machines behind Cloudflare Access.
-Linux and systemd come later; for now this guide covers macOS only.
+It covers macOS (launchd) and Linux (systemd); a step that differs says which.
 
 The Japanese version is [install.ja.md](install.ja.md). It has the same sections; this English version is the source.
 
@@ -11,8 +11,8 @@ Ids are lowercase letters, digits, and hyphens (`[a-z0-9][a-z0-9-]{0,39}`).
 
 ## Requirements
 
-- macOS on Apple silicon or Intel.
-- Xcode Command Line Tools: `xcode-select --install`.
+- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.35 or later, and systemd to run the node as a service.
+- macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler and `curl`, for example `sudo apt install build-essential curl`.
 - Rust, stable, 1.87 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
 - Node.js 24 with npm, to build the web client. Check with `node --version`.
 - The team's harness and the tools it uses (see [The team runtime](#the-team-runtime)).
@@ -45,10 +45,27 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 The rest of this guide calls it `agency`: put `~/.local/bin` on your `PATH`, or write the full path.
 Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` when that is not set.
 
+### A release build for Linux
+
+Instead of building from source, you can use the release build that CI makes for Linux on x86_64 and on arm64 (`uname -m` says `x86_64` or `aarch64`). It runs on a system with glibc 2.35 or later.
+
+1. In the repository's **Actions** tab, open a run of the **release** workflow and download the artifact for your machine: `agency-<version>-<commit>-linux-x86_64` or `agency-<version>-<commit>-linux-arm64`. It holds a `.tar.gz` and its `.sha256`.
+2. Check and unpack it, and install the binary the way the previous section does:
+
+```sh
+sha256sum -c agency-*-linux-*.tar.gz.sha256
+tar xzf agency-*-linux-*.tar.gz
+mkdir -p ~/.local/bin
+cp agency-*-linux-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
+```
+
+The tarball also holds `systemd-unit.sh` (see [Run it with systemd](#run-it-with-systemd-linux)), these guides, and the licenses.
+The binary already holds the web client.
+
 ## A local-only node
 
-A local-only node runs on one Mac by itself.
-It listens on `127.0.0.1` only, so the web client works only on that Mac, and the node lets in only requests from that Mac.
+A local-only node runs on one machine by itself.
+It listens on `127.0.0.1` only, so the web client works only on that machine, and the node lets in only requests from that machine.
 No other node reaches it and it reaches no other node: there is no tunnel, no Cloudflare, and no push notifications.
 Everything it stores stays in its data directory.
 
@@ -72,7 +89,7 @@ agency status
 
 The data directory now holds `account.key`, the org's root key.
 Anyone who can read that file can act as the org's root.
-Keep it on this Mac, and out of anything that syncs or shares files.
+Keep it on this machine, and out of anything that syncs or shares files.
 
 ### Run it with launchd
 
@@ -96,6 +113,40 @@ The node's output goes to `~/.agency/logs/serve.log`.
 | Stop it until you load it again | `launchctl bootout gui/$(id -u)/local.agency.node` |
 
 If your `PATH` changes (for example, the harness moves), run the script again, then `bootout` and `bootstrap`.
+
+### Run it with systemd (Linux)
+
+`scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
+The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
+Run it from a terminal where `scrum` and the harness's tools work.
+
+```sh
+scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
+  --out ~/.config/systemd/user/agency-node.service
+systemctl --user daemon-reload
+systemctl --user enable --now agency-node
+```
+
+The unit starts `agency serve` when you log in (at boot, with lingering, below) and starts it again 10 seconds after it stops.
+The node's output goes to `~/.agency/logs/serve.log`, and `journalctl --user -u agency-node` shows when systemd started and stopped it.
+
+| To | Run |
+|---|---|
+| See whether it runs | `systemctl --user status agency-node` |
+| Restart it | `systemctl --user restart agency-node` |
+| Stop it until you start it again | `systemctl --user disable --now agency-node` |
+
+If your `PATH` changes (for example, the harness moves), run the script again, then `systemctl --user daemon-reload` and `systemctl --user restart agency-node`.
+
+systemd runs your services only while you have a session. To have the node start when the machine boots, and keep running after you log out, turn on lingering once:
+
+```sh
+loginctl enable-linger "$USER"
+loginctl show-user "$USER" --property=Linger
+```
+
+The second command must print `Linger=yes`. Without it, logging out of your last session stops the node.
+Run `systemctl --user` in a login session (a terminal or an SSH login). From `su` or `sudo -u`, it cannot reach your services and says `Failed to connect to bus`.
 
 ### Add your browser as the first device
 
@@ -135,7 +186,7 @@ It must print one JSON line whose `result.runtimes` contains `agency-runtime/1`.
 ## Reaching a node from outside with Cloudflare Access
 
 To use the node from a phone or another machine, or to let other nodes reach it, put it behind a Cloudflare Tunnel and Cloudflare Access.
-The node keeps listening on `127.0.0.1`; the tunnel connects to it from the same Mac.
+The node keeps listening on `127.0.0.1`; the tunnel connects to it from the same machine.
 Clients sign in to Access, and the node checks Access's token on every request. Other nodes do not sign in: they sign each request with their keys, so their routes bypass Access.
 
 ### Change the node's address
@@ -152,9 +203,9 @@ A node that only you use from your own devices, and that no other node reaches, 
 
 ### Cloudflare Tunnel
 
-1. Install `cloudflared` (`brew install cloudflared`).
+1. Install `cloudflared` (`brew install cloudflared` on macOS; on Linux, Cloudflare's package for your distribution).
 2. In Cloudflare Zero Trust, create a tunnel, and give it a public host name, `agency.example.com`, whose service is `http://127.0.0.1:4400`.
-3. Run `cloudflared` on the Mac as Cloudflare's instructions for the tunnel say, as a service that starts at boot.
+3. Run `cloudflared` on the machine as Cloudflare's instructions for the tunnel say, as a service that starts at boot.
 
 Requests through the tunnel carry Cloudflare's headers, so the node treats them as coming from outside and asks for an Access sign-in, even though they reach it from `127.0.0.1`.
 
@@ -199,14 +250,14 @@ A malformed setting is reported at start (see [Troubleshooting](#troubleshooting
 
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
 
-1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's Mac, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).
+1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's machine, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).
 2. Open **Devices** and choose **Add this device**. The page shows its pairing code.
 3. Confirm the code in one of these places:
    - on a device you have already added: open **Devices**, find the request, and confirm it if the codes match;
    - on the node's terminal: `agency device-add`. Without any device yet, it signs with the node's account key; afterwards, with the CLI device once that is added.
 
 A request waits for an hour, and the node keeps at most 10.
-A browser makes a key only on `https` or on the node's own Mac (`127.0.0.1`); elsewhere the page says it cannot.
+A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`); elsewhere the page says it cannot.
 
 ## AI subscriptions and their usage
 
@@ -307,6 +358,22 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 launchctl kickstart -k gui/$(id -u)/local.agency.node
 ```
 
+On Linux, restart the unit instead of the last line: `systemctl --user restart agency-node`.
+With a release build, unpack the new tarball and install its binary as in "A release build for Linux", then restart the unit.
+On macOS, `scripts/deploy-macos.sh` does these steps with a check at the end and a way back:
+
+```sh
+scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label local.agency.node
+```
+
+- It builds the web client and the node from the repository the script is in. It refuses a working tree with uncommitted changes (`--allow-dirty` allows one), and checks that the new binary starts and serves on a throwaway data directory first (port 4790, or `SMOKE_PORT`; `--skip-preflight` leaves the check out). `--binary <file>` deploys a binary you built, without building.
+- It puts the new binary in place with one rename, and keeps the one it replaces as `agency.previous` next to it. The running node keeps the file it started from until the restart.
+- It restarts the job, then waits up to 60 seconds (`--timeout`) for the node to answer at its `listen` address (`--url` names another) from a new process, and for that process to keep running for 5 seconds (`--settle`), so a node that starts and stops again is not taken for a good one.
+- If the node does not answer, it puts the previous binary back, restarts the job again, and checks again. The exit status says what happened: 0 deployed; 1 not deployed, and the previous binary is back and answering; 2 not deployed, and the previous binary does not answer either (look at the node now).
+- `--rollback` swaps the installed binary and the previous one, restarts, and checks the same way; running it twice goes back and forth.
+
+The job must already be loaded (see "Run it with launchd"). The script does not touch the data directory or the job's file. Only one deploy runs at a time.
+
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
@@ -319,30 +386,33 @@ The node writes these to `~/.agency/logs/serve.log`:
 | Line | Meaning |
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
-| `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
+| `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
 | `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |
 | `agency: refused an Access request (wrong audience)` | `audience` is not the application's AUD tag. |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` is not your team domain. |
-| `agency: refused an Access request (expired)` or `(not valid yet)` | The sign-in expired, or this Mac's clock is off. |
+| `agency: refused an Access request (expired)` or `(not valid yet)` | The sign-in expired, or this machine's clock is off. |
 | `agency: refused an Access request (cannot fetch the Access certs: …)`, `(unknown signing key)`, or `(the signature does not match)` | The node cannot get Access's keys from `teamDomain`, or the token was not made for this team domain. |
+| `agency: team acme/app: the team runtime fails: …` | The team's runtime could not run or answered 5xx; the rest of the line says why (see the answers below). It is written once when the runtime starts failing and again only if the reason changes. |
+| `agency: team acme/app: the team runtime answers again` | The runtime works again after a failure. |
+| `agency: refused GET /fed/v1/…: …` | Another node's request was refused, and the line says why (for example "a read signed by bob at …, 400 seconds behind this node's clock; check the clocks"). The caller only got "not found". At most 20 such lines are written a minute, then one line says how many more were not; a refusal of a request validly signed by a member is always written. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
-| `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd tries again every 10 seconds. |
+| `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd or systemd tries again every 10 seconds. |
 
 ### Answers from the node
 
-Some problems show only in the node's answers, in the browser or with `curl`, not in the log:
+The node's answers, in the browser or with `curl`, say what went wrong in their `error`:
 
 | Answer | Meaning |
 |---|---|
 | `503` `cannot start the team runtime: No such file or directory` | The team's runtime command is not at the path in `config.json` (`teams[].runtime.command`). |
 | `503` `the team runtime did not answer within 20 seconds` | The runtime hangs, or is too slow. |
-| `503` `the team runtime did not write an agency-runtime/1 response (…): …` | The runtime failed; the end of the answer is what it wrote to stderr. Often a tool missing from the launchd `PATH`. |
+| `503` `the team runtime did not write an agency-runtime/1 response (…): …` | The runtime failed; the end of the answer is what it wrote to stderr. Often a tool missing from the `PATH` of the launchd agent or the systemd unit. |
 | `421` `wrong host` | The page was opened at an address other than `127.0.0.1:<port>` or `localhost:<port>`. |
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
@@ -355,7 +425,7 @@ Set up the harness by its own instructions. What the node needs from it:
 
 - A command that answers agency-runtime/1: `describe`, `view`, and `decide`, and `tokenUsage` for the costs screen. Each call must answer within 20 seconds.
 - The team's state directory, the same one as `team-add --state-dir`.
-- Every tool the runtime calls, on the `PATH` written into the launchd agent.
+- Every tool the runtime calls, on the `PATH` written into the launchd agent or the systemd unit.
 - Requests for you leave `to` out or set it to `owner`. In an org where you are the only member, every request is yours. A participant waiting on you has `waitingOn` set to `{ "kind": "person", "person": "owner" }`.
 
 While it runs, the node asks the runtime for the team's view every 30 seconds and each time a page reads the team, so `view` should be cheap.

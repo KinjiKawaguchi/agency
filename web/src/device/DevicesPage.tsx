@@ -2,17 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi } from '../api/context'
 import type { DeviceList, DeviceRequest } from '../api/clientApi'
-import { DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
+import { DEVICES_KEY, DEVICES_LIVE_MS, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { useToast } from '../shared/Toasts'
 import { addChangeFor, signChange } from './changes'
+import { ApprovalSteps } from './ApprovalSteps'
 import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
+import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
-const WAITING_POLL_MS = 3_000
-const POLL_MS = 30_000
 
 const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure))
 
@@ -40,8 +40,8 @@ function AskToBeAdded({ deviceKey }: { deviceKey: DeviceKey }) {
   )
 }
 
-function PairingCode({ code, label }: { code: string; label: string }) {
-  return <p className="pairing-code" aria-label={label}>{code}</p>
+function PairingCode({ code, label, large = false }: { code: string; label: string; large?: boolean }) {
+  return <p className={`pairing-code${large ? ' large' : ''}`} aria-label={label}>{code}</p>
 }
 
 function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
@@ -50,17 +50,12 @@ function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLis
   return (
     <section className="device-card">
       <h2 className="sub-head">{t.devices.thisDevice}</h2>
-      <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} />
+      <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} large={enrollment.status === 'pending'} />
       {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} /> : null}
       {enrollment.status === 'pending' ? (
         <>
           <p className="device-lead" role="status">{t.devices.waitingLead}</p>
-          <ol className="device-steps">
-            {t.devices.waitingSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          <p className="muted">{t.devices.waitingOther}</p>
+          <ApprovalSteps list={list} publicKey={deviceKey.publicKey} />
         </>
       ) : null}
       {enrollment.status === 'enrolled' ? (
@@ -151,11 +146,8 @@ function YourDevices({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLi
 function WithDeviceKey({ deviceKey }: { deviceKey: DeviceKey }) {
   const { t } = useI18n()
   const api = useApi()
-  // A device waiting to be added asks again quickly, to notice when it is.
-  const devices = useQuery({
-    ...devicesQuery(api),
-    refetchInterval: (query) => (query.state.data !== undefined && enrollmentOf(deviceKey.publicKey, query.state.data).status === 'pending' ? WAITING_POLL_MS : POLL_MS),
-  })
+  // While this screen is open the list is read every few seconds (not in a hidden tab), so a device that asks to be added, or that was approved, shows up by itself.
+  const devices = useQuery(devicesQuery(api, DEVICES_LIVE_MS))
   if (devices.data === undefined) {
     return devices.error === null ? <p className="muted">{t.devices.loadingList}</p> : <p className="empty" role="alert">{t.devices.listFailed(messageOf(devices.error))}</p>
   }
@@ -197,6 +189,7 @@ export function DevicesPage() {
       {key.status === 'unsupported' ? <Unsupported /> : null}
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
+      <HomeNodesCard />
     </>
   )
 }

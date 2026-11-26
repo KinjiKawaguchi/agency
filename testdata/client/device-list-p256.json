@@ -1,0 +1,36 @@
+{
+  "orgs": [
+    {
+      "devices": [
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-dbc298251c51",
+          "label": "Laptop",
+          "publicKey": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg="
+        },
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-506ef1879d74",
+          "label": "iPhone",
+          "publicKey": "Q6cucUQBdi32a2jCbfvfJoKq7J8kdOykYT5CSg+6/Tw="
+        },
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-a652124afda7",
+          "label": "iPad",
+          "publicKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
+        }
+      ],
+      "org": "acme"
+    }
+  ],
+  "requests": [
+    {
+      "deviceId": "d-a9b6d080f431",
+      "label": "Tablet",
+      "pairingCode": "a9b6-d080-f431",
+      "publicKey": "p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=",
+      "requestedAt": "2026-11-24T12:00:00Z"
+    }
+  ]
+}

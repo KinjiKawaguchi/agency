@@ -14,6 +14,8 @@ final class NativeSession {
     /// `nil` when this phone cannot make the key that signs decisions (no Secure Enclave, or Face ID is not set up).
     let pairing: PairingStore?
     let keyProblem: String?
+    /// The devices screen's state; `nil` when this phone has no key.
+    let devices: DevicesStore?
     private(set) var signInProblem: String?
 
     /// The client of the home node, for the screens that read from it.
@@ -23,6 +25,10 @@ final class NativeSession {
     @ObservationIgnored private var registeredPush: PushRegistration?
     /// The overview of every org and team, read from the same client.
     let overview: OverviewStore
+    /// The participants and work of every team, read from the same client.
+    let people: PeopleStore
+    /// The funding sources and each team's token use, read from the same client.
+    let costs: CostsStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -40,12 +46,15 @@ final class NativeSession {
         }
         keyProblem = problem
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
+        devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
         desk = DeskStore(
             source: client,
             sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
             storage: DraftDefaultsStorage(host: homeNode.host)
         )
         overview = OverviewStore(source: client)
+        people = PeopleStore(source: client)
+        costs = CostsStore(source: client)
     }
 
     /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
@@ -62,6 +71,8 @@ final class NativeSession {
             await desk.refresh()
             await pairing?.refresh()
             await overview.refresh()
+            await people.refresh()
+            await costs.refresh()
         case .canceled:
             break
         case .unavailable:

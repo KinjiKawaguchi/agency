@@ -4,6 +4,18 @@ import Foundation
 public struct DeviceList: Decodable, Equatable, Sendable {
     public let orgs: [OrgDevices]
     public let requests: [DeviceRequest]
+    /// What the node says about itself, only to its owner, so that a device waiting to be added can be told
+    /// the exact command for this node's machine. Absent from every other answer.
+    public let node: NodeHints?
+}
+
+/// A node's description of itself, for the pairing instructions.
+public struct NodeHints: Decodable, Equatable, Sendable {
+    public let url: String?
+    public let dataDir: String?
+    /// The command to approve a first device on the node's machine, written for a person to read and to
+    /// copy: the path of the running program, `--dir` only when it differs from the default.
+    public let command: String?
 }
 
 public struct OrgDevices: Decodable, Equatable, Sendable {

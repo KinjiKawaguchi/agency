@@ -71,6 +71,20 @@ jobs:
       - name: Test the scripts
         run: apple/scripts/test/run.sh
 
+  # The Linux scripts: the systemd unit script, tested against paths that need quoting and verified by
+  # systemd-analyze, and the scripts that build the release tarball. The macOS deploy script is tested
+  # here too, against stand-ins for launchctl and curl, since this repository has no macOS runner.
+  linux-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check the scripts
+        run: shellcheck -x scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/deploy-fakes/* scripts/release/*.sh
+      - name: Test the systemd unit script
+        run: scripts/test/systemd-unit.sh
+      - name: Test the deploy script, against stand-ins for launchctl and curl
+        run: scripts/test/deploy-macos.sh
+
   web:
     runs-on: ubuntu-latest
     steps:
