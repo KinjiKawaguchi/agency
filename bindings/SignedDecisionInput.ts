@@ -14,10 +14,4 @@ title?: string,
 /**
  * The label of the chosen option, kept in the decision log like `title`. Only with a choice.
  */
-choiceLabel?: string, 
-/**
- * Whom the decision was made for, when the request was addressed to a seat or an external party the
- * account answers for (the label from the snapshot's `relayedFor`), kept in the decision log like
- * `title`. Never signed or sent.
- */
-relayedFor?: string, };
+choiceLabel?: string, };

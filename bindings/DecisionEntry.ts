@@ -2,6 +2,7 @@
 import type { DecisionState } from "./DecisionState.js";
 import type { EnvelopeKind } from "./EnvelopeKind.js";
 import type { Id } from "./Id.js";
+import type { RelayedFor } from "./RelayedFor.js";
 import type { Timestamp } from "./Timestamp.js";
 
 export type DecisionEntry = { 
@@ -14,6 +15,7 @@ id: string, org: Id, team: Id, kind: EnvelopeKind,
  */
 target: string, title?: string, text: string, choice?: string, choiceLabel?: string, 
 /**
- * Whom the decision was made for, when it answered for a seat or an external party.
+ * Whom the decision was made for, when it answered for a seat or an external party. The node worked
+ * it out from the org and the team when it applied the decision; no client says it.
  */
-relayedFor?: string, decidedAt: Timestamp, state: DecisionState, };
+relayedFor?: RelayedFor, decidedAt: Timestamp, state: DecisionState, };

@@ -231,21 +231,57 @@ async fn the_snapshot_says_for_whom_each_of_the_readers_requests_is() {
 }
 
 #[tokio::test]
-async fn the_decision_log_keeps_for_whom_a_decision_was_made() {
+async fn the_decision_log_keeps_whom_a_decision_answered_for_as_the_node_found_it() {
+    let (alice, memory, _, _) = world().await;
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-5".into(), "Question r-5".into()));
+    let key = device(&alice).await;
+    decide(&alice, &key, "r-2").await;
+    decide(&alice, &key, "r-5").await;
+    let log = decision_log(&alice.node, None);
+    let by_target = |target: &str| log.entries.iter().find(|one| one.target == target).unwrap();
+    let relayed = by_target("r-2").relayed_for.as_ref().unwrap();
+    assert_eq!(
+        (relayed.id.as_str(), relayed.label.as_str()),
+        ("dan", "Dan (tax)")
+    );
+    assert_eq!(
+        by_target("r-5").relayed_for,
+        None,
+        "a request that names no one is the owner's own"
+    );
+}
+
+#[tokio::test]
+async fn a_client_cannot_label_a_decision_as_answered_for_someone() {
     let (alice, _, _, _) = world().await;
     let key = device(&alice).await;
-    let envelope = signed_answer(&alice, &key, "r-2", "a");
     let input = SignedDecisionInput {
-        envelope,
+        envelope: signed_answer(&alice, &key, "r-2", "a"),
         title: None,
         choice_label: None,
-        relayed_for: Some("Dan (tax)".into()),
     };
+    let mut claim = serde_json::to_value(&input).unwrap();
+    claim["relayedFor"] = serde_json::json!("Erin (outside counsel)");
+    assert!(
+        serde_json::from_value::<SignedDecisionInput>(claim).is_err(),
+        "the node alone says for whom a decision was made"
+    );
     submit_signed_decision(&alice.node, &id("acme"), &id("app"), input)
         .await
         .unwrap();
     let log = decision_log(&alice.node, None);
-    assert_eq!(log.entries[0].relayed_for.as_deref(), Some("Dan (tax)"));
+    assert_eq!(
+        log.entries[0]
+            .relayed_for
+            .as_ref()
+            .map(|one| one.id.as_str()),
+        Some("dan"),
+        "never erin"
+    );
 }
 
 #[tokio::test]

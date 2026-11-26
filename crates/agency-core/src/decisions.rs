@@ -6,6 +6,7 @@ use crate::node::Node;
 use crate::outbox::{deliver, enqueue, Outcome, Parcel, ParcelBody};
 use crate::unseen;
 use crate::views::{self, is_addressed_to, Reader};
+use agency_proto::client::RelayedFor;
 use agency_proto::device::envelope_key;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::Kind;
@@ -28,7 +29,7 @@ pub struct DecisionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relayed_for: Option<String>,
+    pub relayed_for: Option<RelayedFor>,
     pub payload: Payload,
     pub at: String,
     /// Applied to a team on this node; otherwise sent as an envelope, whose delivery the outbox tracks.
@@ -41,8 +42,6 @@ pub struct DecisionRecord {
 pub struct DecisionNote {
     pub title: Option<String>,
     pub choice_label: Option<String>,
-    /// Whom the decision answered for, when its request was a seat's or an external party's.
-    pub relayed_for: Option<String>,
 }
 
 impl DecisionRecord {
@@ -55,7 +54,7 @@ impl DecisionRecord {
             target: envelope.target.clone(),
             title: note.title,
             choice_label: note.choice_label,
-            relayed_for: note.relayed_for,
+            relayed_for: None,
             payload: envelope.payload.clone(),
             at: envelope.at.clone(),
             is_local,
@@ -115,14 +114,15 @@ pub(crate) async fn send_envelope(
 /// waiting and a request addressed to someone else get the same refusal, so an answerer, who reads only
 /// their own requests, cannot learn of others' from it.
 ///
-/// It gives the id of the seat or external party the request is addressed to when the decider answers for it.
+/// It gives the seat or external party the request is addressed to, with its label as `definition` has it,
+/// when the decider answers for it.
 async fn check_addressee(
     node: &Node,
     hosted: &HostedTeam,
     definition: &OrgDefinition,
     envelope: &Envelope,
     person: &Id,
-) -> Result<Option<String>> {
+) -> Result<Option<RelayedFor>> {
     let view = views::runtime_view(node, hosted).await?;
     let reader = Reader::Hosted {
         hosted,
@@ -136,8 +136,12 @@ async fn check_addressee(
     });
     match found {
         Some(request) => Ok(
-            views::addressed_party(definition, hosted, request.to.as_deref())
-                .map(|(id, _)| id.to_string()),
+            views::addressed_party(definition, hosted, request.to.as_deref()).map(|(id, label)| {
+                RelayedFor {
+                    id: id.clone(),
+                    label: label.to_owned(),
+                }
+            }),
         ),
         None => Err(Error::new(
             ErrorKind::Forbidden,
@@ -159,6 +163,16 @@ pub async fn accept_envelope(
     team: &Id,
     signed: Signed<Envelope>,
 ) -> Result<Accepted> {
+    Ok(accept_envelope_for(node, org, team, signed).await?.0)
+}
+
+/// `accept_envelope`, and whom the decision answered for, as this node's definition of the org says.
+pub(crate) async fn accept_envelope_for(
+    node: &Node,
+    org: &Id,
+    team: &Id,
+    signed: Signed<Envelope>,
+) -> Result<(Accepted, Option<RelayedFor>)> {
     let envelope = &signed.body;
     envelope.validate().map_err(Error::bad_request)?;
     if &envelope.org != org || &envelope.team != team {
@@ -207,7 +221,7 @@ pub async fn accept_envelope(
     }
     let _guard = node.write_lock().lock().await;
     if node.store().is_applied(&envelope.id) {
-        return Ok(Accepted::Duplicate);
+        return Ok((Accepted::Duplicate, None));
     }
     let definition = definition.ok_or_else(|| Error::internal("the org's definition is gone"))?;
     let on_behalf_of = check_addressee(node, &hosted, definition, envelope, &person.id).await?;
@@ -216,7 +230,7 @@ pub async fn accept_envelope(
         target: envelope.target.clone(),
         by: person.id.clone(),
         by_participant: views::viewer_name(&hosted, &person.id),
-        on_behalf_of,
+        on_behalf_of: on_behalf_of.as_ref().map(|party| party.id.to_string()),
         payload: envelope.payload.clone(),
     };
     node.runtime()
@@ -225,5 +239,5 @@ pub async fn accept_envelope(
         .map_err(runtime_refusal)?;
     node.store()
         .record_applied(&envelope.id, &node.now_text())?;
-    Ok(Accepted::Applied)
+    Ok((Accepted::Applied, on_behalf_of))
 }
