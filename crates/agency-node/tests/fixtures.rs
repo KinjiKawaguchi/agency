@@ -89,6 +89,25 @@ fn signed_add(account: &str, label: &str, key: &PublicKey, signer: &AccountKey) 
 
 /// alice's `/api/me` with two funding sources: a subscription whose usage file holds both windows, and
 /// an API key, which has none. The usage file is written at a fixed time, so `readAt` repeats.
+/// alice's `/api/me` as her node's owner reads it with two other home nodes configured: one behind
+/// https and one on this machine.
+async fn me_with_home_nodes(alice: &Running) -> Value {
+    let entries = vec![
+        agency_core::config::HomeNodeConfig::new("Work", "https://work.example.com"),
+        agency_core::config::HomeNodeConfig::new("Lab", "http://127.0.0.1:4500"),
+    ];
+    alice
+        .node
+        .update_config(|config| config.home_nodes = entries)
+        .unwrap();
+    let me = read(alice, "/api/me").await;
+    alice
+        .node
+        .update_config(|config| config.home_nodes = vec![])
+        .unwrap();
+    me
+}
+
 async fn me_with_funding(alice: &Running) -> Value {
     let dir = tempfile::TempDir::new().unwrap();
     let usage_file = dir.path().join("max.json");
@@ -242,6 +261,7 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         ),
         ("me-funding", me_with_funding(alice).await),
         ("me-hides-titles", me_hiding_titles(alice).await),
+        ("me-home-nodes", me_with_home_nodes(alice).await),
         ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),
         (

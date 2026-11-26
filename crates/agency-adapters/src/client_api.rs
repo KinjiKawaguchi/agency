@@ -14,7 +14,7 @@ use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::activity::team_activity;
 use agency_core::client::{
-    decision_log, me, org_definition, submit_signed_decision, team_snapshot,
+    decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::evaluation::org_evaluation;
@@ -232,8 +232,15 @@ async fn get_session(State(api): Shared) -> Response {
     }))
 }
 
-async fn get_me(State(api): Shared) -> Response {
-    json_response(StatusCode::OK, &me(&api.node))
+/// The account and what it reaches; to the node's owner, also their other home nodes, which say where
+/// else the owner works and are no one else's to know.
+async fn get_me(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    let mut answer = me(&api.node);
+    if is_owner_request(&api, &admitted) {
+        let listed = home_nodes(&api.node.config()).0;
+        answer.home_nodes = (!listed.is_empty()).then_some(listed);
+    }
+    json_response(StatusCode::OK, &answer)
 }
 
 /// The account's recent decisions. `limit` defaults to 50 and is capped at 200.

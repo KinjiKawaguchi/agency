@@ -336,6 +336,9 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
     warn_misplaced(&node, |line| eprintln!("agency: {line}"));
+    for line in agency_core::client::home_nodes(&node.config()).1 {
+        eprintln!("agency: {line}");
+    }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
     let background = node.clone();
