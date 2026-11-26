@@ -47,6 +47,13 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
     /// this app does not know is one it cannot make. Such a request is shown and counted, and answered elsewhere.
     public var isAnswerableHere: Bool { request.answerWith.kind != .unknown }
 
+    /// A label as a line shows it: without the spaces around it, and none at all when nothing else is left (the node does not send
+    /// an empty one, and a line that says nothing is not shown).
+    public static func shownLabel(_ label: String) -> String? {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     public static func key(org: String, team: String, request: String) -> String {
         "\(org):\(team):\(request)"
     }
@@ -64,8 +71,7 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
         decider = addressee.flatMap(team.person(named:))
         self.isMine = isMine
         blockedPeople = request.blocks.compactMap(team.person(named:))
-        // An empty label makes no line: the node does not send one, and a line that says nothing is not shown.
-        answersFor = isMine ? team.relayedFor[request.id].flatMap { $0.isEmpty ? nil : $0 } : nil
+        answersFor = isMine ? team.relayedFor[request.id].flatMap(Self.shownLabel) : nil
     }
 }
 

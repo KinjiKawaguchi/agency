@@ -29,6 +29,8 @@ struct AnswerForTests {
     func labels() throws {
         let empty = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": ""])
         #expect(try #require(Desk.openItems([empty]).first { $0.request.id == "r-seat" }).answersFor == nil)
+        let spaces = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": "  \n "])
+        #expect(try #require(Desk.openItems([spaces]).first { $0.request.id == "r-seat" }).answersFor == nil, "only spaces is empty too")
         let odd = "<b>Dan</b> & " + String(repeating: "税務", count: 40)
         let team = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": odd])
         #expect(try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" }).answersFor == odd)
@@ -54,5 +56,7 @@ struct AnswerForTests {
         #expect(try entry(#","relayedFor":{"id":"dan","label":"Dan (tax)"}"#).relayedFor == RelayedFor(id: "dan", label: "Dan (tax)"))
         #expect(try entry("").answeredFor == nil, "the owner's own, or a team on another node")
         #expect(try entry(#","relayedFor":{"id":"dan","label":""}"#).answeredFor == nil, "an empty label makes no line")
+        #expect(try entry(#","relayedFor":{"id":"dan","label":"   "}"#).answeredFor == nil, "a label of only spaces makes none either")
+        #expect(try entry(#","relayedFor":{"id":"dan","label":" Dan (tax) "}"#).answeredFor == "Dan (tax)")
     }
 }

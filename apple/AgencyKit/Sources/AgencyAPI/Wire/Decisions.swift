@@ -27,8 +27,11 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     /// A comment: text and no choice. Nothing was decided.
     public var isComment: Bool { choice == nil }
 
-    /// Whom the decision answered for, when the node says and the label is not empty.
-    public var answeredFor: String? { relayedFor.map(\.label).flatMap { $0.isEmpty ? nil : $0 } }
+    /// Whom the decision answered for, when the node says and the label is not empty or only spaces.
+    public var answeredFor: String? {
+        let trimmed = relayedFor?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.flatMap { $0.isEmpty ? nil : $0 }
+    }
 }
 
 /// The seat or external party a decision answered for: its id, and its label as the org's definition had it when the decision was applied.

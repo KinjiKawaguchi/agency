@@ -31,17 +31,25 @@ struct RequestRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .wrapping()
+            // Whom it is answered for has a line of its own, whole: the label is the owner's own text and may be long.
+            if let line = Self.answerLine(of: item) {
+                Text(line).font(.footnote.weight(.semibold)).wrapping()
+            }
         }
         .card()
         .accessibilityElement(children: .combine)
     }
 
-    /// Who drafted it, the team, whom the viewer answers it for (when it is addressed to a seat or an external party), and when.
+    /// Who drafted it, the team, and when.
     static func meta(of item: DeskItem, now: Date) -> String {
         let drafter = item.drafter?.label ?? item.request.from
         let when = Ago.text(from: item.request.createdAt.date, now: now)
-        let answersFor = item.answersFor.map(Ja.Desk.answerFor)
-        return [Ja.Desk.drafter(drafter), item.teamLabel, answersFor, when].compactMap { $0 }.joined(separator: " · ")
+        return [Ja.Desk.drafter(drafter), item.teamLabel, when].joined(separator: " · ")
+    }
+
+    /// Whom the viewer answers it for, when it is addressed to a seat or an external party.
+    static func answerLine(of item: DeskItem) -> String? {
+        item.answersFor.map(Ja.Desk.answerFor)
     }
 }
 #endif
