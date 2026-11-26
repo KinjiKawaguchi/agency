@@ -189,7 +189,7 @@ public actor NodeClient {
         let body = Data(try CanonicalJSON.encode(.object([.init("code", .string(code)), .init("verifier", .string(verifier))])).utf8)
         var request = HTTPRequest(method: "POST", path: "/app/redeem", body: body)
         request.headers["content-type"] = "application/json"
-        let response = try await transport.send(request)
+        let response = try await transport.send(identified(request))
         switch response.status {
         case 200..<300:
             return (try decode(response) as SignInToken).token

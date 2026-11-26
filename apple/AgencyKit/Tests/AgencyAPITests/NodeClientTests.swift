@@ -354,6 +354,16 @@ struct NodeClientRedeemTests {
         #expect(request.headers["x-agency-token"] == nil)
     }
 
+    @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")
+    func redeemIdentity() async throws {
+        let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])
+        let client = NodeClient(transport: transport, accessToken: { nil }, clientIdentity: "ios/0.3.1 (1)")
+        _ = try await client.redeemSignIn(code: code, verifier: verifier)
+        let request = try #require(transport.requests.first)
+        #expect(request.headers["x-agency-client"] == "ios/0.3.1 (1)")
+        #expect(request.headers["cf-access-token"] == nil)
+    }
+
     @Test("a refusal is the node's one answer, a limit is 429, and a redirect says the Access policy is in the way")
     func refusals() async throws {
         let refused = ScriptedTransport([("POST /app/redeem", json(#"{"error":"the code is not valid"}"#, status: 400))])
