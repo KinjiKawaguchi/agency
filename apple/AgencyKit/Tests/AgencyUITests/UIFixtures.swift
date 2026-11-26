@@ -60,13 +60,14 @@ enum UIFixtures {
         return option
     }
 
-    static func team(extra: [[String: Any]] = [], replacing: Bool = false, mine: [String]? = nil) -> Team {
+    static func team(extra: [[String: Any]] = [], replacing: Bool = false, mine: [String]? = nil, relayedFor: [String: String]? = nil) -> Team {
         var view = try! sampleView()
         view["requests"] = replacing ? extra : (view["requests"] as! [[String: Any]]) + extra
         let ids = (view["requests"] as! [[String: Any]]).map { $0["id"] as! String }
-        let snapshot: [String: Any] = [
+        var snapshot: [String: Any] = [
             "view": view, "viewer": "owner", "mine": mine ?? ids, "waitingOnViewer": ["backend"], "source": ["kind": "local"],
         ]
+        if let relayedFor { snapshot["relayedFor"] = relayedFor }
         let data = try! JSONSerialization.data(withJSONObject: snapshot)
         return Team(snapshot: try! JSONDecoder().decode(TeamSnapshot.self, from: data))
     }
