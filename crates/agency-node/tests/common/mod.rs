@@ -221,16 +221,10 @@ pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Ru
     )
     .unwrap();
     node.update_config(|config| {
-        config.teams.push(HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: Default::default(),
-            runtime: RuntimeCommand {
-                command: vec!["/nonexistent".into()],
-                env: Default::default(),
-            },
-        })
+        let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
+        config
+            .teams
+            .push(HostedTeam::new(id("acme"), id("app"), id("alice"), runtime))
     })
     .unwrap();
     running

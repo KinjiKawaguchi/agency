@@ -261,26 +261,20 @@ mod tests {
     #[test]
     fn viewers_are_named_by_the_people_map_then_as_owner() {
         use crate::config::RuntimeCommand;
-        let hosted = HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: [("reviewer".to_owned(), id("bob"))].into(),
-            runtime: RuntimeCommand {
-                command: vec![],
-                env: Default::default(),
-            },
-        };
+        let hosted = HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            RuntimeCommand::of(vec![]),
+        )
+        .with_people([("reviewer".to_owned(), id("bob"))].into());
         assert_eq!(viewer_name(&hosted, &id("alice")).as_deref(), Some("owner"));
         assert_eq!(
             viewer_name(&hosted, &id("bob")).as_deref(),
             Some("reviewer")
         );
         assert_eq!(viewer_name(&hosted, &id("carol")), None);
-        let renamed = HostedTeam {
-            people: [("kin".to_owned(), id("alice"))].into(),
-            ..hosted
-        };
+        let renamed = hosted.with_people([("kin".to_owned(), id("alice"))].into());
         assert_eq!(
             viewer_name(&renamed, &id("alice")).as_deref(),
             Some("kin"),
@@ -353,16 +347,13 @@ mod tests {
     #[test]
     fn a_request_is_mine_by_one_rule() {
         use crate::config::RuntimeCommand;
-        let hosted = HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: [("reviewer".to_owned(), id("bob"))].into(),
-            runtime: RuntimeCommand {
-                command: vec![],
-                env: Default::default(),
-            },
-        };
+        let hosted = HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            RuntimeCommand::of(vec![]),
+        )
+        .with_people([("reviewer".to_owned(), id("bob"))].into());
         let (alice, bob) = (id("alice"), id("bob"));
         let here = |person| Reader::Hosted {
             hosted: &hosted,
