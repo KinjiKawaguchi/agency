@@ -118,6 +118,17 @@ struct OverviewStoreTests {
         #expect(store.sections.isEmpty)
     }
 
+    @Test("a session that ends while the teams are read is a sign-in to run again, not only a failure of each team")
+    func endsMidway() async {
+        let source = FakeOverviewSource()
+        source.set(me: .success(twoOrgs))
+        source.set(snapshot: .failure(NodeError.sessionExpired), for: "zed/ops")
+        let store = OverviewStore(source: source)
+        await store.refresh()
+        #expect(store.needsSignIn)
+        #expect(store.loading == .loaded)
+    }
+
     @Test("a team that was read keeps its last answer when a later read fails")
     func keepsLastAnswer() async {
         let source = FakeOverviewSource()
