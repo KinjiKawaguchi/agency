@@ -172,7 +172,7 @@ If the browser is already added, the CLI device asks to be added instead: confir
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/node.jsonl
+agency logs --since 10m
 ```
 
 - `/api/me` lists the account, and the org with the team `app` and `"location":"local"`.
@@ -460,6 +460,16 @@ While it runs, the node writes what it has to say to `~/.agency/logs/node.jsonl`
 - `event` names the part that wrote the line: `start`, `runtime`, `refused`, `access`, `usage`, `push`, `placement`, `replicas`, `requests`, or `outbox`. The `message` is a sentence about the node, never a request body, a token, or a query string.
 - When the file passes `maxSizeMib`, the node closes it as `node-<UTC time>.jsonl` and starts a new one. It deletes the closed files that are older than `maxAgeDays` days, and all but the newest `maxFiles` of them, when it starts and each time it closes a file. Only the node's account can read the files.
 - Run in a terminal, the node also prints each line there. When the file cannot be written, the lines go to standard error, which is `serve.log` under launchd or systemd.
+
+`agency logs` reads the files, the closed ones too, also while the node is stopped, and prints the lines oldest first, without needing the account key:
+
+```sh
+agency logs --since 1h --level warn          # warn and error, from the last hour
+agency logs --event runtime                  # one part
+agency logs --json | jq 'select(.event == "push")'   # the lines as they are in the file
+```
+
+`--since` is a whole number and `s`, `m`, `h`, or `d` (`90s`, `30m`, `2h`, `1d`); `--level` keeps that level and the more urgent ones; `--event` keeps one event. A line that is not a whole line, such as the last one of a file the node was writing when it crashed, is skipped.
 
 Set it in `config.json`, then restart the node. Every field is optional, and a value out of range stops the node at start and says which:
 

@@ -3,7 +3,9 @@ mod dept_cli;
 mod device_cli;
 mod funding_cli;
 mod kpi_cli;
+mod logs_cli;
 mod outcome_cli;
+mod peer_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -165,6 +167,8 @@ enum Command {
         #[command(subcommand)]
         command: funding_cli::FundingCommand,
     },
+    /// Prints the node's log (logs/node.jsonl and the closed files), oldest first, filtered; reads no key and needs no running node
+    Logs(logs_cli::LogsArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -266,6 +270,7 @@ fn status(node: &Node) {
             .into_iter()
             .chain(plans)
             .chain(kpi_cli::kpi_lines(&doc.body))
+            .chain(peer_cli::peer_lines(node, &doc.body.org))
         {
             println!("{line}");
         }
@@ -420,11 +425,14 @@ async fn run(cli: Cli) -> Result<()> {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
     }
+    if let Command::Logs(args) = &cli.command {
+        return logs_cli::run(&data, args);
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
     match cli.command {
-        Command::Init { .. } | Command::Funding { .. } => unreachable!(),
+        Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) => unreachable!(),
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(

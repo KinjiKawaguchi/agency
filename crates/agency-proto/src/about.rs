@@ -54,7 +54,42 @@ pub struct About {
     pub oldest_app: Option<BTreeMap<String, String>>,
 }
 
+/// The most a node keeps of another node's `About`: this many versions of a contract, capabilities, and
+/// platforms, and this many characters in any text of it.
+pub const MAX_ENTRIES: usize = 64;
+pub const MAX_TEXT: usize = 64;
+
 impl About {
+    /// Whether this is an answer to keep: every text is short and without control characters, and no list
+    /// is long. A node keeps what other nodes tell it, so it keeps no more than it can hold.
+    pub fn check(&self) -> Result<(), String> {
+        let is_text = |raw: &str| {
+            !raw.is_empty() && raw.chars().count() <= MAX_TEXT && !raw.chars().any(char::is_control)
+        };
+        let contracts = &self.contracts;
+        let versions = [
+            &contracts.federation,
+            &contracts.signed_text,
+            &contracts.runtime,
+        ];
+        let floor = self.oldest_app.iter().flatten();
+        if !is_text(&self.node)
+            || versions.iter().any(|list| list.len() > MAX_ENTRIES)
+            || self.capabilities.len() > MAX_ENTRIES
+            || !self.capabilities.iter().all(|name| is_text(name))
+            || self
+                .oldest_app
+                .as_ref()
+                .is_some_and(|apps| apps.len() > MAX_ENTRIES)
+            || !floor
+                .into_iter()
+                .all(|(platform, version)| is_text(platform) && is_text(version))
+        {
+            return Err("sent an answer beyond the limits".into());
+        }
+        Ok(())
+    }
+
     /// What a node of this release says: its version, every contract this release speaks, and every
     /// capability it has. No floor for apps.
     pub fn of_release(node: impl Into<String>) -> Self {
@@ -161,8 +196,8 @@ mod tests {
     const VECTORS: &str = include_str!("../../../testdata/vectors.json");
 
     /// The paths of the org definition's JSON that the first release (v0.1.0) already had, as far as the
-    /// org vectors show them (`departments[].parent` and `people[].devices` are there too, with no vector
-    /// that carries them). A path a vector shows that is in neither list fails the test below.
+    /// org vectors show them (`departments[].parent` and the `people[].devices` paths are there too, with no
+    /// vector that carries them yet). A path a vector shows that is in neither list fails the test below.
     const FIRST_RELEASE: &[&str] = &[
         "at",
         "departments",
@@ -176,6 +211,10 @@ mod tests {
         "people[].account",
         "people[].department",
         "people[].devices",
+        "people[].devices[].addedAt",
+        "people[].devices[].id",
+        "people[].devices[].label",
+        "people[].devices[].publicKey",
         "people[].id",
         "people[].label",
         "people[].publicKey",
@@ -272,6 +311,37 @@ mod tests {
         assert_eq!(Capability::parse("someFutureThing"), None);
         assert_eq!(read.contracts.federation, [1, 2]);
         assert_eq!(read.oldest_app.unwrap()["ios"], "0.4.0");
+    }
+
+    #[test]
+    fn an_answer_is_kept_only_within_the_limits() {
+        let sample = || About::of_release("0.3.0");
+        assert_eq!(sample().check(), Ok(()));
+        let refused = |edit: &dyn Fn(&mut About)| {
+            let mut about = sample();
+            edit(&mut about);
+            about.check().is_err()
+        };
+        assert!(refused(&|a| a.node = String::new()));
+        assert!(refused(&|a| a.node = "x".repeat(MAX_TEXT + 1)));
+        assert!(refused(&|a| a.node = "0.3\n0".into()));
+        assert!(refused(
+            &|a| a.capabilities = vec!["a".into(); MAX_ENTRIES + 1]
+        ));
+        assert!(refused(&|a| a.capabilities.push(String::new())));
+        assert!(refused(
+            &|a| a.contracts.federation = vec![1; MAX_ENTRIES + 1]
+        ));
+        assert!(refused(
+            &|a| a.oldest_app = Some(BTreeMap::from([("ios".into(), "\u{7}".into())]))
+        ));
+        let at_limit = || {
+            let mut about = sample();
+            about.node = "x".repeat(MAX_TEXT);
+            about.capabilities = vec!["a".into(); MAX_ENTRIES];
+            about
+        };
+        assert_eq!(at_limit().check(), Ok(()), "the limits are inclusive");
     }
 
     #[test]

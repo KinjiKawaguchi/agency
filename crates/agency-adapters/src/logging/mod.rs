@@ -3,6 +3,7 @@
 //! request body, a token, or a query string: callers pass finished sentences, as they did to stderr.
 
 pub mod files;
+pub mod reader;
 #[cfg(test)]
 mod tests;
 

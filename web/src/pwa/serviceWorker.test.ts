@@ -39,6 +39,29 @@ describe('the service worker', () => {
     for (const store of worker.stores.values()) expect([...store.keys()].some((url) => url.includes('/assets/'))).toBe(false)
   })
 
+  it('never serves the shell for a claim link, and never keeps its answers: the claim call, the landing page and its files are left to the browser, the pages go to the network', async () => {
+    const asks: string[] = []
+    const worker = startWorker((request) => {
+      asks.push(new URL(request.url).pathname)
+      return Promise.resolve(basic(`from the network ${new URL(request.url).pathname}`))
+    })
+    await worker.run('install')
+    // The claim call, whatever it carries, and the files of the public landing page, are not the worker's: no answer from it, none kept.
+    for (const request of [get('/api/claim'), get('/api/claim', { method: 'POST', body: '{}' }), asked('/landing/claim.js', 'script'), asked('/landing/claim.css', 'style'), asked('/claim.html', 'document')]) {
+      expect(await worker.fetchEvent(request), request.url).toBeUndefined()
+    }
+    // The pages of the claim go to the network every time, so that the shell of the app is never answered from a cache.
+    for (const path of ['/claim', '/claim/continue']) {
+      const first = await worker.fetchEvent(navigation(path))
+      const second = await worker.fetchEvent(navigation(path))
+      expect(await first?.text(), path).toBe(`from the network ${path}`)
+      expect(await second?.text(), path).toBe(`from the network ${path}`)
+    }
+    expect(asks.filter((path) => path.startsWith('/claim'))).toEqual(['/claim', '/claim', '/claim/continue', '/claim/continue'])
+    const kept = [...worker.stores.values()].flatMap((store) => [...store.keys()])
+    expect(kept.filter((url) => /claim|landing|\/api\//.test(url))).toEqual([])
+  })
+
   it('sends a page to the network, and shows the offline page only when the network fails', async () => {
     let isUp = true
     const worker = startWorker(() => (isUp ? Promise.resolve(new Response('the page with the write token')) : Promise.reject(new TypeError('Failed to fetch'))))
