@@ -38,6 +38,17 @@ The app is becoming native, one screen at a time (agency#77). The desk is a Swif
 - **Push** is registered by the app itself (`POST /api/push/tokens`) once the desk loads, and the badge is the number of requests waiting on the owner. A tapped notification opens that request on the desk.
 - **Settings** (the gear on the desk) show the home node and change it. Changing it forgets the token and the cookie.
 
+## The native overview
+
+The overview tab mirrors the web client's Overview screen (`web/src/overview`): every org and team the account sees on one screen, with the funding sources' usage below. `AgencyModel/Overview` holds what it decides, ported from the web with its test cases:
+
+- `TeamSummary` says what a team needs from the viewer: **mine** (the node's `mine` list is not empty, however busy the team is), **stuck** (work is blocked, counted by the reason the runtime gives), **idle** (participants, none working) or the rest. The viewer is not counted among the participants. Whose a request is stays the node's call.
+- `OverviewOrder` puts teams in the order mine, stuck, unreadable, idle, the rest, still loading; within a rank the team with more waiting or more blocked comes first, then by name. An org stands where its most pressing team does.
+- `WindowForecast` projects a funding window to its reset from the pace so far, and `FundingSummary` lists the weekly window before the five-hour one. A window whose reset has passed has no forecast.
+- `OverviewStore` reads `GET /api/me`, each team's view and each readable team's usage over 7 days (`NodeClient.usage`), and keeps each team's own outcome: a team that cannot be read is shown as that, in its place, and a team that was read keeps its last answer when a later read fails. A team whose node cannot be reached is not asked for usage (a 404 means its runtime reports none).
+
+The views are in `AgencyUI/Overview`; a long team name is cut after two lines and opens in full when tapped.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).

@@ -73,6 +73,11 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/view")
     }
 
+    /// The team's token use over the last `days` days. A team whose runtime does not report usage answers 404.
+    public func usage(org: String, team: String, days: Int) async throws -> TokenUsage {
+        try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/usage?days=\(days)")
+    }
+
     public func decisions(limit: Int = 50) async throws -> DecisionLog {
         try await get("/api/decisions?limit=\(limit)")
     }

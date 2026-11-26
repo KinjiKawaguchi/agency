@@ -24,6 +24,11 @@ public struct Team: Equatable, Sendable {
         if case .replica = source { true } else { false }
     }
 
+    /// The copy could not be renewed: the team's node is out of reach, so nothing more can be asked of it.
+    public var isUnreachable: Bool {
+        if case .replica(_, _, let error) = source { error != nil } else { false }
+    }
+
     /// `org/team`, unique across the orgs the node can reach.
     public var key: String { "\(view.org)/\(view.team)" }
 
