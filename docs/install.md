@@ -412,6 +412,7 @@ The org states what it measures (its KPIs) in its definition, with no number. Th
 
 - **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
 - The numbers are for reading how a measure moves, not for accounting.
+- **The readings.** `GET /api/orgs/<org>/outcomes/readings` (the owner only, like the numbers) says how each KPI a team's plan aims an epic at stood around the day the epic shipped. A team's view keeps a finished epic for a limited time (30 days for the scrum harness), so the node writes the day it first sees an aimed epic finished into `outcomes/<org>.ships.jsonl` (the same directory, the file `0600`; it holds a team, an epic and a time, and no number) and never changes it. Keep it with the numbers, and back it up the same way: without it, a reading of an epic that left the team's view cannot be made.
 
 ## Updating a node
 
