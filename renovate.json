@@ -1,0 +1,134 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Dependency updates for this repository (Cargo, npm, GitHub Actions, Swift packages, XcodeGen packages).",
+    "Ordinary updates wait 2 days after a release, come grouped by ecosystem, and merge by themselves when CI is green if they are patch or minor. A major update needs a person.",
+    "A security fix skips the wait and merges when CI is green.",
+    "Every GitHub Action stays pinned to a commit SHA with its tag in a comment."
+  ],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "timezone": "Asia/Tokyo",
+  "labels": [
+    "dependencies"
+  ],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "minimumReleaseAge": "2 days",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "automergeStrategy": "squash",
+  "prConcurrentLimit": 6,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": [
+      "dependencies",
+      "security"
+    ],
+    "automerge": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on monday"
+    ],
+    "automerge": true
+  },
+  "packageRules": [
+    {
+      "description": "Patch and minor updates: one pull request for each ecosystem, merged when CI is green.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "digest"
+      ],
+      "automerge": true
+    },
+    {
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "Rust dependencies",
+      "groupSlug": "cargo"
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "web client dependencies",
+      "groupSlug": "web"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "pinDigest",
+        "digest"
+      ],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
+      "matchManagers": [
+        "swift",
+        "xcodegen"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "Apple dependencies",
+      "groupSlug": "apple"
+    },
+    {
+      "description": "A Rust crate before 1.0 may break its interface with a minor release (and several of ours do cryptography): its minor updates are for a person, one pull request each.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": null,
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "major"
+      ]
+    },
+    {
+      "description": "A major update is a pull request for a person to read and merge.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "major"
+      ]
+    },
+    {
+      "description": "This action is pinned to the head of a branch, which has no release date to wait for and no version to read: a person merges its updates.",
+      "matchPackageNames": [
+        "dtolnay/rust-toolchain"
+      ],
+      "automerge": false
+    }
+  ]
+}

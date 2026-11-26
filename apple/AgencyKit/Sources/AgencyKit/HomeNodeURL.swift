@@ -20,7 +20,7 @@ public struct HomeNodeURL: Equatable, Sendable {
     /// The port in use, with the scheme's default filled in.
     public let port: Int
 
-    /// The address the web view opens.
+    /// The address of the node.
     public let url: URL
 
     public init(validating input: String) throws {
@@ -60,20 +60,6 @@ public struct HomeNodeURL: Equatable, Sendable {
     public var origin: String {
         let isDefaultPort = port == Self.defaultPort(forScheme: scheme)
         return isDefaultPort ? "\(scheme)://\(host)" : "\(scheme)://\(host):\(port)"
-    }
-
-    /// Whether the address is on the home node: the same scheme, host and effective port.
-    public func hasSameOrigin(_ other: URL) -> Bool {
-        guard let otherScheme = other.scheme, let otherHost = other.host else { return false }
-        return hasSameOrigin(scheme: otherScheme, host: otherHost, port: other.port ?? 0)
-    }
-
-    /// The same, for an origin given in parts, as WebKit reports a frame's origin. A port of 0 stands
-    /// for the scheme's default.
-    public func hasSameOrigin(scheme otherScheme: String, host otherHost: String, port otherPort: Int) -> Bool {
-        let scheme = otherScheme.lowercased()
-        let effectivePort = otherPort == 0 ? Self.defaultPort(forScheme: scheme) : otherPort
-        return scheme == self.scheme && otherHost.lowercased() == host && effectivePort == port
     }
 
     /// The port a URL with this scheme reaches when it names none.

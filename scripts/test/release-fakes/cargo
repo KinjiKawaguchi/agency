@@ -1,0 +1,14 @@
+#!/bin/bash
+# A stand-in for cargo: `build` makes the binary into the target directory (CARGO_TARGET_DIR, else
+# ./target), and `metadata` says where that is, as `cargo metadata` does.
+target="${CARGO_TARGET_DIR:-$PWD/target}"
+case "$1" in
+  metadata) printf '{"packages":[],"workspace_members":[],"target_directory":"%s","version":1}\n' "$target" ;;
+  build)
+    mkdir -p "$target/release"
+    printf '#!/bin/sh\n# GOOD built\necho agency\n' > "$target/release/agency"
+    chmod +x "$target/release/agency"
+    echo "$*" >> "${FAKE_STATE:?}/cargo"
+    ;;
+  *) echo "cargo stand-in: unexpected $*" >&2; exit 64 ;;
+esac

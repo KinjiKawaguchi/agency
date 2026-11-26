@@ -1,0 +1,395 @@
+/* The live page: the department moving. Layout first; the motion is in the few keyframes at the end, and none of it runs for a viewer who asked for less. */
+.lv-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.lv-lead {
+  max-width: 70ch;
+  margin: 0 0 16px;
+}
+
+.lv-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  grid-template-areas:
+    'tiles tiles'
+    'graph feed'
+    'board board';
+  gap: 16px;
+  align-items: start;
+}
+
+.lv-tiles {
+  grid-area: tiles;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lv-graph-panel {
+  grid-area: graph;
+}
+
+.lv-feed-panel {
+  grid-area: feed;
+}
+
+.lv-board-panel {
+  grid-area: board;
+}
+
+.lv-panel {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.lv-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.lv-panel-head h2 {
+  font-size: 16px;
+}
+
+.lv-panel-head .muted {
+  font-size: 12.5px;
+}
+
+.lv-empty,
+.lv-late {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+/* ── Throughput ── */
+.lv-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.lv-tile-label {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.lv-tile-value {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.lv-bins {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 34px;
+  margin-top: 6px;
+}
+
+.lv-bin {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--series-1);
+}
+
+.lv-landed {
+  position: absolute;
+  right: 4px;
+  bottom: -22px;
+  margin: 0;
+  color: var(--ok);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.lv-tiles.is-landed .lv-tile:first-child {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+
+.lv-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid var(--ok);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lv-tiles.is-landed .lv-burst {
+  animation: lv-burst 1.4s ease-out;
+}
+
+/* ── The picture ── */
+.lv-graph svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lv-edge {
+  stroke: var(--ink-3);
+  stroke-linecap: round;
+}
+
+.lv-edge-lit {
+  stroke: var(--flow);
+  stroke-linecap: round;
+}
+
+.lv-packet {
+  fill: var(--flow);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.lv-dot {
+  stroke: var(--panel);
+  stroke-width: 2.5;
+}
+
+.lv-halo {
+  fill: none;
+  stroke-width: 3;
+}
+
+.lv-initials {
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.lv-name {
+  fill: var(--ink-2);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.lv-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  list-style: none;
+}
+
+.lv-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+}
+
+/* ── The feed ── */
+.lv-feed {
+  display: flex;
+  max-height: 640px;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lv-row {
+  display: grid;
+  grid-template-columns: 8px 58px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: baseline;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+
+.lv-kind {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+.lv-kind-prMerged .lv-kind {
+  background: var(--ok);
+}
+
+.lv-kind-prOpened .lv-kind {
+  background: var(--flow);
+}
+
+.lv-kind-itemAdded .lv-kind {
+  background: var(--hold);
+}
+
+.lv-kind-statusChanged .lv-kind {
+  background: var(--series-7);
+}
+
+.lv-time {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lv-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lv-team {
+  grid-column: 3;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.lv-kind-message {
+  color: var(--ink-2);
+}
+
+.lv-new {
+  background: var(--accent-soft);
+}
+
+/* ── What each agent is on ── */
+.lv-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 28px;
+}
+
+.lv-board ul {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.lv-board-team {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.lv-agent {
+  display: flex;
+  gap: 10px;
+}
+
+.lv-agent-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13.5px;
+}
+
+.lv-item {
+  overflow-wrap: anywhere;
+}
+
+.lv-ref {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.lv-epic {
+  display: block;
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .lv-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'tiles'
+      'graph'
+      'feed'
+      'board';
+  }
+
+  .lv-tiles {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-bottom: 18px;
+  }
+}
+
+/* ── Motion: only where it is wanted ── */
+@media (prefers-reduced-motion: no-preference) {
+  .lv-new {
+    animation: lv-arrive 1.6s ease-out;
+  }
+
+  .lv-tile-value {
+    transition: color 0.4s;
+  }
+
+  .lv-tiles.is-landed .lv-tile:first-child .lv-tile-value {
+    animation: lv-bump 0.8s ease-out;
+  }
+}
+
+@keyframes lv-arrive {
+  from {
+    background: var(--flow);
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    background: var(--accent-soft);
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lv-bump {
+  30% {
+    color: var(--ok);
+    transform: scale(1.12);
+  }
+}
+
+@keyframes lv-burst {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(14);
+  }
+}

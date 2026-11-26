@@ -1,7 +1,9 @@
 //! In-memory test doubles: a clock that moves only when told to, counting randomness, and a team runtime.
 use agency_core::config::HostedTeam;
-use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
+use agency_core::delivery::DeliveryFacts;
+use agency_core::ports::{Clock, DeliveryError, DeliverySource, Notifier, Random, TeamRuntime};
 use agency_core::push::{Notice, PushError};
+use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::PushToken;
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
@@ -62,6 +64,39 @@ impl Random for CountingRandom {
     }
 }
 
+/// What a `MemoryDelivery` answers, and what it was asked.
+#[derive(Default, Debug)]
+pub struct MemoryDeliveryState {
+    /// The facts it answers; the reason it fails with; `None` fails as GitHub being unavailable.
+    pub facts: Option<Result<DeliveryFacts, String>>,
+    /// The repositories and the start of the period of each read.
+    pub asked: Vec<(Vec<String>, OffsetDateTime)>,
+}
+
+/// A source of delivery facts that answers from memory.
+#[derive(Clone, Default)]
+pub struct MemoryDelivery(pub Arc<Mutex<MemoryDeliveryState>>);
+
+#[async_trait]
+impl DeliverySource for MemoryDelivery {
+    async fn facts(
+        &self,
+        repos: &[String],
+        since: OffsetDateTime,
+    ) -> Result<DeliveryFacts, DeliveryError> {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.asked.push((repos.to_vec(), since));
+        match &state.facts {
+            Some(Ok(facts)) => Ok(facts.clone()),
+            Some(Err(reason)) => Err(DeliveryError(reason.clone())),
+            None => Err(DeliveryError("GitHub did not answer the request".into())),
+        }
+    }
+}
+
 /// A team runtime that keeps its requests in memory and records the decisions applied to them.
 #[derive(Default, Debug)]
 pub struct MemoryRuntimeState {
@@ -69,7 +104,7 @@ pub struct MemoryRuntimeState {
     pub requests: Vec<(String, String)>,
     /// The runtime name a request is addressed to (`to`), by request id; absent for the team's owner.
     pub to: BTreeMap<String, String>,
-    /// Board items waiting for a decision (`pendingDecision`, judged by `repo#N`): (ref, title).
+    /// Board items waiting for a decision (`pendingDecision`, judged by their item reference): (ref, title).
     pub pending: Vec<(String, String)>,
     /// The people the view shows.
     pub people: Vec<PersonStatus>,
@@ -79,6 +114,11 @@ pub struct MemoryRuntimeState {
     pub usage: Option<TokenUsage>,
     /// The ranges `token_usage` was asked for.
     pub usage_days: Vec<u32>,
+    /// The events it reports, oldest first; `None` answers 404 like a runtime without `activity`. A read
+    /// gets the events after its `since`, cut at its `limit`.
+    pub activity: Option<Vec<ActivityEvent>>,
+    /// What `activity` was asked for: `since` and `limit`.
+    pub activity_asked: Vec<(Timestamp, u32)>,
 }
 
 #[derive(Clone, Default)]
@@ -183,6 +223,39 @@ impl TeamRuntime for MemoryRuntime {
         usage.ok_or_else(|| RuntimeError {
             status: 404,
             message: "the memory runtime does not report token usage".into(),
+        })
+    }
+
+    async fn activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError> {
+        let mut state = self.0.lock().map_err(|_| poisoned())?;
+        state.activity_asked.push((since.clone(), limit));
+        let Some(all) = state.activity.as_ref() else {
+            return Err(RuntimeError {
+                status: 404,
+                message: "the memory runtime does not report activity".into(),
+            });
+        };
+        let after: Vec<&ActivityEvent> = all
+            .iter()
+            .filter(|event| clock::parse(event.at.as_str()) > clock::parse(since.as_str()))
+            .collect();
+        let limit = limit as usize;
+        let truncated = after.len() > limit;
+        let events: Vec<ActivityEvent> = after.into_iter().take(limit).cloned().collect();
+        let generated_at = events
+            .last()
+            .map_or_else(|| since.clone(), |last| last.at.clone());
+        Ok(Activity {
+            org: team.org.clone(),
+            team: team.team.clone(),
+            generated_at,
+            truncated,
+            events,
         })
     }
 }

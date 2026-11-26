@@ -1,13 +1,70 @@
 //! The real clock, the operating system's randomness, and an async write lock.
 use agency_core::ports::{Clock, Random, WriteLock};
-use agency_proto::clock::OffsetDateTime;
+use agency_proto::clock::{OffsetDateTime, UtcOffset};
 use async_trait::async_trait;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 pub struct SystemClock;
+
+/// How long the machine's time zone is remembered before it is asked again (it changes with summer time).
+const OFFSET_KEPT: Duration = Duration::from_secs(3600);
+
+/// The offset `date +%z` says (`+0900`, `-0330`). The `time` crate refuses to read the local offset from a
+/// program with several threads, so the machine is asked.
+fn machine_offset() -> UtcOffset {
+    let Ok(output) = std::process::Command::new("date").arg("+%z").output() else {
+        return UtcOffset::UTC;
+    };
+    parse_offset(String::from_utf8_lossy(&output.stdout).trim()).unwrap_or(UtcOffset::UTC)
+}
+
+pub fn parse_offset(text: &str) -> Option<UtcOffset> {
+    let sign = match text.chars().next()? {
+        '+' => 1,
+        '-' => -1,
+        _ => return None,
+    };
+    let digits = &text[1..];
+    if digits.len() != 4 || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let (hours, minutes): (i8, i8) = (digits[..2].parse().ok()?, digits[2..].parse().ok()?);
+    UtcOffset::from_hms(sign * hours, sign * minutes, 0).ok()
+}
 
 impl Clock for SystemClock {
     fn now(&self) -> OffsetDateTime {
         OffsetDateTime::now_utc()
+    }
+
+    fn utc_offset(&self) -> UtcOffset {
+        static KEPT: Mutex<Option<(Instant, UtcOffset)>> = Mutex::new(None);
+        let mut kept = KEPT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        match *kept {
+            Some((at, offset)) if at.elapsed() < OFFSET_KEPT => offset,
+            _ => {
+                let offset = machine_offset();
+                *kept = Some((Instant::now(), offset));
+                offset
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_offset_date_prints() {
+        let hours = |h: i8, m: i8| UtcOffset::from_hms(h, m, 0).unwrap();
+        assert_eq!(parse_offset("+0900"), Some(hours(9, 0)));
+        assert_eq!(parse_offset("-0330"), Some(hours(-3, -30)));
+        assert_eq!(parse_offset("+0000"), Some(UtcOffset::UTC));
+        for bad in ["", "0900", "+09", "+09:00", "+09000", "+abcd", "UTC"] {
+            assert_eq!(parse_offset(bad), None, "{bad:?}");
+        }
     }
 }
 

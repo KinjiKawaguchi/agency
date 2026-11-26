@@ -50,17 +50,14 @@ impl Fake {
 
     fn team(&self, team: &str) -> HostedTeam {
         let env = BTreeMap::from([("FAKE_DIR".to_owned(), self.dir.path().display().to_string())]);
-        let runtime = RuntimeCommand {
-            command: vec![self.dir.path().join("runtime.sh").display().to_string()],
-            env,
-        };
-        HostedTeam {
-            org: id("acme"),
-            team: id(team),
-            owner: id("alice"),
-            people: BTreeMap::new(),
-            runtime,
-        }
+        let runtime = RuntimeCommand::of(vec![self
+            .dir
+            .path()
+            .join("runtime.sh")
+            .display()
+            .to_string()])
+        .with_env(env);
+        HostedTeam::new(id("acme"), id(team), id("alice"), runtime)
     }
 
     fn read(&self, name: &str) -> String {
@@ -171,13 +168,11 @@ async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
         503
     );
 
-    let missing = HostedTeam {
-        runtime: RuntimeCommand {
-            command: vec![fake.path().join("missing").display().to_string()],
-            env: BTreeMap::new(),
-        },
-        ..team
-    };
+    let missing = team.with_runtime(RuntimeCommand::of(vec![fake
+        .path()
+        .join("missing")
+        .display()
+        .to_string()]));
     assert_eq!(
         CommandRuntime::default()
             .view(&missing)
@@ -262,4 +257,246 @@ async fn readers_share_one_run_of_the_command_and_a_decision_reruns_it() {
         2,
         "usage is kept per range"
     );
+}
+
+#[tokio::test]
+async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answers_again() {
+    let fake = Fake::new();
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let written = lines.clone();
+    // Nothing is reused here, so each call runs the command and its outcome is seen.
+    let runtimes = CommandRuntime::with_log(Box::new(move |line| {
+        written.lock().unwrap().push(line.into())
+    }))
+    .keeping(std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let team = fake.team("app");
+    let logged = || std::mem::take(&mut *lines.lock().unwrap());
+
+    runtimes.view(&team).await.unwrap();
+    assert_eq!(
+        logged(),
+        Vec::<String>::new(),
+        "a runtime that answers is not logged"
+    );
+
+    fake.answer("view", "not json", 1);
+    for _ in 0..3 {
+        assert!(runtimes.view(&team).await.is_err());
+    }
+    let failing = logged();
+    assert_eq!(
+        failing.len(),
+        1,
+        "logged once, not on every call: {failing:?}"
+    );
+    assert!(
+        failing[0].starts_with("agency: team acme/app: the team runtime fails: the team runtime did not write an agency-runtime/1 response"),
+        "{failing:?}"
+    );
+
+    fake.answer(
+        "view",
+        r#"{"error":{"status":503,"message":"the board is locked"}}"#,
+        1,
+    );
+    assert!(runtimes.view(&team).await.is_err());
+    assert_eq!(
+        logged(),
+        ["agency: team acme/app: the team runtime fails: the board is locked"],
+        "a different failure is logged"
+    );
+
+    fake.answer(
+        "decide",
+        r#"{"error":{"status":404,"message":"no such request"}}"#,
+        1,
+    );
+    assert!(runtimes.decide(&team, decision("")).await.is_err());
+    assert_eq!(
+        logged(),
+        ["agency: team acme/app: the team runtime answers again"],
+        "a refusal (4xx) is an answer"
+    );
+    assert!(runtimes.decide(&team, decision("")).await.is_err());
+    assert_eq!(logged(), Vec::<String>::new(), "and is never logged itself");
+
+    fake.answer("view", "not json", 1);
+    assert!(runtimes.view(&team).await.is_err());
+    fake.answer("view", &format!(r#"{{"result":{SAMPLE}}}"#), 0);
+    runtimes.view(&team).await.unwrap();
+    runtimes.view(&team).await.unwrap();
+    let recovered = logged();
+    assert_eq!(recovered.len(), 2, "{recovered:?}");
+    assert_eq!(
+        recovered[1],
+        "agency: team acme/app: the team runtime answers again"
+    );
+
+    let other = fake.team("web");
+    fake.answer("view", "not json", 1);
+    assert!(runtimes.view(&other).await.is_err());
+    assert!(runtimes.view(&team).await.is_err());
+    assert_eq!(logged().len(), 2, "each team has its own state");
+}
+
+const ACTIVITY: &str = include_str!("../../../testdata/activity.sample.json");
+
+#[tokio::test]
+async fn reads_activity_only_from_a_runtime_that_lists_it() {
+    let since = agency_proto::Timestamp::parse("2026-11-24T11:00:00Z").unwrap();
+    let fake = Fake::new();
+    let error = CommandRuntime::default()
+        .activity(&fake.team("app"), &since, 200)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, 404);
+    assert_eq!(
+        fake.read("calls"),
+        "describe\n",
+        "no activity call to a runtime that does not list it"
+    );
+
+    let fake = Fake::new();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","activity"],"label":"App"}}"#,
+        0,
+    );
+    fake.answer("activity", &format!(r#"{{"result":{ACTIVITY}}}"#), 0);
+    let activity = CommandRuntime::default()
+        .activity(&fake.team("app"), &since, 200)
+        .await
+        .unwrap();
+    assert_eq!(activity.events.len(), 6);
+    assert_eq!(fake.read("calls"), "describe\nactivity\n");
+    let request: serde_json::Value =
+        serde_json::from_str(&fake.read("last-activity.json")).unwrap();
+    assert_eq!(request["op"], "activity");
+    assert_eq!(
+        request["since"], "2026-11-24T10:55:00Z",
+        "a shared run starts five minutes before the first reader's since"
+    );
+    assert_eq!(
+        request["limit"], 500,
+        "and asks for the most, to be cut for each reader"
+    );
+}
+
+fn activity_fake(truncated: bool) -> Fake {
+    let fake = Fake::new();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","activity"],"label":"App"}}"#,
+        0,
+    );
+    let answer = ACTIVITY.replace(
+        "\"truncated\": false",
+        &format!("\"truncated\": {truncated}"),
+    );
+    fake.answer("activity", &format!(r#"{{"result":{answer}}}"#), 0);
+    fake
+}
+
+fn at(raw: &str) -> agency_proto::Timestamp {
+    agency_proto::Timestamp::parse(raw).unwrap()
+}
+
+#[tokio::test]
+async fn twenty_readers_of_a_teams_activity_start_one_process() {
+    let fake = activity_fake(false);
+    let runtime = std::sync::Arc::new(CommandRuntime::default());
+    let team = fake.team("app");
+    let readers = (0..20).map(|n| {
+        let (runtime, team) = (runtime.clone(), team.clone());
+        // Each reader asks from its own time, as the default (an hour before the read) differs by a second.
+        let since = at(&format!("2026-11-24T11:00:{:02}Z", 30 + n));
+        tokio::spawn(async move { runtime.activity(&team, &since, 200).await })
+    });
+    for reader in readers {
+        assert_eq!(reader.await.unwrap().unwrap().events.len(), 6);
+    }
+    assert_eq!(
+        fake.read("calls"),
+        "describe\nactivity\n",
+        "20 readers with different `since` values, one run"
+    );
+    let later = runtime
+        .activity(&team, &at("2026-11-24T11:26:00Z"), 200)
+        .await
+        .unwrap();
+    assert_eq!(
+        later.events.len(),
+        3,
+        "cut to this reader's since, from the same run"
+    );
+    let cut = runtime
+        .activity(&team, &at("2026-11-24T11:00:30Z"), 2)
+        .await
+        .unwrap();
+    assert_eq!((cut.events.len(), cut.truncated), (2, true));
+    assert_eq!(fake.read("calls").matches("activity").count(), 1);
+}
+
+#[tokio::test]
+async fn a_reader_the_shared_run_cannot_answer_gets_its_own_run() {
+    let fake = activity_fake(false);
+    let runtime = CommandRuntime::default();
+    let team = fake.team("app");
+    runtime
+        .activity(&team, &at("2026-11-24T11:30:00Z"), 200)
+        .await
+        .unwrap();
+    let older = runtime
+        .activity(&team, &at("2026-11-24T10:00:00Z"), 200)
+        .await
+        .unwrap();
+    assert_eq!(
+        older.events.len(),
+        6,
+        "asked from before the shared run began"
+    );
+    assert_eq!(fake.read("calls").matches("activity").count(), 2);
+    let request: serde_json::Value =
+        serde_json::from_str(&fake.read("last-activity.json")).unwrap();
+    assert_eq!(request["since"], "2026-11-24T10:00:00Z");
+}
+
+#[tokio::test]
+async fn a_run_cut_at_the_runtimes_limit_answers_only_what_it_surely_holds() {
+    let fake = activity_fake(true);
+    let runtime = CommandRuntime::default();
+    let team = fake.team("app");
+    let small = runtime
+        .activity(&team, &at("2026-11-24T11:00:00Z"), 3)
+        .await
+        .unwrap();
+    assert_eq!((small.events.len(), small.truncated), (3, true));
+    assert_eq!(
+        fake.read("calls").matches("activity").count(),
+        1,
+        "three events are surely there"
+    );
+    runtime
+        .activity(&team, &at("2026-11-24T11:00:00Z"), 200)
+        .await
+        .unwrap();
+    assert_eq!(
+        fake.read("calls").matches("activity").count(),
+        2,
+        "a reader who wants more than the cut run holds asks the runtime"
+    );
+}
+
+#[tokio::test]
+async fn a_shared_run_is_not_reused_once_its_time_is_up() {
+    let fake = activity_fake(false);
+    let runtime = CommandRuntime::default().keeping_activity(std::time::Duration::ZERO);
+    let team = fake.team("app");
+    for _ in 0..2 {
+        runtime
+            .activity(&team, &at("2026-11-24T11:00:30Z"), 200)
+            .await
+            .unwrap();
+    }
+    assert_eq!(fake.read("calls").matches("activity").count(), 2);
 }

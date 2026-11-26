@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { resetNode, trackErrors } from './helpers'
+import { resetNode, trackErrors, waitOnClock } from './helpers'
 
 let errors: () => string[]
 
@@ -14,9 +14,12 @@ test.afterEach(() => {
 
 test('overview: every org and team, what needs the viewer first, and a team that cannot be read in its place', async ({ page, request }) => {
   await resetNode(request, { moreOrgs: true, usage: true })
+  // The team nobody can read is tried again with backoff before it is called failed; the page's clock is moved on by hand.
+  await page.clock.install()
   await page.goto('/overview')
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
   await expect(page.locator('article.ov-team')).toHaveCount(6)
+  await waitOnClock(page, async () => (await page.getByRole('article', { name: 'club/shop' }).getByText('Could not load this team').count()) > 0)
   await expect(page.locator('section.ov-org h2').allTextContents()).resolves.toEqual(['Acme', 'Lab', 'Club', 'Usage limits'])
   const research = page.getByRole('article', { name: 'lab/research' })
   await expect(research).toContainText('3 blocked items')
@@ -47,7 +50,7 @@ test('org chart: departments, teams, agents, and focusing on one department', as
   await expect(chart.getByText('Acme', { exact: true })).toBeVisible()
   const engineering = chart.getByRole('link', { name: /DepartmentEngineering|Department\s*Engineering/ })
   await expect(engineering).toContainText('Led by Alice')
-  await expect(engineering).toContainText('1 waiting for you')
+  await expect(engineering).toContainText('3 requests wait for you')
   await expect(chart.getByRole('link', { name: /Backend/ })).toContainText('Waiting for your answer')
   await engineering.click()
   await expect(page).toHaveURL(/unit=engineering/)
@@ -111,10 +114,10 @@ test('costs: token use by day and by person when the node serves it', async ({ p
 test('switches the language and keeps it across a reload', async ({ page }) => {
   await page.goto('/desk')
   await page.getByRole('combobox', { name: 'Language' }).selectOption('ja')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('1 人の参加者があなたの返事を待っています。')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('参加者 1 人があなたの返事を待っています。')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja')
   await page.reload()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('1 人の参加者があなたの返事を待っています。')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('参加者 1 人があなたの返事を待っています。')
 })
 
 test('follows the theme the viewer picks', async ({ page }) => {

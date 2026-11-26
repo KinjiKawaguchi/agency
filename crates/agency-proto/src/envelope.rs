@@ -14,7 +14,7 @@ pub const MAX_AGE_SECONDS: i64 = 7 * 24 * 60 * 60;
 pub enum EnvelopeKind {
     /// Answers a request (`target` is the request id).
     Answer,
-    /// Decides a board item waiting for a decision (`target` is `repo#N`).
+    /// Decides a board item waiting for a decision (`target` is the item's reference).
     Judge,
 }
 
@@ -41,6 +41,9 @@ pub struct Envelope {
     pub at: String,
 }
 
+/// An envelope's target, a request id or an item reference: 1 to 120 bytes of ASCII letters, digits, and
+/// `._#-`. A view allows an item reference of 200 characters, so a pending decision's `answerWith.target`
+/// is held to this stricter rule (docs/protocol.md, "Item references"), and the iPhone app checks the same.
 fn is_target(raw: &str) -> bool {
     (1..=120).contains(&raw.len())
         && raw

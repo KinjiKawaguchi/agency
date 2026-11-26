@@ -31,6 +31,22 @@ struct FundingSummaryTests {
         #expect(summary.windows == [.notStarted(.sevenDay), .stale(.fiveHour)])
     }
 
+    @Test("the node's recorded answer: a subscription with both windows read, and a key whose usage is unknown")
+    func recorded() throws {
+        let me = Fixture.decode(Me.self, "me-funding")
+        let summaries = me.funding.map { FundingSummary(funding: $0, now: now) }
+        #expect(summaries.map(\.label) == ["Max", "API"])
+        #expect(summaries.map(\.kind) == [.subscription, .apiKey])
+        #expect(summaries[0].readAt?.text == "2026-11-24T11:57:00Z")
+        #expect(summaries[0].windows.map(\.name) == [.sevenDay, .fiveHour])
+        for window in summaries[0].windows {
+            guard case .projected(_, let forecast) = window else { Issue.record("expected a projection for \(window.name)"); return }
+            #expect(forecast.status == .overrun)
+        }
+        #expect(summaries[1].windows.isEmpty)
+        #expect(summaries[1].readAt == nil)
+    }
+
     @Test("a source with no windows says its usage is unknown, not that the windows have not started")
     func unknown() {
         let summary = FundingSummary(funding: funding("", readAt: nil), now: now)
@@ -57,7 +73,7 @@ struct FundingSummaryTests {
         #expect(Ja.Overview.working(1, of: 4) == "参加者 4 人のうち 1 人が作業中")
         #expect(Ja.Overview.tag(.active) == nil)
         #expect(Ja.Overview.tag(.mine) == "あなたの番")
-        #expect(Ja.Overview.blockedReason(.waitingOnPrevious) == "先行する仕事待ち")
+        #expect(Ja.Work.blockedReason(.waitingOnPrevious) == "先行する仕事待ち")
     }
 }
 

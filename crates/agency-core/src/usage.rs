@@ -12,7 +12,7 @@ use agency_proto::org::TeamPlace;
 use agency_proto::usage::{valid_days, DEFAULT_USAGE_DAYS, MAX_USAGE_DAYS};
 use agency_proto::{Id, Role, TokenUsage};
 
-fn check_days(days: u32) -> Result<u32> {
+pub(crate) fn check_days(days: u32) -> Result<u32> {
     if valid_days(days) {
         Ok(days)
     } else {
@@ -87,16 +87,18 @@ pub async fn hosted_usage(
     days: u32,
     auth: &ReadAuth,
 ) -> Result<TokenUsage> {
-    let hosted = node.config().hosted(org, team).cloned();
-    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
+    let hosted = node.hosted(org, team);
+    let doc = node.store().load_org(org);
     let reader = verify_read_once(
         node,
         doc.as_ref().map(|doc| &doc.body),
+        hosted.is_some(),
         auth,
         "GET",
         &routes::usage(org, team, days),
     )?;
-    let hosted = hosted.ok_or_else(unseen::not_found)?;
+    let hosted =
+        hosted.ok_or_else(|| unseen::refused("a read of a team that does not run here"))?;
     if reader.role == Role::Answerer {
         return Err(Error::new(
             ErrorKind::Forbidden,

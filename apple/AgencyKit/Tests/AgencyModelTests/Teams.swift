@@ -30,18 +30,19 @@ enum Teams {
     /// The same, as the node's answer.
     static func snapshot(
         viewer: String? = "owner", mine: [String]? = nil, waitingOnViewer: [String]? = nil,
-        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = []
+        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = [], addWork: [[String: Any]] = []
     ) -> TeamSnapshot {
-        try! build(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests)
+        try! build(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests, addWork: addWork)
     }
 
     private static func build(
-        viewer: String?, mine: [String]?, waitingOnViewer: [String]?, source: [String: Any], addRequests: [[String: Any]]
+        viewer: String?, mine: [String]?, waitingOnViewer: [String]?, source: [String: Any], addRequests: [[String: Any]], addWork: [[String: Any]]
     ) throws -> TeamSnapshot {
         var view = try sample()
         var requests = view["requests"] as! [[String: Any]]
         requests += addRequests
         view["requests"] = requests
+        view["work"] = (view["work"] as? [[String: Any]] ?? []) + addWork
         let people = view["people"] as! [[String: Any]]
         let ownMine = requests.filter { ($0["to"] as? String ?? viewer) == viewer && viewer != nil }.map { $0["id"] as! String }
         let ownWaiting = people.filter { ($0["waitingOn"] as? [String: Any])?["person"] as? String == viewer && viewer != nil }.map { $0["id"] as! String }

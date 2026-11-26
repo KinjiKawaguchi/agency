@@ -112,7 +112,8 @@ pub fn request_device(node: &Node, input: DeviceRequestInput) -> Result<DeviceRe
     to_request(record)
 }
 
-/// The account's devices in each of its orgs, and the devices waiting to be added.
+/// The account's devices in each of its orgs, and the devices waiting to be added. `node` is left for the
+/// Client API to add, because it depends on who asks and on the running program.
 pub fn device_list(node: &Node) -> Result<DeviceList> {
     let account = node.account();
     let orgs = my_orgs(node)
@@ -126,7 +127,11 @@ pub fn device_list(node: &Node) -> Result<DeviceList> {
         .into_iter()
         .map(to_request)
         .collect::<Result<_>>()?;
-    Ok(DeviceList { orgs, requests })
+    Ok(DeviceList {
+        orgs,
+        requests,
+        node: None,
+    })
 }
 
 /// On the root key's node: checks a device change and writes it into the next version.
@@ -140,8 +145,31 @@ pub async fn accept_device_change(
     let key = current
         .as_ref()
         .and_then(|current| device_change_key(&current.body, &signed));
-    unseen::verify(&signed, Kind::Device, key)?;
-    let current = current.ok_or_else(unseen::not_found)?;
+    let is_valid = unseen::check(&signed, Kind::Device, key);
+    let (account, signer) = (&signed.body.account, &signed.signer);
+    let current = match current {
+        None => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} in {org}, an org this node does not have"
+            )))
+        }
+        Some(current) if key.is_none() && current.body.member(account).is_none() => {
+            return Err(unseen::refused(format!(
+                "a device change for {account}, who is not a member of {org}"
+            )))
+        }
+        Some(_) if key.is_none() => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} signed as {signer}, which is not the key it needs"
+            )))
+        }
+        Some(_) if !is_valid => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} whose signature does not match {signer}"
+            )))
+        }
+        Some(current) => current,
+    };
     if !is_root(node, &current) {
         return Err(Error::new(
             ErrorKind::Forbidden,
@@ -158,8 +186,13 @@ pub async fn accept_device_change(
     Ok(doc)
 }
 
-/// Keeps the version the root's node wrote, if it is the next one.
-async fn keep_returned(node: &Node, returned: SignedOrg) -> Result<()> {
+/// Keeps the version the root's node wrote. If this node is more than one version behind, it first
+/// takes the versions in between from the root's node.
+async fn keep_returned(node: &Node, root_node: &str, returned: SignedOrg) -> Result<()> {
+    let org = &returned.body.org;
+    if returned.body.version > load(node, org)?.body.version + 1 {
+        crate::orgs::catch_up(node, root_node, org, returned.body.version).await?;
+    }
     let _guard = node.write_lock().lock().await;
     let current = load(node, &returned.body.org)?;
     if returned.body.version > current.body.version {
@@ -192,7 +225,7 @@ async fn relay(
     match outcome {
         Outcome::Delivered => {
             if let Some(doc) = returned {
-                keep_returned(node, doc).await?;
+                keep_returned(node, &root_node, doc).await?;
             }
             Ok(DeviceChangeResult {
                 outcome: DeviceChangeOutcome::Delivered,

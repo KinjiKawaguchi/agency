@@ -5,8 +5,7 @@ import UIKit
 import UserNotifications
 
 /// Asks for notification permission at the right moment, registers with Apple, and keeps what the
-/// web view needs: the device registration to hand to the page, and the request a tapped
-/// notification is about.
+/// shell needs: the device registration to tell the node, and where a tapped notification leads.
 @MainActor
 @Observable
 final class PushCoordinator {
@@ -15,8 +14,8 @@ final class PushCoordinator {
 
     /// Set once Apple has given this device a token.
     private(set) var registration: PushRegistration?
-    /// A tapped notification's request, until the web view takes it.
-    private(set) var pendingLink: RequestLink?
+    /// Where a tapped notification leads, until the shell takes it.
+    private(set) var pendingLink: NotificationLink?
     /// Whether the one-line explanation is on screen.
     var isShowingPrompt = false
 
@@ -41,11 +40,11 @@ final class PushCoordinator {
         Task { await refresh() }
     }
 
-    func openRequest(_ link: RequestLink) {
+    func open(_ link: NotificationLink) {
         pendingLink = link
     }
 
-    func takePendingLink() -> RequestLink? {
+    func takePendingLink() -> NotificationLink? {
         defer { pendingLink = nil }
         return pendingLink
     }

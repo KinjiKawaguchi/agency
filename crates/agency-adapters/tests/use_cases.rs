@@ -46,16 +46,16 @@ fn alice() -> Fixture {
     let fixture = bare("alice");
     let node = &fixture.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
-    let hosted = HostedTeam {
-        org: id("acme"),
-        team: id("app"),
-        owner: id("alice"),
-        people: Default::default(),
-        runtime: RuntimeCommand {
-            command: vec!["unused".into()],
-            env: Default::default(),
-        },
+    // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
+    let place = TeamPlace {
+        id: id("app"),
+        label: "app".into(),
+        department: None,
+        node: node.url(),
     };
+    orgs::add_team(node, &id("acme"), place).unwrap();
+    let runtime = RuntimeCommand::of(vec!["unused".into()]);
+    let hosted = HostedTeam::new(id("acme"), id("app"), id("alice"), runtime);
     node.update_config(|config| config.teams.push(hosted))
         .unwrap();
     let laptop = Device {
@@ -94,6 +94,7 @@ fn bare(account: &str) -> Fixture {
         teams: vec![],
         trusted: vec![],
         funding: vec![],
+        delivery: vec![],
         access: None,
         push: None,
     })
@@ -114,6 +115,7 @@ fn bare(account: &str) -> Fixture {
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
+        delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
         notifier: Arc::new(NoNotifier),
     };
     let node = Node::open(ports, key).unwrap();
@@ -261,15 +263,30 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
     let now = alice.node.now();
     for offset in [-300, 300] {
         assert!(
-            verify_read(Some(&definition), &signed_at(offset), "GET", path, now).is_ok(),
+            verify_read(
+                Some(&definition),
+                true,
+                &signed_at(offset),
+                "GET",
+                path,
+                now
+            )
+            .is_ok(),
             "{offset}"
         );
     }
     for offset in [-301, 301] {
         assert_eq!(
-            verify_read(Some(&definition), &signed_at(offset), "GET", path, now)
-                .unwrap_err()
-                .kind,
+            verify_read(
+                Some(&definition),
+                true,
+                &signed_at(offset),
+                "GET",
+                path,
+                now
+            )
+            .unwrap_err()
+            .kind,
             ErrorKind::NotFound,
             "{offset}: refused like an unknown org"
         );
@@ -277,6 +294,7 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
     assert!(
         verify_read(
             Some(&definition),
+            true,
             &signed_at(0),
             "GET",
             "/fed/v1/teams/acme/other/view",

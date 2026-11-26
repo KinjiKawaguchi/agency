@@ -6,7 +6,9 @@ use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
+use agency_adapters::github::{CachedDelivery, GithubDelivery};
 use agency_adapters::handoff;
+use agency_adapters::launch::Launch;
 use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::runtime::CommandRuntime;
@@ -15,11 +17,14 @@ use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore as _;
-use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
+use agency_core::ports::{Clock, DeliverySource, Notifier, Random, TeamRuntime};
 use agency_core::{Node, Ports};
 use axum::Router;
 use std::borrow::Cow;
 use std::sync::Arc;
+
+/// How long what GitHub said is kept, so that reading a screen does not spend GitHub's rate limit.
+const DELIVERY_KEPT: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Ports to use instead of the real ones (tests).
 #[derive(Default)]
@@ -29,6 +34,9 @@ pub struct Overrides {
     pub random: Option<Arc<dyn Random>>,
     pub certs: Option<Arc<dyn CertSource>>,
     pub notifier: Option<Arc<dyn Notifier>>,
+    pub delivery: Option<Arc<dyn DeliverySource>>,
+    /// The program and data directory a client tells the owner to run (default: this process).
+    pub launch: Option<Launch>,
 }
 
 /// APNs when the node has a push setting whose key can be read; otherwise nothing is sent.
@@ -52,12 +60,14 @@ pub struct Opened {
     clock: Arc<dyn Clock>,
     random: Arc<dyn Random>,
     certs: Option<Arc<dyn CertSource>>,
+    launch: Option<Launch>,
 }
 
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
+    let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let notifier = match overrides.notifier {
@@ -74,6 +84,12 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(data_dir.clone())),
+        delivery: overrides.delivery.unwrap_or_else(|| {
+            Arc::new(CachedDelivery::new(
+                GithubDelivery::default(),
+                DELIVERY_KEPT,
+            ))
+        }),
         notifier,
     };
     let node = Arc::new(Node::open(ports, key)?);
@@ -83,6 +99,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         clock,
         random,
         certs: overrides.certs,
+        launch,
     })
 }
 
@@ -163,6 +180,7 @@ impl Opened {
             port,
             access,
             assets,
+            launch: self.launch.clone(),
         };
         let app = server::router(self.node.clone()).merge(client_api::router(Arc::new(api)));
         Ok(if is_public {

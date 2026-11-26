@@ -21,7 +21,7 @@ public struct TeamEntry: Equatable, Sendable {
         self.state = state
     }
 
-    public var key: String { "\(org)/\(ref.id)" }
+    public var key: String { TeamReader.key(org: org, team: ref.id) }
 
     /// `nil` until the team has been read.
     public var summary: TeamSummary? {

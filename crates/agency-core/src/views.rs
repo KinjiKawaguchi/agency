@@ -114,10 +114,12 @@ pub async fn hosted_view(
     auth: &ReadAuth,
     path: &str,
 ) -> Result<FederatedView> {
-    let hosted = node.config().hosted(org, team).cloned();
-    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
-    let reader = verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
-    let hosted = hosted.ok_or_else(unseen::not_found)?;
+    let hosted = node.hosted(org, team);
+    let doc = node.store().load_org(org);
+    let definition = doc.as_ref().map(|doc| &doc.body);
+    let reader = verify_read_once(node, definition, hosted.is_some(), auth, "GET", path)?;
+    let hosted =
+        hosted.ok_or_else(|| unseen::refused("a read of a team that does not run here"))?;
     let view = runtime_view(node, &hosted).await?;
     let view = match reader.role {
         Role::Member => view,
@@ -207,6 +209,9 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
         .get_definition(&place.node, &path, &access)
         .await
     {
+        if newer.body.version > doc.body.version + 1 {
+            let _ = orgs::catch_up(node, &place.node, org, newer.body.version).await;
+        }
         let _ = orgs::receive(node, newer).await;
     }
 }
@@ -256,26 +261,20 @@ mod tests {
     #[test]
     fn viewers_are_named_by_the_people_map_then_as_owner() {
         use crate::config::RuntimeCommand;
-        let hosted = HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: [("reviewer".to_owned(), id("bob"))].into(),
-            runtime: RuntimeCommand {
-                command: vec![],
-                env: Default::default(),
-            },
-        };
+        let hosted = HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            RuntimeCommand::of(vec![]),
+        )
+        .with_people([("reviewer".to_owned(), id("bob"))].into());
         assert_eq!(viewer_name(&hosted, &id("alice")).as_deref(), Some("owner"));
         assert_eq!(
             viewer_name(&hosted, &id("bob")).as_deref(),
             Some("reviewer")
         );
         assert_eq!(viewer_name(&hosted, &id("carol")), None);
-        let renamed = HostedTeam {
-            people: [("kin".to_owned(), id("alice"))].into(),
-            ..hosted
-        };
+        let renamed = hosted.with_people([("kin".to_owned(), id("alice"))].into());
         assert_eq!(
             viewer_name(&renamed, &id("alice")).as_deref(),
             Some("kin"),
@@ -348,16 +347,13 @@ mod tests {
     #[test]
     fn a_request_is_mine_by_one_rule() {
         use crate::config::RuntimeCommand;
-        let hosted = HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: [("reviewer".to_owned(), id("bob"))].into(),
-            runtime: RuntimeCommand {
-                command: vec![],
-                env: Default::default(),
-            },
-        };
+        let hosted = HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            RuntimeCommand::of(vec![]),
+        )
+        .with_people([("reviewer".to_owned(), id("bob"))].into());
         let (alice, bob) = (id("alice"), id("bob"));
         let here = |person| Reader::Hosted {
             hosted: &hosted,

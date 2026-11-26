@@ -7,7 +7,7 @@ describe('people and work', () => {
     renderApp({ path: '/people' })
     expect(await screen.findByRole('heading', { level: 2, name: 'App team' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Site team' })).toBeInTheDocument()
-    expect(screen.getByText('2 of 4 participants are working. 1 is waiting for your answer.')).toBeInTheDocument()
+    expect(await screen.findByText('2 of 4 participants are working. 1 is waiting for your answer.')).toBeInTheDocument()
     expect(screen.queryByText('Three requests are waiting for an answer')).not.toBeInTheDocument()
   })
 
@@ -84,5 +84,17 @@ describe('people and work', () => {
       await user.click(screen.getByRole('button', { name: 'Show 7 more' }))
       expect(rows()).toHaveLength(14)
     })
+  })
+
+  it('marks an epic that has been finished, says when, shows no forecast for it, and puts it after the open ones', async () => {
+    renderApp({ path: '/people' })
+    // The section of a team that is still being read is replaced by its own once it is, so the epic is looked for on the page.
+    const goal = (await screen.findByText('Launch the landing page')).closest('.goal') as HTMLElement
+    expect(goal).toHaveClass('is-done')
+    expect(within(goal).getByText('Done')).toBeInTheDocument()
+    expect(goal.textContent).toMatch(/Done [A-Z][a-z]{2} \d+/)
+    expect(goal.textContent).not.toMatch(/Expected to finish/)
+    const app = (await screen.findByRole('heading', { level: 2, name: 'App team' })).closest('section') as HTMLElement
+    expect(app.querySelector('.goal.is-done')).toBeNull()
   })
 })

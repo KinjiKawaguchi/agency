@@ -116,6 +116,7 @@
 }
 
 .me-link {
+  position: relative;
   display: inline-flex;
   align-items: center;
   border-radius: 50%;
@@ -203,4 +204,38 @@
     right: 6px;
     left: 6px;
   }
+}
+
+/* The name of the home node this tab is on, shown once the owner lists another one. */
+.node-chip {
+  max-width: 160px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The number of devices waiting for this one to approve them, on the viewer's avatar. */
+.me-count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--seal);
+  color: var(--on-seal);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }

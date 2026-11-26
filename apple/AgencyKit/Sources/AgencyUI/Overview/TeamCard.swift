@@ -10,6 +10,8 @@ struct TeamCard: View {
     let now: Date
     /// Opens the desk. `nil` draws the line without a button, for renderings.
     var onOpenDesk: (() -> Void)?
+    /// Reads again now, for a team that keeps failing.
+    var onTryAgain: (() -> Void)?
 
     private var summary: TeamSummary? { entry.summary }
 
@@ -27,10 +29,13 @@ struct TeamCard: View {
             header
             switch entry.state {
             case .loading:
-                Text(Ja.Desk.loading).font(.subheadline).foregroundStyle(.secondary).wrapping()
+                SkeletonLines(lines: 2)
             case .failed(let reason, let signInEnded):
-                Text(signInEnded ? Ja.Overview.signInNothingToShow : Ja.Overview.loadFailed(reason))
-                    .font(.subheadline).foregroundStyle(.secondary).wrapping()
+                if signInEnded {
+                    Text(Ja.Overview.signInNothingToShow).font(.subheadline).foregroundStyle(.secondary).wrapping()
+                } else {
+                    FailedRegion(what: Ja.Overview.thisTeam, why: reason, onTryAgain: onTryAgain)
+                }
             case .ready(let team):
                 if let summary { ReadyBody(team: team, summary: summary, cost: cost, now: now, onOpenDesk: onOpenDesk) }
             }
@@ -81,7 +86,7 @@ private struct ReadyBody: View {
         Text(summary.participants == 0 ? Ja.Overview.noParticipants : Ja.Overview.working(summary.working, of: summary.participants))
             .font(.subheadline).wrapping()
         if summary.blockedCount > 0 {
-            reasons(Ja.Overview.blocked(summary.blockedCount), summary.blocked.map { "\(Ja.Overview.blockedReason($0.reason)) (\($0.count))" })
+            reasons(Ja.Overview.blocked(summary.blockedCount), summary.blocked.map { "\(Ja.Work.blockedReason($0.reason)) (\($0.count))" })
         }
         if summary.attention == .idle {
             reasons(Ja.Overview.nobodyWorking, summary.quiet)

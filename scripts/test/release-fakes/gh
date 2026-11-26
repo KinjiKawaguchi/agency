@@ -1,0 +1,9 @@
+#!/bin/bash
+# A stand-in for gh: `release view` succeeds unless FAKE_NO_RELEASE is set; `release upload` notes what it
+# was given.
+state="${FAKE_STATE:?}"
+case "$1 $2" in
+  "release view") [ -z "${FAKE_NO_RELEASE:-}" ] ;;
+  "release upload") shift 2; echo "$*" >> "$state/uploads" ;;
+  *) echo "gh stand-in: unexpected $*" >&2; exit 64 ;;
+esac

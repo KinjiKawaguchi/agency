@@ -5,9 +5,10 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
-use crate::read_auth::{verify_read_once, ReadAuth};
+use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::routes;
 use crate::unseen;
-use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace};
+use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace, Versions};
 use agency_proto::{Id, Kind, OrgDefinition, Person, Role, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
@@ -32,7 +33,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
 pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
     node.store().save_org(doc)?;
     let me = node.url();
-    let mut targets: Vec<String> = doc
+    let targets = doc
         .body
         .teams
         .iter()
@@ -40,6 +41,11 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
         .map(|team| team.node.clone())
         .filter(|url| url != &me)
         .collect();
+    queue_for(node, doc, targets)
+}
+
+/// Queues `doc` for each of the nodes, once each.
+fn queue_for(node: &Node, doc: &SignedOrg, mut targets: Vec<String>) -> Result<()> {
     targets.sort();
     targets.dedup();
     let now = node.now_text();
@@ -48,6 +54,37 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
             node,
             &Parcel::new(to, ParcelBody::Org(Box::new(doc.clone())), &now),
         )?;
+    }
+    Ok(())
+}
+
+/// The teams `previous` lists and `next` does not.
+fn removed_teams<'a>(previous: &'a OrgDefinition, next: &OrgDefinition) -> Vec<&'a TeamPlace> {
+    let is_listed = |team: &&TeamPlace| next.team(&team.id).is_some();
+    previous
+        .teams
+        .iter()
+        .filter(|team| !is_listed(team))
+        .collect()
+}
+
+/// Queues the version that removes a team for that team's own node as well. Versions go to the nodes of
+/// the teams still listed, so without this the node of a removed team would not hear it was removed.
+fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Result<()> {
+    let me = node.url();
+    let kept: Vec<&String> = doc.body.teams.iter().map(|team| &team.node).collect();
+    let targets = removed_teams(previous, &doc.body)
+        .into_iter()
+        .map(|team| team.node.clone())
+        .filter(|url| url != &me && !kept.contains(&url))
+        .collect();
+    queue_for(node, doc, targets)
+}
+
+/// A team the org removed has no view to keep: this node's replica of it is deleted.
+fn forget_removed(node: &Node, previous: &OrgDefinition, next: &OrgDefinition) -> Result<()> {
+    for team in removed_teams(previous, next) {
+        node.store().delete_replica(&next.org, &team.id)?;
     }
     Ok(())
 }
@@ -112,6 +149,8 @@ pub fn amend(
     edit(&mut body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
+    tell_removed(node, &current.body, &doc)?;
+    forget_removed(node, &current.body, &doc.body)?;
     Ok(doc)
 }
 
@@ -194,9 +233,10 @@ pub fn read_definition(
     let doc = node.store().load_org(org);
     let has_invite = code.is_some_and(|code| open_invite(node, org, code).is_some());
     if !has_invite {
-        verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
+        let definition = doc.as_ref().map(|doc| &doc.body);
+        verify_read_once(node, definition, doc.is_some(), auth, "GET", path)?;
     }
-    doc.ok_or_else(unseen::not_found)
+    doc.ok_or_else(|| unseen::refused("an invite code for an org this node does not have"))
 }
 
 /// Accepts a definition sent by another node: with a copy, only its next version; without one, only a
@@ -211,7 +251,12 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     };
     let root = &current.body.root;
     let key = (doc.signer == root.account).then_some(&root.public_key);
-    unseen::verify(&doc, Kind::Org, key)?;
+    if !unseen::check(&doc, Kind::Org, key) {
+        return Err(unseen::refused(format!(
+            "a definition of {org} signed as {}, not with the root key of this node's copy",
+            doc.signer
+        )));
+    }
     if current.body.version >= doc.body.version {
         let is_same = current.body.version == doc.body.version && current.digest() == doc.digest();
         return if is_same {
@@ -224,7 +269,8 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
         };
     }
     verify_successor(&current, &doc).map_err(Error::bad_request)?;
-    node.store().save_org(&doc)
+    node.store().save_org(&doc)?;
+    forget_removed(node, &current.body, &doc.body)
 }
 
 fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
@@ -235,10 +281,86 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
         .map(str::to_owned);
     let is_trusted_root =
         trusted == Some(root.public_key.fingerprint()) && doc.signer == root.account;
-    unseen::verify(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key))?;
+    if !unseen::check(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
+        let org = &doc.body.org;
+        return Err(unseen::refused(match trusted {
+            None => format!("a first definition of {org}, an org this node does not trust"),
+            Some(_) => {
+                format!("a first definition of {org} not signed by the root key this node trusts")
+            }
+        }));
+    }
     if doc.body.version == 1 {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }
     doc.body.validate().map_err(Error::bad_request)?;
     node.store().save_org(&doc)
+}
+
+/// At most this many versions go in one answer of the versions route; a node further behind asks again.
+pub const VERSIONS_PER_ANSWER: u64 = 20;
+
+/// The versions of an org's definition after `after`, oldest first and at most `VERSIONS_PER_ANSWER`,
+/// for a member's signed read of `path` (`routes::versions`). They come from this node's history, so a
+/// node that joined later than `after` does not have them all and says so.
+pub fn read_versions(
+    node: &Node,
+    org: &Id,
+    after: u64,
+    auth: &ReadAuth,
+    path: &str,
+) -> Result<Versions> {
+    let doc = node.store().load_org(org);
+    let definition = doc.as_ref().map(|doc| &doc.body);
+    verify_read_once(node, definition, doc.is_some(), auth, "GET", path)?;
+    let current = doc
+        .ok_or_else(|| unseen::refused("a read of the versions of an org this node does not have"))?
+        .body
+        .version;
+    let last = current.min(after.saturating_add(VERSIONS_PER_ANSWER));
+    let versions = (after.saturating_add(1)..=last)
+        .map(|version| node.store().load_org_version(org, version))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            Error::not_found(format!(
+                "this node does not have every version of {org} after {after}"
+            ))
+        })?;
+    Ok(Versions { versions })
+}
+
+/// Brings this node's copy of an org up to `target` from the node at `origin`, one version at a time:
+/// each must be the next one, linked to the one before and signed by its root (`receive`). A node that
+/// missed versions (it was offline, or it reads rarely) otherwise could never take a newer one, since
+/// it accepts only the next version of the one it has.
+pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Result<()> {
+    loop {
+        let current = load(node, org)?.body.version;
+        if current + 1 >= target {
+            return Ok(());
+        }
+        let path = routes::versions(org, current);
+        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let fetched = node
+            .peers()
+            .get_versions(origin, &path, &auth)
+            .await
+            .map_err(|error| Error::new(ErrorKind::Unavailable, error.to_string()))?;
+        if fetched.versions.is_empty() {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} has no versions of {org} after {current}"),
+            ));
+        }
+        for version in fetched.versions {
+            receive(node, version).await?;
+        }
+        // An answer that moves nothing on (versions this node already has) would ask again forever.
+        if load(node, org)?.body.version <= current {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} sent no version of {org} after {current}"),
+            ));
+        }
+    }
 }

@@ -41,6 +41,16 @@ struct WordingTests {
             == ["決めること", "全体", "参加者と仕事", "費用", "端末", "組織図"])
     }
 
+    @Test("the pairing card says how the device gets approved, by labels or by the node's command")
+    func pairing() {
+        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook"])) == "MacBookで Agency を開き、「端末」の画面で、このコードの依頼を承認してください。")
+        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook", "iPad"])) == "MacBook、iPad のどれかで Agency を開き、「端末」の画面で、このコードの依頼を承認してください。")
+        #expect(Ja.Pairing.instruction(.atTheNode(command: "agency device-add --dir /srv/agency"))
+            == "ノードを動かしているマシンで、「agency device-add --dir /srv/agency」を実行し、表示されたコードを確かめて承認してください。")
+        #expect(Ja.Pairing.compare.contains("1 文字でも違えば承認しないでください"))
+        #expect(Ja.Pairing.autoUpdate.contains("自動"))
+    }
+
     @Test("a queued decision says how often it was tried and when it goes next")
     func queued() {
         #expect(Ja.Recent.queuedDetail(attempts: 0, retry: nil) == "まだ送れていません。まもなく再送します。")

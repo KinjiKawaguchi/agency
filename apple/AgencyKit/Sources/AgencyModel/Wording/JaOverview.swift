@@ -12,6 +12,7 @@ extension Ja {
         public static let usageNone = "このチームはトークンの使用量を報告していません。"
         public static let usageFailed = "トークンの使用量を読めませんでした。"
         public static let funding = "利用上限"
+        public static let thisTeam = "このチーム"
         public static let failedTag = "読み込めません"
         public static let signInNothingToShow = "サインインし直すまで、表示できるものがありません。"
 
@@ -34,15 +35,6 @@ extension Ja {
             case .stuck: "止まっている"
             case .idle: "動いていない"
             case .active: nil
-            }
-        }
-
-        public static func blockedReason(_ reason: BlockedReason) -> String {
-            switch reason {
-            case .needsDecision: "判断待ち"
-            case .external: "外部の対応待ち"
-            case .waitingOnPrevious: "先行する仕事待ち"
-            case .timeOrEquipment: "時間か機材待ち"
             }
         }
     }

@@ -384,3 +384,138 @@ async fn a_definition_not_signed_by_the_root_looks_like_one_for_an_org_that_is_n
         resent.1
     );
 }
+
+type Lines = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+/// alice's federation routes, logging to `Lines` instead of standard error.
+fn logged_routes(alice: &Running) -> (axum::Router, Lines) {
+    let lines = Lines::default();
+    let written = lines.clone();
+    let log = agency_adapters::refusal_log::RefusalLog::new(Box::new(move |line| {
+        written.lock().unwrap().push(line.into())
+    }));
+    (
+        agency_adapters::server::router_with_log(alice.node.clone(), log),
+        lines,
+    )
+}
+
+async fn call(
+    routes: &axum::Router,
+    method: &str,
+    path: &str,
+    auth: Option<&ReadAuth>,
+    body: Option<Value>,
+) -> (StatusCode, String) {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder().method(method).uri(path);
+    for (name, value) in auth.map(read_headers).into_iter().flatten() {
+        request = request.header(name, value);
+    }
+    let body = match body {
+        Some(body) => {
+            request = request.header("content-type", "application/json");
+            axum::body::Body::from(body.to_string())
+        }
+        None => axum::body::Body::empty(),
+    };
+    let response = routes
+        .clone()
+        .oneshot(request.body(body).unwrap())
+        .await
+        .unwrap();
+    let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    (status, String::from_utf8(bytes.to_vec()).unwrap())
+}
+
+#[tokio::test]
+async fn the_node_logs_why_it_refused_and_a_flood_of_junk_only_up_to_a_limit() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let phone = device(&bob).await;
+    let (routes, lines) = logged_routes(&alice);
+    let logged = || std::mem::take(&mut *lines.lock().unwrap());
+    let view = "/fed/v1/teams/acme/app/view";
+
+    let behind = signed(&alice, bob.node.key(), "bob", view, -400);
+    let refused = call(&routes, "GET", view, Some(&behind), None).await;
+    assert_refused(&refused, "the caller still learns nothing");
+    let skewed = logged();
+    assert_eq!(skewed.len(), 1, "{skewed:?}");
+    assert!(
+        skewed[0].starts_with(
+            "agency: refused GET /fed/v1/teams/acme/app/view: a read signed by bob at "
+        ) && skewed[0].contains("400 seconds behind this node's clock"),
+        "{skewed:?}"
+    );
+
+    let stranger = AccountKey::generate();
+    let junk = signed(&alice, &stranger, "bob", view, 0);
+    for _ in 0..(agency_adapters::refusal_log::PER_MINUTE + 10) {
+        assert_refused(&call(&routes, "GET", view, Some(&junk), None).await, "junk");
+    }
+    let flood = logged();
+    assert_eq!(
+        flood.len(),
+        agency_adapters::refusal_log::PER_MINUTE as usize + 1,
+        "{flood:?}"
+    );
+    assert!(flood[0].ends_with("a read by bob whose signature does not match their key"));
+    assert!(flood
+        .last()
+        .unwrap()
+        .contains("not logged for the rest of this minute"));
+
+    call(&routes, "GET", view, Some(&behind), None).await;
+    assert_eq!(
+        logged().len(),
+        1,
+        "a member's refusal is logged after the limit too"
+    );
+
+    let mut moved = signed_answer(&bob, &phone, "r-1", "a").body;
+    moved.team = id("gone");
+    let moved = Signed::sign(Kind::Envelope, moved, phone.public().device_id(), &phone).unwrap();
+    let refused = call(
+        &routes,
+        "POST",
+        "/fed/v1/teams/acme/gone/envelopes",
+        None,
+        Some(json!(moved)),
+    )
+    .await;
+    assert_refused(&refused, "an envelope for a team that does not run here");
+    assert_eq!(
+        logged(),
+        ["agency: refused POST /fed/v1/teams/acme/gone/envelopes: an envelope from bob for acme/gone, which does not run on this node"],
+    );
+}
+
+#[tokio::test]
+async fn the_log_never_holds_a_query_or_a_signature() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let (routes, lines) = logged_routes(&alice);
+    let path = "/fed/v1/orgs/acme/definition";
+    let mut auth = signed(&alice, &AccountKey::generate(), "bob", path, 0);
+    auth.signature = "c2VjcmV0LXNpZ25hdHVyZQ==".into();
+    let refused = call(
+        &routes,
+        "GET",
+        &format!("{path}?code=c2VjcmV0LWludml0ZS1jb2Rl"),
+        Some(&auth),
+        None,
+    )
+    .await;
+    assert_refused(&refused, "a wrong invite code and a wrong signature");
+    let logged = lines.lock().unwrap().clone();
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert!(logged[0].starts_with("agency: refused GET /fed/v1/orgs/acme/definition: "));
+    for secret in ["c2VjcmV0LWludml0ZS1jb2Rl", "c2VjcmV0LXNpZ25hdHVyZQ==", "?"] {
+        assert!(!logged[0].contains(secret), "{logged:?}");
+    }
+    drop(bob);
+}

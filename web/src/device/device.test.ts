@@ -24,6 +24,8 @@ describe('canonical JSON', () => {
     ['org', vectors.org.canonical],
     ['org with a team plan', vectors.orgWithPlan.canonical],
     ['device change', vectors.deviceChange.canonical],
+    ['P-256 device add', vectors.deviceChangeP256.add.canonical],
+    ['P-256 device remove', vectors.deviceChangeP256.remove.canonical],
     ['envelope', vectors.envelope.canonical],
     ['comment envelope', vectors.commentEnvelope.canonical],
   ])('reproduces the bytes of the %s vector from its parsed body', (_name, canonical) => {
@@ -102,6 +104,20 @@ describe('the device key', () => {
     const ecdsa = { name: 'ECDSA', hash: 'SHA-256' }
     expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.commentSignature), text)).toBe(true)
     expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.commentSignature), signedText('device', parse(vectors.commentEnvelope.canonical)))).toBe(false)
+  })
+
+  it.each([
+    ['add', vectors.deviceChangeP256.add],
+    ['remove', vectors.deviceChangeP256.remove],
+  ])('verifies the P-256 device change vector (%s) over its signed text', async (_name, vector) => {
+    const point = fromBase64(vectors.deviceChangeP256.signerKey.replace(/^p256:/, ''))
+    const key = await crypto.subtle.importKey('raw', point, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+    const ecdsa = { name: 'ECDSA', hash: 'SHA-256' }
+    const text = signedText('device', parse(vector.canonical))
+    expect(new TextDecoder().decode(text)).toBe(vector.signedText)
+    expect(vector.signer).toBe(vectors.p256Device.deviceId)
+    expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.signature), text)).toBe(true)
+    expect(await crypto.subtle.verify(ecdsa, key, fromBase64(vector.signature), signedText('envelope', parse(vector.canonical)))).toBe(false)
   })
 
   it('cannot be read out of the browser', async () => {

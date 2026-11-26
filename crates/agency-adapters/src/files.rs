@@ -136,6 +136,12 @@ impl DataDir {
         self.0.join(name)
     }
 
+    fn org_version_path(&self, org: &Id, version: u64) -> PathBuf {
+        self.dir("orgs")
+            .join(format!("{org}.history"))
+            .join(format!("{version:06}.json"))
+    }
+
     fn org_path(&self, org: &Id) -> PathBuf {
         self.dir("orgs").join(format!("{org}.json"))
     }
@@ -170,11 +176,12 @@ impl OrgStore for DataDir {
         read_json(&self.org_path(org))
     }
 
+    fn load_org_version(&self, org: &Id, version: u64) -> Option<SignedOrg> {
+        read_json(&self.org_version_path(org, version))
+    }
+
     fn save_org(&self, doc: &SignedOrg) -> Result<()> {
-        let history = self
-            .dir("orgs")
-            .join(format!("{}.history", doc.body.org))
-            .join(format!("{:06}.json", doc.body.version));
+        let history = self.org_version_path(&doc.body.org, doc.body.version);
         write_json(&history, doc)?;
         write_json(&self.org_path(&doc.body.org), doc)
     }
@@ -252,6 +259,19 @@ impl ReplicaStore for DataDir {
                 .join(format!("{team}.json")),
             replica,
         )
+    }
+
+    fn delete_replica(&self, org: &Id, team: &Id) -> Result<()> {
+        let path = self
+            .dir("replicas")
+            .join(org.as_str())
+            .join(format!("{team}.json"));
+        match std::fs::remove_file(&path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(Error::internal(
+                format!("cannot remove {}: {error}", path.display()),
+            )),
+            _ => Ok(()),
+        }
     }
 }
 

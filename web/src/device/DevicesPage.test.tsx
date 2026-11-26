@@ -1,8 +1,10 @@
+import { focusManager } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { memoryKeyStore, renderApp } from '../test/render'
+import { createTestNode } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair, type DeviceKey } from './deviceKey'
 import { settledDeviceKey } from './useDeviceKey'
 
@@ -27,12 +29,12 @@ describe('devices screen', () => {
     renderApp({ path: '/devices', enrolled: false })
     expect((await screen.findByLabelText('Pairing code of this device')).textContent).toMatch(CODE)
     expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
-    expect(screen.getByText(/Decisions and comments need a device of yours\. To add this one, ask for its code below, then confirm that code on the machine that runs the node with “agency device-add”\./)).toBeInTheDocument()
+    expect(screen.getByText(/This device is not added yet\. To decide or comment, it has to be added\. Ask below, and the next screen says how it gets approved\./)).toBeInTheDocument()
   })
 
   it('says in Japanese, too, that decisions and comments need a device, and how to add this one', async () => {
     renderApp({ path: '/devices', enrolled: false, locale: 'ja' })
-    expect(await screen.findByText(/決定やコメントを送るには、あなたの端末が必要です。.*agency device-add.*承認してください。/)).toBeInTheDocument()
+    expect(await screen.findByText(/この端末はまだ追加されていません。決めたり、コメントしたりするには、追加する必要があります。/)).toBeInTheDocument()
   })
 
   it('shows the same code on a second visit, because the key is kept', async () => {
@@ -61,7 +63,7 @@ describe('devices screen', () => {
     await user.clear(field)
     await user.type(field, 'Work laptop')
     await user.click(screen.getByRole('button', { name: 'Add this device' }))
-    expect(await screen.findByText(/Waiting for you to confirm this device/)).toBeInTheDocument()
+    expect(await screen.findByText(/Waiting for you to approve this device/)).toBeInTheDocument()
     const key = await browserKey(keyStore)
     const { requests } = await createApiClient((request) => node.handle(request)).devices()
     expect(requests).toMatchObject([{ label: 'Work laptop', publicKey: key.publicKey, pairingCode: key.pairingCode }])
@@ -74,7 +76,7 @@ describe('devices screen', () => {
     const keyStore = memoryKeyStore()
     renderApp({ path: '/devices', node, keyStore })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    await screen.findByText(/Waiting for you to confirm this device/)
+    await screen.findByText(/Waiting for you to approve this device/)
     expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
     window.dispatchEvent(new Event('visibilitychange'))
     expect(await screen.findByText(/This device is added\./)).toBeInTheDocument()
@@ -101,7 +103,7 @@ describe('devices screen', () => {
     // Nothing is added until the person confirms.
     expect((await createApiClient((request) => node.handle(request)).devices()).orgs[0]?.devices).toHaveLength(1)
 
-    await user.click(screen.getByRole('button', { name: 'The codes match: add it' }))
+    await user.click(screen.getByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText('Phone is added.')).toBeInTheDocument()
     const added = (await createApiClient((request) => node.handle(request)).devices()).orgs[0]?.devices.map((one) => one.label)
     expect(added).toEqual(['Browser', 'Phone'])
@@ -110,21 +112,19 @@ describe('devices screen', () => {
 
   it('says why when the node refuses to add the device', async () => {
     const user = userEvent.setup()
-    const node = createMockNode()
-    const keyStore = memoryKeyStore()
-    renderApp({ path: '/devices', node, keyStore })
-    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
-    window.dispatchEvent(new Event('visibilitychange'))
-    await screen.findByText(/This device is added\./)
+    const node = createTestNode()
+    // The node refuses the change itself, so nothing depends on when the list is read again: the request stays on the screen until it is answered.
+    const refusing = createApiClient(async (request) =>
+      request.method === 'POST' && new URL(request.url, 'http://mock.local').pathname === '/api/devices/changes'
+        ? new Response(JSON.stringify({ error: 'The device is already added.' }), { status: 409, headers: { 'content-type': 'application/json' } })
+        : node.handle(request),
+    )
+    renderApp({ path: '/devices', node, enrolled: true, client: refusing })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     await otherDeviceAsks(node, 'Tablet')
     window.dispatchEvent(new Event('visibilitychange'))
-    // The device is added elsewhere in the meantime, so the node refuses the second add.
-    const tablet = (await createApiClient((request) => node.handle(request)).devices()).requests[0]
-    expect(tablet).toBeDefined()
-    node.addDeviceFromTerminal(tablet?.pairingCode ?? '')
-    await user.click(await screen.findByRole('button', { name: 'The codes match: add it' }))
-    expect(await screen.findByText(/Could not add the device: /)).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
+    expect(await screen.findByText('Could not add the device: The device is already added.')).toBeInTheDocument()
   })
 
   it('says so when this device is added to none of the orgs that lack the new one, and sends nothing', async () => {
@@ -144,7 +144,7 @@ describe('devices screen', () => {
     }
     let sent = 0
     renderApp({ path: '/devices', node, keyStore, client: { ...real, devices, submitDeviceChange: (change) => { sent += 1; return real.submitDeviceChange(change) } } })
-    await user.click(await screen.findByRole('button', { name: 'The codes match: add it' }))
+    await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText(/Could not add the device: This device is not added to any organization that lacks the new one\./)).toBeInTheDocument()
     expect(sent).toBe(0)
   })
@@ -160,16 +160,112 @@ describe('devices screen', () => {
     }
   })
 
-  it('tells a first-time person what to do while waiting: run the command on the node’s machine and compare the code', async () => {
+  it('tells an account with no device to approve it on the node’s machine, with the exact command for this node', async () => {
     const user = userEvent.setup()
-    renderApp({ path: '/devices', enrolled: false })
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    const steps = await screen.findAllByRole('listitem')
-    expect(steps.map((one) => one.textContent)).toEqual([
-      'On the machine that runs the node, run “agency device-add”.',
-      'Check that the code it shows is exactly the one above.',
-      'Confirm there.',
-    ])
+    const steps = within(await screen.findByText('How it gets approved').then((heading) => heading.parentElement as HTMLElement))
+    expect(steps.getByText(/You have no device yet, so approve it on the machine that runs this node/)).toBeInTheDocument()
+    expect(steps.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeInTheDocument()
+    expect(steps.queryByText(/Approve it from one of your devices/)).not.toBeInTheDocument()
+    expect(steps.getByText(/Compare the code above with the one the approving device shows/)).toBeInTheDocument()
+  })
+
+  it('tells an account that has a device to approve it from one of them, by name, and not from the terminal', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createTestNode(), enrolled: false })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    const steps = within(await screen.findByText('How it gets approved').then((heading) => heading.parentElement as HTMLElement))
+    expect(steps.getByText(/Approve it from one of your devices: Browser\. Open Agency there, go to Devices/)).toBeInTheDocument()
+    expect(steps.getByText(/The terminal cannot add a second device unless the command line is already one of your devices/)).toBeInTheDocument()
+    expect(steps.queryByText('/usr/local/bin/agency --dir /var/agency device-add')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the plain command and the install guide when the node does not give its own', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode({ deviceCommand: false }), enrolled: false })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    expect(await screen.findByText('agency device-add')).toBeInTheDocument()
+    expect(screen.getByText(/the install guide \(docs\/install\.md\) says how/)).toBeInTheDocument()
+  })
+
+  it('names the orgs when one has a device to approve from and another has none yet', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode({ moreOrgs: true })
+    const mixed = async (request: Request): Promise<Response> => {
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/devices' || request.method !== 'GET') return node.handle(request)
+      const real = (await (await node.handle(request)).json()) as { orgs: unknown[]; requests: unknown[] }
+      const lab = { org: 'lab', devices: [] }
+      const acme = { org: 'acme', devices: [{ id: 'd-aaaaaaaaaaaa', label: 'Laptop', publicKey: 'A'.repeat(43) + '=', addedAt: '2026-11-24T12:00:00Z' }] }
+      return new Response(JSON.stringify({ ...real, orgs: [acme, lab] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    renderApp({ path: '/devices', node, enrolled: false, client: createApiClient(mixed) })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    expect(await screen.findByText(/^In Acme: Approve it from one of your devices: Laptop\./)).toBeInTheDocument()
+    expect(screen.getByText(/^In Lab: You have no device yet, so approve it on the machine/)).toBeInTheDocument()
+  })
+
+  it('shows the code large while it waits, and says it is approved once it is', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    const code = await screen.findByLabelText('Pairing code of this device')
+    expect(code).toHaveClass('large')
+    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
+    expect(await screen.findByText(/This device is added\./, undefined, { timeout: 8000 })).toBeInTheDocument()
+    expect(screen.queryByText('How it gets approved')).not.toBeInTheDocument()
+  })
+
+  it('reads in Japanese', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, locale: 'ja' })
+    await user.click(await screen.findByRole('button', { name: 'この端末を追加' }))
+    expect(await screen.findByText('承認のしかた')).toBeInTheDocument()
+    expect(screen.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeInTheDocument()
+  })
+})
+
+describe('a device list that stays current while the screen is open', () => {
+  afterEach(() => focusManager.setFocused(undefined))
+
+  it('shows a request that arrives after the screen has loaded, with its button, without a reload', async () => {
+    const node = createTestNode()
+    renderApp({ path: '/devices', node, enrolled: true })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
+    const other = await otherDeviceAsks(node, 'Phone')
+    expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 9000 })).toHaveTextContent(other.pairingCode)
+    expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeInTheDocument()
+  })
+
+  it('does not read the list while the tab is hidden, and reads it again when the tab is back', async () => {
+    const node = createTestNode()
+    let reads = 0
+    const counted = createApiClient((request) => {
+      if (request.method === 'GET' && new URL(request.url, 'http://mock.local').pathname === '/api/devices') reads += 1
+      return node.handle(request)
+    })
+    renderApp({ path: '/devices', node, enrolled: true, client: counted })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
+    focusManager.setFocused(false)
+    const whileHidden = reads
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    expect(reads).toBe(whileHidden)
+    const other = await otherDeviceAsks(node, 'Tablet')
+    focusManager.setFocused(true)
+    expect(await screen.findByLabelText('Pairing code of Tablet')).toHaveTextContent(other.pairingCode)
+  }, 20_000)
+
+  it('takes the notice on the other screens away by itself once the device is approved', async () => {
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/overview', node, enrolled: false, keyStore })
+    const key = await browserKey(keyStore)
+    await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Browser', publicKey: key.publicKey })
+    expect(await screen.findByText('This device is waiting to be added. Open it to see the code to confirm.', undefined, { timeout: 9000 })).toBeInTheDocument()
+    node.addDeviceFromTerminal(key.pairingCode)
+    await waitFor(() => expect(screen.queryByText('This device is waiting to be added. Open it to see the code to confirm.')).not.toBeInTheDocument(), { timeout: 9000 })
   })
 })
 
@@ -177,12 +273,12 @@ describe('the prompt to add this device', () => {
   it('leads from the first screen to adding it, in one sentence that says why', async () => {
     const user = userEvent.setup()
     renderApp({ path: '/desk', enrolled: false })
-    const notice = (await screen.findByText('Decisions and comments need a device of yours. Add this one: get its code, then confirm it on the node.')).closest('.device-notice')
+    const notice = (await screen.findByText('This device is not added yet. To decide or comment, it has to be added.')).closest('.device-notice')
     expect(notice).not.toBeNull()
     const [fromNotice] = screen.getAllByRole('link', { name: 'Add this device' })
     await user.click(fromNotice as HTMLElement)
     expect(await screen.findByRole('heading', { level: 1, name: 'Devices' })).toBeInTheDocument()
-    expect(screen.queryByText('Decisions and comments need a device of yours. Add this one: get its code, then confirm it on the node.', { selector: '.device-notice p' })).not.toBeInTheDocument()
+    expect(screen.queryByText('This device is not added yet. To decide or comment, it has to be added.', { selector: '.device-notice p' })).not.toBeInTheDocument()
   })
 
   it('says the device is waiting once it asked, and points to its code', async () => {

@@ -1,6 +1,6 @@
 //! The TeamView and agency-runtime/1 contracts: the shared sample fixture, and the JSON shapes in docs/protocol.md.
 use agency_proto::runtime::{Decided, Describe, RuntimeError};
-use agency_proto::view::{PersonState, RequestKind, WaitingOn, WorkStatus};
+use agency_proto::view::{PersonState, RequestKind, WaitingOn, WorkStatus, WorkType};
 use agency_proto::{
     EnvelopeKind, Id, Payload, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse,
     TeamView,
@@ -63,14 +63,60 @@ fn sample_teamview_covers_every_variant_clients_render() {
     assert!(view.epics.iter().any(|one| one.forecast.is_none()));
 }
 
+/// docs/glossary.md, "Work type": the wire names, and a work item that has none leaves the field out.
+#[test]
+fn work_types_have_the_glossary_wire_names() {
+    for (name, work_type) in [
+        ("newFeature", WorkType::NewFeature),
+        ("improvement", WorkType::Improvement),
+        ("maintenance", WorkType::Maintenance),
+        ("debt", WorkType::Debt),
+        ("incident", WorkType::Incident),
+    ] {
+        assert_eq!(serde_json::to_value(work_type).unwrap(), json!(name));
+        assert_eq!(
+            serde_json::from_value::<WorkType>(json!(name)).unwrap(),
+            work_type
+        );
+    }
+    let view: TeamView = serde_json::from_str(SAMPLE).unwrap();
+    assert!(view.work.iter().any(|item| item.work_type.is_some()));
+    assert!(view.work.iter().any(|item| item.work_type.is_none()));
+}
+
+/// docs/protocol.md, "Work items": `doneAt` on a done item and on a finished epic, left out otherwise.
+#[test]
+fn done_at_is_optional_on_work_items_and_epics() {
+    let view: TeamView = serde_json::from_str(SAMPLE).unwrap();
+    assert!(view.work.iter().any(|item| item.done_at.is_some()));
+    assert!(view.work.iter().any(|item| item.done_at.is_none()));
+    let mut value = sample_value();
+    value["epics"][1]["doneAt"] = json!("2026-11-21T10:00:00Z");
+    let view: TeamView = serde_json::from_value(value.clone()).unwrap();
+    assert!(view.epics[1].done_at.is_some() && view.epics[0].done_at.is_none());
+    assert_eq!(
+        serde_json::to_value(&view).unwrap(),
+        value,
+        "written back as read"
+    );
+    let mut bad = sample_value();
+    bad["work"][4]["doneAt"] = json!("2026-11-20");
+    assert!(
+        serde_json::from_value::<TeamView>(bad).is_err(),
+        "a time, not a date"
+    );
+}
+
 #[test]
 fn teamview_rejects_values_outside_the_contract() {
-    let cases: [(&str, Value); 5] = [
+    let cases: [(&str, Value); 7] = [
         ("/org", json!("Acme")),
         ("/generatedAt", json!("2026-11-24T21:00:00+09:00")),
         ("/people/0/state", json!("waiting")),
         ("/work/1/blocked/since", json!("2026-11-23T00:00:00Z")),
         ("/requests/0/answerWith/kind", json!("approve")),
+        ("/requests/0/thread/0/by", json!("Alice Smith")),
+        ("/work/0/workType", json!("bug")),
     ];
     for (pointer, bad) in cases {
         let mut value = sample_value();

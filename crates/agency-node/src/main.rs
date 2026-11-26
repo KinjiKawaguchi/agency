@@ -2,6 +2,7 @@
 mod dept_cli;
 mod device_cli;
 mod funding_cli;
+mod team_cli;
 
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
@@ -85,6 +86,8 @@ enum Command {
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
     TeamPlan(dept_cli::TeamPlanArgs),
+    TeamSet(team_cli::TeamSet),
+    TeamRemove(team_cli::TeamRemove),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
     /// this node's URL changed
     TeamMove {
@@ -207,6 +210,7 @@ fn init(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
+        delivery: vec![],
         access: None,
         push: None,
     })?;
@@ -294,7 +298,13 @@ fn status(node: &Node) {
 /// Says which teams run here while their org places them elsewhere, and how to fix it.
 fn warn_misplaced(node: &Node, write: impl Fn(String)) {
     for misplaced in orgs::misplaced_teams(node) {
-        let place = misplaced.place.unwrap_or_else(|| "nowhere".to_owned());
+        let Some(place) = misplaced.place else {
+            write(format!(
+                "team {}/{} is in this node's config.json, but org {} does not list it, so it is not served; if the org removed it, remove it from config.json",
+                misplaced.org, misplaced.team, misplaced.org
+            ));
+            continue;
+        };
         write(format!(
             "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
             misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()
@@ -425,13 +435,9 @@ async fn run(cli: Cli) -> Result<()> {
                     .unwrap_or_else(|| node.account());
                 let runtime = RuntimeCommand::scrum(&node.config().scrum, &absolute(&state_dir)?);
                 node.update_config(|config| {
-                    config.teams.push(HostedTeam {
-                        org: org.clone(),
-                        team: team.clone(),
-                        owner,
-                        people: Default::default(),
-                        runtime,
-                    })
+                    config
+                        .teams
+                        .push(HostedTeam::new(org.clone(), team.clone(), owner, runtime))
                 })?;
             }
             println!(
@@ -444,6 +450,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
+        Command::TeamSet(args) => team_cli::team_set(&node, args)?,
+        Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
         Command::TeamMove {
             org,
             team,

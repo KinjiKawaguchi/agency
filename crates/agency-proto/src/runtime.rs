@@ -5,6 +5,7 @@
 //! in docs/protocol.md.
 use crate::envelope::{EnvelopeKind, Payload};
 use crate::ids::Id;
+use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -34,8 +35,8 @@ impl RuntimeRequest {
     }
 }
 
-/// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage` is optional,
-/// and the node calls it only when `Describe::ops` lists it.
+/// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage` and `activity`
+/// are optional, and the node calls one only when `Describe::ops` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "op", rename_all = "camelCase")]
 #[ts(export)]
@@ -48,10 +49,14 @@ pub enum RuntimeCall {
     Decide { decision: RuntimeDecision },
     /// Answered with `TokenUsage` over the last `days` days (1 to 90).
     TokenUsage { days: u32 },
+    /// Answered with `Activity`: at most `limit` (1 to 500) events after `since`, oldest first.
+    Activity { since: Timestamp, limit: u32 },
 }
 
 /// The optional operation name for `RuntimeCall::TokenUsage` in `Describe::ops`.
 pub const TOKEN_USAGE_OP: &str = "tokenUsage";
+/// The optional operation name for `RuntimeCall::Activity` in `Describe::ops`.
+pub const ACTIVITY_OP: &str = "activity";
 
 /// A verified decision, applied by the team runtime.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -59,7 +64,7 @@ pub const TOKEN_USAGE_OP: &str = "tokenUsage";
 #[ts(export)]
 pub struct RuntimeDecision {
     pub kind: EnvelopeKind,
-    /// A request id (`answer`) or a work item ref `repo#N` (`judge`).
+    /// A request id (`answer`) or a work item's item reference (`judge`).
     pub target: String,
     /// The org member who decided.
     pub by: Id,

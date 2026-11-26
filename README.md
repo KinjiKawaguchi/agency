@@ -64,9 +64,11 @@ agency --dir ~/.agency team-dept --org acme --team app --dept dev
 agency --dir ~/.agency dept-set --org acme --dept clients --label "Client apps" --no-parent
 agency --dir ~/.agency dept-remove --org acme --dept clients
 agency --dir ~/.agency team-plan --org acme --team app --new-feature 40 --improvement 20 --maintenance 20 --debt 15 --incident 5 --weekly-budget-usd 500
+agency --dir ~/.agency team-set --org acme --team web --label "Web client"
+agency --dir ~/.agency team-remove --org acme --team web
 ```
 
-`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `team-plan` states what the org intends for a team: the percent of its effort for each kind of work (adding up to 100) and its weekly budget in whole US dollars; `team-plan --none` clears it. `agency status` lists each org's departments, their teams, and the teams' plans.
+`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `team-plan` states what the org intends for a team: the percent of its effort for each kind of work (adding up to 100) and its weekly budget in whole US dollars; `team-plan --none` clears it. `team-set` renames a team, and `team-remove` takes it out of the org's definition; it refuses while the team is still in this node's `config.json`, so remove it there first and a team that runs here is never left outside the org. `agency status` lists each org's departments, their teams, and the teams' plans.
 
 Join from an invite link and answer (on the invitee's home node):
 
@@ -108,19 +110,21 @@ To open it from elsewhere, put the node behind a Cloudflare Tunnel with Cloudfla
 
 The Access policy must bypass `/fed/*` so other nodes can reach the federation routes.
 
-To let the iOS app sign in to Access outside its web view (where passkeys work), add the app identifier, `<team id>.<bundle id>`, as `"appId": "ABCDE12345.com.example.agency"` in `access`, and let the Access policy also bypass `/.well-known/apple-app-site-association`, which Apple's servers fetch without signing in.
+To let the iOS app sign in to Access (in the system browser session, where passkeys work), add the app identifier, `<team id>.<bundle id>`, as `"appId": "ABCDE12345.com.example.agency"` in `access`, and let the Access policy also bypass `/.well-known/apple-app-site-association`, which Apple's servers fetch without signing in.
 
-To notify the owner's iPhone of new requests, add the APNs key Apple issued for the app (keep the `.p8` file outside the repository):
+To notify the owner's iPhone of new requests, devices waiting to be added, and refused decisions (the app chooses which kinds), add the APNs key Apple issued for the app (keep the `.p8` file outside the repository):
 
 ```json
 "push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
 ```
 
+For a node whose data must stay where it is, add `"hideTitles": true` to `push`: no title or label (a team's, a request's, a device's) is sent to Apple, and the notification says only what kind it is.
+
 See "Client API" in docs/protocol.md for what is checked.
 
 ## iPhone app
 
-`apple/` holds a thin iPhone app that opens the home node in a web view, for TestFlight. See [docs/apple.md](docs/apple.md).
+`apple/` holds the iPhone app, native screens that talk to the home node, for TestFlight. See [docs/apple.md](docs/apple.md).
 
 ## Team runtimes
 

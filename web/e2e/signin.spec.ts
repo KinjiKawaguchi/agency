@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { enrolBrowser, resetNode } from './helpers'
+import { enrolBrowser, resetNode, waitOnClock } from './helpers'
 
 // A tunnel serves the page under a named host, not the node's own address. `agency.localhost` reaches the
 // preview server as one while staying a secure context, which WebCrypto needs; `*.test` is mapped to this
@@ -44,8 +44,11 @@ test('does not call a node that is simply down on this machine an expired sign-i
   await page.goto('http://127.0.0.1:4173/desk')
   await expect(page.getByRole('article')).toBeVisible()
   expect((await request.post('/__mock/sign-in?expired=1')).status()).toBe(204)
+  // A call that gets no answer is tried again with backoff before it is called failed; the page's clock is moved on by hand.
+  await page.clock.install()
   await page.reload()
   // A page on this machine has no sign-in to expire, so this is just a node that cannot be reached.
+  await waitOnClock(page, async () => (await page.getByText(/Could not reach the node/).count()) > 0)
   await expect(page.getByText(/Could not reach the node/).first()).toBeVisible()
   await expect(page.locator('.signin-notice')).toHaveCount(0)
 })

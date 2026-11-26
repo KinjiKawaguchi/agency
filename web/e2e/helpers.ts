@@ -5,6 +5,8 @@ export interface NodeOptions {
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
   evaluation?: boolean
+  /** Serve the mock activity feed of the live screen (the real node does not yet). */
+  activity?: boolean
   /** Make the `site` team a stale copy that could not be refreshed. */
   siteError?: string
   /** What the node reports for an accepted decision. */
@@ -20,6 +22,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')
@@ -52,7 +55,7 @@ export const pageScrollsSideways = (page: Page): Promise<boolean> =>
 export async function enrolBrowser(page: Page, request: APIRequestContext, origin = ''): Promise<string> {
   await page.goto(`${origin}/devices`)
   await page.getByRole('button', { name: 'Add this device' }).click()
-  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+  await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
   const code = (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
   expect((await request.post(`/__mock/device-add?code=${code}`)).status()).toBe(204)
   await page.reload()
@@ -87,3 +90,20 @@ export const stickingOut = (page: Page): Promise<string[]> =>
     }
     return found
   })
+
+/**
+ * Moves the page's clock on in steps, with the real network answering in between, until `done` holds. A read that
+ * is tried again waits on a timer of the page, so a test that installed the fake clock (`page.clock.install()`)
+ * needs this to get past the backoff without waiting for it.
+ */
+export async function waitOnClock(page: Page, done: () => Promise<boolean>): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(5_000)
+        return done()
+      },
+      { timeout: 30_000, intervals: [100] },
+    )
+    .toBe(true)
+}

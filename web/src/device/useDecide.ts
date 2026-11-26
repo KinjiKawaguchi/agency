@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { useApi } from '../api/context'
 import type { DecisionAnswer, DecisionResult } from '../api/clientApi'
 import { devicesQuery, meQuery } from '../api/queries'
+import { rememberSent } from '../notifications/sent'
 import { buildEnvelope, newEnvelopeId, signEnvelope } from './envelope'
 import { deviceIdIn } from './enrollment'
 import { useDeviceKey, useSettledDeviceKey } from './useDeviceKey'
@@ -38,6 +39,7 @@ export function useDecide(): (answer: DecisionAnswer) => Promise<DecisionResult>
       if (deviceId === undefined) throw new CannotSignError('not-added')
       const me = await queryClient.fetchQuery({ ...meQuery(api), staleTime: DEVICES_FRESH_MS })
       const envelope = buildEnvelope({ answer, account: me.account.id, id: newEnvelopeId(), at: new Date() })
+      rememberSent(envelope.id)
       return api.decideSigned(answer.org, answer.team, {
         envelope: await signEnvelope(held.key, deviceId, envelope),
         title: answer.title,

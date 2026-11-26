@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let link = RequestLink(userInfo: response.notification.request.content.userInfo) else { return }
-        await push.openRequest(link)
+        guard let link = NotificationLink(userInfo: response.notification.request.content.userInfo) else { return }
+        await push.open(link)
     }
 }

@@ -39,9 +39,9 @@ public enum Ja {
         }
 
         public static func itemsOnDesk(_ count: Int) -> String { "机の上に \(count) 件あります。" }
-        public static func someoneWaiting(_ count: Int) -> String { "\(count) 人があなたの返事を待っています。" }
-        public static func peopleWorking(working: Int, total: Int) -> String { "\(total) 人のうち \(working) 人が作業中です。" }
-        public static func blocking(_ count: Int) -> String { "\(count) 人が待機" }
+        public static func someoneWaiting(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
+        public static func peopleWorking(working: Int, total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
+        public static func blocking(_ count: Int) -> String { "参加者 \(count) 人が待機" }
         public static func drafter(_ name: String) -> String { "起案: \(name)" }
         public static func unreadableTeam(_ team: String, reason: String) -> String { "\(team) を読み込めませんでした: \(reason)" }
         public static func loadFailed(_ reason: String) -> String { "ノードに接続できません: \(reason)" }
@@ -123,9 +123,6 @@ public enum Ja {
         public static let why = "決めたり、コメントしたりするには、この端末の鍵をあなたの組織に追加する必要があります。読むだけなら、今のままでも使えます。"
         public static let add = "この端末を追加する"
         public static let adding = "申し込み中…"
-        public static let waitingHeading = "確認を待っています"
-        public static let waitingBody = "すでに追加してある端末か、ノードのコマンドで、端末の申し込み一覧を開いてください。この画面と同じコードの申し込みがあれば、それを追加してください。"
-        public static let check = "確認できたか調べる"
         public static let ready = "この端末は追加されています。"
         public static let label = "iPhone"
         public static let reset = "この端末の鍵を作り直す"

@@ -2,15 +2,6 @@ import AgencyAPI
 import Foundation
 import Observation
 
-/// Where the overview reads from: the home node's Client API. `NodeClient` is the real one.
-public protocol OverviewSource: Sendable {
-    func me() async throws -> Me
-    func teamSnapshot(org: String, team: String) async throws -> TeamSnapshot
-    func usage(org: String, team: String, days: Int) async throws -> TokenUsage
-}
-
-extension NodeClient: OverviewSource {}
-
 /// What is known of a team's cost over the last week.
 public enum WeekCost: Equatable, Sendable {
     case loading
@@ -43,9 +34,12 @@ public final class OverviewStore {
     public private(set) var weekCosts: [String: WeekCost] = [:]
 
     @ObservationIgnored private let source: any OverviewSource
+    @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private let flight = SingleFlight()
 
-    public init(source: any OverviewSource) {
+    public init(source: any OverviewSource, retry: RetryPolicy = .standard) {
         self.source = source
+        self.retry = retry
     }
 
     // MARK: What the screen shows
@@ -65,7 +59,7 @@ public final class OverviewStore {
     public var sections: [OrgSection] {
         orgs
             .map { org in
-                let entries = org.teams.map { TeamEntry(org: org.id, ref: $0, state: states["\(org.id)/\($0.id)"] ?? .loading) }
+                let entries = org.teams.map { TeamEntry(org: org.id, ref: $0, state: states[TeamReader.key(org: org.id, team: $0.id)] ?? .loading) }
                 return OrgSection(org: org, teams: OverviewOrder.teams(entries))
             }
             .sorted { left, right in
@@ -93,14 +87,19 @@ public final class OverviewStore {
     // MARK: Reading
 
     /// Reads the account, then every team and its week's cost. A team that cannot be read is shown as that, in its place.
+    /// Reads again. A read already running is waited for, not repeated.
     public func refresh() async {
+        await flight.run { await self.reload() }
+    }
+
+    private func reload() async {
         loading = .loading
         do {
             let me = try await source.me()
             orgs = me.orgs
             funding = me.funding
             needsSignIn = false
-            let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
+            let keys = Set(me.orgs.flatMap { org in org.teams.map { TeamReader.key(org: org.id, team: $0.id) } })
             states = states.filter { keys.contains($0.key) }
             weekCosts = weekCosts.filter { keys.contains($0.key) }
             await readTeams(of: me.orgs)
@@ -117,18 +116,7 @@ public final class OverviewStore {
     }
 
     private func readTeams(of orgs: [OrgRef]) async {
-        let source = source
-        await withTaskGroup(of: (String, Result<TeamSnapshot, Error>).self) { group in
-            for org in orgs {
-                for team in org.teams {
-                    group.addTask {
-                        do { return ("\(org.id)/\(team.id)", .success(try await source.teamSnapshot(org: org.id, team: team.id))) }
-                        catch { return ("\(org.id)/\(team.id)", .failure(error)) }
-                    }
-                }
-            }
-            for await (key, result) in group { apply(result, to: key) }
-        }
+        await TeamReader.read(orgs, from: source, retry: retry) { key, result in apply(result, to: key) }
         await readCosts()
     }
 
@@ -139,17 +127,20 @@ public final class OverviewStore {
         case .failure(let error):
             // A team that was read keeps its last answer, as the web client does, until it can be read again.
             if case .ready = states[key] { return }
-            let isEnded = (error as? NodeError).map { $0 == .sessionExpired || $0 == .notSignedIn } ?? false
-            states[key] = .failed(reason: DeskStore.reason(error), signInEnded: isEnded)
+            let failure = TeamFailure(error: error)
+            // A session that ended while the teams were being read shows as that, not only as failures of each team.
+            if failure.signInEnded { needsSignIn = true }
+            states[key] = .failed(reason: failure.reason, signInEnded: failure.signInEnded)
         }
     }
 
     /// The week's cost of every team whose node can answer: a copy that could not be renewed says its node is out of reach.
     private func readCosts() async {
         let source = source
+        let retry = retry
         let asked = orgs.flatMap { org in
             org.teams.compactMap { team -> (key: String, org: String, team: String)? in
-                let key = "\(org.id)/\(team.id)"
+                let key = TeamReader.key(org: org.id, team: team.id)
                 guard case .ready(let snapshot)? = states[key], !snapshot.isUnreachable else { return nil }
                 return (key, org.id, team.id)
             }
@@ -159,7 +150,7 @@ public final class OverviewStore {
             for entry in asked {
                 group.addTask {
                     do {
-                        let usage = try await source.usage(org: entry.org, team: entry.team, days: Self.usageDays)
+                        let usage = try await retry.run { try await source.usage(org: entry.org, team: entry.team, days: Self.usageDays) }
                         return (entry.key, .known(usage.byPerson.reduce(0) { $0 + $1.costUsd }))
                     } catch NodeError.http(404, _) {
                         return (entry.key, WeekCost.none)

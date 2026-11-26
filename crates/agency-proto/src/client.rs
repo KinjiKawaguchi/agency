@@ -205,7 +205,7 @@ pub struct DecisionEntry {
     pub org: Id,
     pub team: Id,
     pub kind: EnvelopeKind,
-    /// The request id or work item ref (`repo#N`) it answered.
+    /// The request id or work item's item reference it answered.
     pub target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -280,10 +280,29 @@ pub struct DeviceRequest {
 /// The account's devices in each org it belongs to, and the devices waiting to be added.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, optional_fields)]
 pub struct DeviceList {
     pub orgs: Vec<OrgDevices>,
     pub requests: Vec<DeviceRequest>,
+    /// Where and how to approve a device on this node's terminal. Only the node's owner is given it
+    /// (the command holds the path of the running program, which can hold a user name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<NodeInfo>,
+}
+
+/// What the owner needs to approve a device at this node's terminal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NodeInfo {
+    /// The node's origin (`url` of its configuration).
+    pub url: String,
+    /// The absolute data directory the running node uses.
+    pub data_dir: String,
+    /// What to run on the node's machine to approve a device: the absolute path of the running
+    /// program, `--dir` and the data directory unless it is `~/.agency`, and `device-add`, with a path
+    /// that needs it quoted for a POSIX shell.
+    pub command: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -327,15 +346,35 @@ pub enum PushEnvironment {
     Sandbox,
 }
 
+/// What a push notification is about: a request that waits for the owner, a device that asks to be
+/// added, or a decision of the owner's that the team's node refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PushEvent {
+    Request,
+    Device,
+    Decision,
+}
+
+/// What a token gets when it names no kinds (what a token got before kinds existed).
+pub fn default_push_events() -> Vec<PushEvent> {
+    vec![PushEvent::Request]
+}
+
 /// An APNs device token to register for the owner's notifications.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[ts(export)]
+#[ts(export, optional_fields)]
 pub struct PushTokenInput {
     /// The device token as hex.
     pub token: String,
     pub environment: PushEnvironment,
     pub label: String,
+    /// The kinds of notification this token wants. Absent means `request` only; an empty list means
+    /// none. Repeated kinds count once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<PushEvent>>,
 }
 
 /// A registered device token. In a list, `token` holds only its last 8 characters.
@@ -347,6 +386,10 @@ pub struct PushToken {
     pub environment: PushEnvironment,
     pub label: String,
     pub registered_at: Timestamp,
+    /// The kinds of notification it gets, in the order `request`, `device`, `decision`. A token stored
+    /// before kinds existed reads as `request` only.
+    #[serde(default = "default_push_events")]
+    pub events: Vec<PushEvent>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

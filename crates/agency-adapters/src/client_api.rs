@@ -10,7 +10,9 @@
 //! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
 use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
+use crate::launch::Launch;
 use crate::server::status_of;
+use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
@@ -18,10 +20,12 @@ use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
-use agency_proto::client::{DeviceRequestInput, PushTokenInput, Session, SignedDecisionInput};
+use agency_proto::client::{
+    DeviceList, DeviceRequestInput, NodeInfo, PushTokenInput, Session, SignedDecisionInput,
+};
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -54,6 +58,9 @@ pub struct ClientApi {
     pub port: u16,
     pub access: Option<Arc<AccessVerifier>>,
     pub assets: Arc<dyn Assets>,
+    /// The running program and its data directory, for the command a client shows the owner. `None`
+    /// when they cannot be written out as text; clients then show their own wording.
+    pub launch: Option<Launch>,
 }
 
 pub(crate) type Shared = State<Arc<ClientApi>>;
@@ -261,6 +268,33 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
+/// (default 200, at most 500), oldest first.
+async fn get_activity(
+    State(api): Shared,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let since = match query.get("since").map(|raw| Timestamp::parse(raw)) {
+        None => None,
+        Some(Ok(since)) => Some(since),
+        Some(Err(_)) => {
+            return refuse(
+                StatusCode::BAD_REQUEST,
+                "since must be an RFC 3339 UTC time",
+            )
+        }
+    };
+    let limit = match query.get("limit").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(limit)) => Some(limit),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "limit must be a number"),
+    };
+    let result =
+        async { team_activity(&api.node, &parse_id(&org)?, &parse_id(&team)?, since, limit).await };
+    respond(result.await)
+}
+
 /// A JSON body, or 400 naming what it should have been.
 fn json_body<T: serde::de::DeserializeOwned>(bytes: &Bytes, what: &str) -> Result<T, Error> {
     serde_json::from_slice(bytes).map_err(|_| Error::bad_request(format!("malformed {what}")))
@@ -280,8 +314,35 @@ async fn post_envelope(
     respond(result.await)
 }
 
-async fn get_devices(State(api): Shared) -> Response {
-    respond(device_list(&api.node))
+/// Whether the request is the node's owner's: a direct local one (the machine's own user), or one
+/// through Access signed in as the configured owner. Other Access sign-ins may read this node's data
+/// but are not told about its machine.
+fn is_owner_request(api: &ClientApi, admitted: &Admitted) -> bool {
+    match admitted {
+        Admitted::Local => true,
+        Admitted::Access(identity) => is_owner(api, identity),
+    }
+}
+
+/// `list` with where and how to approve a device here, for the owner only: the command holds the path of
+/// the running program, which can hold a user name.
+fn with_node_info(api: &ClientApi, admitted: &Admitted, mut list: DeviceList) -> DeviceList {
+    if !is_owner_request(api, admitted) {
+        return list;
+    }
+    list.node = api.launch.as_ref().map(|launch| {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        NodeInfo {
+            url: api.node.config().url,
+            data_dir: launch.data_dir.clone(),
+            command: launch.device_add_command(home.as_deref()),
+        }
+    });
+    list
+}
+
+async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
 }
 
 /// A new device asks to be added; the answer carries its pairing code.
@@ -392,6 +453,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
+        .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",
             post(post_envelope),

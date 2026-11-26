@@ -32,13 +32,16 @@ public struct DeviceDecisionSender: DeskSender {
     private let poster: any DecisionPoster
     private let signer: any DeviceSigner
     private let randomBytes: @Sendable () -> [UInt8]
+    private let sent: SentDecisions?
 
+    /// - Parameter sent: remembers the id of each envelope this sends, so that the news does not announce its success.
     public init(
-        poster: any DecisionPoster, signer: any DeviceSigner,
+        poster: any DecisionPoster, signer: any DeviceSigner, sent: SentDecisions? = nil,
         randomBytes: @escaping @Sendable () -> [UInt8] = { (0..<16).map { _ in UInt8.random(in: .min ... .max) } }
     ) {
         self.poster = poster
         self.signer = signer
+        self.sent = sent
         self.randomBytes = randomBytes
     }
 
@@ -50,6 +53,7 @@ public struct DeviceDecisionSender: DeskSender {
         let now = await poster.nodeNow()
         let envelope = decision.envelope(id: id, account: me.account.id, at: Timestamp.string(from: now))
         try envelope.validate()
+        sent?.record(id)
         let text = try signedText(kind: .envelope, body: envelope.json)
         let signature = try await signer.sign(text, reason: Ja.Paper.faceIDReason(decision))
         let signed = SignedDecision(

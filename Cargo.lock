@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agency-adapters"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "agency-core",
  "agency-proto",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "agency-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "agency-proto",
  "async-trait",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "agency-node"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "agency-adapters",
  "agency-core",
@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "agency-proto"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",

@@ -1,0 +1,91 @@
+name: release
+
+# Release builds of the node for Linux. Each build is a workflow artifact: a tarball with the binary, the
+# systemd unit script, the install guides, and the licenses, and its SHA-256. Run it by hand from the
+# Actions tab; a pull request that changes this file or the unit script runs it too, so the file is tested
+# before it is merged. For a tagged release it is called by release-please.yml with the tag, and then
+# attaches the builds to that release. The macOS builds are made on a Mac, by scripts/release-macos.sh.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag of the release to attach the builds to.
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/systemd-unit.sh
+      - scripts/release/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ inputs.tag == '' }}
+
+jobs:
+  linux:
+    name: linux-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built on Ubuntu 22.04 so that the binary runs on any system with glibc 2.35 or later.
+          - { arch: x86_64, runner: ubuntu-22.04 }
+          - { arch: arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # The node embeds the web client, so it is built first.
+      - name: Build the web client
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build the node
+        run: cargo build --release --locked -p agency-node
+      - name: Check that the build runs and serves the web client
+        run: scripts/release/smoke-test.sh target/release/agency
+      - name: Package
+        id: package
+        env:
+          RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
+        # RELEASE_FLAG is empty for a build that is not of a release, and the script wants no argument then.
+        run: scripts/release/package.sh target/release/agency linux "${{ matrix.arch }}" dist $RELEASE_FLAG
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  # Attaches the builds to the release that was just made.
+  attach:
+    if: inputs.tag != ''
+    needs: linux
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Attach the builds to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/* --clobber

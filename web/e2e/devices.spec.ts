@@ -55,13 +55,16 @@ async function askToBeAdded(page: Page, label: string): Promise<string> {
   await page.goto('/devices')
   await page.getByRole('textbox', { name: 'Name for this device' }).fill(label)
   await page.getByRole('button', { name: 'Add this device' }).click()
-  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+  await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
   return (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
 }
 
 test('asks to be added, is confirmed in the terminal, then signs a decision the node verifies', async ({ page, request }) => {
   const code = await askToBeAdded(page, 'Work laptop')
   expect(code).toMatch(CODE)
+  // The account has no device yet: it says to approve on the node's machine, with the node's own command.
+  await expect(page.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeVisible()
+  await expect(page.getByText(/Approve it from one of your devices/)).toHaveCount(0)
   await confirmInTerminal(request, code)
   // It asks again every few seconds while it waits.
   await expect(page.getByText(/This device is added\./)).toBeVisible({ timeout: 10_000 })
@@ -88,16 +91,34 @@ test('confirms a second device from the first, by comparing codes', async ({ pag
   try {
     const phone = await phoneContext.newPage()
     const phoneCode = await askToBeAdded(phone, 'Phone')
+    // The account has a device now: it names it, and does not send the owner to the terminal.
+    await expect(phone.getByText(/Approve it from one of your devices: Laptop\./)).toBeVisible()
+    await expect(phone.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toHaveCount(0)
     expect(phoneCode).not.toBe(await page.getByLabel('Pairing code of this device').textContent())
 
     await page.reload()
     await expect(page.getByLabel('Pairing code of Phone')).toHaveText(phoneCode)
-    await page.getByRole('button', { name: 'The codes match: add it' }).click()
+    await page.getByRole('button', { name: 'The codes match: approve it' }).click()
     await expect(page.getByText('Phone is added.')).toBeVisible()
     await expect(page.getByLabel('Pairing code of Phone')).toHaveCount(0)
 
     await expect(phone.getByText(/This device is added\./)).toBeVisible({ timeout: 10_000 })
     await expect(phone.getByRole('list').getByText('Laptop')).toBeVisible()
+  } finally {
+    await phoneContext.close()
+  }
+})
+
+test('tells the owner on another screen that a device asks to be added, and marks the avatar', async ({ page, request, browser }) => {
+  await confirmInTerminal(request, await askToBeAdded(page, 'Laptop'))
+  await page.goto('/overview')
+  await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
+  const phoneContext = await browser.newContext({ baseURL: page.url().replace(/\/overview.*$/, '') })
+  try {
+    await askToBeAdded(await phoneContext.newPage(), 'Phone')
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.getByText('Phone asks to be added as a device.')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Devices, 1 waiting to be approved' })).toBeVisible()
   } finally {
     await phoneContext.close()
   }
@@ -121,7 +142,7 @@ for (const view of VIEWS) {
 
     await page.getByRole('textbox', { name: 'Name for this device' }).fill('Work laptop')
     await page.getByRole('button', { name: 'Add this device' }).click()
-    await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+    await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
     await shoot('waiting', page)
 
     await confirmInTerminal(request, (await page.getByLabel('Pairing code of this device').textContent()) ?? '')
@@ -132,7 +153,7 @@ for (const view of VIEWS) {
     try {
       await askToBeAdded(await phoneContext.newPage(), 'Phone')
       await page.reload()
-      await expect(page.getByRole('button', { name: 'The codes match: add it' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'The codes match: approve it' })).toBeVisible()
       await shoot('confirm', page)
     } finally {
       await phoneContext.close()
