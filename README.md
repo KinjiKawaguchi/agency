@@ -34,6 +34,8 @@ testdata/vectors.json  Language-independent test vectors (a key from a fixed see
 
 To install a node on a Mac, run it as a service, and reach it from outside behind Cloudflare Access, see [docs/install.md](docs/install.md) (in Japanese: [docs/install.ja.md](docs/install.ja.md)).
 
+What each part may change without breaking the others, and how versions move, is in [docs/compatibility.md](docs/compatibility.md).
+
 ## Build and test
 
 ```sh
