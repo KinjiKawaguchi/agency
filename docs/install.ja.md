@@ -226,6 +226,52 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 ブラウザが鍵を作れるのは、`https` のページか、ノードの Mac 上の `127.0.0.1` のページだけです。
 それ以外では、鍵を作れないと画面に表示されます。
 
+## AI サブスクリプションと使用量
+
+概要画面には、ノードの資金源と、それぞれのサブスクリプションの上限をどれだけ使ったかが並びます。
+資金源は一人の人が自分で契約しているサブスクリプションです。ノードはその人自身のログインで読み、別のアカウントと共有することはありません。
+ノードは、Claude のサブスクリプションの使用量を自分で読めます。マシンにログインがあるだけ、いくつでも読めます。
+
+### 1 台のマシンで複数の Claude にログインする
+
+Claude Code は、設定ディレクトリごとに 1 つのログインを持ちます。設定ディレクトリは `CLAUDE_CONFIG_DIR` として渡したものです。ログインを増やすには、専用のディレクトリを用意し、そこで一度ログインします。
+
+```sh
+CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/personal-2 claude
+```
+
+開いたら `/login` を実行します。そのログインを使うときは、いつも同じ `CLAUDE_CONFIG_DIR` を付けて Claude Code を起動します。
+
+Claude Code はログインを次の場所に保存します。
+
+| マシン | 保存先 |
+|---|---|
+| macOS | キーチェーンの項目 `Claude Code-credentials-<16 進 8 文字>`。`CLAUDE_CONFIG_DIR` に設定した文字列の SHA-256 の先頭 8 桁です。`CLAUDE_CONFIG_DIR` を設定しない場合（`~/.claude` のログイン）は `Claude Code-credentials` です。キーチェーンが書き込みを断ったときは、次のファイルを使います。 |
+| Linux | `<ディレクトリ>/.credentials.json`（モード `0600`）。`CLAUDE_CONFIG_DIR` がなければ `~/.claude/.credentials.json` です。 |
+
+数えられるのはディレクトリの文字列そのものです。末尾にスラッシュを付けた `/home/alice/.claude-work/` は、`/home/alice/.claude-work` とは別の項目になります。
+ノードの設定には、`CLAUDE_CONFIG_DIR` に設定したとおりの文字列を、絶対パスで書いてください。
+
+### 使用量を読む
+
+`~/.agency/config.json` に資金源を並べ、ノードを再起動します。設定には秘密を書きません。
+
+```json
+"funding": [
+  { "id": "personal-1", "label": "Claude (personal 1)", "kind": "subscription",
+    "collector": { "type": "claude" } },
+  { "id": "personal-2", "label": "Claude (personal 2)", "kind": "subscription",
+    "collector": { "type": "claude", "configDir": "/Users/alice/.claude-accounts/personal-2" } }
+]
+```
+
+- `collector` を書くと、ノード自身がその資金源を読みます。`configDir` を省くと、`~/.claude` のログインを読みます。
+- 使用量はデータディレクトリの `usage/<id>.json` に書かれます。資金源に `usageFile` があるときは、そこに書かれます。`usageFile` だけの資金源は、これまでどおり別のツールが保ちます。
+- ノードは資金源ごとに、必要なときにそのログインのアクセストークンを読み、`https://api.anthropic.com/api/oauth/usage` に 5 時間窓と 7 日窓を問い合わせ、その 2 つの窓だけを書きます。トークンは保持せず、ファイルにもログにも書きません。
+- 同じ資金源への問い合わせは、5 分に 1 回までです。失敗すると、そのたびに待ち時間を倍にし、最長 1 時間まで延ばします。サービスがもっと長く待つよう求めたときは、それに従います。読み取りに失敗しても最後のファイルは残り、概要画面にはファイルを最後に書いた時刻が出ます。
+- トークンの更新はしません。更新すると、Claude Code がそのログインのために持つ更新トークンが差し替わってしまうからです。アクセストークンは数時間もち、そのログインで Claude Code を動かしたときに Claude Code が更新します。丸一日使っていないログインは、次に使うまで期限切れとして扱われます。
+- macOS では、キーチェーンの項目を最初に読むとき、`security` に使用を許可するか尋ねられます。**常に許可** を選んでください。ノードは答えを 20 秒待ち、あきらめて、あとでもう一度試します。
+
 ## ノードの更新
 
 ```sh
@@ -260,6 +306,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 | `agency: refused an Access request (cannot fetch the Access certs: …)`、`(unknown signing key)`、`(the signature does not match)` | ノードが `teamDomain` から Access の鍵を取得できないか、トークンがこのチームドメインのものではありません。 |
 | `agency: push notifications are off: …` | `push` のキーを読めません。通知は送られません。 |
 | `agency: a push notification was not sent: …` | APNs が通知を受け付けませんでした。30 秒後にもう一度送ります。 |
+| `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | その資金源の収集に失敗しました。理由が続きます（ログインが見つからない、トークンの期限切れ、トークンの拒否、サービスの不調）。最後の使用量ファイルは残ります。その資金源の設定ディレクトリでログインし直すか、そのログインで Claude Code を使うと、次の読み取りは成功します。続いて `agency: usage of "<id>" is read again` が出ます。 |
 | `agency: re-reading the replicas failed: …`、`agency: checking for new requests failed: …`、`agency: retrying the outbox failed: …` | ノードがデータディレクトリに書き込めませんでした（ディスクがいっぱいなど）。ほかのノードに届かないことはログに出ません。送信待ちのものは `agency status` に、ほかのノードにあるチームの写しをいつ読んだかは Web クライアントに表示されます。 |
 | `agency: <メッセージ>` のあとノードが止まる | `config.json` を読めないなどの理由で起動できませんでした。launchd は 10 秒ごとに起動し直します。 |
 

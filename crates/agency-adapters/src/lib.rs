@@ -15,3 +15,4 @@ pub mod peers;
 pub mod runtime;
 pub mod server;
 pub mod system;
+pub mod usage_collector;

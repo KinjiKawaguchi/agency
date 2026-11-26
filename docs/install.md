@@ -208,6 +208,52 @@ Each browser and phone that decides for you has its own key, which it makes and 
 A request waits for an hour, and the node keeps at most 10.
 A browser makes a key only on `https` or on the node's own Mac (`127.0.0.1`); elsewhere the page says it cannot.
 
+## AI subscriptions and their usage
+
+The overview lists the node's funding sources with how much of each subscription's limits is used.
+A source is one person's own subscription: the node reads it with that person's own login and never shares it with another account.
+The node can read the usage of a Claude subscription itself, as many as the machine has logins for.
+
+### Several Claude logins on one machine
+
+Claude Code keeps one login for each configuration directory, the one it runs with as `CLAUDE_CONFIG_DIR`. To add a login, give it a directory of its own and log in once there:
+
+```sh
+CLAUDE_CONFIG_DIR=$HOME/.claude-accounts/personal-2 claude
+```
+
+Then run `/login` in it. Start Claude Code with the same `CLAUDE_CONFIG_DIR` whenever you want to use that login.
+
+Where Claude Code keeps the login:
+
+| Machine | Where |
+|---|---|
+| macOS | The Keychain item `Claude Code-credentials-<8 hex characters>`: the first 8 hex characters of the SHA-256 of the directory's text, as it is set in `CLAUDE_CONFIG_DIR`. Without `CLAUDE_CONFIG_DIR` (the login in `~/.claude`) the item is `Claude Code-credentials`. When the Keychain refuses the write, Claude Code uses the file below. |
+| Linux | `<directory>/.credentials.json`, mode `0600` (`~/.claude/.credentials.json` without `CLAUDE_CONFIG_DIR`). |
+
+The directory's text is what counts: `/home/alice/.claude-work/` with a trailing slash is another item than `/home/alice/.claude-work`.
+Write the directory in the node's configuration exactly as you set `CLAUDE_CONFIG_DIR`, as an absolute path.
+
+### Reading the usage
+
+List the sources in `~/.agency/config.json`, with no secret in it, and restart the node:
+
+```json
+"funding": [
+  { "id": "personal-1", "label": "Claude (personal 1)", "kind": "subscription",
+    "collector": { "type": "claude" } },
+  { "id": "personal-2", "label": "Claude (personal 2)", "kind": "subscription",
+    "collector": { "type": "claude", "configDir": "/Users/alice/.claude-accounts/personal-2" } }
+]
+```
+
+- `collector` makes the node read the source itself. Without `configDir` it reads the login in `~/.claude`.
+- The usage goes to `usage/<id>.json` in the data directory, or to `usageFile` when the source has one. A source with only a `usageFile` is kept by another tool, as before.
+- For each source the node reads the login's access token when it needs it, asks `https://api.anthropic.com/api/oauth/usage` for the 5-hour and 7-day windows, and writes only those two windows. It keeps no token and writes none to a file or the log.
+- It asks each source at most every 5 minutes. After a failure it waits twice as long each time, up to an hour, and longer when the service asks for it. A failed read leaves the last file in place, and the overview shows when the file was last written.
+- It never renews a token: that would replace the refresh token Claude Code holds for the login. An access token lasts some hours and Claude Code renews it when it runs with that login, so a login nobody has used for a day reads as expired until it is used again.
+- On macOS, the first read of each Keychain item asks you to allow `security` to use it. Choose **Always Allow**. The node waits 20 seconds for the answer and tries again later.
+
 ## Updating a node
 
 ```sh
@@ -242,6 +288,7 @@ The node writes these to `~/.agency/logs/serve.log`:
 | `agency: refused an Access request (cannot fetch the Access certs: …)`, `(unknown signing key)`, or `(the signature does not match)` | The node cannot get Access's keys from `teamDomain`, or the token was not made for this team domain. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
+| `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
 | `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd tries again every 10 seconds. |
 

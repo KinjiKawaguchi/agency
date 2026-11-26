@@ -113,7 +113,7 @@ fn bare(account: &str) -> Fixture {
         clock: Arc::new(clock.clone()),
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
-        funding: Arc::new(UsageFiles::new(Arc::new(clock.clone()))),
+        funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
         notifier: Arc::new(NoNotifier),
     };
     let node = Node::open(ports, key).unwrap();

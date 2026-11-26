@@ -3,7 +3,7 @@ use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -117,8 +117,39 @@ pub struct FundingConfig {
     pub label: String,
     pub kind: FundingKind,
     /// A JSON file with the subscription's usage windows (`five_hour`, `seven_day`). Never a token.
+    /// Without it, a source that has a collector uses `usage/<id>.json` in the node's data directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_file: Option<PathBuf>,
+    /// How the node itself reads this source's usage and writes the usage file. Without it, some
+    /// other tool keeps the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collector: Option<UsageCollector>,
+}
+
+impl FundingConfig {
+    /// The file this source's usage is read from and, with a collector, written to.
+    pub fn usage_path(&self, data_dir: &Path) -> Option<PathBuf> {
+        match (&self.usage_file, &self.collector) {
+            (Some(file), _) => Some(file.clone()),
+            (None, Some(_)) => Some(data_dir.join("usage").join(format!("{}.json", self.id))),
+            (None, None) => None,
+        }
+    }
+}
+
+/// How a funding source's usage is collected. A collector names where the login lives, never a
+/// token: the node reads the token itself, each time it needs it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+pub enum UsageCollector {
+    /// A Claude subscription login. `config_dir` is the directory Claude Code runs with as
+    /// `CLAUDE_CONFIG_DIR`, written exactly as it is set there (an absolute path); without it, the
+    /// default login (`~/.claude`).
+    #[serde(rename_all = "camelCase")]
+    Claude {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        config_dir: Option<PathBuf>,
+    },
 }
 
 /// Cloudflare Access for requests that arrive through a tunnel or at the public host name.

@@ -1,21 +1,22 @@
-//! Funding usage read from a JSON file that another tool writes (for a subscription, the usage
-//! endpoint's answer: `{"five_hour": {"utilization": 23.0, "resets_at": "..."}, "seven_day": {...}}`).
-//! The node never reads or stores a token. A missing or malformed file means the usage is unknown.
+//! Funding usage read from a JSON file: the node's own collector writes it (`usage_collector`), or
+//! another tool does (for a subscription, the usage endpoint's answer:
+//! `{"five_hour": {"utilization": 23.0, "resets_at": "..."}, "seven_day": {...}}`).
+//! This reads no token. A missing or malformed file means the usage is unknown.
 use agency_core::config::FundingConfig;
-use agency_core::ports::{Clock, FundingSource};
+use agency_core::ports::FundingSource;
 use agency_proto::client::{UsageWindow, UsageWindowName};
 use agency_proto::{clock, Timestamp};
 use serde_json::Value;
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 pub struct UsageFiles {
-    clock: Arc<dyn Clock>,
+    data_dir: PathBuf,
 }
 
 impl UsageFiles {
-    pub fn new(clock: Arc<dyn Clock>) -> Self {
-        Self { clock }
+    pub fn new(data_dir: PathBuf) -> Self {
+        Self { data_dir }
     }
 }
 
@@ -48,17 +49,26 @@ pub fn windows_of(text: &str) -> Vec<UsageWindow> {
         .collect()
 }
 
-fn read(path: &Path) -> Option<String> {
-    std::fs::read_to_string(path).ok()
+/// The file's contents and when it was last written, which is when its usage was read from the
+/// subscription: a client can tell that nothing has refreshed it for a while.
+fn read(path: &Path) -> Option<(String, SystemTime)> {
+    let text = std::fs::read_to_string(path).ok()?;
+    Some((text, std::fs::metadata(path).ok()?.modified().ok()?))
+}
+
+fn timestamp(time: SystemTime) -> Option<Timestamp> {
+    Timestamp::parse(&clock::format(time.into())).ok()
 }
 
 impl FundingSource for UsageFiles {
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>) {
-        let Some(text) = source.usage_file.as_deref().and_then(read) else {
+        let Some((text, written)) = source
+            .usage_path(&self.data_dir)
+            .and_then(|path| read(&path))
+        else {
             return (vec![], None);
         };
-        let read_at = Timestamp::parse(&clock::format(self.clock.now())).ok();
-        (windows_of(&text), read_at)
+        (windows_of(&text), timestamp(written))
     }
 }
 
