@@ -11,7 +11,7 @@ export function useActivityStream(teams: readonly Team[]): StreamSnapshot {
   const names = teams.map((team) => `${team.org}/${team.team}`).join(',')
   const stable = useMemo(() => teams, [names]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const stream = new ActivityStream({ read: (org, team, since) => api.activity(org, team, since), teams: stable })
+    const stream = new ActivityStream({ read: (org, team, since, signal) => api.activity(org, team, since, signal), teams: stable })
     stream.subscribe(setSnapshot)
     stream.start()
     return () => stream.stop()

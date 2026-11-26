@@ -20,6 +20,32 @@ export function binsOf(events: readonly TaggedEvent[], now: number): number[] {
 /** The pull requests merged in the last hour. */
 export const lastHour = (events: readonly TaggedEvent[], now: number): number => binsOf(events, now).reduce((sum, count) => sum + count, 0)
 
+/** The start of the viewer's day containing `now`, in ms. */
+export function startOfDay(now: number): number {
+  const day = new Date(now)
+  day.setHours(0, 0, 0, 0)
+  return day.getTime()
+}
+
+export interface Counts {
+  lastHour: number
+  today: number
+}
+
+/**
+ * The two counts the page shows, from the same events, so that they cannot contradict each other: the day's merges
+ * are at least the merges of the last hour that fall in the day, and at least what the evaluation counted for the
+ * day (which covers the part of the day before the feed's first read). An hour that reaches back over midnight has
+ * merges that are not today's: only then is the hour's count above the day's, and rightly.
+ */
+export function countsOf(events: readonly TaggedEvent[], now: number, evaluationToday: number | undefined): Counts {
+  const midnight = startOfDay(now)
+  const merged = mergedAt(events).filter((at) => at <= now)
+  const hour = merged.filter((at) => now - at < BINS * BIN_MS)
+  const sinceMidnight = merged.filter((at) => at >= midnight).length
+  return { lastHour: hour.length, today: Math.max(evaluationToday ?? 0, sinceMidnight) }
+}
+
 /** The median of the given values, rounded down to a whole number; nothing when there are none. */
 export function medianOf(values: readonly number[]): number | undefined {
   if (values.length === 0) return undefined

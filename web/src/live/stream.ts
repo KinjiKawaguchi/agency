@@ -25,7 +25,8 @@ export interface StreamSnapshot {
 }
 
 interface Options {
-  read: (org: string, team: string, since: string) => Promise<Activity>
+  /** One read; it must give up when `signal` aborts. */
+  read: (org: string, team: string, since: string, signal: AbortSignal) => Promise<Activity>
   teams: readonly Team[]
   now?: () => number
   /** How often every team is read. */
@@ -34,6 +35,8 @@ interface Options {
   firstWindowMs?: number
   /** How many events are kept. */
   keep?: number
+  /** A read that has not answered in this long is a failure of that team: a read that hangs must not stop the rounds. */
+  timeoutMs?: number
 }
 
 const key = (team: Team): string => `${team.org}/${team.team}`
@@ -43,6 +46,15 @@ const OVERLAP_MS = 1_000
 const MAX_PAGES = 5
 /** A team whose node does not report activity is asked again every this many rounds. */
 const UNREPORTED_EVERY = 6
+/** A gap this many intervals long between two rounds (a tab that was hidden) makes what comes after it the past, not news. */
+const GAP_INTERVALS = 6
+
+/** A promise that fails when the signal aborts, to race a read that may ignore it. */
+const aborted = (signal: AbortSignal): Promise<never> =>
+  new Promise((_, reject) => {
+    if (signal.aborted) reject(signal.reason)
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+  })
 
 /**
  * A feed that keeps itself up to date: it reads every team's activity on an interval, from the last event seen (a
@@ -61,9 +73,15 @@ export class ActivityStream {
   private isFirstRead = true
   private isReading = false
   private isStopped = false
+  private lastRoundAt: number | undefined
+  private readonly controllers = new Set<AbortController>()
+  private readonly onVisibility = (): void => {
+    if (document.hidden) this.pause()
+    else this.resume()
+  }
 
   constructor(options: Options) {
-    this.options = { now: Date.now, intervalMs: 10_000, firstWindowMs: 3_600_000, keep: 1_000, ...options }
+    this.options = { now: Date.now, intervalMs: 10_000, firstWindowMs: 3_600_000, keep: 1_000, timeoutMs: 8_000, ...options }
   }
 
   get current(): StreamSnapshot {
@@ -75,15 +93,29 @@ export class ActivityStream {
     return () => void this.listeners.delete(listener)
   }
 
+  /** Starts reading; while the page is hidden it does not, and it reads at once when the page is shown again. */
   start(): void {
-    void this.poll()
-    this.timer = setInterval(() => void this.poll(), this.options.intervalMs)
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility)
+    if (typeof document === 'undefined' || !document.hidden) this.resume()
   }
 
   stop(): void {
     this.isStopped = true
-    if (this.timer !== undefined) clearInterval(this.timer)
+    this.pause()
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility)
+    for (const controller of this.controllers) controller.abort(new Error('stopped'))
     this.listeners.clear()
+  }
+
+  private pause(): void {
+    if (this.timer !== undefined) clearInterval(this.timer)
+    this.timer = undefined
+  }
+
+  private resume(): void {
+    if (this.timer !== undefined || this.isStopped) return
+    void this.poll()
+    this.timer = setInterval(() => void this.poll(), this.options.intervalMs)
   }
 
   /** One round: every team is read, and the listeners hear once. A round that starts while another runs is skipped. */
@@ -92,13 +124,17 @@ export class ActivityStream {
     this.isReading = true
     try {
       this.round += 1
+      const startedAt = this.options.now()
+      const isAfterGap = this.lastRoundAt !== undefined && startedAt - this.lastRoundAt > GAP_INTERVALS * this.options.intervalMs
+      this.lastRoundAt = startedAt
       // A team whose node does not report activity is asked again once in a while, not every time.
       const asked = this.options.teams.filter((team) => !this.unreported.has(key(team)) || this.round % UNREPORTED_EVERY === 0)
       const results = await Promise.all(asked.map((team) => this.readTeam(team)))
       if (this.isStopped) return
       const fresh = results.flat()
       const events = [...this.snapshot.events, ...fresh].toSorted((a, b) => Date.parse(a.event.at) - Date.parse(b.event.at)).slice(-this.options.keep)
-      this.snapshot = { events, fresh: this.isFirstRead ? [] : fresh, failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted() }
+      this.prune(events)
+      this.snapshot = { events, fresh: this.isFirstRead || isAfterGap ? [] : fresh, failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted() }
       this.isFirstRead = false
       for (const listener of this.listeners) listener(this.snapshot)
     } finally {
@@ -114,7 +150,7 @@ export class ActivityStream {
     try {
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const from = this.cursors.get(name) === undefined ? this.options.now() - this.options.firstWindowMs : (this.cursors.get(name) as number) - OVERLAP_MS
-        const activity = await this.options.read(team.org, team.team, new Date(from).toISOString())
+        const activity = await this.readOnce(team, from)
         for (const event of activity.events) {
           if (seen.has(event.id)) continue
           seen.add(event.id)
@@ -133,5 +169,26 @@ export class ActivityStream {
       } else this.failing.add(name)
     }
     return added
+  }
+
+  /** One read, with the time it may take: when it does not answer in time it is aborted and counts as a failure of the team. */
+  private async readOnce(team: Team, from: number): Promise<Activity> {
+    const controller = new AbortController()
+    this.controllers.add(controller)
+    const timer = setTimeout(() => controller.abort(new Error('The activity did not answer in time.')), this.options.timeoutMs)
+    try {
+      return await Promise.race([this.options.read(team.org, team.team, new Date(from).toISOString(), controller.signal), aborted(controller.signal)])
+    } finally {
+      clearTimeout(timer)
+      this.controllers.delete(controller)
+    }
+  }
+
+  /** The ids that are remembered are the ones of the events that are kept, once there are many more of them than that. */
+  private prune(kept: readonly TaggedEvent[]): void {
+    const total = [...this.seen.values()].reduce((sum, ids) => sum + ids.size, 0)
+    if (total <= this.options.keep * 2) return
+    for (const ids of this.seen.values()) ids.clear()
+    for (const { org, team, event } of kept) this.seen.get(`${org}/${team}`)?.add(event.id)
   }
 }

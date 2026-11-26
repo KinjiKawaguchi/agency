@@ -107,4 +107,80 @@ describe('an activity stream', () => {
     await stream.poll()
     expect(calls).toBe(2)
   })
+
+  it('counts a read that never answers as a failure of that team, after the time it may take, and goes on', async () => {
+    vi.useFakeTimers()
+    try {
+      let hangs = true
+      const node = nodeWith([message('m-1', -10)])
+      const stream = new ActivityStream({
+        read: (org, team, since, signal) => (hangs ? new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))) : node.read(org, team, since)),
+        teams: [{ org: 'acme', team: 'app' }],
+        now: () => T0,
+        intervalMs: 10_000,
+        timeoutMs: 8_000,
+      })
+      stream.start()
+      await vi.advanceTimersByTimeAsync(8_000)
+      expect(stream.current.failing).toEqual(['acme/app'])
+      hangs = false
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(stream.current.failing).toEqual([])
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1'])
+      stream.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not read while the page is hidden, reads at once when it is shown, and does not take what piled up for news', async () => {
+    vi.useFakeTimers()
+    let isHidden = true
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => isHidden })
+    try {
+      let clock = T0
+      const node = nodeWith([message('m-1', -10)])
+      const stream = new ActivityStream({ read: node.read, teams: [{ org: 'acme', team: 'app' }], now: () => clock, intervalMs: 10_000 })
+      stream.start()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(node.asked).toHaveLength(0)
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(node.asked).toHaveLength(1)
+      // The page is hidden again for ten minutes, in which things happen; on return they are the past, not news.
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+      clock += 10 * 60_000
+      node.add(message('m-2', 300))
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(node.asked).toHaveLength(1)
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1', 'm-2'])
+      expect(stream.current.fresh).toEqual([])
+      // And the round after that is news again.
+      clock += 10_000
+      node.add(message('m-3', 400))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(stream.current.fresh.map((one) => one.event.id)).toEqual(['m-3'])
+      stream.stop()
+    } finally {
+      Reflect.deleteProperty(document, 'hidden')
+      vi.useRealTimers()
+    }
+  })
+
+  it('remembers the ids of the events it keeps, so that pruning does not show one twice', async () => {
+    const events = Array.from({ length: 12 }, (_, index) => message(`m-${index}`, -100 + index))
+    const node = nodeWith(events)
+    const stream = new ActivityStream({ read: node.read, teams: [{ org: 'acme', team: 'app' }], now: () => T0, keep: 3 })
+    await stream.poll()
+    await stream.poll()
+    expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-9', 'm-10', 'm-11'])
+    node.add(message('m-12', 5))
+    await stream.poll()
+    expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-10', 'm-11', 'm-12'])
+  })
 })
