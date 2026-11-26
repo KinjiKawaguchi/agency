@@ -20,6 +20,7 @@ pub mod funding_pick;
 pub mod invites;
 pub mod kpis;
 pub mod logging_config;
+pub mod metrics_config;
 pub mod node;
 pub mod notice;
 pub mod orgs;

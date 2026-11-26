@@ -153,6 +153,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
+    config.metrics.check().map_err(anyhow::Error::msg)?;
     let logger = Logger::open(data_dir.join("logs"), config.logging.clone(), clock.clone());
     let recorder = Recorder::new(data_dir.join("metrics"), clock.clone());
     let notifier = match overrides.notifier {
