@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n'
-import { blockedTotal, epicSegments, isDone, sortEpics, type Epic, type SegmentKind } from './work'
+import { blockedTotal, doneTime, epicSegments, isDone, sortEpics, type Epic, type SegmentKind } from './work'
 
 const LEGEND: readonly SegmentKind[] = ['done', 'doing', 'blocked', 'rest']
 
@@ -23,7 +23,7 @@ function EpicRow({ epic }: { epic: Epic }) {
       </div>
       <p className="goal-meta" title={epic.basis}>
         <span className="mono ref">{epic.ref}</span>
-        <span>{isFinished ? (epic.doneAt === undefined ? t.people.epicDone : t.people.epicDoneOn(fmt.dateTime(epic.doneAt))) : epic.forecast === undefined ? epic.basis : t.people.epicFinish(fmt.dateTime(epic.forecast.at))}</span>
+        <span>{isFinished ? (doneTime(epic) === undefined ? t.people.epicDone : t.people.epicDoneOn(fmt.dateTime(new Date(doneTime(epic) as number).toISOString()))) : epic.forecast === undefined ? epic.basis : t.people.epicFinish(fmt.dateTime(epic.forecast.at))}</span>
         {blockedText === '' ? null : <span className="work-stop">{t.people.epicBlockedBy(blockedText)}</span>}
       </p>
     </div>

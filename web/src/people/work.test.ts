@@ -1,5 +1,5 @@
 import { sampleTeamView, type EpicForecast } from '../api/teamview'
-import { blockedTotal, blockedWork, epicSegments, inProgress, isDone, sortEpics, type Epic } from './work'
+import { blockedTotal, blockedWork, doneTime, epicSegments, inProgress, isDone, sortEpics, type Epic } from './work'
 
 const epic = (change: Partial<EpicForecast>): EpicForecast => ({
   ref: 'app#1',
@@ -69,6 +69,13 @@ describe('finished epics', () => {
   it('come after the epics still open, the latest finished first', () => {
     const sorted = sortEpics([finished('old', '2026-11-01T00:00:00Z'), epic({ ref: 'open', total: 4, done: 1 }), finished('new', '2026-11-20T00:00:00Z'), epic({ ref: 'going', total: 4, doing: 2 })])
     expect(sorted.map((one) => one.ref)).toEqual(['going', 'open', 'new', 'old'])
+  })
+
+  it('read a time that is not one as no time: the order is still settled and nothing is shown as an invalid date', () => {
+    const sorted = sortEpics([finished('bad', 'yesterday'), finished('good', '2026-11-20T00:00:00Z'), finished('none')])
+    expect(sorted.map((one) => one.ref)).toEqual(['good', 'bad', 'none'])
+    expect(doneTime(finished('bad', 'yesterday'))).toBeUndefined()
+    expect(doneTime(finished('good', '2026-11-20T00:00:00Z'))).toBe(Date.parse('2026-11-20T00:00:00Z'))
   })
 
   it('keep their place among themselves when none says when it was finished', () => {
