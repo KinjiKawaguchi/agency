@@ -457,6 +457,19 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
+### The measurements
+
+The node times every request it answers and writes the numbers to `~/.agency/metrics/`, one file for each UTC day, for 30 days. They are the node's own data, on this machine only; nothing leaves it unless you scrape it (below). A request is named by the route it matched (`GET /api/orgs/{org}/teams/{team}/usage`, never the path with the ids in it), what matched no route is one series, `unmatched`, and no body, token, query, or address is kept. The owner reads them:
+
+```sh
+curl -s 'http://127.0.0.1:4400/api/metrics?days=1' | python3 -m json.tool | head
+curl -s http://127.0.0.1:4400/metrics            # the text a Prometheus scrape reads, since the node started
+```
+
+- `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days. A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
+- It is the owner's alone: the direct local request, or Access signed in as the owner. Another person Access lets in gets 403. `/metrics` is read only on the node's own machine, so a Prometheus scrapes it there (not through the tunnel).
+- Nothing is recorded in the data directory by a command that is not `serve`. A node that cannot write its directory keeps what it has in memory and tries again.
+
 ### The log
 
 While it runs, the node writes what it has to say to `~/.agency/logs/node.jsonl`, one JSON object on each line:
