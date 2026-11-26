@@ -11,7 +11,7 @@ Ids are lowercase letters, digits, and hyphens (`[a-z0-9][a-z0-9-]{0,39}`).
 
 ## Requirements
 
-- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.35 or later, and systemd to run the node as a service.
+- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.34 or later, and systemd to run the node as a service.
 - macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler and `curl`, for example `sudo apt install build-essential curl`.
 - Rust, stable, 1.87 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
 - Node.js 24 with npm, to build the web client. Check with `node --version`.
@@ -47,7 +47,7 @@ Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` whe
 
 ### A release build
 
-Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). Linux builds need glibc 2.35 or later, so Debian 12 or later and Ubuntu 22.04 or later can install the Debian package. [releasing.md](releasing.md) says how releases are made.
+Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). Linux builds need glibc 2.34 or later; Debian 12 or later and Ubuntu 22.04 or later can install the Debian package. [releasing.md](releasing.md) says how releases are made.
 
 #### Debian package (Linux)
 

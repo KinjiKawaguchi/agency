@@ -13,7 +13,7 @@ ID に使えるのは英小文字、数字、ハイフンです（`[a-z0-9][a-z0
 
 ## 必要なもの
 
-- macOS（Apple シリコンでも Intel でもかまいません）、または glibc 2.35 以降の Linux（x86_64 か arm64）。ノードをサービスとして動かすには systemd も要ります。
+- macOS（Apple シリコンでも Intel でもかまいません）、または glibc 2.34 以降の Linux（x86_64 か arm64）。ノードをサービスとして動かすには systemd も要ります。
 - macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラと `curl`。たとえば `sudo apt install build-essential curl` で入ります。
 - Rust の stable 版、1.87 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
 - Web クライアントのビルドに使う Node.js 24 と npm。`node --version` で確かめます。
@@ -51,7 +51,7 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 
 ### リリースビルド
 
-ソースからビルドする代わりに、リリースビルドを使えます。リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドには glibc 2.35 以降が必要です。Debian 12 以降と Ubuntu 22.04 以降なら Debian パッケージを入れられます。リリースの作り方は [releasing.md](releasing.md) にあります。
+ソースからビルドする代わりに、リリースビルドを使えます。リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドには glibc 2.34 以降が必要です。Debian 12 以降と Ubuntu 22.04 以降なら Debian パッケージを入れられます。リリースの作り方は [releasing.md](releasing.md) にあります。
 
 #### Debian パッケージ（Linux）
 

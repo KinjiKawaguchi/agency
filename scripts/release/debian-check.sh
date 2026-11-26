@@ -6,7 +6,8 @@ dpkg-deb --info "$package"
 dpkg-deb --contents "$package"
 contents="$(dpkg-deb --contents "$package")"
 case "$contents" in *" ./etc/"* | *" ./lib/systemd/"* | *" ./usr/lib/systemd/"*) echo "package installs configuration or a system unit" >&2; exit 1 ;; esac
-[ "$(dpkg-deb --ctrl-tarfile "$package" | tar -t | tr '\n' ' ')" = "./control " ] || { echo "package has maintainer scripts" >&2; exit 1; }
+scripts="$(dpkg-deb --ctrl-tarfile "$package" | tar -t | grep -vxE '\./|\./control' || true)"
+[ -z "$scripts" ] || { echo "package has maintainer scripts or other control files: $scripts" >&2; exit 1; }
 sudo dpkg -i "$package"
 agency --version
 getent passwd agency >/dev/null && { echo "package created an agency account" >&2; exit 1; }

@@ -59,7 +59,8 @@ while read -r library; do
 done < <(readelf --dynamic --wide "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
 dependencies=("libc6 (>= $glibc_version)")
 for need in "${needs[@]:1}"; do dependencies+=("$need"); done
-depends="$(IFS=', '; echo "${dependencies[*]}")"
+depends="$(printf '%s, ' "${dependencies[@]}")"
+depends="${depends%, }"
 
 name="agency_${version}_${deb_arch}.deb"
 stage="$(mktemp -d)"
