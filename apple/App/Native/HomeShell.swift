@@ -10,14 +10,39 @@ struct HomeShell: View {
     let push: PushCoordinator
     let onChangeHomeNode: () -> Void
 
-    enum Tab: Hashable {
-        case desk, people, org, costs, devices
+    /// The tabs, in the order of the bar. A screen that is native has its own view in `screen(_:session:)`
+    /// and no `webPath`; one that is still a web page has the page's path and is served by the shared
+    /// web view. Making a screen native is a change to its case here and to the switch below, and to
+    /// nothing else in the shell.
+    enum Tab: CaseIterable, Hashable {
+        case desk, overview, people, costs, devices
 
-        var path: String? {
+        var title: String {
+            switch self {
+            case .desk: Ja.Tabs.desk
+            case .overview: Ja.Tabs.overview
+            case .people: Ja.Tabs.people
+            case .costs: Ja.Tabs.costs
+            case .devices: Ja.Tabs.devices
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .desk: "tray.full"
+            case .overview: "square.grid.2x2"
+            case .people: "person.2"
+            case .costs: "yensign.circle"
+            case .devices: "iphone"
+            }
+        }
+
+        /// The web client's page for this tab, or `nil` when the screen is native.
+        var webPath: String? {
             switch self {
             case .desk: nil
+            case .overview: "/overview"
             case .people: "/people"
-            case .org: "/org"
             case .costs: "/costs"
             case .devices: "/devices"
             }
@@ -37,13 +62,11 @@ struct HomeShell: View {
         Group {
             if let session {
                 TabView(selection: $tab) {
-                    desk(session)
-                        .tabItem { Label(Ja.Desk.title, systemImage: "tray.full") }
-                        .tag(Tab.desk)
-                    webTab(.people, "人と仕事", "person.2")
-                    webTab(.org, "組織図", "rectangle.3.group")
-                    webTab(.costs, "費用", "yensign.circle")
-                    webTab(.devices, "端末", "iphone")
+                    ForEach(Tab.allCases, id: \.self) { tab in
+                        screen(tab, session: session)
+                            .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                            .tag(tab)
+                    }
                 }
                 .sheet(isPresented: $showsSettings) {
                     SettingsSheet(
@@ -52,7 +75,8 @@ struct HomeShell: View {
                             showsSettings = false
                             Task { await leave() }
                         },
-                        onResetKey: resetKey
+                        onResetKey: resetKey,
+                        onOpenOrgChart: openOrgChart
                     )
                 }
             } else {
@@ -80,17 +104,24 @@ struct HomeShell: View {
         .onChange(of: session.desk.loading) { _, loading in loaded(loading, session) }
     }
 
+    /// The screen of a tab: a native view where there is one, otherwise the web page.
     @ViewBuilder
-    private func webTab(_ tag: Tab, _ title: String, _ symbol: String) -> some View {
-        Group {
-            if tab == tag, let web {
-                WebTabView(model: web, onChangeHomeNode: { Task { await leave() } })
-            } else {
-                Color.clear
-            }
+    private func screen(_ tab: Tab, session: NativeSession) -> some View {
+        switch tab {
+        case .desk:
+            desk(session)
+        case .overview, .people, .costs, .devices:
+            webScreen(tab)
         }
-        .tabItem { Label(title, systemImage: symbol) }
-        .tag(tag)
+    }
+
+    @ViewBuilder
+    private func webScreen(_ tab: Tab) -> some View {
+        if self.tab == tab, let web {
+            WebTabView(model: web, onChangeHomeNode: { Task { await leave() } })
+        } else {
+            Color.clear
+        }
     }
 
     private func notice(_ session: NativeSession) -> String? {
@@ -120,7 +151,7 @@ struct HomeShell: View {
     }
 
     private func openWeb(_ tab: Tab) {
-        guard let path = tab.path, let flow else { return }
+        guard let path = tab.webPath, let flow else { return }
         if let web {
             web.openPath(path)
         } else {
@@ -151,6 +182,14 @@ struct HomeShell: View {
         default:
             break
         }
+    }
+
+    /// The org chart is not a tab (the bar holds five); it opens in the browser, which holds the Access
+    /// session too, until a native chart exists.
+    private func openOrgChart() {
+        guard let url = URL(string: "/org", relativeTo: homeNode.url)?.absoluteURL else { return }
+        showsSettings = false
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
     /// Makes this phone's key again, for when Face ID was changed and the old key can no longer sign.

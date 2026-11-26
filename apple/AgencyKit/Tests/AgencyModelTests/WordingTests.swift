@@ -35,6 +35,12 @@ struct WordingTests {
         #expect(!Ja.Paper.commentExplain(.pendingDecision).contains("決裁"))
     }
 
+    @Test("the tab names are the web client's navigation labels")
+    func tabs() {
+        #expect([Ja.Tabs.desk, Ja.Tabs.overview, Ja.Tabs.people, Ja.Tabs.costs, Ja.Tabs.devices, Ja.Tabs.orgChart]
+            == ["決めること", "全体", "参加者と仕事", "費用", "端末", "組織図"])
+    }
+
     @Test("a queued decision says how often it was tried and when it goes next")
     func queued() {
         #expect(Ja.Recent.queuedDetail(attempts: 0, retry: nil) == "まだ送れていません。まもなく再送します。")

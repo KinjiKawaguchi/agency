@@ -16,7 +16,8 @@ final class NativeSession {
     let keyProblem: String?
     private(set) var signInProblem: String?
 
-    @ObservationIgnored private let client: NodeClient
+    /// The client of the home node, for the screens that read from it.
+    @ObservationIgnored let client: NodeClient
     @ObservationIgnored private let transport: URLSessionTransport
     @ObservationIgnored private let signIn: AccessSignInFlow
     @ObservationIgnored private var registeredPush: PushRegistration?
