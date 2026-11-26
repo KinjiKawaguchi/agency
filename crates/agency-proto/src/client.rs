@@ -131,6 +131,29 @@ pub struct OrgRef {
     /// Whether this node holds the org's root key.
     pub is_root: bool,
     pub teams: Vec<TeamRef>,
+    /// A recovery of the org that was started and waits. Left out when none waits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recovery: Option<StartedRecovery>,
+}
+
+/// A recovery of an org that was started with its recovery key and waits (docs/protocol.md, "Recovery
+/// key"). Until it takes effect, the root cancels it by signing any version of the org.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct StartedRecovery {
+    /// When it takes effect on this node (`RECOVERY_WAIT_SECONDS` after this node took the start). Absent
+    /// when this node keeps no record of when it took it, so it does not take the finish either.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub takes_effect_at: Option<String>,
+    /// The fingerprint of the root key it moves the org to; absent when it keeps the root key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_root_key: Option<String>,
+    /// Whether it replaces the recovery key.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(type = "boolean")]
+    pub replaces_recovery_key: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -434,6 +457,9 @@ pub enum PushEvent {
     Request,
     Device,
     Decision,
+    /// A recovery of an org whose root is this node's account was started. Every token and browser gets
+    /// it, whatever kinds it names: the owner must be able to cancel.
+    Recovery,
 }
 
 /// What a token gets when it names no kinds (what a token got before kinds existed).

@@ -12,10 +12,11 @@ use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
     home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
     DecisionState, Funding, HomeNode, Me, OrgRef, SignedDecisionInput, SnapshotSource,
-    TeamLocation, TeamRef, TeamSnapshot, MAX_NOTE,
+    StartedRecovery, TeamLocation, TeamRef, TeamSnapshot, MAX_NOTE,
 };
+use agency_proto::clock;
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::{Id, OrgDefinition, Person, Timestamp};
+use agency_proto::{Id, OrgDefinition, Person, PublicKey, Timestamp};
 
 /// The org, if the node's account is a member of it.
 pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
@@ -83,6 +84,7 @@ pub fn me(node: &Node) -> Me {
             label: doc.body.label.clone(),
             is_root: is_root(node, &doc),
             teams,
+            recovery: started_recovery(node, &doc),
         })
     });
     Me {
@@ -92,6 +94,16 @@ pub fn me(node: &Node) -> Me {
         hides_titles: is_hiding_titles(node),
         home_nodes: None,
     }
+}
+
+/// The recovery of `doc` that waits, if one does.
+fn started_recovery(node: &Node, doc: &SignedOrg) -> Option<StartedRecovery> {
+    let pending = doc.body.root.pending.as_ref()?;
+    Some(StartedRecovery {
+        takes_effect_at: crate::orgs::recovery_takes_effect(node, doc).map(clock::format),
+        new_root_key: pending.public_key.as_ref().map(PublicKey::fingerprint),
+        replaces_recovery_key: pending.recovery.is_some(),
+    })
 }
 
 /// The current definition of an org the account belongs to.

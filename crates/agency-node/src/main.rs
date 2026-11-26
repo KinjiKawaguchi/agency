@@ -6,6 +6,7 @@ mod kpi_cli;
 mod logs_cli;
 mod outcome_cli;
 mod peer_cli;
+mod recovery_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -101,6 +102,9 @@ enum Command {
     PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
+    RootRecovery(recovery_cli::RootRecovery),
+    RootRecover(recovery_cli::RootRecover),
+    RootCancelRecovery(recovery_cli::RootCancelRecovery),
     /// Moves an org to a new root key (on the root key's node): the next version names it, signed by the
     /// current root key; the old key is forgotten once it is published
     RootRotate {
@@ -497,6 +501,9 @@ async fn run(cli: Cli) -> Result<()> {
         Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
+        Command::RootRecovery(args) => recovery_cli::root_recovery(&node, args).await?,
+        Command::RootRecover(args) => recovery_cli::root_recover(&node, args).await?,
+        Command::RootCancelRecovery(args) => recovery_cli::root_cancel_recovery(&node, args)?,
         Command::RootRotate { org } => {
             let doc = orgs::rotate_root(&node, &id(&org)?)?;
             println!(

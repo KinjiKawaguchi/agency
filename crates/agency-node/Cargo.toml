@@ -20,6 +20,8 @@ agency-core.workspace = true
 agency-proto.workspace = true
 anyhow.workspace = true
 axum.workspace = true
+# The recovery key's 24 words: the BIP-39 English list with its checksum.
+bip39 = { version = "2.1", default-features = false, features = ["std"] }
 clap.workspace = true
 rust-embed.workspace = true
 serde_json.workspace = true

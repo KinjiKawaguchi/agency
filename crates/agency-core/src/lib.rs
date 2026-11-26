@@ -28,6 +28,7 @@ pub mod push;
 mod push_events;
 pub mod read_auth;
 pub mod readings;
+pub mod recovery;
 pub mod routes;
 pub mod ships;
 pub mod signed_decisions;
