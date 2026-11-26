@@ -1,3 +1,4 @@
+import AgencyKit
 import AgencyWidget
 import SwiftUI
 
@@ -11,7 +12,7 @@ struct AgencyApp: App {
             RootView(store: store, push: appDelegate.push)
                 // A widget's tap: it opens the request it names, as a tapped notification does.
                 .onOpenURL { url in
-                    if let link = WidgetLink.request(from: url) { appDelegate.push.open(.request(link)) }
+                    if let link = WidgetLink.request(from: url) { appDelegate.push.open(NotificationTap(link: .request(link), node: nil)) }
                 }
         }
     }
