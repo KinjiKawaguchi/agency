@@ -35,8 +35,8 @@ impl RuntimeRequest {
     }
 }
 
-/// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage` and `activity`
-/// are optional, and the node calls one only when `Describe::ops` lists it.
+/// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage`, `activity`,
+/// and `participantMetrics` are optional, and the node calls one only when `Describe::ops` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "op", rename_all = "camelCase")]
 #[ts(export)]
@@ -51,12 +51,26 @@ pub enum RuntimeCall {
     TokenUsage { days: u32 },
     /// Answered with `Activity`: at most `limit` (1 to 500) events after `since`, oldest first.
     Activity { since: Timestamp, limit: u32 },
+    /// Answered with `ParticipantMetrics` over the last `days` days (1 to 90), cut at `utcOffsetMinutes`
+    /// (minutes east of UTC) when the node gives one, and at the runtime's own time zone when it does not.
+    ParticipantMetrics {
+        days: u32,
+        #[serde(
+            default,
+            rename = "utcOffsetMinutes",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[ts(optional)]
+        utc_offset_minutes: Option<i32>,
+    },
 }
 
 /// The optional operation name for `RuntimeCall::TokenUsage` in `Describe::ops`.
 pub const TOKEN_USAGE_OP: &str = "tokenUsage";
 /// The optional operation name for `RuntimeCall::Activity` in `Describe::ops`.
 pub const ACTIVITY_OP: &str = "activity";
+/// The optional operation name for `RuntimeCall::ParticipantMetrics` in `Describe::ops`.
+pub const PARTICIPANT_METRICS_OP: &str = "participantMetrics";
 
 /// A verified decision, applied by the team runtime.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

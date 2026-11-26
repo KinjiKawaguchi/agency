@@ -1,0 +1,68 @@
+{
+  "org": "acme",
+  "team": "app",
+  "days": 2,
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "utcOffsetMinutes": 540,
+  "participants": [
+    {
+      "name": "backend",
+      "byDay": [
+        {
+          "date": "2026-11-23",
+          "busySeconds": 21600,
+          "waitingSeconds": 1800,
+          "idleSeconds": 3600,
+          "costUsd": 6.4,
+          "tokens": { "input": 80000, "output": 30000, "cacheRead": 1600000, "cacheWrite": 120000 }
+        },
+        {
+          "date": "2026-11-24",
+          "busySeconds": 9000,
+          "waitingSeconds": 600,
+          "idleSeconds": 1200,
+          "costUsd": 2.05,
+          "tokens": { "input": 40000, "output": 15000, "cacheRead": 800000, "cacheWrite": 60000 }
+        }
+      ]
+    },
+    {
+      "name": "lead",
+      "byDay": [
+        {
+          "date": "2026-11-23",
+          "busySeconds": 7200,
+          "waitingSeconds": 3600,
+          "idleSeconds": 18000,
+          "costUsd": 3.15,
+          "tokens": { "input": 40000, "output": 14000, "cacheRead": 900000, "cacheWrite": 60000 }
+        },
+        {
+          "date": "2026-11-24",
+          "busySeconds": 3600,
+          "waitingSeconds": 1200,
+          "idleSeconds": 7200,
+          "costUsd": 1.2,
+          "tokens": { "input": 20000, "output": 7000, "cacheRead": 400000, "cacheWrite": 30000 }
+        }
+      ]
+    },
+    {
+      "name": "reviewer",
+      "byDay": [
+        {
+          "date": "2026-11-24",
+          "busySeconds": 1500,
+          "waitingSeconds": 0,
+          "idleSeconds": 300,
+          "costUsd": 0.5,
+          "tokens": { "input": 8000, "output": 3000, "cacheRead": 150000, "cacheWrite": 12000 }
+        }
+      ]
+    }
+  ],
+  "pullRequests": [
+    { "repo": "acme/app", "number": 101, "by": "backend" },
+    { "repo": "acme/app", "number": 102, "by": "lead" }
+  ]
+}
