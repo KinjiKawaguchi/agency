@@ -9,6 +9,7 @@ import { createTestNode, testKeyStore } from './testDevice'
 import type { TeamView } from '../api/teamview'
 import type { KeyStore } from '../device/deviceKey'
 import type { Locale } from '../i18n/locale'
+import type { WebPushBrowser } from '../pwa/useWebPush'
 
 interface Options {
   path?: string
@@ -43,6 +44,8 @@ interface Options {
   retryDelays?: readonly number[]
   /** How often the device list is read, instead of the real one, for a test of its polling. */
   devicesPollMs?: number
+  /** What Web Push uses of the browser: a stand-in, as jsdom has no push service. */
+  webPushBrowser?: WebPushBrowser
 }
 
 /** A device key store that lives only as long as the test. */
@@ -86,6 +89,6 @@ export function renderApp(options: Options = {}): RenderResult & { node: MockNod
   const history = createMemoryHistory({ initialEntries: [options.path ?? '/desk'] })
   const queryClient = createQueryClient(options.retryDelays ?? [0, 0], options.devicesPollMs === undefined ? {} : { devicesPollMs: options.devicesPollMs })
   lastQueryClient = queryClient
-  const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? (isEnrolled ? testKeyStore() : memoryKeyStore())} queryClient={queryClient} />)
+  const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? (isEnrolled ? testKeyStore() : memoryKeyStore())} queryClient={queryClient} {...(options.webPushBrowser === undefined ? {} : { webPushBrowser: options.webPushBrowser })} />)
   return { ...result, node, history }
 }

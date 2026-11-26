@@ -161,10 +161,7 @@ fn planted() -> SignedOrg {
         label: "Planted".into(),
         version: 1,
         prev: None,
-        root: agency_proto::org::Root {
-            account: id("mallory"),
-            public_key: key.public(),
-        },
+        root: agency_proto::org::Root::new(id("mallory"), key.public()),
         departments: vec![],
         people: vec![founder],
         teams: vec![],

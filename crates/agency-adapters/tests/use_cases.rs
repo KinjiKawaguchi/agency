@@ -431,10 +431,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: root.public(),
-        },
+        root: Root::new(id("alice"), root.public()),
         departments: vec![],
         people: vec![alice],
         teams: vec![],

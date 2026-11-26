@@ -1,3 +1,4 @@
+import type { ClaimFailure } from '../src/claim/provisional'
 import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
@@ -12,6 +13,7 @@ async function readBody(message: IncomingMessage): Promise<Buffer> {
 
 const RESET_PATH = '/__mock/reset'
 const SIGN_IN_PATH = '/__mock/sign-in'
+const CLAIM_CONFIRM_PATH = '/__mock/claim-confirm'
 const DEVICE_ADD_PATH = '/__mock/device-add'
 const ENVELOPES_PATH = '/__mock/envelopes'
 const PUSH_TOKENS_PATH = '/__mock/push-tokens'
@@ -20,10 +22,14 @@ const PUSH_TOKENS_PATH = '/__mock/push-tokens'
  * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
  * the mock numbers on, and AGENCY_MOCK_EVALUATION=1 does the same for the evaluation; `POST /__mock/reset?usage=1&siteError=...&outcome=queued` starts a node with the given ones.
  */
+const isClaimFailure = (value: string | null | undefined): boolean => value === 'unknown' || value === 'expired' || value === 'other-email' || value === 'taken'
+
 function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof createMockNode>[0] {
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
+  const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
+  const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -32,7 +38,11 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    outcomes: outcomes === '1',
+    webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
+    // A claim link for one seat (agency#201): its code, and how a claim of it ends.
+    ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
     // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
@@ -54,6 +64,11 @@ function apiMiddleware(): Connect.NextHandleFunction {
     }
     if (message.method === 'POST' && url.pathname === SIGN_IN_PATH) {
       node.setSignInExpired(url.searchParams.get('expired') === '1')
+      response.statusCode = 204
+      return response.end()
+    }
+    if (message.method === 'POST' && url.pathname === CLAIM_CONFIRM_PATH) {
+      node.claim.confirm()
       response.statusCode = 204
       return response.end()
     }

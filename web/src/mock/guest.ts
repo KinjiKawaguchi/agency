@@ -19,7 +19,7 @@ export function answererView(view: TeamView, guest: MockGuest): TeamView {
   }
 }
 
-const ORG_ROUTE = /^\/api\/orgs\/[^/]+(\/(evaluation|effort))?$/
+const ORG_ROUTE = /^\/api\/orgs\/[^/]+(\/(evaluation|effort)|\/outcomes(\/readings|\/observations)?)?$/
 const TEAM_OWNER_ROUTE = /^\/api\/orgs\/[^/]+\/teams\/[^/]+\/(usage|activity)$/
 
 /** The routes that are the owner's: a hosted member has no owner action, and no read beyond their seat. */

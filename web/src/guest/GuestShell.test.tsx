@@ -35,7 +35,7 @@ async function enrol(node: ReturnType<typeof createMockNode>, keyStore: ReturnTy
 }
 
 /** What the owner alone is given: the org's definition and its reads, token use, the activity, and push settings. */
-const OWNERS = /\/api\/orgs\/[^/]+(\/(evaluation|effort)|\/teams\/[^/]+\/(usage|activity))?$|\/api\/push\//
+const OWNERS = /\/api\/orgs\/[^/]+(\/(evaluation|effort|outcomes(\/readings)?)|\/teams\/[^/]+\/(usage|activity))?$|\/api\/push\//
 
 /** A client over the node that notes the path of every call it makes. */
 function recording(node: ReturnType<typeof createMockNode>): { client: ReturnType<typeof createApiClient>; paths: string[] } {

@@ -169,6 +169,12 @@ impl DataDir {
             .map_err(|error| io_error(path, error))
     }
 
+    fn recovery_start_path(&self, org: &Id, version: u64) -> PathBuf {
+        self.dir("orgs")
+            .join(format!("{org}.history"))
+            .join(format!("{version:06}.recovery-start.json"))
+    }
+
     fn org_version_path(&self, org: &Id, version: u64) -> PathBuf {
         self.dir("orgs")
             .join(format!("{org}.history"))
@@ -221,6 +227,14 @@ impl OrgStore for DataDir {
 
     fn orgs(&self) -> Vec<SignedOrg> {
         read_all(&self.dir("orgs"))
+    }
+
+    fn note_recovery_start(&self, org: &Id, version: u64, at: &str) -> Result<()> {
+        write_json(&self.recovery_start_path(org, version), at)
+    }
+
+    fn recovery_started(&self, org: &Id, version: u64) -> Option<String> {
+        read_json(&self.recovery_start_path(org, version))
     }
 }
 

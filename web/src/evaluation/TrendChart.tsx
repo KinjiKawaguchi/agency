@@ -17,6 +17,8 @@ interface TrendChartProps {
   lines: readonly Line[]
   max: number
   format: (value: number) => string
+  /** The ticks of the axis, where room is short; the values in the tips are written with `format`. */
+  tickFormat?: (value: number) => string
   label: string
   noData: string
 }
@@ -43,11 +45,11 @@ function pathOf(values: readonly (number | null)[], max: number): string {
 const lastIndexWithValue = (values: readonly (number | null)[]): number => values.findLastIndex((value) => value !== null)
 
 /** Lines over days, with a marker on each line's last value and a crosshair that tells every line's value for the day. */
-export function TrendChart({ dates, lines, max, format, label, noData }: TrendChartProps) {
+export function TrendChart({ dates, lines, max, format, tickFormat, label, noData }: TrendChartProps) {
   const { fmt } = useI18n()
   const days = useDays(dates.length)
   return (
-    <ChartFrame max={max} format={format} dates={dates} label={label}>
+    <ChartFrame max={max} format={tickFormat ?? format} dates={dates} label={label}>
       <svg className="ev-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {lines.map((line) => (
           <path key={line.key} className="ev-line" d={pathOf(line.values, max)} style={{ stroke: line.color }} />
