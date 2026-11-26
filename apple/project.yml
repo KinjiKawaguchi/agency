@@ -36,6 +36,7 @@ targets:
     platform: iOS
     sources:
       - App
+      - Shared
     dependencies:
       - package: AgencyKit
         product: AgencyKit
@@ -59,7 +60,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Agency
-        # The languages of the alert strings (App/<language>.lproj/Localizable.strings).
+        # The languages of the alert strings (Shared/<language>.lproj/Localizable.strings).
         CFBundleLocalizations: [ja, en]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
