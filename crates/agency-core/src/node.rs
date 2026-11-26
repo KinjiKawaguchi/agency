@@ -127,11 +127,17 @@ impl Node {
         self.ports.store.save_config(&guard)
     }
 
-    /// The team, if it runs on this node. The node's own hosted-team configuration decides, never the
-    /// org's `TeamPlace.node`, which is only where other nodes reach the team and can lag behind a change
-    /// of this node's URL.
+    /// The team, if this node serves it: it is in the node's own hosted-team configuration, and in the
+    /// org's definition when the node has one. The org's `TeamPlace.node` never decides, since it is only
+    /// where other nodes reach the team and can lag behind a change of this node's URL. A team the org
+    /// removed stays in the configuration until its owner takes it out, and is not served meanwhile.
     pub fn hosted(&self, org: &Id, team: &Id) -> Option<HostedTeam> {
-        self.config().hosted(org, team).cloned()
+        let hosted = self.config().hosted(org, team).cloned()?;
+        let is_listed = self
+            .store()
+            .load_org(org)
+            .is_none_or(|doc| doc.body.team(team).is_some());
+        is_listed.then_some(hosted)
     }
 
     pub fn runs_here(&self, org: &Id, team: &Id) -> bool {

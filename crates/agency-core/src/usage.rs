@@ -87,7 +87,7 @@ pub async fn hosted_usage(
     days: u32,
     auth: &ReadAuth,
 ) -> Result<TokenUsage> {
-    let hosted = node.config().hosted(org, team).cloned();
+    let hosted = node.hosted(org, team);
     let doc = node.store().load_org(org);
     let reader = verify_read_once(
         node,
