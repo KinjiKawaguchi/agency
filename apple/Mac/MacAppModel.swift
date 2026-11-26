@@ -49,6 +49,9 @@ final class MacAppModel: HomeNodeSwitching {
 
     func add(_ node: HomeNodeURL, label: String) { store.add(node, label: label) }
     func note(configured: [HomeNodeRef]) { store.note(configured: configured) }
+    func note(nodeID: String?, of node: HomeNodeURL) { store.note(nodeID: nodeID, of: node) }
+    func nodeID(of node: HomeNodeURL) -> String { store.nodeID(of: node) }
+    func hasSaidID(of node: HomeNodeURL) -> Bool { store.hasSaidID(of: node) }
 
     func forget(_ node: HomeNodeURL) { store.forget(node) }
 

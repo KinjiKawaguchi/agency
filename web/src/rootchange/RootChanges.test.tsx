@@ -8,7 +8,7 @@ import { createMockNode } from '../mock/node'
 import { heldNode } from '../test/heldNode'
 import { refreshQueries, renderApp } from '../test/render'
 import { createTestNode } from '../test/testDevice'
-import { answerOf, rootChangesOf } from './provisional'
+import { answerOf, rootChangesOf } from './changes'
 
 const AGO = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
 const WAITING = [
@@ -236,6 +236,7 @@ describe('how the node says what waits', () => {
     expect(answerOf({ outcome: 'pending', message: 'm' })).toEqual({ status: 'pending' })
     expect(answerOf({ outcome: 'pending' })).toEqual({ status: 'pending' })
     expect(answerOf({ outcome: 'frozen', message: 'm' })).toEqual({ status: 'unknown', message: 'm' })
+    expect(answerOf({ outcome: 'constructor', message: 'm' }), 'a name every object has is not a known outcome').toEqual({ status: 'unknown', message: 'm' })
     for (const value of [{ outcome: 'frozen' }, { outcome: 'frozen', message: '' }, { outcome: 'applied' }, { outcome: 'queued', message: 'm' }, { outcome: 'delivered' }, null, 'pending', undefined]) expect(answerOf(value), String(value)).toEqual({ status: 'done' })
   })
 })

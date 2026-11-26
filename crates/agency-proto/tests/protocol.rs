@@ -8,6 +8,7 @@ use agency_proto::org::{
 use agency_proto::outcome::{
     Aim, Currency, GoodWhen, Kpi, KpiKind, KpiUnit, EPIC, MAX_AIMS, MAX_KPIS,
 };
+use agency_proto::seat::{External, Seat};
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
     Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
@@ -522,6 +523,28 @@ fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
 }
 
+/// The next version of `org`, with a seat and an external party: how they are signed. The seat has no account,
+/// key or device; both are answered for by the member `owner`.
+fn org_with_seats(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    body.seats.push(Seat {
+        id: id("carol"),
+        label: "Carol (finance)".into(),
+        department: Some(id("dev")),
+        ask_about: vec!["invoices".into(), "budget approval".into()],
+        relays: vec![id("owner")],
+    });
+    body.externals.push(External {
+        id: id("erin"),
+        label: "Erin (outside counsel)".into(),
+        ask_about: vec!["contract review".into(), "legal checks".into()],
+        relays: vec![id("owner")],
+    });
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
 fn allocation() -> Allocation {
     Allocation {
         new_feature: 40,
@@ -804,6 +827,7 @@ fn vectors_match_testdata() {
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
+        "orgWithSeats": org_with_seats(&key, &org),
         "rootRotation": root_rotation(&key, &org),
         "rootRecovery": root_recovery(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),
