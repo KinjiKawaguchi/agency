@@ -83,7 +83,7 @@ function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: numb
 }
 
 /** The owner's measurements as the node answers them: the series of a few route groups and calls, from the hour before `now` back `days` days. */
-export function metricsAnswer(now: Date, days: number, variant: MetricsVariant, withHourBuckets = false): unknown {
+export function metricsAnswer(now: Date, days: number, variant: MetricsVariant, hourBucketsOf: (group: string) => boolean = () => false): unknown {
   const until = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000 + 3_600_000)
   const from = new Date(until.getTime() - days * 24 * 3_600_000)
   const specs = variant === 'empty' ? [] : variant === 'slow' ? slow : usual
@@ -106,7 +106,7 @@ export function metricsAnswer(now: Date, days: number, variant: MetricsVariant, 
         const found = percentile(buckets, percent)
         return found === undefined ? [] : [[key, found]]
       })),
-      byHour: hoursOf(spec, count, until, days, percentile(buckets, 95), withHourBuckets),
+      byHour: hoursOf(spec, count, until, days, percentile(buckets, 95), hourBucketsOf(spec.group)),
     }
   })
   return {

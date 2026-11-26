@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { groupName } from './groupName'
 import { HourChart } from './HourChart'
 import { groupsOf as tableOrderOf } from './latency'
-import { hasHours, hoursBetween, isExactTrend, trendOf } from './trend'
+import { hasHours, hoursBetween, trendFor } from './trend'
 
 interface TrendCardProps {
   series: readonly LatencySeries[]
@@ -43,17 +43,15 @@ export function TrendCard({ series, from, until, budgetMs }: TrendCardProps) {
     ...(budgetMs === undefined ? [] : [{ key: 'in-node-reads', title: text.inNodeReads, members: reads, budget: budgetMs }]),
     ...groupsOf(series, 'serve').map(([group, members]) => ({ key: `serve-${group}`, title: groupName(t.metrics.groups.names, group), members, budget: undefined })),
     ...groupsOf(series, 'call').map(([group, members]) => ({ key: `call-${group}`, title: text.callGroup(groupName(t.metrics.groups.names, group)), members, budget: undefined })),
-  ].map((chart) => ({ ...chart, points: trendOf(chart.members, hours) })).filter((chart) => hasHours(chart.points))
+  ].map((chart) => ({ ...chart, ...trendFor(chart.members, hours) })).filter((chart) => hasHours(chart.points))
   if (charts.length === 0) return null
-  const isApproximate = charts.some((chart) => !isExactTrend(chart.points))
   return (
     <div className="card mt-card">
       <h3 className="sub-head">{text.title}</h3>
       <p className="muted">{text.lead}</p>
-      {isApproximate ? <p className="muted">{text.approximate}</p> : null}
       <div className="mt-trends">
         {charts.map((chart) => (
-          <HourChart key={chart.key} title={chart.title} points={chart.points} {...(chart.budget === undefined ? {} : { budgetMs: chart.budget })} />
+          <HourChart key={chart.key} title={chart.title} points={chart.points} isExact={chart.isExact} {...(chart.budget === undefined ? {} : { budgetMs: chart.budget })} />
         ))}
       </div>
     </div>

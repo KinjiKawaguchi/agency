@@ -40,9 +40,9 @@ interface HourSums {
 }
 
 /** What an hour says of a group: the p95 of the hour's buckets added together when every route gave them, else the slowest route's p95. */
-function pointOf(at: number, found: HourSums | undefined): HourPoint {
+function pointOf(at: number, found: HourSums | undefined, useBuckets: boolean): HourPoint {
   if (found === undefined || found.count <= 0) return { at, count: 0, value: { kind: 'none' }, isExact: true }
-  const exact = found.buckets === undefined ? undefined : percentileOf(found.buckets, 95)
+  const exact = !useBuckets || found.buckets === undefined ? undefined : percentileOf(found.buckets, 95)
   if (exact !== undefined) return { at, count: found.count, value: exact, isExact: true }
   if (found.slowest === undefined) return { at, count: 0, value: { kind: 'none' }, isExact: true }
   return { at, count: found.count, value: found.slowest === 'beyond' ? { kind: 'beyond' } : { kind: 'atMost', ms: found.slowest }, isExact: false }
@@ -54,7 +54,7 @@ function pointOf(at: number, found: HourSums | undefined): HourPoint {
  * routes only) it is the slowest route's p95, and the group's own p95 is at most that: when every part of a whole has 95
  * of 100 within a time, so has the whole.
  */
-export function trendOf(series: readonly LatencySeries[], hours: readonly number[]): HourPoint[] {
+export function trendOf(series: readonly LatencySeries[], hours: readonly number[], useBuckets = true): HourPoint[] {
   const byHour = new Map<number, HourSums>()
   for (const one of series) {
     for (const entry of one.byHour) {
@@ -66,7 +66,7 @@ export function trendOf(series: readonly LatencySeries[], hours: readonly number
       byHour.set(at, { count: (known?.count ?? 0 /* stand-in-ok(index): the first series of an hour has nothing of it yet, an accumulator of the code itself */) + entry.count, slowest, buckets })
     }
   }
-  return hours.map((at) => pointOf(at, byHour.get(at)))
+  return hours.map((at) => pointOf(at, byHour.get(at), useBuckets))
 }
 
 const addBuckets = (sum: readonly number[] | undefined, more: readonly number[]): number[] => more.map((count, index) => count + (sum?.[index] ?? 0 /* stand-in-ok(index): the first series of an hour has no sum yet, an accumulator of the code itself */))
@@ -76,3 +76,12 @@ export const hasHours = (points: readonly HourPoint[]): boolean => points.some((
 
 /** Whether every hour with calls is the group's own p95. */
 export const isExactTrend = (points: readonly HourPoint[]): boolean => points.every((point) => point.value.kind === 'none' || point.isExact)
+
+/**
+ * The trend of one chart, decided for the whole chart: the group's own p95 when every hour with calls has it, and otherwise
+ * the slowest route's p95 for every hour, so that one line never mixes two meanings.
+ */
+export function trendFor(series: readonly LatencySeries[], hours: readonly number[]): { points: HourPoint[]; isExact: boolean } {
+  const exact = trendOf(series, hours)
+  return isExactTrend(exact) ? { points: exact, isExact: true } : { points: trendOf(series, hours, false), isExact: false }
+}

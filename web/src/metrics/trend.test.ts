@@ -1,5 +1,5 @@
 import type { LatencySeries } from '../api/metricsApi'
-import { hasHours, hoursBetween, isExactTrend, MAX_HOURS, trendOf } from './trend'
+import { hasHours, hoursBetween, isExactTrend, MAX_HOURS, trendFor, trendOf } from './trend'
 
 const HOUR = 3_600_000
 const START = Date.parse('2026-11-24T10:00:00Z')
@@ -95,6 +95,17 @@ describe('the trend of a group, hour by hour', () => {
       const points = trendOf([series([hour(0, 10, undefined, at({ 14: 4, 5: 6 }))])], hours)
       expect(points[0]?.value).toEqual({ kind: 'beyond' })
       expect(points[1]).toEqual({ at: START + HOUR, count: 0, value: { kind: 'none' }, isExact: true })
+    })
+
+    it('is decided for the whole chart: one hour without buckets makes every hour the slowest route’s p95, never a line of two meanings', () => {
+      const mixed = series([hour(0, 99, 5, at({ 2: 99 })), hour(1, 10, 100)])
+      const other = series([hour(0, 1, 1000, at({ 9: 1 }))])
+      const chart = trendFor([mixed, other], hours)
+      expect(chart.isExact).toBe(false)
+      // Hour 0 had the buckets, and would be 5 ms; in an approximate chart it is the slowest route's 1 s, like the others.
+      expect(chart.points.map((point) => point.value)).toEqual([{ kind: 'atMost', ms: 1000 }, { kind: 'atMost', ms: 100 }, { kind: 'none' }, { kind: 'none' }])
+      expect(chart.points.every((point) => point.isExact === false || point.value.kind === 'none')).toBe(true)
+      expect(trendFor([series([hour(0, 99, 5, at({ 2: 99 }))]), other], hours)).toMatchObject({ isExact: true })
     })
 
     it('reads the 95th percentile of the buckets, not a higher one', () => {

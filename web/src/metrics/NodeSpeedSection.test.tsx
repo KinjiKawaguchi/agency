@@ -256,19 +256,43 @@ describe('the node’s own response time, on the evaluation page', () => {
       for (const one of others) expect(one.querySelector('.mt-budget')).toBeNull()
     })
 
-    it('says that it is one scale in milliseconds, with the p95 of each group’s routes together, and nothing of an approximation', async () => {
+    it('says that it is one scale in milliseconds on a log scale, and says nothing of an approximation when every point is the group’s own p95', async () => {
       open({ metrics: 'usual' })
       const found = await section()
-      expect(await found.findByText(/its p95 of each hour, all its routes together/)).toBeInTheDocument()
-      expect(found.getByText(/One scale, in milliseconds, drawn on a log scale/)).toBeInTheDocument()
-      expect(found.queryByText(/does not give the buckets of each hour/)).not.toBeInTheDocument()
+      expect(await found.findByText(/its p95 of each hour\. A p95 is the upper bound of its bucket/)).toBeInTheDocument()
+      expect(found.getByText(/One scale, in milliseconds \(0\.5 ms to 30 s\), drawn on a log scale/)).toBeInTheDocument()
+      expect(document.querySelector('.mt-note')).toBeNull()
+      for (const one of charts(found)) expect(within(one).getByRole('img').getAttribute('aria-label')).toMatch(/: the p95 of its routes together for each hour,/)
+      expect([...charts(found)[0]!.querySelectorAll('.mt-axis span')].map((tick) => tick.textContent)).toEqual(['1 ms', '10 ms', '100 ms', '1 s', '30 s'])
     })
 
-    it('says so when the node gives no buckets of the hours: a point is the slowest route’s p95, which the group’s is at most', async () => {
+    it('says it for each chart that is approximate, and for none that is not: a node that gives the buckets of some groups only', async () => {
+      open({ metrics: 'usual', metricsWithoutHourBuckets: ['teams'] })
+      const found = await section()
+      await found.findAllByText('Requests')
+      const byTitle = new Map(charts(found).map((one) => [titleOf(one), one]))
+      const noted = (title: string) => byTitle.get(title)?.querySelectorAll('.mt-note').length
+      // The teams routes are among the in-node reads, so that chart is approximate too; the desk's and the others' are exact.
+      expect([noted('Teams'), noted('In-node reads'), noted('Desk'), noted('Usage')]).toEqual([1, 2, 0, 0])
+      expect(within(byTitle.get('Teams') as HTMLElement).getByRole('img').getAttribute('aria-label')).toMatch(/: the slowest route’s p95 for each hour,/)
+      expect(within(byTitle.get('Desk') as HTMLElement).getByRole('img').getAttribute('aria-label')).toMatch(/: the p95 of its routes together for each hour,/)
+      expect(within(byTitle.get('Teams') as HTMLElement).getByText(/A point is the slowest route’s p95/)).toBeInTheDocument()
+    })
+
+    it('says a point above the budget line does not say it was broken, on the in-node reads chart when it is approximate, and not when it is exact', async () => {
       open({ metrics: 'usual', metricsWithoutHourBuckets: true })
       const found = await section()
-      expect(await found.findByText(/a point is the slowest route’s p95 of the group: the group’s own p95 in that hour is at most this/)).toBeInTheDocument()
-      expect(charts(found).length).toBeGreaterThan(0)
+      await found.findAllByText('Requests')
+      const [reads, ...others] = charts(found)
+      expect(within(reads as HTMLElement).getByText(/A point above the budget line does not say that the budget was broken/)).toBeInTheDocument()
+      for (const one of others) expect(within(one).queryByText(/A point above the budget line/)).not.toBeInTheDocument()
+    })
+
+    it('says in Japanese that a node without the buckets of the hours gives the slowest route’s p95', async () => {
+      open({ metrics: 'usual', metricsWithoutHourBuckets: true }, { locale: 'ja' })
+      const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
+      expect((await found.findAllByText(/1 点は、いちばん遅いルートの p95 です/)).length).toBeGreaterThan(1)
+      expect(found.getByText(/予算の線より上にある点は、予算を破ったことを言いません/)).toBeInTheDocument()
     })
 
     it('asks for the buckets of the hours with the hours, for 1 and 7 days, and not for 30, which has no hours', async () => {
@@ -312,7 +336,7 @@ describe('the node’s own response time, on the evaluation page', () => {
       const table = within(reads).getByRole('table', { name: 'In-node reads: the hours that had calls, newest first' })
       const cells = within(table).getAllByRole('row')[1]?.textContent ?? ''
       expect(cells).toMatch(/≤ \d+(\.\d+)? (ms|s)|slower than 30 s/)
-      expect(within(reads).getByRole('img').getAttribute('aria-label')).toMatch(/^In-node reads: the p95 for each hour, \d+ hours with calls, the latest ≤/)
+      expect(within(reads).getByRole('img').getAttribute('aria-label')).toMatch(/^In-node reads: the p95 of its routes together for each hour, \d+ hours with calls, the latest ≤/)
     })
 
     it('shows the 7 days in hours and says only short periods have them for 30', async () => {
