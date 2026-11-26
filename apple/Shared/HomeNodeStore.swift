@@ -15,11 +15,15 @@ final class HomeNodeStore {
     private static let legacyKey = "homeNodeURL"
 
     @ObservationIgnored private let defaults: UserDefaults
+    /// The number on the icon, for the app that shows it; none for what only reads the list (the background refresh).
+    @ObservationIgnored private let badges: BadgeKeeper?
     private(set) var book: HomeNodeBook
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, badges: BadgeKeeper? = nil) {
         self.defaults = defaults
+        self.badges = badges
         book = HomeNodeBook(decoding: defaults.data(forKey: Self.bookKey), legacyAddress: defaults.string(forKey: Self.legacyKey))
+        syncBadges()
     }
 
     var homeNode: HomeNodeURL? { book.current }
@@ -33,8 +37,17 @@ final class HomeNodeStore {
     func nodeID(of node: HomeNodeURL) -> String { book.nodeID(of: node) }
     func hasSaidID(of node: HomeNodeURL) -> Bool { book.hasSaidID(of: node) }
 
-    /// Leaves the current node: the setup comes back.
-    func clear() { change { $0.leaveCurrent() } }
+    /// Leaves the current node: the setup comes back. It is signed out, so its count no longer counts on the icon.
+    func clear() {
+        let leaving = book.current.map { book.nodeID(of: $0) }
+        change { $0.leaveCurrent() }
+        if let leaving { badges?.forget(leaving) }
+    }
+
+    /// The open node has `count` requests waiting for the owner: it is on the icon with the other nodes' counts.
+    func recordWaiting(_ count: Int, for node: HomeNodeURL) {
+        badges?.record(count, for: book.nodeID(of: node))
+    }
 
     /// Takes a node the owner added off the list, and everything this device kept for its host when no other node on the
     /// device has that host (the sign-in, key, drafts and choices are kept by host alone). The current node is never forgotten.
@@ -56,6 +69,12 @@ final class HomeNodeStore {
         book = next
         defaults.set(next.encoded(), forKey: Self.bookKey)
         defaults.removeObject(forKey: Self.legacyKey)
+        syncBadges()
+    }
+
+    /// The nodes this device has: the open one and the ones on its list. A node that is not one any more loses its count.
+    private func syncBadges() {
+        badges?.activate(Set(book.activeNodes.map { book.nodeID(of: $0) }))
     }
 }
 

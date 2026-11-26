@@ -628,3 +628,9 @@
   gap: 8px;
   margin-top: 8px;
 }
+
+.pile-for,
+.doc-for {
+  color: var(--ink-2);
+  font-weight: 600;
+}

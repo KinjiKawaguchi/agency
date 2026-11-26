@@ -54,8 +54,8 @@ pub struct WaitingJoin {
 
 impl PendingRootChange {
     /// What it changes, in words, for the terminal, the desk, and the presence prompt. A label came from
-    /// someone else: a control character in it is shown as `?`, so it can neither move the terminal's cursor
-    /// nor push a name out of the prompt.
+    /// someone else: a control character, or one that could reorder or hide in a line (`is_hidden_char`),
+    /// is shown as `?`, so it can neither move the terminal's cursor nor push a name out of the prompt.
     pub fn what(&self) -> String {
         printable(&self.raw_what())
     }
@@ -77,6 +77,14 @@ impl PendingRootChange {
                 }
             },
         }
+    }
+
+    /// What a notification names the change by: 16 hex digits of SHA-256("agency/push-id/v1" || handle). The
+    /// handle itself is how a joiner fetches its version, so it never goes to a push service, and the derivation
+    /// is its own, so the id shares nothing with the key the store keeps the change under.
+    pub fn notice_id(&self) -> String {
+        let text = format!("agency/push-id/v1{}", self.id);
+        agency_proto::digest::sha256_hex(text.as_bytes())[..16].to_owned()
     }
 
     /// The account the change is for: the joiner, or the member whose device it is.
@@ -123,11 +131,7 @@ impl PendingRootChange {
     }
 }
 
-fn printable(text: &str) -> String {
-    text.chars()
-        .map(|c| if c.is_control() { '?' } else { c })
-        .collect()
-}
+use agency_proto::org::printable;
 
 /// The most changes one presence prompt signs: every one of them is named in its words.
 pub const MOST_PER_PROMPT: usize = 3;

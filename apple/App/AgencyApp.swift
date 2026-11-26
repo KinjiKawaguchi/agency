@@ -5,7 +5,7 @@ import SwiftUI
 @main
 struct AgencyApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = HomeNodeStore()
+    @State private var store = HomeNodeStore(badges: BadgeKeeper())
 
     var body: some Scene {
         WindowGroup {

@@ -2,6 +2,7 @@
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
+import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
@@ -53,6 +54,8 @@ export interface MockNode {
 export const PENDING_ROOT_MESSAGE = 'Approved here; it takes effect once the root key\'s node signs it: run `agency root-sign` there.'
 
 interface MockNodeOptions {
+  /** Requests of the sample that are addressed to a seat or an external party the viewer answers for (request id → whom it is for), as `TeamSnapshot.relayedFor` says; the node, not the client, says it again in the decision log. */
+  relayedFor?: Readonly<Record<string, { id: string; label: string }>>
   /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
   pendingRoot?: boolean
   /** Changes that wait for the root key's signature, as `GET /api/me` tells the owner. */
@@ -107,6 +110,10 @@ interface MockNodeOptions {
   outcomes?: boolean
   /** Makes the outcomes routes answer this status, as a node that fails (503). */
   outcomesFailWith?: number
+  /** The owner reads the node's own measurements (`/api/metrics`), as the variant says; without it the route answers 403, as to anyone but the owner. `'absent'` is a node that does not measure (404). */
+  metrics?: MetricsVariant | 'absent'
+  /** Makes the measurements route answer this status, as a node that fails (503). */
+  metricsFailWith?: number
   /** A claim link the node has made for one seat (agency#201): the code, and how a redeem of it ends. Without it the claim routes answer 404. */
   claim?: MockClaimOptions
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -209,10 +216,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
   // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
-  const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === viewerName).map((request) => request.id)
+  const relayedForOf = (view: TeamView): Record<string, string> => Object.fromEntries(view.requests.flatMap((request): Array<[string, string]> => { const who = options.relayedFor?.[request.id]; return who === undefined ? [] : [[request.id, who.label]] }))
+  const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === viewerName || options.relayedFor?.[request.id] !== undefined).map((request) => request.id)
   // And who waits on them: the people whose `waitingOn` names the viewer.
   const waitingOnViewerOf = (view: TeamView): string[] => view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === viewerName).map((person) => person.id)
-  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: viewerName, mine: mineOf(view), waitingOnViewer: waitingOnViewerOf(view), source: sourceOf(view) })
+  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: viewerName, mine: mineOf(view), waitingOnViewer: waitingOnViewerOf(view), ...(Object.keys(relayedForOf(view)).length === 0 ? {} : { relayedFor: relayedForOf(view) }), source: sourceOf(view) })
 
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
@@ -250,14 +258,14 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
-    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
+    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel })}]
     views = new Map([...views, [teamKey(view.org, view.team), { ...view, requests: view.requests.filter((one) => one !== target) }]])
     const outcome = options.outcome ?? 'applied'
     const state: DecisionEntry['state'] =
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
       // The log names a decision by its envelope's id, as the real node does.
-      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
+      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }), ...(options.relayedFor?.[target.id] === undefined ? {} : { relayedFor: options.relayedFor[target.id] }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
@@ -301,6 +309,15 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
+  /** The owner's measurements of the node itself: 1 to 30 days, and nothing for anyone else. */
+  const handleMetrics = (url: URL): Response => {
+    if (options.metrics === 'absent') return failure(404, 'No such route.')
+    if (options.metricsFailWith !== undefined) return failure(options.metricsFailWith, 'The measurements could not be read.')
+    if (options.metrics === undefined) return failure(403, 'Only the owner reads these numbers.')
+    const days = Number(url.searchParams.get('days') ?? '1')
+    if (!Number.isInteger(days) || days < 1 || days > 30) return failure(400, 'days is 1 to 30.')
+    return json(metricsAnswer(now, days, options.metrics))
+  }
   /** The owner's numbers: the shared samples and what was entered, over the days asked; anyone else is refused, as the node refuses them, even to read. */
   const handleOutcomes = async (request: Request, url: URL, org: string, part: string | undefined): Promise<Response> => {
     if (options.outcomesFailWith !== undefined) return failure(options.outcomesFailWith, 'The numbers could not be read.')
@@ -383,6 +400,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (extra !== undefined) return json(moreOrgDefinition(extra))
       return orgMatch[1] === ORG_DEFINITION.org ? json({ ...ORG_DEFINITION, teams: withPlans(ORG_DEFINITION.teams) }) : failure(404, 'No such organization.')
     }
+    if (request.method === 'GET' && url.pathname === '/api/metrics') return handleMetrics(url)
     const outcomesMatch = OUTCOMES_PATH.exec(url.pathname)
     if (outcomesMatch !== null && (request.method === 'GET' || (request.method === 'POST' && outcomesMatch[2] === '/observations'))) return handleOutcomes(request, url, outcomesMatch[1] ?? '', outcomesMatch[2])
     const evaluationMatch = EVALUATION_PATH.exec(url.pathname)

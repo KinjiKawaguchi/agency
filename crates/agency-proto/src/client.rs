@@ -8,6 +8,7 @@ use crate::signed::Signed;
 use crate::timestamp::Timestamp;
 use crate::view::TeamView;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// What a client needs before it writes: the write token, and the node's clock, which an envelope's `at`
@@ -221,6 +222,12 @@ pub struct TeamSnapshot {
     pub mine: Vec<String>,
     /// The `id`s of the team's people whose `waitingOn` is the viewer (see "People" in docs/protocol.md).
     pub waiting_on_viewer: Vec<String>,
+    /// For each of the viewer's `mine` requests that is addressed to a seat or an external party the viewer
+    /// answers for: the request id and the label of whom it is for, exactly as the org
+    /// definition has it, so that a client can say "Answer for <label>". Left out when there is none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<std::collections::BTreeMap<String, String>>", optional)]
+    pub relayed_for: BTreeMap<String, String>,
     pub source: SnapshotSource,
 }
 
@@ -346,8 +353,22 @@ pub struct DecisionEntry {
     pub choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
+    /// Whom the decision was made for, when it answered for a seat or an external party. The node worked
+    /// it out from the org and the team when it applied the decision; no client says it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relayed_for: Option<RelayedFor>,
     pub decided_at: Timestamp,
     pub state: DecisionState,
+}
+
+/// The seat or external party a decision answered for: its id, and its label as the org's definition had it
+/// when the decision was applied.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct RelayedFor {
+    pub id: Id,
+    pub label: String,
 }
 
 /// Where a decision went.
@@ -492,6 +513,9 @@ pub enum PushEvent {
     /// A recovery of an org whose root is this node's account was started. Every token and browser gets
     /// it, whatever kinds it names: the owner must be able to cancel.
     Recovery,
+    /// A change someone asked the root to sign waits for the owner's `agency root-sign`. A token that asks
+    /// for `device` gets it too: a device to approve is the usual case.
+    Root,
 }
 
 /// What a token gets when it names no kinds (what a token got before kinds existed).

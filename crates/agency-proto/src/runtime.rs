@@ -89,6 +89,12 @@ pub struct RuntimeDecision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub by_participant: Option<String>,
+    /// The id of the seat or external party the request was addressed to, when `by` answered for it (a
+    /// member in its `relays`). Absent when the request was `by`'s own. A runtime that does not know it
+    /// ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub on_behalf_of: Option<String>,
     pub payload: Payload,
 }
 

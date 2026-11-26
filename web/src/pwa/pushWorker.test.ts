@@ -157,24 +157,71 @@ describe('a subscription the browser ended', () => {
 
 describe('a recovery of an org that was started', () => {
   const recovery = { agency: { type: 'recovery', org: 'acme' }, badge: 0, title: 'A recovery of acme was started', body: 'It takes effect at Dec 1, 9:30 AM. If you did not start it, sign any version of the org now.' }
+  const START = '2026-12-01T09:30:00Z'
+  const FINISH = '2026-12-04T09:30:00Z'
+  const shownAt = (iso: string, language: string): string => new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
 
-  it('is shown with the node’s own words, tagged by the org, and leads to the desk, where the notice is', async () => {
-    expect((await pushed(payload(recovery))).shown).toEqual([{ title: recovery.title, options: { body: recovery.body, icon: '/icons/icon-192.png', tag: 'recovery/acme', data: { url: '/desk' } } }])
+  it('is worded by the page in its own words, not the node’s, tagged by the org, and leads to the desk, where the notice is', async () => {
+    expect((await pushed(payload(recovery))).shown).toEqual([{ title: 'Agency', options: { body: 'A recovery of acme was started. Open the desk to see it.', icon: '/icons/icon-192.png', tag: 'recovery/acme', data: { url: '/desk' } } }])
   })
 
-  it('names the org in the viewer’s language when the node left its words out', async () => {
-    const bare = { agency: recovery.agency, badge: 0 }
-    expect((await pushed(payload(bare))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A recovery of acme was started', tag: 'recovery/acme' } })
-    expect((await pushed(payload(bare), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme のルート鍵の回復が始まりました' } })
+  it('says it in Japanese', async () => {
+    expect((await pushed(payload(recovery), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme のルート鍵の回復が始まりました。机で確認してください。', tag: 'recovery/acme' } })
+  })
+
+  it('carries the times, in the viewer’s locale, when the node gives them', async () => {
+    const timed = { agency: { ...recovery.agency, startedAt: START, finishesAt: FINISH }, badge: 0 }
+    const offset = { agency: { ...recovery.agency, finishesAt: '2026-12-04T18:30:00.5+09:00' }, badge: 0 }
+    expect((await pushed(payload(offset), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
+    expect((await pushed(payload(timed), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started at ${shownAt(START, 'en-US')}. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
+    expect((await pushed(payload(timed), [], 'ja-JP')).shown[0]?.options.body).toBe(`acme のルート鍵の回復が始まりました（${shownAt(START, 'ja-JP')}）。${shownAt(FINISH, 'ja-JP')} に有効になります。机で確認してください。`)
+  })
+
+  it('leaves out a time that is not one, and says the one that is', async () => {
+    const half = { agency: { ...recovery.agency, startedAt: 'yesterday', finishesAt: FINISH }, badge: 0 }
+    expect((await pushed(payload(half), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
+    for (const bad of [7, null, '', {}, '5', '12', '2026', 'Mar 3', '2026-12-04', '2026-12-04T09:30:00', 'Dec 4, 2026 09:30 UTC']) expect((await pushed(payload({ agency: { ...recovery.agency, finishesAt: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A recovery of acme was started. Open the desk to see it.')
   })
 
   it('names no org, and has no tag, when the id is not a plain one', async () => {
     const odd = { agency: { type: 'recovery', org: 'a/b' }, badge: 0 }
-    expect((await pushed(payload(odd))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A recovery of an org was started', data: { url: '/desk' } } })
+    expect((await pushed(payload(odd))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A recovery of an org was started. Open the desk to see it.', data: { url: '/desk' } } })
     expect((await pushed(payload(odd))).shown[0]?.options.tag).toBeUndefined()
   })
 
   it('is not taken for a request, whose address it does not have', async () => {
     expect((await pushed(payload({ agency: { type: 'recovery', org: 'acme', team: 'app', request: 'r-1' }, badge: 0 }))).shown[0]?.options.data.url).toBe('/desk')
+  })
+})
+
+describe('a change that waits for the root key', () => {
+  const held = { agency: { type: 'root', org: 'acme', id: '0123456789abcdef', waiting: 1 }, badge: 0, title: 'A change to acme waits for the root key', body: 'add member carol (Carol). Run agency root-sign on the root key\'s node to sign it.' }
+
+  it('is worded by the page in its own words, tagged by the change’s id, and leads to the desk, where it is an item', async () => {
+    expect((await pushed(payload(held))).shown).toEqual([{ title: 'Agency', options: { body: 'A change to acme waits for the root key’s signature. Open the desk to see it.', icon: '/icons/icon-192.png', tag: 'root/0123456789abcdef', data: { url: '/desk' } } }])
+  })
+
+  it('does not say the node’s English, which names a member or a device by its label', async () => {
+    expect(JSON.stringify((await pushed(payload(held))).shown)).not.toMatch(/carol|Carol|add member/)
+  })
+
+  it('says how many wait when more than one does', async () => {
+    const many = { agency: { ...held.agency, waiting: 3 }, badge: 0 }
+    expect((await pushed(payload({ agency: { ...held.agency, waiting: 9999 }, badge: 0 }))).shown[0]?.options.body).toContain('9999 changes to acme wait')
+    expect((await pushed(payload(many))).shown[0]?.options.body).toBe('3 changes to acme wait for the root key’s signature. Open the desk to see them.')
+    expect((await pushed(payload(many), [], 'ja-JP')).shown[0]?.options.body).toBe('acme の変更 3 件が、ルート鍵の署名を待っています。机で確認してください。')
+    for (const bad of [0, -2, 1.5, '3', null, 1e21, 10_000, 10_000_000]) expect((await pushed(payload({ agency: { ...held.agency, waiting: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A change to acme waits for the root key’s signature. Open the desk to see it.')
+  })
+
+  it('says it in Japanese', async () => {
+    expect((await pushed(payload(held), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme の変更が、ルート鍵の署名を待っています。机で確認してください。', tag: 'root/0123456789abcdef' } })
+  })
+
+  it('names no org, and has no tag, when the identifiers are not plain ones', async () => {
+    const odd = { agency: { type: 'root', org: 'a/b', id: 'x y', waiting: 1 }, badge: 0 }
+    const [shown] = (await pushed(payload(odd))).shown
+    expect(shown?.options.body).toBe('A change waits for the root key’s signature. Open the desk to see it.')
+    expect(shown?.options.tag).toBeUndefined()
+    expect(shown?.options.data.url).toBe('/desk')
   })
 })

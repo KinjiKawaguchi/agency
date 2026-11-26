@@ -451,6 +451,7 @@ fn every_kind() -> Vec<Notice> {
         Notice {
             kind: NoticeKind::Recovery {
                 org: org(),
+                started_at: Some("2026-11-26T09:30:00Z".into()),
                 takes_effect_at: Some("2026-11-29T09:30:00Z".into()),
             },
             badge: 0,

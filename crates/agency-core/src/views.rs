@@ -10,7 +10,7 @@ use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{FederatedView, Request, WaitingOn};
-use agency_proto::{Id, Role, TeamView};
+use agency_proto::{Id, OrgDefinition, Role, TeamView};
 use serde::{Deserialize, Serialize};
 
 /// A replica of a team on another node. When a read fails, the previous view stays and only the error is recorded.
@@ -39,22 +39,66 @@ pub fn viewer_name(hosted: &HostedTeam, person: &Id) -> Option<String> {
 
 /// Who reads a team's requests, as this node knows them.
 pub enum Reader<'a> {
-    /// A team on this node: its hosted-team configuration maps runtime names to org people.
+    /// A team on this node: its hosted-team configuration maps runtime names to org people, seats, and
+    /// external parties, which the org definition says who answers for.
     Hosted {
         hosted: &'a HostedTeam,
         person: &'a Id,
+        definition: &'a OrgDefinition,
     },
     /// A team on another node: the reader's runtime name there, as that node reported it.
     Remote { viewer: Option<&'a str> },
 }
 
+/// The members who answer a request that is addressed to `addressee` on the team `hosted`: the member
+/// itself; for a seat, the members in its `relays`, or the team's owner when it has none; for an external
+/// party, the members in its `relays`. A seat and an external party answer nothing themselves.
+pub fn answerers<'a>(
+    definition: &'a OrgDefinition,
+    hosted: &'a HostedTeam,
+    addressee: &'a Id,
+) -> Vec<&'a Id> {
+    if let Some(seat) = definition.seats.iter().find(|one| &one.id == addressee) {
+        return if seat.relays.is_empty() {
+            vec![&hosted.owner]
+        } else {
+            seat.relays.iter().collect()
+        };
+    }
+    if let Some(external) = definition.externals.iter().find(|one| &one.id == addressee) {
+        return external.relays.iter().collect();
+    }
+    vec![addressee]
+}
+
+/// The seat or external party a request is addressed to on the team `hosted`, with its id and its label;
+/// `None` when it is addressed to a member.
+pub fn addressed_party<'a>(
+    definition: &'a OrgDefinition,
+    hosted: &'a HostedTeam,
+    to: Option<&str>,
+) -> Option<(&'a Id, &'a str)> {
+    let addressee = hosted.addressee(to);
+    let seat = definition.seats.iter().find(|one| &one.id == addressee);
+    let external = definition.externals.iter().find(|one| &one.id == addressee);
+    seat.map(|one| (&one.id, one.label.as_str()))
+        .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
+}
+
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team
-/// here, the request's addressee is the reader (an absent or unmapped `to` goes to the team's owner); on
-/// a team elsewhere, `to` is the reader's runtime name, or it is absent and that name is `owner`.
+/// here, the reader answers the request when its addressee is the reader, or a seat or external party the
+/// reader answers for (an absent or unmapped `to` goes to the team's owner); on a team elsewhere, `to` is
+/// the reader's runtime name, or it is absent and that name is `owner`. The team node's check of a decision
+/// and every reader's list of their requests both go through it, so no one is shown a request they could
+/// not answer, and no one answers one they cannot see.
 pub fn is_addressed_to(reader: &Reader, request: &Request) -> bool {
     let to = request.to.as_deref();
     match reader {
-        Reader::Hosted { hosted, person } => hosted.addressee(to) == *person,
+        Reader::Hosted {
+            hosted,
+            person,
+            definition,
+        } => answerers(definition, hosted, hosted.addressee(to)).contains(person),
         Reader::Remote {
             viewer: Some(viewer),
         } => to.unwrap_or("owner") == *viewer,
@@ -122,9 +166,12 @@ pub async fn hosted_view(
     let hosted =
         hosted.ok_or_else(|| unseen::refused("a read of a team that does not run here"))?;
     let view = runtime_view(node, &hosted).await?;
-    let view = match reader.role {
-        Role::Member => view,
-        Role::Answerer => answerer_view(view, &hosted, &reader.id),
+    let view = match (reader.role, definition) {
+        (Role::Member, _) => view,
+        (Role::Answerer, Some(definition)) => answerer_view(view, &hosted, &reader.id, definition),
+        (Role::Answerer, None) => {
+            return Err(unseen::refused("a read in an org this node does not have"))
+        }
     };
     Ok(FederatedView {
         view,
@@ -134,8 +181,17 @@ pub async fn hosted_view(
 
 /// What an answerer reads of a team: only the requests addressed to them, which they need to answer,
 /// and nothing of the team's people, work, or epics. A member reads it all.
-pub fn answerer_view(view: TeamView, hosted: &HostedTeam, person: &Id) -> TeamView {
-    let reader = Reader::Hosted { hosted, person };
+pub fn answerer_view(
+    view: TeamView,
+    hosted: &HostedTeam,
+    person: &Id,
+    definition: &OrgDefinition,
+) -> TeamView {
+    let reader = Reader::Hosted {
+        hosted,
+        person,
+        definition,
+    };
     let requests = view.requests.into_iter();
     TeamView {
         requests: requests
@@ -380,9 +436,11 @@ mod tests {
         )
         .with_people([("reviewer".to_owned(), id("bob"))].into());
         let (alice, bob) = (id("alice"), id("bob"));
+        let definition = definition_with(&["alice", "bob"]);
         let here = |person| Reader::Hosted {
             hosted: &hosted,
             person,
+            definition: &definition,
         };
         let cases = [
             ("absent to: the owner's", here(&alice), None, true),
@@ -430,6 +488,108 @@ mod tests {
         for (name, reader, to, expected) in cases {
             assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");
         }
+    }
+
+    /// An org of these members, with no seats or external parties yet.
+    fn definition_with(members: &[&str]) -> OrgDefinition {
+        use agency_proto::org::{Person, Role, Root};
+        use agency_proto::AccountKey;
+        let root = Root::new(id("alice"), AccountKey::from_seed([1; 32]).public());
+        let people: Vec<Person> = members
+            .iter()
+            .enumerate()
+            .map(|(n, raw)| Person {
+                id: id(raw),
+                label: raw.to_uppercase(),
+                account: id(raw),
+                public_key: AccountKey::from_seed([10 + n as u8; 32]).public(),
+                department: None,
+                role: Role::Member,
+                devices: vec![],
+            })
+            .collect();
+        OrgDefinition::new(
+            id("acme"),
+            "Acme".into(),
+            root,
+            "2026-11-24T12:00:00Z".into(),
+        )
+        .with_people(people)
+    }
+
+    #[test]
+    fn a_request_for_a_seat_or_an_external_party_is_the_members_who_answer_for_them() {
+        use crate::config::RuntimeCommand;
+        use agency_proto::seat::{External, Seat};
+        let hosted = HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            RuntimeCommand::of(vec![]),
+        )
+        .with_people(
+            [
+                ("reviewer", "bob"),
+                ("finance", "carol"),
+                ("tax", "dan"),
+                ("counsel", "erin"),
+                ("typo", "zed"),
+            ]
+            .map(|(name, member)| (name.to_owned(), id(member)))
+            .into(),
+        );
+        let mut definition = definition_with(&["alice", "bob", "cara"]);
+        let seat = |raw: &str, relays: &[&str]| Seat {
+            id: id(raw),
+            label: format!("{raw} (seat)"),
+            department: None,
+            ask_about: vec![],
+            relays: relays.iter().map(|one| id(one)).collect(),
+        };
+        definition.seats = vec![seat("carol", &["bob"]), seat("dan", &[])];
+        definition.externals = vec![External {
+            id: id("erin"),
+            label: "Erin (outside counsel)".into(),
+            ask_about: vec![],
+            relays: vec![id("alice"), id("cara")],
+        }];
+        let reads = |person: &str, to: Option<&str>| {
+            let person = id(person);
+            let reader = Reader::Hosted {
+                hosted: &hosted,
+                person: &person,
+                definition: &definition,
+            };
+            is_addressed_to(&reader, &request(to))
+        };
+        // A seat with someone to answer for it: those members, and not the owner.
+        assert!(reads("bob", Some("finance")));
+        assert!(!reads("alice", Some("finance")) && !reads("cara", Some("finance")));
+        // A seat with none: the team's owner.
+        assert!(reads("alice", Some("tax")));
+        assert!(!reads("bob", Some("tax")));
+        // An external party: each of the members named, in any order, and no one else.
+        assert!(reads("alice", Some("counsel")) && reads("cara", Some("counsel")));
+        assert!(!reads("bob", Some("counsel")));
+        // A member addressed directly, and a name that names no one, are what they were.
+        assert!(reads("bob", Some("reviewer")) && !reads("alice", Some("reviewer")));
+        assert!(reads("alice", None) && reads("alice", Some("unmapped")));
+        assert!(
+            !reads("alice", Some("typo")) && !reads("bob", Some("typo")),
+            "an id that is nothing"
+        );
+
+        let party = |to: Option<&str>| {
+            addressed_party(&definition, &hosted, to)
+                .map(|(id, label)| (id.to_string(), label.to_owned()))
+        };
+        assert_eq!(
+            party(Some("finance")),
+            Some(("carol".into(), "carol (seat)".into()))
+        );
+        assert_eq!(party(Some("counsel")).map(|one| one.0), Some("erin".into()));
+        assert_eq!(party(Some("reviewer")), None, "a member is not a party");
+        assert_eq!(party(None), None, "the owner is a member");
     }
 
     #[test]

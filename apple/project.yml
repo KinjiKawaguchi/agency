@@ -52,6 +52,8 @@ targets:
         product: AgencyWidget
       # The widgets, embedded in the app.
       - target: AgencyWidgets
+      # The notification service extension, which sets the icon's number to the sum over the home nodes.
+      - target: AgencyNotificationService
     entitlements:
       path: App/Agency.entitlements
       properties:
@@ -166,6 +168,38 @@ targets:
         # Lets a node on this Mac or the local network be opened over plain http, as on the iPhone.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+
+  AgencyNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - NotificationService
+    dependencies:
+      # Only AgencyKit (the ledger and the push's decision): the extension has a small memory limit and no network.
+      - package: AgencyKit
+        product: AgencyKit
+    settings:
+      base:
+        # The app's bundle ID, with `.notifications`: an extension's must start with its app's.
+        PRODUCT_BUNDLE_IDENTIFIER: $(inherited).notifications
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: "YES"
+    entitlements:
+      path: NotificationService/AgencyNotificationService.entitlements
+      properties:
+        # The app's group: the extension's bundle ID without its `.notifications` suffix, with `group.` in front.
+        com.apple.security.application-groups:
+          - group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: 決めること
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
 
   AgencyWidgets:
     type: app-extension

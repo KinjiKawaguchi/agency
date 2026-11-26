@@ -30,6 +30,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
   const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
+  const metrics = query?.get('metrics') ?? process.env.AGENCY_MOCK_METRICS
   const webPushFailing = query?.get('webPushFailing') ?? process.env.AGENCY_MOCK_WEBPUSH_FAILING
   const participants = query?.get('participants') ?? process.env.AGENCY_MOCK_PARTICIPANTS
   const siteError = query?.get('siteError')
@@ -46,12 +47,15 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     // mock node (the desk's times too), for the dev server and the screenshots.
     ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
+    ...(metrics === 'usual' || metrics === 'empty' || metrics === 'slow' || metrics === 'absent' ? { metrics } : {}),
     webPushFailing: webPushFailing === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
     // A recovery of the org that was started and waits, as the node says it on `GET /api/me`.
     ...(query?.get('recovery') === '1' ? { recoveries: { acme: { takesEffectAt: new Date(Date.now() + 71 * 3_600_000).toISOString(), newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true } } } : {}),
+    // A request addressed to a seat the viewer answers for (its label, as the owner wrote it).
+    ...(query?.get('relayedFor') === '1' ? { relayedFor: { 'r-20261124-113000-c3d4': { id: 'finance', label: 'Erin (outside counsel)' } } } : {}),
     // The root key's node holds a device change for its owner's `agency root-sign`.
     ...(query?.get('pendingRoot') === '1' ? { pendingRoot: true } : {}),
     // Changes that wait for the root key's signature, as the node tells its owner.

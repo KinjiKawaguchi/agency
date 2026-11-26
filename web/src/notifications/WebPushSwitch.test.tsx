@@ -47,7 +47,7 @@ describe('the switch for notifications with the app closed', () => {
     expect(push.askedPermission()).toBe(1)
     expect(push.subscribed()).toEqual([{ userVisibleOnly: true, applicationServerKey: keyBytes(MOCK_VAPID_KEY.publicKey) }])
     expect(node.pushSubscriptions()).toHaveLength(1)
-    expect(node.pushSubscriptions()[0]).toMatchObject({ label: 'Chrome on macOS', events: ['request'], keyId: MOCK_VAPID_KEY.keyId })
+    expect(node.pushSubscriptions()[0]).toMatchObject({ label: 'Chrome on macOS', events: ['request', 'root'], keyId: MOCK_VAPID_KEY.keyId })
     expect(screen.getByText(/The node tells this browser when something is new, with the page closed/)).toBeInTheDocument()
   })
 
