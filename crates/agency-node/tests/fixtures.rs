@@ -232,7 +232,74 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         ("error", error),
     ];
     answers.extend(alice_device_changes(alice, bob, &key).await);
+    answers.push(("evaluation", evaluation_answer(alice).await));
     answers
+}
+
+/// alice's `/api/orgs/acme/evaluation` for a team that reads two repositories: three pull requests
+/// (a feature that closes an issue, a fix, and a revert) merged on the last two days of a week, and a
+/// default branch that was red for an hour. The node's time is 2026-11-24T12:00Z and its time zone UTC.
+async fn evaluation_answer(alice: &Running) -> Value {
+    use agency_core::delivery::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
+    let at = |raw: &str| agency_proto::clock::parse(raw).unwrap();
+    let pull_request =
+        |title: &str, opened: &str, merged: &str, started: Option<&str>| MergedPullRequest {
+            title: title.into(),
+            body: String::new(),
+            opened_at: at(opened),
+            merged_at: at(merged),
+            first_commit_at: Some(at(opened)),
+            has_issue: started.is_some(),
+            issue_started_at: started.map(at),
+        };
+    let run = |commit: &str, finished: &str, verdict| MainRun {
+        repo: "acme/app".into(),
+        commit: commit.into(),
+        finished_at: at(finished),
+        verdict,
+    };
+    let facts = DeliveryFacts {
+        pull_requests: vec![
+            pull_request(
+                "feat(web): add a screen",
+                "2026-11-23T08:00:00Z",
+                "2026-11-23T10:00:00Z",
+                Some("2026-11-23T06:00:00Z"),
+            ),
+            pull_request(
+                "fix(core): refuse it",
+                "2026-11-24T08:30:00Z",
+                "2026-11-24T09:00:00Z",
+                None,
+            ),
+            pull_request(
+                "Revert \"fix(core): refuse it\"",
+                "2026-11-24T10:00:00Z",
+                "2026-11-24T10:10:00Z",
+                None,
+            ),
+        ],
+        runs: vec![
+            run("a1", "2026-11-23T15:00:00Z", Verdict::Failed),
+            run("a2", "2026-11-23T16:00:00Z", Verdict::Passed),
+        ],
+    };
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts));
+    alice
+        .node
+        .update_config(|config| {
+            let at = config
+                .teams
+                .iter()
+                .position(|team| team.team == id("app"))
+                .unwrap();
+            let team = config.teams.remove(at);
+            config
+                .teams
+                .insert(at, team.with_delivery(vec!["acme/app".into()]));
+        })
+        .unwrap();
+    read(alice, "/api/orgs/acme/evaluation?days=7").await
 }
 
 /// What bob's node answers: its replica of acme/app, and a decision queued while alice's node is down.
