@@ -34,6 +34,8 @@ export const realBrowser: WebPushBrowser = {
   requestPermission: () => Notification.requestPermission(),
   registration: () => navigator.serviceWorker.ready,
   onSubscriptionChanged: (listener) => {
+    // A page that has a worker container which cannot be listened to (a stand-in, an old browser) has nothing to hear.
+    if (typeof navigator.serviceWorker.addEventListener !== 'function') return () => undefined
     const onMessage = (event: MessageEvent): void => {
       if (typeof event.data === 'object' && event.data !== null && 'type' in event.data && event.data.type === 'push-subscription-changed') listener()
     }

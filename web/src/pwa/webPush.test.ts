@@ -64,3 +64,21 @@ describe('what the node takes of a subscription', () => {
     }
   })
 })
+
+describe('the real browser’s stand-in for the worker’s messages', () => {
+  it('has nothing to listen to, and does not fail, where the worker container cannot be listened to', async () => {
+    const { realBrowser } = await import('./useWebPush')
+    const was = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
+    Object.defineProperty(navigator, 'serviceWorker', { value: { ready: new Promise(() => undefined) }, configurable: true })
+    try {
+      let heard = 0
+      const stop = realBrowser.onSubscriptionChanged(() => void (heard += 1))
+      expect(typeof stop).toBe('function')
+      expect(() => stop()).not.toThrow()
+      expect(heard).toBe(0)
+    } finally {
+      if (was === undefined) delete (navigator as { serviceWorker?: unknown }).serviceWorker
+      else Object.defineProperty(navigator, 'serviceWorker', was)
+    }
+  })
+})
