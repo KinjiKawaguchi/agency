@@ -1,0 +1,8 @@
+{
+  "initialJsGzip": 203000,
+  "initialCssGzip": 12000,
+  "chunkGzip": { "Markdown": 54000 },
+  "chunkDefaultGzip": 30000,
+  "totalJsGzip": 256000,
+  "firstDeskMs": { "cold": 3000, "warm": 1500 }
+}
