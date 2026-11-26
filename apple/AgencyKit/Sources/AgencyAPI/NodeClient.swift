@@ -138,11 +138,17 @@ public actor NodeClient {
 
     /// Tells the node this phone's push token (`PushTokenInput`). Registering a known token updates it.
     /// `environment` is `production` or `sandbox`, as the app was signed; `label` is 1 to 80 characters.
+    /// `events` names the kinds the token wants (`request`, `device`, `decision`); without it the node sends
+    /// requests only, and an empty list means none.
     @discardableResult
-    public func registerPushToken(token: String, environment: String, label: String) async throws -> RegisteredPushToken {
-        let body = Data(try CanonicalJSON.encode(.object([
+    public func registerPushToken(
+        token: String, environment: String, label: String, events: [String]? = nil
+    ) async throws -> RegisteredPushToken {
+        var members: [JSONValue.Member] = [
             .init("token", .string(token)), .init("environment", .string(environment)), .init("label", .string(label)),
-        ])).utf8)
+        ]
+        if let events { members.append(.init("events", .array(events.map { .string($0) }))) }
+        let body = Data(try CanonicalJSON.encode(.object(members)).utf8)
         return try await write("POST", "/api/push/tokens", body: body)
     }
 
