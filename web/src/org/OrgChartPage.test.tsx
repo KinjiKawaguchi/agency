@@ -94,6 +94,18 @@ describe('org chart', () => {
       expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('100%')
     })
 
+    it('stops the zoom at its ends, so that a click that does nothing is not offered', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/org' })
+      const toolbar = within(await screen.findByRole('toolbar', { name: 'Chart view' }))
+      for (let step = 0; step < 12; step += 1) if (!(toolbar.getByRole('button', { name: 'Zoom out' }) as HTMLButtonElement).disabled) await user.click(toolbar.getByRole('button', { name: 'Zoom out' }))
+      expect(toolbar.getByRole('button', { name: 'Zoom out' })).toBeDisabled()
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('20%')
+      for (let step = 0; step < 20; step += 1) if (!(toolbar.getByRole('button', { name: 'Zoom in' }) as HTMLButtonElement).disabled) await user.click(toolbar.getByRole('button', { name: 'Zoom in' }))
+      expect(toolbar.getByRole('button', { name: 'Zoom in' })).toBeDisabled()
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('200%')
+    })
+
     it('starts the view again when another org’s chart is shown', async () => {
       const user = userEvent.setup()
       renderApp({ path: '/org', moreOrgs: true })

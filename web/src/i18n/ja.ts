@@ -128,7 +128,9 @@ export const ja: Messages = {
       zoomOut: '縮小',
       actualSize: '実寸',
       download: '画像としてダウンロード',
-      downloadFailed: (reason) => `画像を作れませんでした: ${reason}`,
+      pngHint: '文書やスライドに貼るための画像',
+      svgHint: 'ブラウザで開けます。描画ソフトや資料作成のソフトでは空に見えることがあります',
+      downloadFailed: (format, reason) => `${format.toUpperCase()} を作れませんでした: ${reason}${format === 'png' ? ' SVG を試し、ブラウザで開いてください。' : ''}`,
     },
   },
   costs: {

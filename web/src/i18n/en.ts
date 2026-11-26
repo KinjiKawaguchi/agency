@@ -133,7 +133,9 @@ export const en = {
       zoomOut: 'Zoom out',
       actualSize: 'Actual size',
       download: 'Download as image',
-      downloadFailed: (reason: string) => `Could not make the image: ${reason}`,
+      pngHint: 'A picture to put in a document or a slide',
+      svgHint: 'Opens in a browser; a drawing or presentation program may show it empty',
+      downloadFailed: (format: string, reason: string) => `Could not make the ${format.toUpperCase()}: ${reason}${format === 'png' ? ' Try the SVG, and open it in a browser.' : ''}`,
     },
   },
   costs: {

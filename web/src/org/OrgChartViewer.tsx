@@ -2,10 +2,11 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import { useToast } from '../shared/Toasts'
 import { buildChartSvg, download, pageBackground, svgToBlob, svgToPng } from './exportImage'
-import { scaleOf, steppedScale, type ZoomMode } from './zoom'
+import { MAX_ZOOM, MIN_ZOOM, scaleOf, steppedScale, type ZoomMode } from './zoom'
 
 const PHONE = '(max-width: 720px)'
 
+// Read at each render: a resize makes the ResizeObserver below re-render, so a phone turned sideways is noticed.
 const isPhone = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia(PHONE).matches
 
 interface Props {
@@ -29,6 +30,8 @@ export function OrgChartViewer({ resetKey, fileName, children }: Props) {
   const [mode, setMode] = useState<ZoomMode>({ kind: 'auto' })
   const [natural, setNatural] = useState({ frame: 0, width: 0, height: 0 })
   const [isBusy, setIsBusy] = useState(false)
+  // The point of the chart (in its own, unscaled pixels) that was in the middle of the frame when the viewer zoomed.
+  const anchor = useRef<number | undefined>(undefined)
 
   useLayoutEffect(() => {
     const frameElement = frame.current
@@ -52,8 +55,17 @@ export function OrgChartViewer({ resetKey, fileName, children }: Props) {
 
   useLayoutEffect(() => {
     const element = frame.current
-    if (element !== null) element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2
+    if (element === null) return
+    // A zoom keeps the middle of what the viewer was looking at in the middle; anything else starts from the chart's middle.
+    element.scrollLeft = anchor.current === undefined ? (element.scrollWidth - element.clientWidth) / 2 : anchor.current * scale - element.clientWidth / 2
+    anchor.current = undefined
   }, [resetKey, scale, natural.width])
+
+  const zoomTo = (next: ZoomMode): void => {
+    const element = frame.current
+    if (element !== null) anchor.current = (element.scrollLeft + element.clientWidth / 2) / scale
+    setMode(next)
+  }
 
   // A different chart starts in automatic fit again.
   useLayoutEffect(() => setMode({ kind: 'auto' }), [resetKey])
@@ -67,7 +79,7 @@ export function OrgChartViewer({ resetKey, fileName, children }: Props) {
       if (format === 'svg') download(svgToBlob(drawn), `${fileName}.svg`)
       else download(await svgToPng(drawn), `${fileName}.png`)
     } catch (error) {
-      toast(t.org.view.downloadFailed(error instanceof Error ? error.message : String(error)), 'error')
+      toast(t.org.view.downloadFailed(format, error instanceof Error ? error.message : String(error)), 'error')
     } finally {
       setIsBusy(false)
     }
@@ -79,14 +91,14 @@ export function OrgChartViewer({ resetKey, fileName, children }: Props) {
       <div className="oc-tools" role="toolbar" aria-label={t.org.view.toolbar}>
         <div className="oc-zoom" role="group" aria-label={t.org.view.zoom}>
           <button type="button" className="btn small" onClick={() => setMode({ kind: 'fit' })}>{t.org.view.fit}</button>
-          <button type="button" className="btn small" aria-label={t.org.view.zoomOut} onClick={() => setMode({ kind: 'zoom', scale: steppedScale(scale, 'out') })}>−</button>
-          <button type="button" className="btn small oc-percent" aria-label={t.org.view.actualSize} onClick={() => setMode({ kind: 'zoom', scale: 1 })}>{Math.round(scale * 100)}%</button>
-          <button type="button" className="btn small" aria-label={t.org.view.zoomIn} onClick={() => setMode({ kind: 'zoom', scale: steppedScale(scale, 'in') })}>+</button>
+          <button type="button" className="btn small" aria-label={t.org.view.zoomOut} disabled={scale <= MIN_ZOOM} onClick={() => zoomTo({ kind: 'zoom', scale: steppedScale(scale, 'out') })}>−</button>
+          <button type="button" className="btn small oc-percent" aria-label={t.org.view.actualSize} onClick={() => zoomTo({ kind: 'zoom', scale: 1 })}>{Math.round(scale * 100)}%</button>
+          <button type="button" className="btn small" aria-label={t.org.view.zoomIn} disabled={scale >= MAX_ZOOM} onClick={() => zoomTo({ kind: 'zoom', scale: steppedScale(scale, 'in') })}>+</button>
         </div>
         <div className="oc-download" role="group" aria-label={t.org.view.download}>
           <span className="muted">{t.org.view.download}</span>
-          <button type="button" className="btn small" disabled={isBusy} onClick={() => void save('png')}>PNG</button>
-          <button type="button" className="btn small" disabled={isBusy} onClick={() => void save('svg')}>SVG</button>
+          <button type="button" className="btn small" disabled={isBusy} title={t.org.view.pngHint} onClick={() => void save('png')}>PNG</button>
+          <button type="button" className="btn small" disabled={isBusy} title={t.org.view.svgHint} onClick={() => void save('svg')}>SVG</button>
         </div>
       </div>
       <div ref={frame} className="oc-frame oc-wide">
