@@ -22,6 +22,8 @@ fn pull_request(
     in_progress: Option<&str>,
 ) -> MergedPullRequest {
     MergedPullRequest {
+        repo: "acme/app".into(),
+        number: 1,
         title: title.into(),
         body: body.into(),
         opened_at: at(opened),
