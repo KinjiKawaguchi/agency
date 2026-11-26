@@ -211,6 +211,11 @@ export const en = {
     title: 'Devices',
     intro: 'Each browser, phone, or command line that decides for you has its own key. The key stays on the device and cannot be copied out of it. Decisions are signed with it.',
     thisDevice: 'This device',
+    keyKeeping: {
+      kept: 'This browser keeps this device’s key until you clear its site data.',
+      atRisk: 'This browser may remove this device’s key if you clear its site data, or when it runs short of space. The key cannot be copied, so this browser would then have to be added again.',
+      lost: 'This browser’s earlier key is gone: its site data was cleared, or the browser removed it. It made a new key, which has to be added again.',
+    },
     codeLabel: 'Pairing code of this device',
     loading: 'Making this device’s key…',
     loadingList: 'Asking the node about your devices…',

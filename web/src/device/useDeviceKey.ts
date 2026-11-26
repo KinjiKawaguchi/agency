@@ -1,5 +1,6 @@
 import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react'
-import { canMakeDeviceKeys, loadOrCreateDeviceKey, type DeviceKey, type KeyStore } from './deviceKey'
+import { canMakeDeviceKeys, loadDeviceKey, type DeviceKey, type KeyStore } from './deviceKey'
+import { recordKeyLoad } from './keyKeeping'
 import { useKeyStore } from './context'
 
 export type DeviceKeyState = { status: 'loading' } | { status: 'unsupported' } | { status: 'failed'; reason: string } | { status: 'ready'; key: DeviceKey }
@@ -16,7 +17,9 @@ export function settledDeviceKey(store: KeyStore): Promise<DeviceKeyState> {
   const loading = (async (): Promise<DeviceKeyState> => {
     if (!(await canMakeDeviceKeys())) return { status: 'unsupported' }
     try {
-      return { status: 'ready', key: await loadOrCreateDeviceKey(store) }
+      const { key, isCreated } = await loadDeviceKey(store)
+      recordKeyLoad(isCreated)
+      return { status: 'ready', key }
     } catch (failure) {
       return { status: 'failed', reason: failure instanceof Error ? failure.message : String(failure) }
     }

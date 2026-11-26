@@ -175,6 +175,19 @@ describe('loadOrCreateDeviceKey', () => {
     expect(store.saved()).toBe(1)
   })
 
+  it('makes no key when reading the one it has fails, and says it failed', async () => {
+    let saves = 0
+    const store: KeyStore = {
+      load: () => Promise.reject(new Error('The database is blocked.')),
+      save: () => {
+        saves += 1
+        return Promise.resolve()
+      },
+    }
+    await expect(loadOrCreateDeviceKey(store)).rejects.toThrow('The database is blocked.')
+    expect(saves).toBe(0)
+  })
+
   it('is unaffected by base64 helpers: round trip', () => {
     const bytes = Uint8Array.from({ length: 64 }, (_, index) => index * 4)
     expect(fromBase64(toBase64(bytes))).toEqual(bytes)
