@@ -9,6 +9,18 @@ public protocol TeamSnapshotSource: Sendable {
 
 extension NodeClient: TeamSnapshotSource {}
 
+/// Where a team's token use is read from.
+public protocol TeamUsageSource: Sendable {
+    func usage(org: String, team: String, days: Int) async throws -> TokenUsage
+}
+
+extension NodeClient: TeamUsageSource {}
+
+/// What the overview and the costs screen read from: the home node's Client API. `NodeClient` is the real one.
+public protocol OverviewSource: TeamSnapshotSource, TeamUsageSource {}
+
+extension NodeClient: OverviewSource {}
+
 /// Why a team could not be read.
 public struct TeamFailure: Equatable, Sendable {
     public let reason: String
