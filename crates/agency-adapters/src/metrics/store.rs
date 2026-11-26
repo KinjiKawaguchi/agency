@@ -76,8 +76,22 @@ fn write_day(
     entries: &BTreeMap<(Hour, SeriesKey), Counts>,
 ) -> std::io::Result<()> {
     let date = date.ok_or_else(|| std::io::Error::other("an hour that is not a date"))?;
+    let mut directory = std::fs::DirBuilder::new();
+    directory.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut directory, 0o700);
+    directory.create(dir)?;
+    // The day's file is rewritten with the new numbers added to the lines of the same series and hour, so it
+    // holds a line for each series and hour and not one for each flush: it grows with the hours, not with
+    // the number of flushes. It is written beside itself and moved into place, so a reader or a stop in the
+    // middle sees the old file or the new one whole.
+    let path = dir.join(file_name(date));
+    let mut merged = read_file(&path);
+    for (key, counts) in entries {
+        merged.entry(key.clone()).or_default().merge(counts);
+    }
     let mut text = String::new();
-    for ((hour, key), counts) in entries {
+    for ((hour, key), counts) in &merged {
         let line = Line {
             hour: *hour,
             kind: key.kind,
@@ -93,24 +107,58 @@ fn write_day(
         text.push_str(&serde_json::to_string(&line).map_err(std::io::Error::other)?);
         text.push('\n');
     }
-    let mut directory = std::fs::DirBuilder::new();
-    directory.recursive(true);
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut directory, 0o700);
-    directory.create(dir)?;
+    let temporary = dir.join(format!(".{}.tmp", file_name(date)));
     let mut options = std::fs::OpenOptions::new();
-    options.create(true).append(true);
+    options.create(true).write(true).truncate(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options
-        .open(dir.join(file_name(date)))?
-        .write_all(text.as_bytes())
+    options.open(&temporary)?.write_all(text.as_bytes())?;
+    std::fs::rename(&temporary, &path)
 }
 
-/// The lines of the files from the day of `first_hour` on, added up by hour and series, from `first_hour`
-/// on. A line that is not whole, or does not have 15 buckets that add up to its count, is skipped.
-pub(super) fn read(dir: &Path, first_hour: Hour) -> BTreeMap<(Hour, SeriesKey), Counts> {
+/// The lines of one file, added up by hour and series. A line that is not whole, does not have 15 buckets
+/// that add up to its count, has more errors than calls, or has a status or client that no series may have
+/// is skipped; one whose name no series may have is counted as `invalid`, as the recorder would have.
+fn read_file(path: &Path) -> BTreeMap<(Hour, SeriesKey), Counts> {
     let mut hours = BTreeMap::new();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return hours;
+    };
+    for line in text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Line>(line).ok())
+    {
+        if line.buckets.len() != BUCKETS {
+            continue;
+        }
+        let mut counts = Counts {
+            count: line.count,
+            errors: line.errors,
+            sum_ms: line.sum_ms,
+            ..Counts::default()
+        };
+        counts.buckets.copy_from_slice(&line.buckets);
+        if counts.buckets.iter().sum::<u64>() != counts.count || counts.errors > counts.count {
+            continue;
+        }
+        let key = SeriesKey {
+            kind: line.kind,
+            name: line.name,
+            status: line.status,
+            peer: line.peer,
+            client: line.client,
+        };
+        let Some(key) = super::normalized(key) else {
+            continue;
+        };
+        hours.entry((line.hour, key)).or_default().merge(&counts);
+    }
+    hours
+}
+
+/// The lines of the files from the day of `first_hour` on, added up by hour and series, from `first_hour` on.
+pub(super) fn read(dir: &Path, first_hour: Hour) -> BTreeMap<(Hour, SeriesKey), Counts> {
+    let mut hours: BTreeMap<(Hour, SeriesKey), Counts> = BTreeMap::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
         return hours;
     };
@@ -122,34 +170,10 @@ pub(super) fn read(dir: &Path, first_hour: Hour) -> BTreeMap<(Hour, SeriesKey), 
         if first_day.is_some_and(|first| day < first) {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
-            continue;
-        };
-        for line in text
-            .lines()
-            .filter_map(|line| serde_json::from_str::<Line>(line).ok())
-        {
-            if line.hour < first_hour || line.buckets.len() != BUCKETS {
-                continue;
+        for ((hour, key), counts) in read_file(&entry.path()) {
+            if hour >= first_hour {
+                hours.entry((hour, key)).or_default().merge(&counts);
             }
-            let mut counts = Counts {
-                count: line.count,
-                errors: line.errors,
-                sum_ms: line.sum_ms,
-                ..Counts::default()
-            };
-            counts.buckets.copy_from_slice(&line.buckets);
-            if counts.buckets.iter().sum::<u64>() != counts.count || counts.errors > counts.count {
-                continue;
-            }
-            let key = SeriesKey {
-                kind: line.kind,
-                name: line.name,
-                status: line.status,
-                peer: line.peer,
-                client: line.client,
-            };
-            hours.entry((line.hour, key)).or_default().merge(&counts);
         }
     }
     hours
