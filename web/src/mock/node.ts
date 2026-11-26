@@ -64,6 +64,8 @@ interface MockNodeOptions {
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** The other home nodes the node's configuration names, as `GET /api/me` gives them to its owner; left out when not given. */
+  homeNodes?: ReadonlyArray<{ label: string; url: string }>
   /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
   hidesTitles?: boolean
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -140,6 +142,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
         : []),
     ],
     funding: fundingSources(now),
+    ...(options.homeNodes === undefined ? {} : { homeNodes: [...options.homeNodes] }),
     ...(options.hidesTitles === undefined ? {} : { hidesTitles: options.hidesTitles }),
   }
 

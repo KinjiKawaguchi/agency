@@ -1,4 +1,7 @@
-import { isNativeApp, loadHomeNodes, MAX_NODE_LABEL, NO_NODES, parseNodeAddress, saveHomeNodes, withNode, withoutNode, withSelfLabel, type HomeNodes } from './homeNodes'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { Me } from '../api/clientApi'
+import { isNativeApp, listedNodes, loadHomeNodes, MAX_NODE_LABEL, NO_NODES, parseNodeAddress, saveHomeNodes, withNode, withoutNode, withSelfLabel, type HomeNodes } from './homeNodes'
 
 const SELF = 'https://agency.example'
 
@@ -112,5 +115,50 @@ describe('isNativeApp', () => {
     expect(isNativeApp({})).toBe(false)
     expect(isNativeApp({ agencyNative: null })).toBe(false)
     expect(isNativeApp({ agencyNative: 'yes' })).toBe(false)
+  })
+})
+
+describe('listedNodes', () => {
+  const own = (...entries: Array<[string, string]>): HomeNodes => ({ self: undefined, others: entries.map(([label, origin]) => ({ label, origin })) })
+
+  it('lists the nodes the node names first, then the owner’s own, each marked by where it comes from', () => {
+    const listed = listedNodes(own(['Lab', 'https://lab.example.com']), [{ label: 'Work', url: 'https://work.example.com' }], SELF)
+    expect(listed).toEqual([
+      { label: 'Work', origin: 'https://work.example.com', isFromNode: true },
+      { label: 'Lab', origin: 'https://lab.example.com', isFromNode: false },
+    ])
+  })
+
+  it('lists only the owner’s own when the node names none, as for anyone but its owner', () => {
+    expect(listedNodes(own(['Lab', 'https://lab.example.com']), undefined, SELF)).toEqual([{ label: 'Lab', origin: 'https://lab.example.com', isFromNode: false }])
+    expect(listedNodes(NO_NODES, [], SELF)).toEqual([])
+  })
+
+  it('lists an origin once, the node’s entry first, whatever the spelling of the other', () => {
+    const listed = listedNodes(own(['My work', 'https://WORK.example.com:443/desk']), [{ label: 'Work', url: 'https://work.example.com' }], SELF)
+    expect(listed).toEqual([{ label: 'Work', origin: 'https://work.example.com', isFromNode: true }])
+  })
+
+  it('never lists this node, however the node wrote it', () => {
+    expect(listedNodes(own(['Me', SELF]), [{ label: 'Me', url: SELF }], SELF)).toEqual([])
+  })
+
+  it('leaves out an entry this page could not open, which the node’s own rule should have kept out', () => {
+    const listed = listedNodes(NO_NODES, [{ label: 'Bad', url: 'http://work.example.com' }, { label: 'Odd', url: 'https://a[b]' }, { label: 'Fine', url: 'https://ok.example.com' }], SELF)
+    expect(listed.map((one) => one.label)).toEqual(['Fine'])
+  })
+
+  it('shows a node’s label whole (the node allows 80 characters), and names a node with an empty label by its host', () => {
+    const long = 'x'.repeat(80)
+    expect(listedNodes(NO_NODES, [{ label: long, url: 'https://long.example.com' }], SELF)[0]?.label).toBe(long)
+    expect(listedNodes(NO_NODES, [{ label: '  ', url: 'https://work.example.com:8443' }], SELF)[0]?.label).toBe('work.example.com:8443')
+  })
+
+  it('reads the node’s answer in testdata: an https name and a node on the loopback', () => {
+    const me = JSON.parse(readFileSync(join(process.cwd(), '..', 'testdata', 'client', 'me-home-nodes.json'), 'utf8')) as Me
+    expect(listedNodes(NO_NODES, me.homeNodes, 'http://localhost:4173').map((one) => [one.label, one.origin, one.isFromNode])).toEqual([
+      ['Work', 'https://work.example.com', true],
+      ['Lab', 'http://127.0.0.1:4500', true],
+    ])
   })
 })

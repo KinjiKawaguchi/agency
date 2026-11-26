@@ -276,6 +276,7 @@ export const en = {
       thisNode: 'Name of this home node',
       thisHost: (address: string) => `This page is served by ${address}, and the key above belongs to it.`,
       none: 'You have listed no other home node.',
+      fromNode: 'Set in this node’s configuration',
       name: 'Name',
       address: 'Address',
       add: 'Add this home node',

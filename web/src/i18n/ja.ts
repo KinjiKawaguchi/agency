@@ -273,6 +273,7 @@ export const ja: Messages = {
       thisNode: 'このホームノードの名前',
       thisHost: (address) => `このページは ${address} が配っていて、上の鍵はそのノードのものです。`,
       none: '一覧に、ほかのホームノードはありません。',
+      fromNode: 'このノードの設定にあります',
       name: '名前',
       address: 'アドレス',
       add: 'このホームノードを追加',
