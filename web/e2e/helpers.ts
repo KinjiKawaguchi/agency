@@ -3,6 +3,8 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test'
 export interface NodeOptions {
   /** Serve the mock token use (the real node does not yet). */
   usage?: boolean
+  /** Serve the mock evaluation numbers (the real node does not yet). */
+  evaluation?: boolean
   /** Make the `site` team a stale copy that could not be refreshed. */
   siteError?: string
   /** What the node reports for an accepted decision. */
@@ -17,6 +19,7 @@ export interface NodeOptions {
 export async function resetNode(request: APIRequestContext, options: NodeOptions = {}): Promise<void> {
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
+  if (options.evaluation === true) query.set('evaluation', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')

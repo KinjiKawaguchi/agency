@@ -18,15 +18,17 @@ const PUSH_TOKENS_PATH = '/__mock/push-tokens'
 
 /**
  * Options for a fresh mock node. The real node does not serve token use yet, so AGENCY_MOCK_USAGE=1 turns
- * the mock numbers on; `POST /__mock/reset?usage=1&siteError=...&outcome=queued` starts a node with the given ones.
+ * the mock numbers on, and AGENCY_MOCK_EVALUATION=1 does the same for the evaluation; `POST /__mock/reset?usage=1&siteError=...&outcome=queued` starts a node with the given ones.
  */
 function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof createMockNode>[0] {
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
+  const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
   return {
     usage: usage === '1',
+    evaluation: evaluation === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),

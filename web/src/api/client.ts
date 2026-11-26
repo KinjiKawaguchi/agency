@@ -1,5 +1,6 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { Evaluation } from './evaluationApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -46,6 +47,8 @@ export interface ApiClient {
   /** Adds a device: a change signed by one of the account's devices. */
   submitDeviceChange: (change: Signed<DeviceChange>) => Promise<DeviceChangeResult>
   usage: (org: string, team: string, days: number) => Promise<TokenUsage>
+  /** How fast each team of the org ships: merged pull requests, lead times, red main, reverts, cost. */
+  evaluation: (org: string, days: number) => Promise<Evaluation>
 }
 
 const segment = encodeURIComponent
@@ -111,6 +114,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
+    evaluation: (org, days) => get<Evaluation>(`/api/orgs/${segment(org)}/evaluation?days=${days}`),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {
       // The label travels only with a choice, and both notes are trimmed and cut for the log.
