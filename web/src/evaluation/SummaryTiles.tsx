@@ -1,7 +1,7 @@
 import type { EvaluationSummary } from '../api/evaluationApi'
 import { useI18n } from '../i18n'
 import { formatDuration } from './duration'
-import { totalMerged } from './series'
+import { allMerged } from './series'
 
 function Tile({ label, value, note }: { label: string; value: string; note: string }) {
   return (
@@ -20,7 +20,7 @@ export function SummaryTiles({ summary, days }: { summary: EvaluationSummary; da
   const { t, fmt } = useI18n()
   const text = t.evaluation.tiles
   const duration = (seconds: number): string => formatDuration(seconds, t.evaluation.units)
-  const merged = totalMerged(summary.merged)
+  const merged = allMerged(summary)
   const lead = (median: number | null, p90: number | null): Pick<Parameters<typeof Tile>[0], 'value' | 'note'> =>
     median === null || p90 === null ? { value: '—', note: t.evaluation.noData } : { value: duration(median), note: text.leadNote(duration(p90)) }
   return (

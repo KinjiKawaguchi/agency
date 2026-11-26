@@ -341,7 +341,7 @@ export const ja: Messages = {
     noData: 'この期間はありません',
     teamUnavailable: (reason) => `このチームは数字を返せませんでした: ${reason}`,
     units: { minute: '分', hour: '時間', day: '日' },
-    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他' },
+    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他', revert: 'リバート' },
     tiles: {
       features: 'マージした新機能',
       merged: 'マージしたプルリクエスト',

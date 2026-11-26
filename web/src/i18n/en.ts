@@ -346,7 +346,7 @@ export const en = {
     noData: 'None in this period',
     teamUnavailable: (reason: string) => `This team could not report its numbers: ${reason}`,
     units: { minute: 'm', hour: 'h', day: 'd' },
-    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other' },
+    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other', revert: 'Revert' },
     tiles: {
       features: 'New features merged',
       merged: 'Pull requests merged',

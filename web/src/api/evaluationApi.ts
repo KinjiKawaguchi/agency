@@ -8,14 +8,14 @@ export type PullRequestType = 'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'c
 /** The types in the order they are listed and stacked. */
 export const PULL_REQUEST_TYPES: readonly PullRequestType[] = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'other']
 
-/** Merged pull requests, counted by type. */
+/** Merged pull requests, counted by type. A revert is not counted here but in `reverts`, so the merged counts plus the reverts are every merged pull request. */
 export type MergedCounts = Record<PullRequestType, number>
 
 export interface DayEvaluation {
   /** `YYYY-MM-DD`, in the node's time zone. */
   date: string
   merged: MergedCounts
-  /** Pull requests merged that day that revert another. */
+  /** Pull requests merged that day that revert another; counted here and not in `merged`. */
   reverts: number
   /** Seconds main's CI was red that day; a span across midnight is split. */
   mainRedSeconds: number
