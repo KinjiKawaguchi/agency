@@ -10,8 +10,8 @@ import Testing
 @MainActor
 @Suite("Recovery renderings", .serialized)
 struct RecoverySnapshotTests {
-    private func notice(label: String, extra: String) -> RecoveryNotice {
-        let json = #"{"id":"acme","label":"\#(label)","isRoot":true,"teams":[],"recovery":{\#(extra)}}"#
+    private func notice(label: String, extra: String, isRoot: Bool = true) -> RecoveryNotice {
+        let json = #"{"id":"acme","label":"\#(label)","isRoot":\#(isRoot),"teams":[],"recovery":{\#(extra)}}"#
         let org = try! JSONDecoder().decode(OrgRef.self, from: Data(json.utf8))
         return RecoveryNotice(org: org, recovery: org.recovery!)
     }
@@ -21,8 +21,9 @@ struct RecoverySnapshotTests {
         let tokyo = TimeZone(identifier: "Asia/Tokyo")!
         let full = notice(label: "アクミ", extra: #""takesEffectAt":"2026-11-29T09:30:00Z","newRootKey":"4f9a1c0be2d7a35c","replacesRecoveryKey":true"#)
         let bare = notice(label: UIFixtures.unbrokenID, extra: "")
+        let member = notice(label: "アクミ", extra: #""takesEffectAt":"2026-11-29T09:30:00Z","newRootKey":"4f9a1c0be2d7a35c""#, isRoot: false)
         for scheme in [ColorScheme.light, .dark] {
-            let view = VStack(alignment: .leading, spacing: 12) { RecoveryBanner(notice: full, timeZone: tokyo); RecoveryBanner(notice: bare, timeZone: tokyo) }
+            let view = VStack(alignment: .leading, spacing: 12) { RecoveryBanner(notice: full, timeZone: tokyo); RecoveryBanner(notice: bare, timeZone: tokyo); RecoveryBanner(notice: member, timeZone: tokyo) }
             let result = Snapshot.capture("recovery", view, scheme: scheme)
             #expect(!result.png.isEmpty)
             #expect(result.size.width == Snapshot.phoneWidth, "\(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")

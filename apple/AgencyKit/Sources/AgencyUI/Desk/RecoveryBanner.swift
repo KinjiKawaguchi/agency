@@ -2,7 +2,8 @@
 import AgencyModel
 import SwiftUI
 
-/// A recovery of an org that was started and waits, at the top of the desk. It has no button to hide it, and it is not only a
+/// A recovery of an org that was started and waits, at the top of the desk. For the owner of the root key it gives the command that
+/// cancels it; for any other member it says it and who can cancel it. It has no button to hide it, and it is not only a
 /// colour: a symbol and the words. It goes when the node stops saying that the recovery waits (cancelled, or taken).
 struct RecoveryBanner: View {
     let notice: RecoveryNotice
@@ -17,11 +18,13 @@ struct RecoveryBanner: View {
             ForEach(Array(notice.lines(in: timeZone).dropFirst().enumerated()), id: \.offset) { _, line in
                 Text(line).font(.subheadline).wrapping()
             }
-            Text(Ja.Recovery.notYours).font(.subheadline).wrapping()
-            Text(notice.cancelCommand)
-                .font(.system(.footnote, design: .monospaced))
-                .textSelection(.enabled)
-                .wrapping()
+            if let command = notice.cancelCommand {
+                Text(Ja.Recovery.notYours).font(.subheadline).wrapping()
+                Text(command)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .wrapping()
+            }
         }
         .card()
         .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.warning, lineWidth: 2))

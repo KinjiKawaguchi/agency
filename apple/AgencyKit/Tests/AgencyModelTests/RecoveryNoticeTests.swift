@@ -10,9 +10,9 @@ struct RecoveryNoticeTests {
         return try JSONDecoder().decode(Me.self, from: Data(json.utf8)).orgs
     }
 
-    private func org(_ id: String, label: String = "Acme", recovery: String? = nil) -> String {
+    private func org(_ id: String, label: String = "Acme", isRoot: Bool = true, recovery: String? = nil) -> String {
         let field = recovery.map { #","recovery":\#($0)"# } ?? ""
-        return #"{"id":"\#(id)","label":"\#(label)","isRoot":true,"teams":[]\#(field)}"#
+        return #"{"id":"\#(id)","label":"\#(label)","isRoot":\#(isRoot),"teams":[]\#(field)}"#
     }
 
     private let tokyo = TimeZone(identifier: "Asia/Tokyo")!
@@ -31,6 +31,28 @@ struct RecoveryNoticeTests {
         #expect(notice.lines(in: tokyo) == ["アクミ のルート鍵の回復が始まりました。", "11月29日 18:30 に有効になります。"])
         #expect(notice.cancelCommand == "agency root-cancel-recovery --org acme")
         #expect(Ja.Recovery.notYours == "心当たりがないときは、ルート鍵のノードで取り消してください:")
+    }
+
+    @Test("for the root's owner the full item with the command; for any other member a plain notice that says who can cancel it, and no command")
+    func rootAndMember() throws {
+        let recovery = #"{"takesEffectAt":"2026-11-29T09:30:00Z","newRootKey":"ab12cd34","replacesRecoveryKey":true}"#
+        let root = try #require(RecoveryNotice.all(in: try orgs(org("acme", isRoot: true, recovery: recovery))).first)
+        #expect(root.isRoot && root.cancelCommand == "agency root-cancel-recovery --org acme")
+        #expect(root.lines(in: tokyo).first == "Acme のルート鍵の回復が始まりました。")
+        #expect(!root.lines(in: tokyo).contains(Ja.Recovery.ownerCanCancel))
+
+        let member = try #require(RecoveryNotice.all(in: try orgs(org("acme", isRoot: false, recovery: recovery))).first)
+        #expect(!member.isRoot && member.cancelCommand == nil, "a member cannot cancel it, so no command")
+        #expect(member.lines(in: tokyo) == [
+            "Acme のルート鍵の回復が進んでいます。", "11月29日 18:30 に有効になります。", "新しいルート鍵: ab12cd34", "回復用の鍵も取り替えます。",
+            "取り消せるのは、そのルート鍵の持ち主です。",
+        ])
+    }
+
+    @Test("a member's notice without a time leaves the time out and still says who can cancel it")
+    func memberNoTime() throws {
+        let member = try #require(RecoveryNotice.all(in: try orgs(org("acme", isRoot: false, recovery: "{}"))).first)
+        #expect(member.lines(in: tokyo) == ["Acme のルート鍵の回復が進んでいます。", "取り消せるのは、そのルート鍵の持ち主です。"])
     }
 
     @Test("without a time the sentence about it is left out, and so is a time that cannot be read")
