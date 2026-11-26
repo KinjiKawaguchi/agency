@@ -13,9 +13,10 @@ enum SeriesColor {
     ]
     private static let other = Color(red: 0.561, green: 0.584, blue: 0.631)
 
-    static func of(_ series: UsageChart.Series) -> Color {
-        series.slot.map { slots[$0 - 1] } ?? other
-    }
+    static func of(_ series: UsageChart.Series) -> Color { slot(series.slot) }
+
+    /// The color of a slot, 1 to 8; the grey of "other" for none.
+    static func slot(_ slot: Int?) -> Color { slot.map { slots[$0 - 1] } ?? other }
 }
 
 /// Which participant has which color. Shown only when there is more than one.
@@ -41,54 +42,25 @@ struct SeriesLegend: View {
 struct StackedColumns: View {
     let columns: [UsageChart.Column]
     let series: [UsageChart.Series]
-    @State private var selected: String?
+    @State private var selected: Int?
 
     init(columns: [UsageChart.Column], series: [UsageChart.Series], selected: String? = nil) {
         self.columns = columns
         self.series = series
-        _selected = State(initialValue: selected)
+        _selected = State(initialValue: columns.firstIndex { $0.date == selected })
     }
 
-    private static let height: CGFloat = 120
     private var maximum: Double { max(columns.map(\.total).max() ?? 0, 0.01) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(JaFormat.money(maximum)).font(.caption2).foregroundStyle(.secondary)
-            HStack(alignment: .bottom, spacing: columns.count > 20 ? 1 : 3) {
-                ForEach(columns) { column in
-                    stack(column)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: Self.height, alignment: .bottom)
-                        .background(Rectangle().fill(selected == column.date ? Theme.hairline : .clear))
-                        .contentShape(Rectangle())
-                        .onTapGesture { selected = selected == column.date ? nil : column.date }
-                        .accessibilityElement()
-                        .accessibilityLabel(Ja.Costs.dayTotal(JaFormat.shortDate(column.date), JaFormat.money(column.total)))
-                }
+            ChartFrame(
+                axis: [JaFormat.money(maximum), JaFormat.money(maximum / 2), "$0"],
+                dateLabels: columns.isEmpty ? [] : [columns[0], columns[(columns.count - 1) / 2], columns[columns.count - 1]].map { JaFormat.shortDate($0.date) }
+            ) {
+                ColumnPlot(values: columns.map(\.values), colors: series.map(SeriesColor.of), maximum: maximum, selected: $selected)
             }
-            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
-            if let first = columns.first, let last = columns.last {
-                HStack {
-                    Text(JaFormat.shortDate(first.date))
-                    Spacer(minLength: 0)
-                    if columns.count > 1 { Text(JaFormat.shortDate(last.date)) }
-                }
-                .font(.caption2).foregroundStyle(.secondary)
-            }
-            if let column = columns.first(where: { $0.date == selected }) { detail(column) }
-        }
-    }
-
-    private func stack(_ column: UsageChart.Column) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(series.enumerated()), id: \.offset) { index, one in
-                let value = column.values[index]
-                if value > 0 {
-                    Rectangle().fill(SeriesColor.of(one))
-                        .frame(height: max(1, Self.height * column.total / maximum * value / max(column.total, 0.0001)))
-                }
-            }
+            if let selected, columns.indices.contains(selected) { detail(columns[selected]) }
         }
     }
 

@@ -32,6 +32,9 @@ public enum JaFormat {
         return "\(parts[1])月\(parts[2])日"
     }
 
+    /// `1,234`.
+    public static func integer(_ value: Int) -> String { grouped(value) }
+
     private static func grouped(_ value: Int) -> String {
         let digits = String(value)
         return digits.enumerated().map { index, digit in

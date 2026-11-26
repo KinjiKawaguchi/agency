@@ -28,6 +28,8 @@ final class NativeSession {
     let people: PeopleStore
     /// The funding sources and each team's token use, read from the same client.
     let costs: CostsStore
+    /// How fast each team ships, and where its effort goes, read from the same client.
+    let evaluation: EvaluationStore
     /// What is new since the last read, as banners.
     let news: NewsStore
 
@@ -60,6 +62,7 @@ final class NativeSession {
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
+        evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
         let pairing = pairing
         let ownKey = signer?.publicKey.string ?? ""
         news = NewsStore(source: CachedNewsSource(cache: cache, client: client)) {
@@ -77,6 +80,7 @@ final class NativeSession {
             await overview.refresh()
             await people.refresh()
             await costs.refresh()
+            await evaluation.refresh()
         case .canceled:
             break
         case .unavailable:
