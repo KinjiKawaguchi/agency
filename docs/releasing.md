@@ -17,7 +17,7 @@ A `refactor` is listed in the changelog, but it does not call for a release by i
 ## How a release is made
 
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
-2. release-please keeps one open pull request, **chore: release X.Y.Z**, that raises the version in `Cargo.toml` and in the web client's `package.json` and `package-lock.json`, and adds the new section of `CHANGELOG.md`. A second job of the same workflow adds a commit that brings the workspace crates' versions in `Cargo.lock` up to date (release-please cannot do that itself). The pull request updates itself after each merge to `main`.
+2. release-please keeps one open pull request, **chore: release X.Y.Z**, that raises the version in `Cargo.toml`, in `version.txt` (which release-please keeps for the version of the repository), and in the web client's `package.json` and `package-lock.json`, and adds the new section of `CHANGELOG.md`. A second job of the same workflow adds a commit that brings the workspace crates' versions in `Cargo.lock` up to date (release-please cannot do that itself). The pull request updates itself after each merge to `main`.
 3. To release, merge that pull request. release-please then tags `vX.Y.Z` and makes the GitHub Release with the changelog section as its notes.
 4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and its `.sha256` to the release.
 5. The macOS builds are made on a Mac, never on a GitHub runner. After step 4, on a Mac with the repository, Rust, and Node installed:
