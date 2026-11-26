@@ -4,7 +4,7 @@
 // optional field the node leaves out stays left out. A screen can then rely on every type being there.
 import { EFFORT_TYPES, PULL_REQUEST_TYPES } from './evaluationApi'
 import type { TokenCounts } from './clientApi'
-import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
+import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, ParticipantEvaluation, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
 
 /** The answer is not what the route promises. The client turns it into a 503, "could not answer", shown in place. */
 export class MalformedAnswer extends Error {
@@ -85,11 +85,35 @@ function header(given: Raw): { org: string; days: number; generatedAt: string; f
   return { org: text(given.org, 'org'), days: amount(given.days, 'days'), generatedAt: text(given.generatedAt, 'time'), ...periodOf(given), unavailable: unavailable(given.unavailable) }
 }
 
+/** One participant's numbers; the node leaves `costPerMergedPrUsd` out when they merged nothing. */
+function participant(raw: unknown): ParticipantEvaluation {
+  const given = asObject(raw)
+  return {
+    name: text(given.name, 'participant'),
+    busySeconds: amount(given.busySeconds, 'busy time'),
+    waitingSeconds: amount(given.waitingSeconds, 'waiting time'),
+    idleSeconds: amount(given.idleSeconds, 'idle time'),
+    costUsd: amount(given.costUsd, 'cost'),
+    tokens: tokens(given.tokens),
+    merged: amount(given.merged, 'merged'),
+    ...present('costPerMergedPrUsd', optionalAmount(given.costPerMergedPrUsd, 'cost')),
+  }
+}
+
 export function readEvaluation(raw: unknown): Evaluation {
   const given = asObject(raw)
   const teams: TeamEvaluation[] = asList(given.teams).map((one) => {
     const team = asObject(one)
-    return { team: text(team.team, 'team'), ...periodOf(team), summary: summary(team.summary), byDay: asList(team.byDay).map(day) }
+    const participants = asList(team.participants).map(participant)
+    return {
+      team: text(team.team, 'team'),
+      ...periodOf(team),
+      summary: summary(team.summary),
+      byDay: asList(team.byDay).map(day),
+      // Only the team's owner is given them: for anyone else they are left out, and stay left out here.
+      ...(participants.length > 0 ? { participants } : {}),
+      ...present('unattributedMerged', optionalAmount(team.unattributedMerged, 'merged')),
+    }
   })
   return { ...header(given), teams }
 }

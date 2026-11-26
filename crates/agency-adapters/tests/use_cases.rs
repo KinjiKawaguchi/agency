@@ -428,19 +428,13 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         role: Role::Member,
         devices: vec![],
     };
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), root.public()),
-        departments: vec![],
-        people: vec![alice],
-        teams: vec![],
-        revoked: vec![],
-        at: T0.into(),
-    };
+    let body = OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), root.public()),
+        T0.into(),
+    )
+    .with_people(vec![alice]);
     Signed::sign(Kind::Org, body, id("alice"), signer).unwrap()
 }
 

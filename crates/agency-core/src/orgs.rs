@@ -47,13 +47,8 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
 /// presence prompt: `RootKeys::with_signer`).
 pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
     // A version the root signs never carries a waiting recovery, so signing any version cancels it.
-    let body = OrgDefinition {
-        root: Root {
-            pending: None,
-            ..body.root
-        },
-        ..body
-    };
+    let mut body = body;
+    body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
     let org = body.org.clone();
     let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
@@ -187,19 +182,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         devices: vec![],
     };
     let root = Root::new(account, root_key.clone());
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: org.clone(),
-        label,
-        version: 1,
-        prev: None,
-        root,
-        departments: vec![],
-        people: vec![me],
-        teams: vec![],
-        revoked: vec![],
-        at: node.now_text(),
-    };
+    let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
     let doc = sign(node, body)?;
     node.store().save_org(&doc)?;
     node.update_config(|config| config.trust(org, root_key.fingerprint()))?;

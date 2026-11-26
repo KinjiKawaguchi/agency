@@ -29,6 +29,7 @@ pub mod pending_root;
 pub mod ports;
 pub mod push;
 mod push_events;
+pub mod push_retries;
 pub mod read_auth;
 pub mod readings;
 pub mod recovery;

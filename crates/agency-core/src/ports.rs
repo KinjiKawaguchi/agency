@@ -171,6 +171,10 @@ pub trait PushStore {
     /// until the first pass has recorded it.
     fn desk_refresh(&self) -> Option<crate::push::DeskRefresh>;
     fn save_desk_refresh(&self, state: &crate::push::DeskRefresh) -> Result<()>;
+    /// The destinations that failed to take a notice and are to be sent it again (docs/protocol.md, "Push notifications"),
+    /// oldest first.
+    fn push_retries(&self) -> Vec<crate::push_retries::Retry>;
+    fn save_push_retries(&self, retries: &[crate::push_retries::Retry]) -> Result<()>;
     /// The owner's registered Web Push subscriptions, oldest first.
     fn web_subscriptions(&self) -> Vec<WebSubscription>;
     fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;

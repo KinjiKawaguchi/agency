@@ -17,7 +17,7 @@ public enum Ja {
         public static let signInAgain = "サインインし直す"
         public static let signInUnavailable = "このノードでは、アプリからのサインインを使えません。ノードの設定を確認してください。"
         public static let settings = "設定"
-        public static let changeNode = "ホームノードを変える"
+        public static let changeNode = "このホームノードから出る"
         public static let homeNode = "ホームノード"
         public static let close = "閉じる"
 
