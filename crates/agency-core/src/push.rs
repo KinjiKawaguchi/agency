@@ -5,7 +5,7 @@
 use crate::error::{Error, Result};
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
-use crate::push_events::{decision_candidates, device_candidates};
+use crate::push_events::{decision_candidates, device_candidates, recovery_candidates};
 use crate::views::{mine, runtime_view, Reader};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
@@ -204,6 +204,9 @@ async fn waiting_for_owner(node: &Node, is_hidden: bool) -> Vec<Candidate> {
 pub struct Pass {
     pub sent: usize,
     pub failures: Vec<String>,
+    /// The recoveries this pass found started, worded for the node's log: a channel that is never empty,
+    /// for a node with no device registered.
+    pub recoveries: Vec<String>,
 }
 
 /// What sending one notice to one kind of destination came to.
@@ -228,7 +231,7 @@ async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result
     let all = node.store().push_tokens();
     let wanting: Vec<&PushToken> = all
         .iter()
-        .filter(|token| token.events.contains(&notice.event()))
+        .filter(|token| notice.is_wanted_by(&token.events))
         .collect();
     let mut outcome = Outcome {
         wanting: wanting.len(),
@@ -378,6 +381,41 @@ fn trimmed(keys: Vec<String>) -> Vec<String> {
     kept
 }
 
+/// Sends each fresh candidate with the badge and adds the key of each one delivered to `notified`; says
+/// whether a request's alert reached an iPhone, which then reads its desk on its own.
+async fn send_fresh(
+    node: &Node,
+    fresh: Vec<Candidate>,
+    badge: u32,
+    notified: &mut Vec<String>,
+    pass: &mut Pass,
+) -> Result<bool> {
+    let mut was_woken = false;
+    for one in fresh {
+        let notice = Notice {
+            badge,
+            ..one.notice
+        };
+        if let NoticeKind::Recovery {
+            org,
+            takes_effect_at,
+        } = &notice.kind
+        {
+            let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
+            pass.recoveries.push(format!("{title}. {body}"));
+        }
+        let delivery = send_to_all(node, &notice, pass).await?;
+        if delivery.is_done {
+            pass.sent += 1;
+            notified.push(one.key);
+        }
+        if matches!(notice.kind, NoticeKind::Request { .. }) && delivery.reached_iphone {
+            was_woken = true;
+        }
+    }
+    Ok(was_woken)
+}
+
 /// Notifies the owner of whatever started waiting since the last pass: requests, device requests, and
 /// refused decisions. The first pass of a node with an empty data directory only records what is there,
 /// so nothing old is sent.
@@ -393,16 +431,20 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         let mut keys: Vec<String> = requests.into_iter().map(|one| one.key).collect();
         keys.extend(others.into_iter().map(|one| one.key));
         keys.push(KINDS_MARKER.to_owned());
-        node.store().save_notified(&trimmed(keys))?;
         node.store().save_desk_refresh(&DeskRefresh {
             waiting,
             at: clock::format(node.now()),
         })?;
-        return Ok(Pass::default());
+        // A recovery is told on the first pass too: the owner can cancel it only while it waits.
+        let mut pass = Pass::default();
+        send_fresh(node, recovery_candidates(node), badge, &mut keys, &mut pass).await?;
+        node.store().save_notified(&trimmed(keys))?;
+        return Ok(pass);
     };
     let is_upgrade = !notified.iter().any(|key| key == KINDS_MARKER);
     let mut pass = Pass::default();
     let mut candidates = requests;
+    candidates.extend(recovery_candidates(node));
     if is_upgrade {
         notified.extend(others.into_iter().map(|one| one.key));
         notified.push(KINDS_MARKER.to_owned());
@@ -413,21 +455,7 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         .into_iter()
         .filter(|one| !notified.contains(&one.key))
         .collect();
-    let mut was_woken = false;
-    for one in fresh {
-        let notice = Notice {
-            badge,
-            ..one.notice
-        };
-        let delivery = send_to_all(node, &notice, &mut pass).await?;
-        if delivery.is_done {
-            pass.sent += 1;
-            notified.push(one.key);
-        }
-        if matches!(notice.kind, NoticeKind::Request { .. }) && delivery.reached_iphone {
-            was_woken = true;
-        }
-    }
+    let was_woken = send_fresh(node, fresh, badge, &mut notified, &mut pass).await?;
     node.store().save_notified(&trimmed(notified))?;
     refresh_desks(node, waiting, was_woken, &mut pass).await?;
     Ok(pass)

@@ -94,6 +94,10 @@ Keep both on this machine, and out of anything that syncs or shares files.
 A backup of the data directory does not hold the root key. Back the root key up on its own, because without it nobody can change the org again: copy `~/.config/agency/root-keys/` to storage that is offline and encrypted (for example an encrypted disk image kept off this Mac), and copy it again after `agency root-rotate`, which makes a new key and removes the old one.
 An org made before root keys were kept apart uses `account.key` as its root until you move it to its own key with `agency root-rotate --org acme`.
 
+Give each org a recovery key, so that the org is not lost with the root key: `agency root-recovery --org acme` shows 24 words once. Write them on paper, keep them away from this Mac, and type back the three words it asks for. With the words, `agency root-recover --org acme` moves the org to a new root key made on the node you run it on, 72 hours later (`agency root-recover --org acme --finish`, on that same node). In those 72 hours your devices are told, `agency status` shows it, and the node's log says it, and anything the root key signs cancels it, for example `agency root-cancel-recovery --org acme`. Whoever has the words can start a recovery, and only your answer in those 72 hours stops it.
+
+If you have several orgs, each gets its own words by default. `agency root-recovery --org beta --same-words-as acme` instead asks for acme's words and gives beta the same recovery key, so one set of words recovers both. The trade-off: whoever gets those words can start a recovery of both orgs at once (each still waits 72 hours and tells you). Keep separate words for an org that holds other people's work.
+
 ### Run it with launchd
 
 `scripts/launchd-plist.sh` writes the agent's file.
