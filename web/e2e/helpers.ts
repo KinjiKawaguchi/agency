@@ -52,7 +52,7 @@ export const pageScrollsSideways = (page: Page): Promise<boolean> =>
 export async function enrolBrowser(page: Page, request: APIRequestContext, origin = ''): Promise<string> {
   await page.goto(`${origin}/devices`)
   await page.getByRole('button', { name: 'Add this device' }).click()
-  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+  await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
   const code = (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
   expect((await request.post(`/__mock/device-add?code=${code}`)).status()).toBe(204)
   await page.reload()
