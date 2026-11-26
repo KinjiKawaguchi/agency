@@ -1,4 +1,4 @@
-import { browserLabel, isMadeWith, isWebPushOffered, keyBytes, subscriptionInput, type BrowserSupport } from './webPush'
+import { deliveryOf, browserLabel, isMadeWith, isWebPushOffered, keyBytes, subscriptionInput, type BrowserSupport } from './webPush'
 
 const CHROME_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 const support = (overrides: Partial<BrowserSupport> = {}): BrowserSupport => ({ userAgent: CHROME_MAC, touchPoints: 0, isSecureContext: true, hasServiceWorker: true, hasPushManager: true, hasNotification: true, ...overrides })
@@ -80,5 +80,31 @@ describe('the real browser’s stand-in for the worker’s messages', () => {
       if (was === undefined) delete (navigator as { serviceWorker?: unknown }).serviceWorker
       else Object.defineProperty(navigator, 'serviceWorker', was)
     }
+  })
+})
+
+describe('what the node knows of how a push service took the notices', () => {
+  const failure = { at: '2026-11-24T11:00:00Z', reason: 'push.example answered 503' }
+  it('is unknown until there is a taking or a refusal', () => {
+    expect(deliveryOf({})).toEqual({ kind: 'unknown' })
+  })
+  it('is taken when it took one and has not refused since', () => {
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T10:00:00Z' })).toEqual({ kind: 'taken', at: '2026-11-24T10:00:00Z' })
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T12:00:00Z', lastFailure: failure })).toEqual({ kind: 'taken', at: '2026-11-24T12:00:00Z' })
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T11:00:00Z', lastFailure: failure }), 'a failure at the same time is not later').toEqual({ kind: 'taken', at: '2026-11-24T11:00:00Z' })
+  })
+  it('is failing when the last refusal is later than the last taking, or it has taken none', () => {
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T10:00:00Z', lastFailure: failure })).toEqual({ kind: 'failing', failure, lastTakenAt: '2026-11-24T10:00:00Z' })
+    expect(deliveryOf({ lastFailure: failure })).toEqual({ kind: 'failing', failure })
+  })
+  it('is failing when a time cannot be read: a refusal is not hidden behind a time that means nothing', () => {
+    expect(deliveryOf({ lastSucceededAt: 'not a time', lastFailure: failure }).kind).toBe('failing')
+  })
+  it('is failing when the time of the refusal cannot be read, since a refusal that cannot be dated is still one', () => {
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T10:00:00Z', lastFailure: { ...failure, at: 'not a time' } }).kind).toBe('failing')
+  })
+  it('compares the times as times, not as texts (an offset is not a later time)', () => {
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T20:30:00+09:00', lastFailure: failure }).kind).toBe('taken')
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T12:30:00+09:00', lastFailure: failure }).kind).toBe('failing')
   })
 })

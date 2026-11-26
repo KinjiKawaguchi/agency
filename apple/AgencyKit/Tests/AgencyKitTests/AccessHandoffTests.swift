@@ -212,4 +212,28 @@ struct AccessHandoffTests {
             try handoff.token(from: callback(handoff, token: big), now: now)
         }
     }
+
+    // MARK: A token that a code exchange gave
+
+    @Test("a redeemed token is kept under the host it was redeemed at, with its own expiry")
+    func redeemed() throws {
+        let jwt = token()
+        let kept = try AccessHandoff.token(fromJWT: jwt, host: "node.example.com", now: now)
+        #expect(kept.host == "node.example.com")
+        #expect(kept.value == jwt)
+        #expect(kept.expires == Date(timeIntervalSince1970: 1_800_003_600))
+    }
+
+    @Test("a redeemed token that has expired, or is not a token, is refused")
+    func redeemedRefused() {
+        #expect(throws: AccessHandoffError.expired) {
+            try AccessHandoff.token(fromJWT: token(exp: 1_799_999_999), host: "node.example.com", now: now)
+        }
+        #expect(throws: AccessHandoffError.expired) {
+            try AccessHandoff.token(fromJWT: token(exp: 1_800_000_000), host: "node.example.com", now: now)
+        }
+        #expect(throws: AccessHandoffError.malformedToken) {
+            try AccessHandoff.token(fromJWT: token(segments: 2), host: "node.example.com", now: now)
+        }
+    }
 }

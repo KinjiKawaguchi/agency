@@ -7,8 +7,11 @@ DEVELOPMENT_TEAM = XXXXXXXXXX
 // the node's configuration must name the same ID.
 PRODUCT_BUNDLE_IDENTIFIER = com.example.agency
 
-// The host name of your home node, such as agency.example.com (no scheme, no path). With it the
-// app signs in to Cloudflare Access in the system browser session, where passkeys work. The node
-// must serve /.well-known/apple-app-site-association for the app (see docs/apple.md). Without it,
-// or with another host, the app shows the Access login page in its own web view.
+// The host name of your home node, such as agency.example.com (no scheme, no path). A node on this host signs in to
+// Cloudflare Access in the system browser session and returns to the app through a universal link, so the node must serve
+// /.well-known/apple-app-site-association for the app (see docs/apple.md). Any other https node signs in through the
+// app's own scheme.
 AGENCY_ASSOCIATED_HOST = agency.example.com
+// Optional: a second host, or a wildcard for the hosts one label below a domain (*.example.com). A home node on a host listed
+// here signs in through a universal link; any other https node signs in through the app's own scheme.
+// AGENCY_ASSOCIATED_HOST_2 = *.nodes.example.com

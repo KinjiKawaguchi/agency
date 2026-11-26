@@ -40,7 +40,7 @@ struct OrgChartPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.spacing) {
                 banner
-                if store.loading == .loaded || !store.rows.isEmpty || !store.orgs.isEmpty {
+                if store.hasAnswered || !store.rows.isEmpty || !store.orgs.isEmpty {
                     OrgChartContent(
                         title: store.title, orgs: store.orgs, isAll: store.isAll, selected: store.org?.id,
                         rows: store.rows, isFocused: store.focus != nil, isEmptyDepartment: store.isEmptyDepartment,
@@ -67,7 +67,7 @@ struct OrgChartPage: View {
             .card()
         } else if case .failed(let reason) = store.loading {
             FailedRegion(what: Ja.OrgChart.title, why: reason) { Task { await store.refresh() } }.card()
-        } else if (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
+        } else if !store.hasAnswered && (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
             ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }

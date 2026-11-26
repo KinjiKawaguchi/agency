@@ -277,7 +277,8 @@ pub fn is_node_origin(raw: &str) -> bool {
     })
 }
 
-pub(crate) fn label_ok(label: &str) -> bool {
+/// A label: 1 to 80 characters, none of them a control character.
+pub fn label_ok(label: &str) -> bool {
     let count = label.chars().count();
     (1..=80).contains(&count) && !label.chars().any(char::is_control)
 }

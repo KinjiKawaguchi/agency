@@ -30,6 +30,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
   const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
+  const webPushFailing = query?.get('webPushFailing') ?? process.env.AGENCY_MOCK_WEBPUSH_FAILING
+  const participants = query?.get('participants') ?? process.env.AGENCY_MOCK_PARTICIPANTS
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -38,16 +40,24 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    participants: participants === '1',
     outcomes: outcomes === '1',
     // The owner's sample numbers are of fixed days; the cost beside them is drawn over the same days. This pins the day of the whole
     // mock node (the desk's times too), for the dev server and the screenshots.
     ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
+    webPushFailing: webPushFailing === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
     // A recovery of the org that was started and waits, as the node says it on `GET /api/me`.
     ...(query?.get('recovery') === '1' ? { recoveries: { acme: { takesEffectAt: new Date(Date.now() + 71 * 3_600_000).toISOString(), newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true } } } : {}),
+    // The root key's node holds a device change for its owner's `agency root-sign`.
+    ...(query?.get('pendingRoot') === '1' ? { pendingRoot: true } : {}),
+    // Changes that wait for the root key's signature, as the node tells its owner.
+    ...(query?.get('rootChanges') === '1'
+      ? { rootChanges: [{ id: 'c1', org: 'acme', what: 'add member carol (Carol)', kind: 'addMember', member: 'carol', label: 'Carol', receivedAt: new Date(Date.now() - 2 * 3_600_000).toISOString() }, { id: 'c2', org: 'acme', what: 'add device iPhone for bob', kind: 'addDevice', member: 'bob', label: 'iPhone', receivedAt: new Date(Date.now() - 5 * 60_000).toISOString() }] }
+      : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
     // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.

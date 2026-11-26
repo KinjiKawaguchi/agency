@@ -62,6 +62,8 @@ private final class FakePoster: DeviceChangePoster, @unchecked Sendable {
     private let lock = NSLock()
     var devices: DeviceList
     var result: Result<DeviceChangeResult, Error> = .success(DeviceChangeResult(outcome: .applied, message: nil))
+    /// What the next submissions answer, one each, before `result` is used.
+    var queue: [Result<DeviceChangeResult, Error>] = []
     private var _submitted: [SignedDeviceChange] = []
     private var _calls: [String] = []
     private var times = 0
@@ -81,8 +83,11 @@ private final class FakePoster: DeviceChangePoster, @unchecked Sendable {
         lock.withLock { times += 1; return Date(timeIntervalSince1970: 1_795_521_600 + Double(times)) }
     }
     func submitDeviceChange(_ change: SignedDeviceChange) async throws -> DeviceChangeResult {
-        lock.withLock { _submitted.append(change) }
-        return try result.get()
+        let next = lock.withLock { () -> Result<DeviceChangeResult, Error> in
+            _submitted.append(change)
+            return queue.isEmpty ? result : queue.removeFirst()
+        }
+        return try next.get()
     }
 }
 
@@ -192,6 +197,35 @@ struct DeviceChangeSenderTests {
         await #expect(throws: NodeError.http(status: 409, message: "refused")) { try await sender(poster).add(newKey) }
     }
 
+    private func twoOrgs() -> DeviceList {
+        devices(#"{"org":"acme","devices":[\#(device("d-a652124afda7", own, label: "iPhone"))]},{"org":"beta","devices":[\#(device("d-b00000000001", own, label: "iPhone"))]}"#)
+    }
+
+    @Test("a change the root's node holds is answered as held, and the next org is still asked")
+    func held() async throws {
+        let poster = FakePoster(devices: twoOrgs())
+        poster.queue = [.success(DeviceChangeResult(outcome: .pending, message: "Approved here"))]
+        let results = try await sender(poster).add(newKey)
+        #expect(results.map(\.outcome) == [.pending, .applied])
+        #expect(poster.submitted.count == 2)
+    }
+
+    @Test("a later org's failure keeps what the node answered for the orgs before it; the first org's failure is the failure itself")
+    func partly() async throws {
+        let poster = FakePoster(devices: twoOrgs())
+        poster.queue = [.success(DeviceChangeResult(outcome: .pending, message: nil)), .failure(NodeError.http(status: 403, message: "no"))]
+        do {
+            _ = try await sender(poster).add(newKey)
+            Issue.record("should fail")
+        } catch let partly as DeviceChangePartlyAnswered {
+            #expect(partly.answered.map(\.outcome) == [.pending])
+            #expect(partly.cause as? NodeError == NodeError.http(status: 403, message: "no"))
+        }
+        let first = FakePoster(devices: twoOrgs())
+        first.queue = [.failure(NodeError.http(status: 403, message: "no"))]
+        await #expect(throws: NodeError.http(status: 403, message: "no")) { _ = try await sender(first).add(newKey) }
+    }
+
     @Test("the messages are Japanese")
     func messages() {
         #expect(DeviceChangeSenderError.nowhereToAdd.errorDescription == Ja.Devices.nowhereToAdd)
@@ -203,8 +237,10 @@ struct DeviceChangeSenderTests {
 private final class FakeSource: DevicesSource, @unchecked Sendable {
     private let lock = NSLock()
     var result: Result<DeviceList, Error>
+    var held: Result<[RootChangeRef], Error> = .success([])
     init(_ result: Result<DeviceList, Error>) { self.result = result }
     func devices() async throws -> DeviceList { try lock.withLock { try result.get() } }
+    func heldChanges() async throws -> [RootChangeRef] { try lock.withLock { try held.get() } }
 }
 
 private final class FakeAdder: DeviceAdder, @unchecked Sendable {
@@ -321,5 +357,113 @@ struct DevicesStoreTests {
         adder.release()
         await first.value
         #expect(adder.added.count == 1)
+    }
+}
+
+@MainActor
+@Suite("DevicesStore: a change the root's node holds")
+struct DevicesHeldTests {
+    private let own = try! SoftwareP256Signer(rawPrivateKey: Data(repeating: 0x0b, count: 32)).publicKey
+    private let newKey = Fixture.decode(DeviceRequest.self, "device-request")
+
+    private var waiting: DeviceList {
+        list(#"{"orgs":[{"org":"acme","devices":[\#(device("d-own", own.string))]}],"requests":[\#(request(newKey.deviceId, newKey.pairingCode, newKey.publicKey))]}"#)
+    }
+
+    private func confirmed(_ results: Result<[DeviceChangeResult], Error>) async -> DevicesStore {
+        let adder = FakeAdder()
+        adder.result = results
+        let store = DevicesStore(source: FakeSource(.success(waiting)), adder: adder, ownKey: own)
+        await store.refresh()
+        await store.confirm(store.requests[0])
+        return store
+    }
+
+    private func result(_ outcome: DeviceChangeResult.Outcome, _ message: String? = nil) -> DeviceChangeResult { DeviceChangeResult(outcome: outcome, message: message) }
+
+    @Test("a pending approval is said in the app's words, with the node's message ignored, and is not said as an add")
+    func pending() async {
+        let store = await confirmed(.success([result(.pending, "Approved here; it takes effect once the root key's node signs it")]))
+        #expect(store.held[newKey.publicKey] == "ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
+        #expect(store.confirmed.isEmpty && store.confirmFailures.isEmpty)
+    }
+
+    @Test("an outcome the app does not know is said with the node's message, and not as a success; with no message it is taken as done")
+    func unknown() async {
+        let said = await confirmed(.success([result(.unknown("later"), "It will take a while.")]))
+        #expect(said.held[newKey.publicKey] == "It will take a while." && said.confirmed.isEmpty)
+        let silent = await confirmed(.success([result(.unknown("later"))]))
+        #expect(silent.held.isEmpty && silent.confirmed[newKey.publicKey] == Ja.Devices.confirmed("iPhone"))
+    }
+
+    @Test("with several orgs, a held one is not turned into a success by the others, and a node that was asleep is still said")
+    func several() async {
+        let store = await confirmed(.success([result(.pending), result(.applied), result(.pending), result(.queued, "asleep")]))
+        #expect(store.held[newKey.publicKey] == RootChangeNotice.approvedHere + "\n" + Ja.Devices.queued("asleep"))
+        #expect(store.confirmed.isEmpty)
+    }
+
+    @Test("an add that was answered stays an add, as before")
+    func applied() async {
+        let store = await confirmed(.success([result(.applied), result(.delivered)]))
+        #expect(store.held.isEmpty && store.confirmed[newKey.publicKey] == Ja.Devices.confirmed("iPhone"))
+    }
+
+    @Test("a later org's failure keeps what an earlier one held, and says why")
+    func partly() async {
+        let store = await confirmed(.failure(DeviceChangePartlyAnswered(answered: [result(.pending)], cause: NodeError.http(status: 403, message: "no"))))
+        #expect(store.held[newKey.publicKey] == RootChangeNotice.approvedHere)
+        #expect(store.confirmFailures[newKey.publicKey] == "no")
+    }
+
+    private func held(_ kind: String, device: String?) -> RootChangeRef {
+        RootChangeRef(id: "c1", org: "acme", what: "x", receivedAt: "2026-11-26T09:00:00Z", kind: kind, member: "alice", label: "iPhone", device: device)
+    }
+
+    @Test("a request approved before, which the node still holds, is held when the screen is opened again, and cannot be approved again")
+    func heldAtTheNode() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: newKey.deviceId)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        #expect(store.held[newKey.publicKey] == RootChangeNotice.approvedHere)
+        #expect(store.heldHere.isEmpty)
+    }
+
+    @Test("only the add of that device holds it: another device's, another kind's, and a held change with no device do not")
+    func heldAtTheNodeIsThatDevice() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: "d-other"), held("removeDevice", device: newKey.deviceId), held("addMember", device: nil)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        #expect(store.held.isEmpty)
+    }
+
+    @Test("what the node held is not held any more once it says so, and a read of it that fails leaves what was known")
+    func heldAtTheNodeGoes() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: newKey.deviceId)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        source.held = .failure(NodeError.http(status: 502, message: nil))
+        await store.refresh()
+        #expect(store.held[newKey.publicKey] != nil && store.loadFailure == nil)
+        source.held = .success([])
+        await store.refresh()
+        #expect(store.held.isEmpty)
+    }
+
+    @Test("what is held goes when the request leaves the list")
+    func leaves() async {
+        let source = FakeSource(.success(waiting))
+        let adder = FakeAdder()
+        adder.result = .success([result(.pending)])
+        let store = DevicesStore(source: source, adder: adder, ownKey: own)
+        await store.refresh()
+        await store.confirm(store.requests[0])
+        #expect(!store.held.isEmpty)
+        source.result = .success(list(#"{"orgs":[{"org":"acme","devices":[\#(device("d-own", own.string)),\#(device(newKey.deviceId, newKey.publicKey))]}],"requests":[]}"#))
+        await store.refresh()
+        #expect(store.held.isEmpty)
     }
 }

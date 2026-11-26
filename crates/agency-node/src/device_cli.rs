@@ -49,6 +49,10 @@ fn describe(label: &str, outcome: DeviceChangeOutcome, message: Option<String>) 
     match outcome {
         DeviceChangeOutcome::Applied => format!("{label} added (this node holds the root key)"),
         DeviceChangeOutcome::Delivered => format!("{label} added by the root's node"),
+        DeviceChangeOutcome::Pending => format!(
+            "{label} waits for the owner of the root key ({})",
+            message.unwrap_or_default()
+        ),
         DeviceChangeOutcome::Queued => format!(
             "{label} waits in the outbox for the root's node ({})",
             message.unwrap_or_default()
