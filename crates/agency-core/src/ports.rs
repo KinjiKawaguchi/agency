@@ -102,6 +102,10 @@ pub trait PushStore {
     /// Keys (`org/team/request`) of requests already notified, oldest first. `None` until the first pass.
     fn notified(&self) -> Option<Vec<String>>;
     fn save_notified(&self, keys: &[String]) -> Result<()>;
+    /// What the iPhones were last woken for: the requests that waited for the owner then, and when. `None`
+    /// until the first pass has recorded it.
+    fn desk_refresh(&self) -> Option<crate::push::DeskRefresh>;
+    fn save_desk_refresh(&self, state: &crate::push::DeskRefresh) -> Result<()>;
     /// The owner's registered Web Push subscriptions, oldest first.
     fn web_subscriptions(&self) -> Vec<WebSubscription>;
     fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;
@@ -297,6 +301,12 @@ pub trait Notifier: Send + Sync {
     /// The node's VAPID key when Web Push is set up; a node without it has no browser subscriptions.
     fn web_push_key(&self) -> Option<VapidKey> {
         None
+    }
+
+    /// Wakes the app on one device so that it reads the owner's desk: a push with no alert and nothing of the
+    /// desk in it. A notifier that cannot (no key, or a browser's service) does nothing.
+    async fn send_desk_changed(&self, _token: &PushToken) -> Result<(), PushError> {
+        Ok(())
     }
 
     /// Whether the keys of a browser's subscription can be sent to; the reason when they cannot.

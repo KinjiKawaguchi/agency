@@ -10,8 +10,10 @@ use crate::views::{mine, runtime_view, Reader};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
+use agency_proto::clock;
 use agency_proto::view::Request;
 use agency_proto::{Id, OrgDefinition, Timestamp};
+use serde::{Deserialize, Serialize};
 
 /// The most tokens kept; the oldest is dropped first.
 pub const MAX_TOKENS: usize = 20;
@@ -21,6 +23,18 @@ pub const NOTIFIED_KEPT: usize = 1000;
 /// a node that only notified requests: the device requests and refusals it finds the first time are
 /// recorded and not sent, so an upgrade does not announce the past.
 pub(crate) const KINDS_MARKER: &str = "baseline/device-decision";
+
+/// The least time between two pushes that only wake the iPhones to read the desk. iOS throttles background
+/// pushes, and a few an hour is what Apple advises; a change inside the window goes at its end.
+pub const REFRESH_FLOOR_MINUTES: i64 = 15;
+
+/// What the iPhones were last woken for: the requests that waited for the owner then (`org/team/request`,
+/// sorted), and when. It is how a change of the desk is told from no change, and how often one is sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeskRefresh {
+    pub waiting: Vec<String>,
+    pub at: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PushError {
@@ -246,12 +260,88 @@ async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Resu
 /// if any of them took it, or if none wants it (including when none is registered), or if the ones that
 /// wanted it are gone; otherwise it is tried again on the next pass. Tokens APNs no longer accepts, and
 /// subscriptions a push service says are gone, are removed.
-async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<bool> {
+async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Delivery> {
     let tokens = send_to_tokens(node, notice, pass).await?;
     let browsers = send_to_browsers(node, notice, pass).await?;
     let wanting = tokens.wanting + browsers.wanting;
     let gone = tokens.gone.len() + browsers.gone.len();
-    Ok(wanting == 0 || tokens.accepted || browsers.accepted || gone == wanting)
+    Ok(Delivery {
+        is_done: wanting == 0 || tokens.accepted || browsers.accepted || gone == wanting,
+        reached_iphone: tokens.accepted,
+    })
+}
+
+/// What sending one notice came to.
+struct Delivery {
+    /// Delivered, or nobody wants it; otherwise it is tried again on the next pass.
+    is_done: bool,
+    /// An iPhone took it. A request's alert wakes the app (`content-available`), so the desk it asked about
+    /// needs no push of its own.
+    reached_iphone: bool,
+}
+
+/// Wakes every registered iPhone to read the desk, and says whether that is done: it is when one took it,
+/// when none is registered, or when all that were are gone. Tokens APNs no longer accepts are removed.
+async fn wake_iphones(node: &Node, pass: &mut Pass) -> Result<bool> {
+    let tokens = node.store().push_tokens();
+    let mut outcome = Outcome {
+        wanting: tokens.len(),
+        ..Outcome::default()
+    };
+    for token in &tokens {
+        let answer = node.notifier().send_desk_changed(token).await;
+        outcome.record(&token.token, answer, pass);
+    }
+    remove_tokens(node, &outcome.gone)?;
+    // With no token registered nothing is wanted and nothing is gone either: 0 is 0, and it counts as done.
+    Ok(outcome.accepted || outcome.gone.len() == outcome.wanting)
+}
+
+/// Whether the iPhones were woken long enough ago to be woken again.
+fn is_refresh_due(last: &DeskRefresh, now: clock::OffsetDateTime) -> bool {
+    match clock::parse(&last.at) {
+        Some(at) => now - at >= clock::Duration::minutes(REFRESH_FLOOR_MINUTES),
+        None => true,
+    }
+}
+
+/// Wakes the iPhones when the requests that wait for the owner changed (one started waiting, or one was
+/// decided and left), so that the widgets show them while the app is closed. The push carries nothing of
+/// the desk. It goes at once after a quiet time and at most once in `REFRESH_FLOOR_MINUTES`: a change
+/// inside the window stays pending and goes when it ends. A request's alert that reached an iPhone
+/// already woke it, so that change needs no push. A push that fails restarts the window, with the change still
+/// pending. The first pass only records.
+async fn refresh_desks(
+    node: &Node,
+    waiting: Vec<String>,
+    was_woken: bool,
+    pass: &mut Pass,
+) -> Result<()> {
+    let now = node.now();
+    let record = |waiting: Vec<String>| {
+        node.store().save_desk_refresh(&DeskRefresh {
+            waiting,
+            at: clock::format(now),
+        })
+    };
+    let Some(last) = node.store().desk_refresh() else {
+        return record(waiting);
+    };
+    if was_woken {
+        return record(waiting);
+    }
+    if last.waiting == waiting || !is_refresh_due(&last, now) {
+        return Ok(());
+    }
+    if wake_iphones(node, pass).await? {
+        return record(waiting);
+    }
+    // It failed (APNs is down, or refused): the change stays pending, and the window restarts, so that a node whose
+    // pushes fail asks again after the floor and not at every pass, which is what the floor is for.
+    node.store().save_desk_refresh(&DeskRefresh {
+        waiting: last.waiting,
+        at: clock::format(now),
+    })
 }
 
 /// Whether the node leaves titles and labels out of every notification: one meaning for APNs and Web
@@ -295,6 +385,8 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
     let is_hidden = is_hiding_titles(node);
     let requests = waiting_for_owner(node, is_hidden).await;
     let badge = u32::try_from(requests.len()).unwrap_or(u32::MAX);
+    let mut waiting: Vec<String> = requests.iter().map(|one| one.key.clone()).collect();
+    waiting.sort();
     let mut others = device_candidates(node, is_hidden);
     others.extend(decision_candidates(node, is_hidden));
     let Some(mut notified) = node.store().notified() else {
@@ -302,6 +394,10 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         keys.extend(others.into_iter().map(|one| one.key));
         keys.push(KINDS_MARKER.to_owned());
         node.store().save_notified(&trimmed(keys))?;
+        node.store().save_desk_refresh(&DeskRefresh {
+            waiting,
+            at: clock::format(node.now()),
+        })?;
         return Ok(Pass::default());
     };
     let is_upgrade = !notified.iter().any(|key| key == KINDS_MARKER);
@@ -317,17 +413,23 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         .into_iter()
         .filter(|one| !notified.contains(&one.key))
         .collect();
+    let mut was_woken = false;
     for one in fresh {
         let notice = Notice {
             badge,
             ..one.notice
         };
-        if send_to_all(node, &notice, &mut pass).await? {
+        let delivery = send_to_all(node, &notice, &mut pass).await?;
+        if delivery.is_done {
             pass.sent += 1;
             notified.push(one.key);
         }
+        if matches!(notice.kind, NoticeKind::Request { .. }) && delivery.reached_iphone {
+            was_woken = true;
+        }
     }
     node.store().save_notified(&trimmed(notified))?;
+    refresh_desks(node, waiting, was_woken, &mut pass).await?;
     Ok(pass)
 }
 
