@@ -122,6 +122,62 @@ pub fn is_in_node_read(kind: SeriesKind, name: &str) -> bool {
     .contains(&template)
 }
 
+/// Whether an objective the operator set for a group is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ObjectiveState {
+    /// The 95th percentile of the group is within the objective.
+    Met,
+    /// It is not, or it is slower than the last bound (30 000 ms).
+    NotMet,
+    /// There is nothing to compare: the group had no calls in the range.
+    Unknown,
+}
+
+/// An objective the operator set for the node (`metrics.objectives` in `config.json`) and how the
+/// measurements stand against it over the range asked for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct ObjectiveResult {
+    /// The group of routes the objective is for (`group` of a `serve` series).
+    pub group: String,
+    /// The most the 95th percentile of the group may be, in milliseconds: what the operator set.
+    pub p95_ms: u32,
+    pub state: ObjectiveState,
+    /// The 95th percentile it was compared to, as the upper bound of its bucket; left out when there is
+    /// none (no calls, or slower than 30 000 ms).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_p95_ms: Option<u32>,
+}
+
+/// How the `serve` series of `group` stand against an objective of `p95_ms`: the buckets of all of the
+/// group's series (every route and status of it) are added up and their 95th percentile is the one compared.
+pub fn judge(group: &str, p95_ms: u32, series: &[Series]) -> ObjectiveResult {
+    let mut buckets = [0u64; BUCKETS];
+    for one in series
+        .iter()
+        .filter(|one| one.kind == SeriesKind::Serve && one.group == group)
+    {
+        for (total, count) in buckets.iter_mut().zip(&one.buckets) {
+            *total += count;
+        }
+    }
+    let measured = percentile_ms(&buckets, 95);
+    let state = match (buckets.iter().sum::<u64>(), measured) {
+        (0, _) => ObjectiveState::Unknown,
+        (_, Some(p95)) if p95 <= p95_ms => ObjectiveState::Met,
+        _ => ObjectiveState::NotMet,
+    };
+    ObjectiveResult {
+        group: group.to_owned(),
+        p95_ms,
+        state,
+        measured_p95_ms: measured,
+    }
+}
+
 /// What the answer says of the budget, so that a screen does not decide it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -219,6 +275,11 @@ pub struct Metrics {
     pub generated_at: Timestamp,
     /// The budget an in-node read is held to.
     pub budget: Budget,
+    /// How the groups the operator set objectives for stand against them. Left out when there are none, and
+    /// in an answer narrowed to a kind or a name (which would not be the whole of a group).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<ObjectiveResult>>", optional)]
+    pub objectives: Vec<ObjectiveResult>,
     /// Ordered by kind, then name, then status.
     pub series: Vec<Series>,
 }

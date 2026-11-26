@@ -272,5 +272,24 @@
   ],
   "budget": {
     "inNodeReadP95Ms": 100
-  }
+  },
+  "objectives": [
+    {
+      "group": "desk",
+      "p95Ms": 50,
+      "state": "met",
+      "measuredP95Ms": 10
+    },
+    {
+      "group": "usage",
+      "p95Ms": 500,
+      "state": "notMet",
+      "measuredP95Ms": 30000
+    },
+    {
+      "group": "evaluation",
+      "p95Ms": 1000,
+      "state": "unknown"
+    }
+  ]
 }

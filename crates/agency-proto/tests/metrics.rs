@@ -1,8 +1,9 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    group_of, is_error_status, is_in_node_read, valid_name, valid_status, Metrics, Series,
-    SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
+    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, Metrics,
+    ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS,
+    ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -354,4 +355,92 @@ fn a_series_that_says_another_group_or_another_budget_than_its_name_is_refused()
     for bad in [other_group, budget_where_there_is_none, no_budget] {
         assert!(!bad.is_consistent(), "{bad:?}");
     }
+}
+
+#[test]
+fn the_objectives_of_the_sample_are_what_judging_its_series_gives() {
+    let metrics = sample();
+    assert_eq!(metrics.objectives.len(), 3);
+    for stated in &metrics.objectives {
+        assert_eq!(
+            &judge(&stated.group, stated.p95_ms, &metrics.series),
+            stated,
+            "{}",
+            stated.group
+        );
+    }
+    let value = serde_json::to_value(&metrics).unwrap();
+    assert_eq!(value["objectives"][1]["state"], "notMet");
+    assert_eq!(value["objectives"][0]["state"], "met");
+    assert_eq!(value["objectives"][2]["state"], "unknown");
+    assert!(
+        value["objectives"][2].get("measuredP95Ms").is_none(),
+        "left out when there is none"
+    );
+}
+
+#[test]
+fn an_objective_is_met_when_the_95th_percentile_of_the_whole_group_is_within_it() {
+    let series = sample().series;
+    let desk = |p95| judge("desk", p95, &series);
+    assert_eq!(
+        (desk(10).state, desk(10).measured_p95_ms),
+        (ObjectiveState::Met, Some(10)),
+        "exactly the objective is met"
+    );
+    assert_eq!(desk(9).state, ObjectiveState::NotMet);
+    assert_eq!(desk(30_000).state, ObjectiveState::Met);
+    // The group's series are added up: usage has a 2xx series (p95 1000) and a 5xx one (30 000 ms).
+    let usage = judge("usage", 30_000, &series);
+    assert_eq!(
+        (usage.state, usage.measured_p95_ms),
+        (ObjectiveState::Met, Some(30_000))
+    );
+    assert_eq!(
+        judge("usage", 29_999, &series).state,
+        ObjectiveState::NotMet
+    );
+    // No calls in the group is not met and not failed.
+    let none = judge("evaluation", 100, &series);
+    assert_eq!(
+        (none.state, none.measured_p95_ms),
+        (ObjectiveState::Unknown, None)
+    );
+    // What is not a `serve` series of the group is not in it: a call of the group's name, a client's report.
+    let mut only_others: Vec<Series> = series
+        .iter()
+        .filter(|s| s.kind != SeriesKind::Serve)
+        .cloned()
+        .collect();
+    only_others.iter_mut().for_each(|s| s.group = "desk".into());
+    assert_eq!(
+        judge("desk", 10, &only_others).state,
+        ObjectiveState::Unknown
+    );
+    // Slower than the last bound is not met, whatever the objective, and has no measured number.
+    let mut slow = series[0].clone();
+    slow.buckets = vec![0; 15];
+    slow.buckets[14] = 5;
+    let beyond = judge("desk", 30_000, &[slow]);
+    assert_eq!(
+        (beyond.state, beyond.measured_p95_ms),
+        (ObjectiveState::NotMet, None)
+    );
+}
+
+#[test]
+fn the_states_are_written_in_camel_case_and_the_field_is_left_out_when_there_are_none() {
+    assert_eq!(
+        serde_json::to_value(ObjectiveState::NotMet).unwrap(),
+        "notMet"
+    );
+    let mut quiet = sample();
+    quiet.objectives.clear();
+    assert!(serde_json::to_value(&quiet)
+        .unwrap()
+        .get("objectives")
+        .is_none());
+    let read: ObjectiveResult =
+        serde_json::from_str(r#"{"group":"desk","p95Ms":5,"state":"met"}"#).unwrap();
+    assert_eq!(read.measured_p95_ms, None);
 }
