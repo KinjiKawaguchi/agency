@@ -46,6 +46,14 @@ fn alice() -> Fixture {
     let fixture = bare("alice");
     let node = &fixture.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
+    // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
+    let place = TeamPlace {
+        id: id("app"),
+        label: "app".into(),
+        department: None,
+        node: node.url(),
+    };
+    orgs::add_team(node, &id("acme"), place).unwrap();
     let hosted = HostedTeam {
         org: id("acme"),
         team: id("app"),

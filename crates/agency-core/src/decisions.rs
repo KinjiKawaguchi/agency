@@ -150,7 +150,7 @@ pub async fn accept_envelope(
             "the envelope's org and team differ from where it was sent",
         ));
     }
-    let hosted = node.config().hosted(org, team).cloned();
+    let hosted = node.hosted(org, team);
     let doc = node.store().load_org(org);
     let definition = doc.as_ref().map(|doc| &doc.body);
     let found = definition.and_then(|definition| envelope_key(definition, &signed));

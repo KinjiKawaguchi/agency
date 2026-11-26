@@ -12,6 +12,7 @@ struct CostsContent: View {
     let now: Date
     var onChoose: ((Int) -> Void)?
     var selectedDay: String?
+    var onTryAgain: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
@@ -21,7 +22,7 @@ struct CostsContent: View {
             }
             ForEach(funding, id: \.id) { FundingCard(source: $0, now: now) }
             if !teams.isEmpty { period }
-            ForEach(teams) { TeamTokens(team: $0, selectedDay: selectedDay).padding(.top, 12) }
+            ForEach(teams) { TeamTokens(team: $0, selectedDay: selectedDay, onTryAgain: onTryAgain).padding(.top, 12) }
         }
     }
 

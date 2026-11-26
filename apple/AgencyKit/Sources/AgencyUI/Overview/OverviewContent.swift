@@ -12,6 +12,7 @@ struct OverviewContent: View {
     let cost: (TeamEntry) -> WeekCost
     let now: Date
     var onOpenDesk: (() -> Void)?
+    var onTryAgain: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
@@ -33,7 +34,7 @@ struct OverviewContent: View {
             Text(Ja.Overview.noTeams).font(.subheadline).foregroundStyle(.secondary).wrapping()
         }
         ForEach(section.teams, id: \.key) { entry in
-            TeamCard(entry: entry, cost: cost(entry), now: now, onOpenDesk: onOpenDesk)
+            TeamCard(entry: entry, cost: cost(entry), now: now, onOpenDesk: onOpenDesk, onTryAgain: onTryAgain)
         }
     }
 }

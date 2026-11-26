@@ -346,15 +346,35 @@ pub enum PushEnvironment {
     Sandbox,
 }
 
+/// What a push notification is about: a request that waits for the owner, a device that asks to be
+/// added, or a decision of the owner's that the team's node refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum PushEvent {
+    Request,
+    Device,
+    Decision,
+}
+
+/// What a token gets when it names no kinds (what a token got before kinds existed).
+pub fn default_push_events() -> Vec<PushEvent> {
+    vec![PushEvent::Request]
+}
+
 /// An APNs device token to register for the owner's notifications.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[ts(export)]
+#[ts(export, optional_fields)]
 pub struct PushTokenInput {
     /// The device token as hex.
     pub token: String,
     pub environment: PushEnvironment,
     pub label: String,
+    /// The kinds of notification this token wants. Absent means `request` only; an empty list means
+    /// none. Repeated kinds count once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<PushEvent>>,
 }
 
 /// A registered device token. In a list, `token` holds only its last 8 characters.
@@ -366,6 +386,10 @@ pub struct PushToken {
     pub environment: PushEnvironment,
     pub label: String,
     pub registered_at: Timestamp,
+    /// The kinds of notification it gets, in the order `request`, `device`, `decision`. A token stored
+    /// before kinds existed reads as `request` only.
+    #[serde(default = "default_push_events")]
+    pub events: Vec<PushEvent>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

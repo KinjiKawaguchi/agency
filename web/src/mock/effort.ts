@@ -36,17 +36,18 @@ function dayEffort(team: string, date: string, costUsd: number): DayEffort {
 }
 
 export function teamEffort(team: string, days: number, now: Date): TeamEffort {
-  const byDay = teamEvaluation(team, days, now).byDay.map((day) => dayEffort(team, day.date, day.costUsd))
+  const evaluated = teamEvaluation(team, days, now)
+  const byDay = evaluated.byDay.map((day) => dayEffort(team, day.date, day.costUsd))
   const byType = Object.fromEntries(
     EFFORT_TYPES.map((type) => {
       const costUsd = cents(byDay.reduce((sum, day) => sum + day.costUsd[type], 0))
       return [type, { costUsd, tokens: { input: Math.round(costUsd * 9_000), output: Math.round(costUsd * 24_000), cacheRead: Math.round(costUsd * 610_000), cacheWrite: Math.round(costUsd * 38_000) } }]
     }),
   ) as TeamEffort['byType']
-  return { team, byType, byDay }
+  return { team, from: evaluated.from, until: evaluated.until, byType, byDay }
 }
 
 export function effortReport(org: string, teams: readonly string[], days: number, now: Date): Effort {
   const date = (daysAgo: number): string => new Date(now.getTime() - daysAgo * 86_400_000).toISOString().slice(0, 10)
-  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEffort(team, days, now)) }
+  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEffort(team, days, now)), unavailable: [] }
 }

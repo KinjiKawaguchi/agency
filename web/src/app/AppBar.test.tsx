@@ -26,7 +26,7 @@ describe('the menus', () => {
     const main = await screen.findByRole('navigation', { name: 'Main menu' })
     expect(within(main).getByRole('link', { name: 'Results' })).toHaveAttribute('aria-current', 'page')
     expect(within(main).getByRole('link', { name: 'Organization' })).not.toHaveAttribute('aria-current')
-    expect(labels(screen.getByRole('navigation', { name: 'Results pages' }))).toEqual(['Costs', 'Evaluation'])
+    expect(labels(screen.getByRole('navigation', { name: 'Results pages' }))).toEqual(['Costs', 'Evaluation', 'Live'])
   })
 
   it('has no menu of its own on a page that is a group by itself', async () => {

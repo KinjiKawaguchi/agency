@@ -109,19 +109,21 @@ To open it from elsewhere, put the node behind a Cloudflare Tunnel with Cloudfla
 
 The Access policy must bypass `/fed/*` so other nodes can reach the federation routes.
 
-To let the iOS app sign in to Access outside its web view (where passkeys work), add the app identifier, `<team id>.<bundle id>`, as `"appId": "ABCDE12345.com.example.agency"` in `access`, and let the Access policy also bypass `/.well-known/apple-app-site-association`, which Apple's servers fetch without signing in.
+To let the iOS app sign in to Access (in the system browser session, where passkeys work), add the app identifier, `<team id>.<bundle id>`, as `"appId": "ABCDE12345.com.example.agency"` in `access`, and let the Access policy also bypass `/.well-known/apple-app-site-association`, which Apple's servers fetch without signing in.
 
-To notify the owner's iPhone of new requests, add the APNs key Apple issued for the app (keep the `.p8` file outside the repository):
+To notify the owner's iPhone of new requests, devices waiting to be added, and refused decisions (the app chooses which kinds), add the APNs key Apple issued for the app (keep the `.p8` file outside the repository):
 
 ```json
 "push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
 ```
 
+For a node whose data must stay where it is, add `"hideTitles": true` to `push`: no title or label (a team's, a request's, a device's) is sent to Apple, and the notification says only what kind it is.
+
 See "Client API" in docs/protocol.md for what is checked.
 
 ## iPhone app
 
-`apple/` holds a thin iPhone app that opens the home node in a web view, for TestFlight. See [docs/apple.md](docs/apple.md).
+`apple/` holds the iPhone app, native screens that talk to the home node, for TestFlight. See [docs/apple.md](docs/apple.md).
 
 ## Team runtimes
 

@@ -22,6 +22,7 @@ export const ja: Messages = {
     section: (group) => `${group}のページ`,
     costs: '費用',
     evaluation: '評価',
+    live: 'ライブ',
     devices: '端末',
   },
   settings: {
@@ -62,6 +63,21 @@ export const ja: Messages = {
     neverRead: (reason) => `まだ読めていません: ${reason}`,
     loadFailed: (reason) => `このチームを読み込めませんでした: ${reason}`,
     funding: '利用上限',
+  },
+  notices: {
+    request: (count, title, team) => (count === 1 ? `あなたを待っている依頼があります: ${title} (${team})。` : `あなたを待つ依頼が ${count} 件、新しく届きました。`),
+    participant: (count, label) => (count === 1 ? `${label} があなたを待っています。` : `参加者 ${count} 人があなたを待っています。`),
+    blocked: (count, title, team) => (count === 1 ? `止まりました: ${title} (${team})。` : `仕事の項目 ${count} 件が新しく止まりました。`),
+    aDevice: '端末',
+    device: (count, label) => (count === 1 ? `${label} が、端末として追加されるのを待っています。` : `${count} 台の端末が、追加されるのを待っています。`),
+    decision: (state, count, title, reason) => {
+      const named = count === 1 && title !== '' ? `「${title}」` : ''
+      const label = state === 'refused' ? '受け付けられませんでした' : state === 'queued' ? '送信待ちです' : state === 'applied' ? '反映されました' : '届きました'
+      if (count > 1) return `決定 ${count} 件が${label}。`
+      return `決定${named}が${label}${state === 'refused' && reason !== undefined ? `: ${reason}` : '。'}`
+    },
+    more: (count) => `ほかにも新しいことが ${count} 件あります。`,
+    devicesMark: (count) => `承認待ち ${count} 件`,
   },
   people: {
     title: '参加者と仕事',
@@ -341,7 +357,7 @@ export const ja: Messages = {
     noData: 'この期間はありません',
     teamUnavailable: (reason) => `このチームは数字を返せませんでした: ${reason}`,
     units: { minute: '分', hour: '時間', day: '日' },
-    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他' },
+    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他', revert: 'リバート' },
     tiles: {
       features: 'マージした新機能',
       merged: 'マージしたプルリクエスト',
@@ -409,6 +425,54 @@ export const ja: Messages = {
       byDayHint: '作業種別別',
       table: { show: '数字を表で見る', caption: (team) => `${team}チームの作業種別別`, type: '作業種別', cost: 'API 価格', share: '割合', intended: '意図', total: '合計' },
       source: (path) => `エージェントが引用する同じ数字: GET ${path}。意図する割合は組織定義の \`teams[].plan\` です。`,
+    },
+  },
+  loading: {
+    label: '読み込んでいます…',
+    failed: (what, reason) => `${what}を読み込めませんでした: ${reason}`,
+    retryIn: (seconds) => `${seconds} 秒後にもう一度試します。`,
+    retrying: 'もう一度試しています…',
+    tryAgain: 'もう一度試す',
+    what: { overview: '全体', orgChart: '組織図', people: '参加者と仕事' },
+  },
+  live: {
+    title: 'ライブ',
+    experimental: '実験中',
+    lead: '開いたままにしておくページです。何が追加されているか、誰が誰に書いているか、各エージェントが何をしているか、何が入ったかを見せます。まだ粗いままです。',
+    notReported: 'このノードはまだ動きを返しません。誰が何をしているかはこれまでどおりチームから出し、フィードとメッセージはノードが返すようになってから始まります。',
+    delayed: (teams) => `${teams}のフィードが遅れています。`,
+    noAgents: 'まだ描くエージェントがいません。',
+    status: { backlog: 'バックログ', next: '次', inProgress: '進行中', release: 'リリース', done: '完了' },
+    graph: {
+      title: '誰が誰に書いているか',
+      hint: 'メッセージが通ると線が光ります。やり取りの多い線ほど太くなります。',
+      label: 'エージェント間のメッセージ: エージェントを点、やり取りを線で表した図',
+      agent: (name, team) => `${name} (${team}チーム)`,
+    },
+    feed: {
+      title: '今起きていること',
+      empty: 'この 1 時間はまだ何もありません。',
+      added: (ref, title) => `新規: ${ref} ${title}`,
+      changed: (ref, title, from, to) => `${ref} ${title}: ${from} → ${to}`,
+      opened: (ref, title) => `プルリクエストを開きました: ${ref} ${title}`,
+      merged: (ref, title) => `プルリクエストをマージしました: ${ref} ${title}`,
+      leadTime: (duration) => `${duration}で`,
+      message: (from, to) => `${from} → ${to}`,
+    },
+    board: {
+      title: '今の仕事',
+      idle: '割り当てなし',
+      more: (count) => `ほか ${count} 件`,
+      epic: (ref, title) => `${title} (${ref}) の中`,
+    },
+    throughput: {
+      title: 'スループット',
+      lastHour: '直近 1 時間にマージした数',
+      today: '今日マージした数',
+      lead: 'リードタイム (プルリクエスト、中央値)',
+      none: '—',
+      bins: '直近 1 時間の 5 分ごとのマージ数',
+      landed: (ref) => `入りました: ${ref}`,
     },
   },
 }

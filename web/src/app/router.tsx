@@ -1,12 +1,14 @@
 import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
+import { LivePage } from '../live/LivePage'
 import { DevicesPage } from '../device/DevicesPage'
 import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
 import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
+import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { AppBar } from './AppBar'
 
@@ -14,6 +16,7 @@ function Shell() {
   return (
     <>
       <AppBar />
+      <Notices />
       <main className="page">
         <SignInExpiredBanner />
         <AddDeviceNotice />
@@ -80,9 +83,11 @@ const evaluationRoute = createRoute({
   },
 })
 
+const liveRoute = createRoute({ getParentRoute: () => rootRoute, path: '/live', component: LivePage })
+
 const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, devicesRoute])
+const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })

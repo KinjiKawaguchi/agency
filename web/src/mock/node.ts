@@ -3,6 +3,7 @@
 import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
+import { activityFor, MAX_EVENTS } from './activity.ts'
 import { effortReport, withPlans } from './effort.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
@@ -49,6 +50,12 @@ interface MockNodeOptions {
   evaluationFailsWith?: number
   /** A team the evaluation routes leave out, naming it in `unavailable` with a reason, as the node does for a team that cannot answer. */
   evaluationUnavailableTeam?: string
+  /** Serves the activity feed (the live screen). Off by default, as the real node does not serve it yet and answers 404. */
+  activity?: boolean
+  /** Makes only the activity calls fail with this status. */
+  activityFailsWith?: number
+  /** The time the feed is cut at: the clock by default, so that the feed goes on as the screen stays open. */
+  activityClock?: () => number
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
   /** False to leave out the node's own command for approving a device, as the node does for anyone but its owner. */
@@ -96,7 +103,7 @@ const MAX_LIMIT = 200
 const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
-const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|envelopes)$/
+const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 const DEVICES_PATH = '/api/devices'
 const PUSH_TOKENS_PATH = '/api/push/tokens'
 
@@ -167,12 +174,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel]] as const) {
       if (text !== undefined && [...text.trim()].length > MAX_NOTE) return failure(400, `${field} is at most ${MAX_NOTE} characters`)
     }
-    const reply = await accept(view, { kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
+    const reply = await accept(view, { id: signed.body.id, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
     if (reply.ok) accepted = [...accepted, signed]
     return reply
   }
 
-  const accept = async (view: TeamView, body: AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
+  const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
     received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
@@ -181,7 +188,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const state: DecisionEntry['state'] =
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
-      { id: `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
+      // The log names a decision by its envelope's id, as the real node does.
+      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
@@ -197,6 +205,14 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (options.usage !== true) return failure(404, 'Token usage is not available.')
       const days = Number(url.searchParams.get('days') ?? 14)
       return Number.isInteger(days) && days >= 1 && days <= 90 ? json(usageReport(view, days, now)) : failure(400, 'days must be between 1 and 90.')
+    }
+    if (request.method === 'GET' && action === 'activity') {
+      if (options.activityFailsWith !== undefined) return failure(options.activityFailsWith, 'The activity could not be read.')
+      if (options.activity !== true) return failure(404, 'The activity is not available.')
+      const since = Date.parse(url.searchParams.get('since') ?? '')
+      if (Number.isNaN(since)) return failure(400, 'since must be a time.')
+      const limit = Math.min(MAX_EVENTS, Math.max(1, Number(url.searchParams.get('limit') ?? MAX_EVENTS)))
+      return json(activityFor(view, since, (options.activityClock ?? Date.now)(), limit))
     }
     return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
   }

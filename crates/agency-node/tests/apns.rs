@@ -1,12 +1,12 @@
 //! The APNs adapter against a stand-in APNs server: the provider token is an ES256 JWT that verifies with
 //! the key's public half, each token goes to its environment's host, and APNs answers map to "gone" or
 //! "failed". The key in tests/data/apns-test-key.p8 is made for these tests and used nowhere else.
-use agency_adapters::apns::{Apns, ApnsHosts};
+use agency_adapters::apns::{payload, Apns, ApnsHosts};
 use agency_adapters::memory::ManualClock;
 use agency_core::config::PushConfig;
 use agency_core::ports::Notifier;
-use agency_core::push::{Notice, PushError};
-use agency_proto::client::{PushEnvironment, PushToken};
+use agency_core::push::{Notice, NoticeKind, PushError};
+use agency_proto::client::{PushEnvironment, PushEvent, PushToken};
 use agency_proto::{Id, Timestamp};
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
@@ -63,6 +63,7 @@ fn apns(hosts: ApnsHosts, clock: &ManualClock) -> Apns {
         key_id: "KEY1234567".into(),
         team_id: "TEAM123456".into(),
         bundle_id: "com.example.agency".into(),
+        hide_titles: false,
     };
     Apns::new(config, hosts, Arc::new(clock.clone())).unwrap()
 }
@@ -73,16 +74,19 @@ fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
         environment,
         label: "iPhone".into(),
         registered_at: Timestamp::parse(T0).unwrap(),
+        events: vec![PushEvent::Request],
     }
 }
 
 fn notice() -> Notice {
     Notice {
-        title: "app".into(),
-        body: "Ship it?".into(),
-        org: Id::parse("acme").unwrap(),
-        team: Id::parse("app").unwrap(),
-        request: "r-20261124-110000-a1b2".into(),
+        kind: NoticeKind::Request {
+            org: Id::parse("acme").unwrap(),
+            team: Id::parse("app").unwrap(),
+            request: "r-20261124-110000-a1b2".into(),
+            team_label: Some("app".into()),
+            title: Some("Ship it?".into()),
+        },
         badge: 3,
     }
 }
@@ -188,4 +192,89 @@ async fn unregistered_and_bad_tokens_are_gone_and_other_errors_fail() {
     assert_eq!(send(&apns, "bb").await, Err(PushError::Gone));
     assert_eq!(send(&apns, "cc").await, Err(PushError::Gone));
     assert!(matches!(send(&apns, "ee").await, Err(PushError::Failed(_))));
+}
+
+fn alert_of(kind: NoticeKind) -> (Value, Value, String, String) {
+    let notice = Notice { kind, badge: 2 };
+    let body = payload(&notice);
+    (
+        body["aps"]["alert"].clone(),
+        body["agency"].clone(),
+        body["aps"]["thread-id"].as_str().unwrap().to_owned(),
+        notice.collapse_id().to_owned(),
+    )
+}
+
+#[test]
+fn a_device_is_worded_by_the_app_and_carries_only_its_label() {
+    let device = Id::parse("d-a652124afda7").unwrap();
+    let with = alert_of(NoticeKind::Device {
+        device: device.clone(),
+        label: Some("Tablet".into()),
+    });
+    assert_eq!(
+        with,
+        (
+            json!({ "loc-key": "PUSH_DEVICE_WAITING", "loc-args": ["Tablet"] }),
+            json!({ "type": "device" }),
+            "devices".into(),
+            "d-a652124afda7".into()
+        )
+    );
+    let without = alert_of(NoticeKind::Device {
+        device,
+        label: None,
+    });
+    assert_eq!(
+        without.0,
+        json!({ "loc-key": "PUSH_DEVICE_WAITING_NO_LABEL" })
+    );
+    assert_eq!(
+        without.1,
+        json!({ "type": "device" }),
+        "never a key or a code"
+    );
+}
+
+#[test]
+fn a_refused_decision_names_where_to_look_and_its_title_only_when_it_has_one() {
+    let decision = |title: Option<&str>| NoticeKind::Decision {
+        org: Id::parse("acme").unwrap(),
+        team: Id::parse("app").unwrap(),
+        id: "0123456789abcdef0123456789abcdef".into(),
+        title: title.map(str::to_owned),
+    };
+    let (alert, agency, thread, collapse) = alert_of(decision(Some("Ship it?")));
+    assert_eq!(
+        alert,
+        json!({ "loc-key": "PUSH_DECISION_REFUSED", "loc-args": ["Ship it?"] })
+    );
+    assert_eq!(
+        agency,
+        json!({ "type": "decision", "org": "acme", "team": "app", "id": "0123456789abcdef0123456789abcdef" })
+    );
+    assert_eq!((thread.as_str(), collapse.len()), ("acme/app", 32));
+    let (alert, ..) = alert_of(decision(None));
+    assert_eq!(
+        alert,
+        json!({ "loc-key": "PUSH_DECISION_REFUSED_NO_TITLE" })
+    );
+}
+
+#[test]
+fn a_request_with_no_title_to_show_says_only_that_one_waits() {
+    let request = NoticeKind::Request {
+        org: Id::parse("acme").unwrap(),
+        team: Id::parse("app").unwrap(),
+        request: "r-1".into(),
+        team_label: None,
+        title: None,
+    };
+    let (alert, agency, ..) = alert_of(request);
+    assert_eq!(alert, json!({ "loc-key": "PUSH_REQUEST_WAITING_HIDDEN" }));
+    assert_eq!(
+        agency,
+        json!({ "org": "acme", "team": "app", "request": "r-1" }),
+        "no `type`: a request, as before"
+    );
 }

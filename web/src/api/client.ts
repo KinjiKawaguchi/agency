@@ -1,6 +1,8 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
+import { readActivity } from './activityAnswers'
+import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
@@ -52,6 +54,8 @@ export interface ApiClient {
   evaluation: (org: string, days: number) => Promise<Evaluation>
   /** What each team of the org spent, by work type. */
   effort: (org: string, days: number) => Promise<Effort>
+  /** What happened in a team after `since` (an RFC 3339 time): board events and messages between its agents, oldest first. */
+  activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
 
 const segment = encodeURIComponent
@@ -113,7 +117,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     tell('ok')
     return response
   }
-  const get = <T>(path: string): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' } })).then(readJson<T>)
+  const get = <T>(path: string, signal?: AbortSignal): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' }, ...(signal === undefined ? {} : { signal }) })).then(readJson<T>)
 
   /** A write: JSON with the page's token, which the node demands of every write. */
   const post = <T>(path: string, body: unknown): Promise<T> =>
@@ -129,6 +133,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
+    activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
     effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {

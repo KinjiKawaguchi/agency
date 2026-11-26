@@ -23,14 +23,6 @@ public struct RequestLink: Equatable, Sendable {
         self.request = request
     }
 
-    /// The web client's desk with this request selected.
-    public func url(on homeNode: HomeNodeURL) -> URL {
-        var components = URLComponents(url: homeNode.url, resolvingAgainstBaseURL: false) ?? URLComponents()
-        components.path = "/desk"
-        components.queryItems = [URLQueryItem(name: "item", value: "\(org):\(team):\(request)")]
-        return components.url ?? homeNode.url
-    }
-
     private static let allowedScalars = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-".unicodeScalars)
     private static let maximumLength = 128
 

@@ -26,6 +26,7 @@ export const en = {
     section: (group: string) => `${group} pages`,
     costs: 'Costs',
     evaluation: 'Evaluation',
+    live: 'Live',
     devices: 'Devices',
   },
   settings: {
@@ -67,6 +68,21 @@ export const en = {
     neverRead: (reason: string) => `Not read yet: ${reason}`,
     loadFailed: (reason: string) => `Could not load this team: ${reason}`,
     funding: 'Usage limits',
+  },
+  notices: {
+    request: (count: number, title: string, team: string) => (count === 1 ? `A request waits for you: ${title} (${team}).` : `${count} requests now wait for you.`),
+    participant: (count: number, label: string) => (count === 1 ? `${label} is waiting for you.` : `${count} participants are waiting for you.`),
+    blocked: (count: number, title: string, team: string) => (count === 1 ? `Blocked: ${title} (${team}).` : `${count} work items are newly blocked.`),
+    aDevice: 'A device',
+    device: (count: number, label: string) => (count === 1 ? `${label} asks to be added as a device.` : `${count} devices ask to be added.`),
+    decision: (state: string, count: number, title: string, reason: string | undefined) => {
+      const named = count === 1 && title !== '' ? ` “${title}”` : ''
+      if (state === 'refused') return count === 1 ? `A decision${named} was refused${reason === undefined ? '' : `: ${reason}`}` : `${count} decisions were refused.`
+      if (state === 'queued') return count === 1 ? `A decision${named} is queued: its node cannot be reached yet.` : `${count} decisions are queued.`
+      return count === 1 ? `A decision${named} was ${state}.` : `${count} decisions were ${state}.`
+    },
+    more: (count: number) => `${count} more things are new.`,
+    devicesMark: (count: number) => `${count} waiting to be approved`,
   },
   people: {
     title: 'Participants and work',
@@ -346,7 +362,7 @@ export const en = {
     noData: 'None in this period',
     teamUnavailable: (reason: string) => `This team could not report its numbers: ${reason}`,
     units: { minute: 'm', hour: 'h', day: 'd' },
-    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other' },
+    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other', revert: 'Revert' },
     tiles: {
       features: 'New features merged',
       merged: 'Pull requests merged',
@@ -414,6 +430,54 @@ export const en = {
       byDayHint: 'By work type',
       table: { show: 'Show the numbers', caption: (team: string) => `${team} team, by work type`, type: 'Work type', cost: 'API-priced', share: 'Share', intended: 'Intended', total: 'Total' },
       source: (path: string) => `The same numbers, for an agent to cite: GET ${path}. The intended shares are \`teams[].plan\` of the org definition.`,
+    },
+  },
+  loading: {
+    label: 'Loading…',
+    failed: (what: string, reason: string) => `Could not load ${what}: ${reason}`,
+    retryIn: (seconds: number) => `Trying again in ${seconds} s.`,
+    retrying: 'Trying again…',
+    tryAgain: 'Try again',
+    what: { overview: 'the overview', orgChart: 'the org chart', people: 'participants and work' },
+  },
+  live: {
+    title: 'Live',
+    experimental: 'Experimental',
+    lead: 'A page to leave open: what is being added, who writes to whom, what each agent is on, and what lands. Rough on purpose.',
+    notReported: 'This node does not report activity yet. Who works on what follows the teams as always; the feed and the messages start when it does.',
+    delayed: (teams: string) => `The feed of ${teams} is late.`,
+    noAgents: 'No agents to draw yet.',
+    status: { backlog: 'Backlog', next: 'Next', inProgress: 'In progress', release: 'Release', done: 'Done' },
+    graph: {
+      title: 'Who writes to whom',
+      hint: 'A line lights up when a message passes; busier links are thicker.',
+      label: 'Messages between agents: agents as points, joined by lines',
+      agent: (name: string, team: string) => `${name}, ${team} team`,
+    },
+    feed: {
+      title: 'What is happening',
+      empty: 'Nothing in the last hour yet.',
+      added: (ref: string, title: string) => `New: ${ref} ${title}`,
+      changed: (ref: string, title: string, from: string, to: string) => `${ref} ${title}: ${from} → ${to}`,
+      opened: (ref: string, title: string) => `Pull request opened: ${ref} ${title}`,
+      merged: (ref: string, title: string) => `Pull request merged: ${ref} ${title}`,
+      leadTime: (duration: string) => `in ${duration}`,
+      message: (from: string, to: string) => `${from} → ${to}`,
+    },
+    board: {
+      title: 'Working on now',
+      idle: 'Nothing assigned',
+      more: (count: number) => `+${count} more`,
+      epic: (ref: string, title: string) => `in ${title} (${ref})`,
+    },
+    throughput: {
+      title: 'Throughput',
+      lastHour: 'Merged in the last hour',
+      today: 'Merged today',
+      lead: 'Lead time, pull request (median)',
+      none: '—',
+      bins: 'Merges in each 5 minutes of the last hour',
+      landed: (ref: string) => `Landed: ${ref}`,
     },
   },
 } as const

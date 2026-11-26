@@ -34,18 +34,6 @@ final class URLSessionTransport: NSObject, HTTPTransport, URLSessionTaskDelegate
         return HTTPResponse(status: http.statusCode, body: data)
     }
 
-    /// Asks the home node for its front page without any sign-in and answers where Access sends the
-    /// browser: the `Location` of the redirect, or `nil` when the node does not redirect (it is not
-    /// behind Access) or cannot be reached. The redirect is not followed.
-    func accessRedirectLocation() async -> String? {
-        var request = URLRequest(url: base, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
-        request.httpMethod = "GET"
-        guard let (_, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, (300..<400).contains(http.statusCode)
-        else { return nil }
-        return http.value(forHTTPHeaderField: "Location")
-    }
-
     func urlSession(
         _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
         newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void

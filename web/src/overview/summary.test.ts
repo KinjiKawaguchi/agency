@@ -54,7 +54,7 @@ describe('ordering', () => {
   const stuck = ready(viewOf({ people: [person('a', 'working')], work: [{ ref: 'x#1', title: 'one', status: 'next', blocked: { reason: 'external', since: '2026-11-20' } }] }))
   const idle = ready(viewOf({ people: [person('a', 'idle', 'Nothing in Next')] }))
   const active = ready(viewOf({ people: [person('a', 'working')] }))
-  const failed: TeamState = { status: 'failed', error: new Error('no') }
+  const failed: TeamState = { status: 'failed', at: 0, error: new Error('no') }
   const loading: TeamState = { status: 'loading' }
 
   it('puts the teams that wait on the viewer first, then stuck, a team that cannot be read, idle, the rest, and what still loads', () => {

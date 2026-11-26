@@ -1,0 +1,7 @@
+#!/bin/bash
+# A stand-in for cargo: `build` makes the binary the script then packs.
+[ "$1" = build ] || { echo "cargo stand-in: unexpected $*" >&2; exit 64; }
+mkdir -p target/release
+printf '#!/bin/sh\necho agency\n' > target/release/agency
+chmod +x target/release/agency
+echo "$*" >> "${FAKE_STATE:?}/cargo"

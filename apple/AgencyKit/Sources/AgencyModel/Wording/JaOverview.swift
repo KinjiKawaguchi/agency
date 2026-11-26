@@ -12,6 +12,7 @@ extension Ja {
         public static let usageNone = "このチームはトークンの使用量を報告していません。"
         public static let usageFailed = "トークンの使用量を読めませんでした。"
         public static let funding = "利用上限"
+        public static let thisTeam = "このチーム"
         public static let failedTag = "読み込めません"
         public static let signInNothingToShow = "サインインし直すまで、表示できるものがありません。"
 

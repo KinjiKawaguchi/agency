@@ -1,6 +1,6 @@
 # Installing a node
 
-This guide installs an Agency node on a Mac or a Linux machine from source (or from a release build on Linux), runs it as a launchd agent or a systemd unit, and adds your first device.
+This guide installs an Agency node on a Mac or a Linux machine from source or from a release build, runs it as a launchd agent or a systemd unit, and adds your first device.
 It then shows how to make the node reachable from other machines behind Cloudflare Access.
 It covers macOS (launchd) and Linux (systemd); a step that differs says which.
 
@@ -45,22 +45,23 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 The rest of this guide calls it `agency`: put `~/.local/bin` on your `PATH`, or write the full path.
 Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` when that is not set.
 
-### A release build for Linux
+### A release build
 
-Instead of building from source, you can use the release build that CI makes for Linux on x86_64 and on arm64 (`uname -m` says `x86_64` or `aarch64`). It runs on a system with glibc 2.35 or later.
+Instead of building from source, you can use a release build: for each release, the Releases page of the repository has a tarball for macOS on Apple silicon (`arm64`) and on Intel (`x86_64`), and for Linux on `x86_64` and on `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with glibc 2.35 or later. [releasing.md](releasing.md) says how releases are made.
 
-1. In the repository's **Actions** tab, open a run of the **release** workflow and download the artifact for your machine: `agency-<version>-<commit>-linux-x86_64` or `agency-<version>-<commit>-linux-arm64`. It holds a `.tar.gz` and its `.sha256`.
+1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`. A build that is not of a release is a workflow artifact of the **release** workflow in the **Actions** tab (named `agency-<version>-<commit>-linux-<arch>`).
 2. Check and unpack it, and install the binary the way the previous section does:
 
 ```sh
-sha256sum -c agency-*-linux-*.tar.gz.sha256
-tar xzf agency-*-linux-*.tar.gz
+shasum -a 256 -c agency-*.tar.gz.sha256   # sha256sum -c on Linux
+tar xzf agency-*.tar.gz
 mkdir -p ~/.local/bin
-cp agency-*-linux-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
+cp agency-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
 ```
 
-The tarball also holds `systemd-unit.sh` (see [Run it with systemd](#run-it-with-systemd-linux)), these guides, and the licenses.
-The binary already holds the web client.
+The tarball also holds the script that runs the node as a service (`launchd-plist.sh` and `deploy-macos.sh` on macOS, `systemd-unit.sh` on Linux; see [Run it with launchd](#run-it-with-launchd) and [Run it with systemd](#run-it-with-systemd-linux)), these guides, and the licenses. The binary already holds the web client.
+
+The macOS builds are not signed and not notarized. A file downloaded with a browser is quarantined by macOS and will not open; remove the mark with `xattr -d com.apple.quarantine ~/.local/bin/agency` (`gh release download` and `curl` do not add it).
 
 ## A local-only node
 
@@ -241,7 +242,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
-- To notify your iPhone of new requests, add a `push` setting with the app's APNs key; see the README.
+- To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
@@ -359,7 +360,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 ```
 
 On Linux, restart the unit instead of the last line: `systemctl --user restart agency-node`.
-With a release build, unpack the new tarball and install its binary as in "A release build for Linux", then restart the unit.
+With a release build, unpack the new tarball and install its binary as in "A release build", then restart the unit.
 On macOS, `scripts/deploy-macos.sh` does these steps with a check at the end and a way back:
 
 ```sh

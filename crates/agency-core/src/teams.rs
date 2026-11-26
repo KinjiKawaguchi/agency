@@ -36,7 +36,7 @@ pub fn set_label(node: &Node, org: &Id, team: &Id, label: String) -> Result<Sign
 /// still in this node's own configuration, so a team that runs here is never left without a place in the
 /// org; the team is taken out of `config.json` first.
 pub fn remove(node: &Node, org: &Id, team: &Id) -> Result<SignedOrg> {
-    if node.hosted(org, team).is_some() {
+    if node.config().hosted(org, team).is_some() {
         return Err(Error::new(
             ErrorKind::Conflict,
             format!(

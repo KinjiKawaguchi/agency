@@ -1,6 +1,6 @@
 # ノードのインストール
 
-この文書では、Agency のノードを Mac か Linux のマシンにソースから（Linux ではリリースビルドからも）インストールし、launchd のエージェントか systemd のユニットとして動かし、最初の端末を追加するまでを説明します。
+この文書では、Agency のノードを Mac か Linux のマシンにソースから、またはリリースビルドからインストールし、launchd のエージェントか systemd のユニットとして動かし、最初の端末を追加するまでを説明します。
 続いて、そのノードを Cloudflare Access の背後に置き、ほかのマシンから使えるようにする方法を説明します。
 対象は macOS（launchd）と Linux（systemd）で、手順が違う箇所にはどちらの手順かを書いています。
 
@@ -49,22 +49,23 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 `~/.local/bin` を `PATH` に入れるか、フルパスで実行してください。
 `agency` は `--dir` を指定しないと `$AGENCY_DIR` に、それも未設定なら `~/.agency` にデータを置きます。
 
-### Linux のリリースビルド
+### リリースビルド
 
-ソースからビルドする代わりに、CI が作る Linux 用のリリースビルドも使えます。x86_64 と arm64 があり（`uname -m` は `x86_64` または `aarch64` を表示します）、glibc 2.35 以降のシステムで動きます。
+ソースからビルドする代わりに、リリースビルドも使えます。リポジトリの Releases ページには、リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）の tarball があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドは、glibc 2.35 以降のシステムで動きます。リリースの作り方は [releasing.md](releasing.md) にあります。
 
-1. リポジトリの **Actions** タブで **release** ワークフローの実行を開き、使うマシンに合ったアーティファクトをダウンロードします。名前は `agency-<バージョン>-<コミット>-linux-x86_64` か `agency-<バージョン>-<コミット>-linux-arm64` です。中身は `.tar.gz` とその `.sha256` です。
+1. お使いのマシンに合った tarball とその `.sha256` を、リリースからダウンロードします。GitHub CLI なら `gh release download <タグ> --repo <このリポジトリ> --pattern 'agency-*-<os>-<arch>.tar.gz*'` です。`<os>` は `macos` か `linux` です。リリースのものではないビルドは、**Actions** タブの **release** ワークフローのアーティファクトです（名前は `agency-<バージョン>-<コミット>-linux-<arch>`）。
 2. 確かめて展開し、前の節と同じ方法でバイナリを置きます。
 
 ```sh
-sha256sum -c agency-*-linux-*.tar.gz.sha256
-tar xzf agency-*-linux-*.tar.gz
+shasum -a 256 -c agency-*.tar.gz.sha256   # Linux では sha256sum -c
+tar xzf agency-*.tar.gz
 mkdir -p ~/.local/bin
-cp agency-*-linux-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
+cp agency-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
 ```
 
-tarball には `systemd-unit.sh`（[systemd で動かす](#systemd-で動かすlinux)を参照）、この文書、ライセンスも入っています。
-バイナリには Web クライアントがすでに入っています。
+tarball には、ノードをサービスとして動かすスクリプト（macOS では `launchd-plist.sh` と `deploy-macos.sh`、Linux では `systemd-unit.sh`。[launchd で動かす](#launchd-で動かす)と[systemd で動かす](#systemd-で動かすlinux)を参照）、この文書、ライセンスも入っています。バイナリには Web クライアントがすでに入っています。
+
+macOS のビルドは、署名も公証もしていません。ブラウザでダウンロードしたファイルは macOS が隔離し、そのままでは開けません。`xattr -d com.apple.quarantine ~/.local/bin/agency` で印を外してください（`gh release download` と `curl` では印は付きません）。
 
 ## ローカル専用のノード
 
@@ -256,7 +257,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
-- 新しい依頼を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。
+- 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 
 設定の形式が正しくないと、起動時にログに出ます（[トラブルシューティング](#トラブルシューティング)を参照）。
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。
@@ -377,7 +378,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 ```
 
 Linux では、最後の行の代わりにユニットを再起動します。`systemctl --user restart agency-node` です。
-リリースビルドを使っているなら、新しい tarball を展開し、「Linux のリリースビルド」と同じ方法でバイナリを置いてから、ユニットを再起動します。
+リリースビルドを使っているなら、新しい tarball を展開し、「リリースビルド」と同じ方法でバイナリを置いてから、ユニットを再起動します。
 macOS では、`scripts/deploy-macos.sh` がこれらの手順を行い、最後に確認し、失敗したら元に戻します。
 
 ```sh

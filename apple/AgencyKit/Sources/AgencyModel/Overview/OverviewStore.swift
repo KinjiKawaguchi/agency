@@ -34,9 +34,12 @@ public final class OverviewStore {
     public private(set) var weekCosts: [String: WeekCost] = [:]
 
     @ObservationIgnored private let source: any OverviewSource
+    @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private let flight = SingleFlight()
 
-    public init(source: any OverviewSource) {
+    public init(source: any OverviewSource, retry: RetryPolicy = .standard) {
         self.source = source
+        self.retry = retry
     }
 
     // MARK: What the screen shows
@@ -84,7 +87,12 @@ public final class OverviewStore {
     // MARK: Reading
 
     /// Reads the account, then every team and its week's cost. A team that cannot be read is shown as that, in its place.
+    /// Reads again. A read already running is waited for, not repeated.
     public func refresh() async {
+        await flight.run { await self.reload() }
+    }
+
+    private func reload() async {
         loading = .loading
         do {
             let me = try await source.me()
@@ -108,7 +116,7 @@ public final class OverviewStore {
     }
 
     private func readTeams(of orgs: [OrgRef]) async {
-        await TeamReader.read(orgs, from: source) { key, result in apply(result, to: key) }
+        await TeamReader.read(orgs, from: source, retry: retry) { key, result in apply(result, to: key) }
         await readCosts()
     }
 
@@ -129,6 +137,7 @@ public final class OverviewStore {
     /// The week's cost of every team whose node can answer: a copy that could not be renewed says its node is out of reach.
     private func readCosts() async {
         let source = source
+        let retry = retry
         let asked = orgs.flatMap { org in
             org.teams.compactMap { team -> (key: String, org: String, team: String)? in
                 let key = TeamReader.key(org: org.id, team: team.id)
@@ -141,7 +150,7 @@ public final class OverviewStore {
             for entry in asked {
                 group.addTask {
                     do {
-                        let usage = try await source.usage(org: entry.org, team: entry.team, days: Self.usageDays)
+                        let usage = try await retry.run { try await source.usage(org: entry.org, team: entry.team, days: Self.usageDays) }
                         return (entry.key, .known(usage.byPerson.reduce(0) { $0 + $1.costUsd }))
                     } catch NodeError.http(404, _) {
                         return (entry.key, WeekCost.none)

@@ -237,6 +237,11 @@ struct DevicesStoreTests {
         list(#"{"orgs":[{"org":"acme","devices":[\#(device("d-own", own.string))]}],"requests":[\#(request(newKey.deviceId, newKey.pairingCode, newKey.publicKey)),\#(request("d-me", "x", own.string))]}"#)
     }
 
+    @Test("the open screen asks again every few seconds, so a new request needs no reload")
+    func polls() {
+        #expect(DevicesStore.pollSeconds == 4)
+    }
+
     @Test("it reads the devices and the requests of others")
     func refresh() async {
         let store = store(FakeSource(.success(waiting)), FakeAdder())

@@ -253,6 +253,19 @@ impl ReplicaStore for DataDir {
             replica,
         )
     }
+
+    fn delete_replica(&self, org: &Id, team: &Id) -> Result<()> {
+        let path = self
+            .dir("replicas")
+            .join(org.as_str())
+            .join(format!("{team}.json"));
+        match std::fs::remove_file(&path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(Error::internal(
+                format!("cannot remove {}: {error}", path.display()),
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// How many decisions the log keeps; older ones are dropped.
