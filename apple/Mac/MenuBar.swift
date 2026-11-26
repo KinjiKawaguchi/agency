@@ -8,15 +8,17 @@ struct MenuBarLabel: View {
 
     var body: some View {
         let state = model.menuState
+        let recoveries = model.recoveryLines
+        let symbol = Ja.MenuBar.symbol(state, hasRecovery: !recoveries.isEmpty)
         Group {
             if let text = Ja.MenuBar.label(state) {
-                Label(text, systemImage: "tray.full")
+                Label(text, systemImage: symbol)
             } else {
-                Image(systemName: "tray")
+                Image(systemName: symbol)
             }
         }
         .opacity(Ja.MenuBar.isDim(state) ? 0.5 : 1)
-        .accessibilityLabel(Ja.MenuBar.accessibility(state))
+        .accessibilityLabel(Ja.MenuBar.accessibility(state, recoveries: recoveries))
     }
 }
 
@@ -30,6 +32,8 @@ struct MenuBarContent: View {
         if let note = Ja.MenuBar.note(model.menuState) {
             Text(note)
         }
+        // A recovery that was started is said here too, as on the desk: the owner can cancel it only while it waits.
+        ForEach(model.recoveryLines, id: \.self) { Text($0) }
         Divider()
         Button(Ja.MenuBar.open, action: open)
         Button(Ja.MenuBar.quit) { NSApplication.shared.terminate(nil) }

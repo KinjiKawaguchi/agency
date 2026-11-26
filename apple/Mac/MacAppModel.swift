@@ -38,6 +38,13 @@ final class MacAppModel: HomeNodeSwitching {
         return MenuBarState(hasHomeNode: store.homeNode != nil, known: desk?.knownWaitingCount, isFailed: desk?.isReadFailing == true)
     }
 
+    /// A line for each recovery of an org that the node says was started and waits (`RecoveryNotice.headline`), once the node has
+    /// answered: the menu says it as the desk does, so that it is not missed with the window closed.
+    var recoveryLines: [String] {
+        guard let desk = shell?.session?.desk else { return [] }
+        return desk.recoveries.map(\.headline)
+    }
+
     // MARK: The owner's other home nodes (the shell asks)
 
     var others: [HomeNodeEntry] { store.others }
