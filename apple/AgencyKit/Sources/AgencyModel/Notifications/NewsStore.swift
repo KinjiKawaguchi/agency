@@ -194,6 +194,8 @@ public final class NewsStore {
         let pieces = event.key.dropFirst("decision:".count).split(separator: ":", omittingEmptySubsequences: false).map(String.init)
         guard pieces.count == 2 else { return Ja.News.decisions(1) }
         let entry = decisions?.entries.first { $0.id == pieces[0] }
-        return Ja.News.decision(title: entry?.title ?? Ja.News.unknownTitle, state: pieces[1])
+        let title = entry?.title.flatMap { $0.isEmpty ? nil : $0 }
+        let reason: String? = if case .refused(let message)? = entry?.state { message } else { nil }
+        return Ja.News.decision(title: title, state: pieces[1], reason: reason)
     }
 }

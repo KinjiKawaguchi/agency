@@ -36,7 +36,17 @@ function pairOf(agents: readonly string[], seed: string): { from: string; to: st
   return { from: other, to: second }
 }
 
-function eventsOfBucket(view: TeamView, start: number): ActivityEvent[] {
+/** Who a message may go to or come from besides the team's own agents: agents of other teams, and someone who is in no team. */
+const GUEST = 'Auditor'
+
+/** A message between one of the team's agents and someone outside it, in either direction. */
+function withOutsider(agents: readonly string[], outsiders: readonly string[], seed: string): { from: string; to: string } | undefined {
+  if (agents.length === 0 || outsiders.length === 0) return undefined
+  const [inside, outside] = [pick(agents, noise(`${seed}:inside`)), pick(outsiders, noise(`${seed}:outside-who`))]
+  return noise(`${seed}:outside-dir`) < 0.5 ? { from: inside, to: outside } : { from: outside, to: inside }
+}
+
+function eventsOfBucket(view: TeamView, start: number, outsiders: readonly string[]): ActivityEvent[] {
   const agents = view.people.filter((person) => person.kind === 'agent').toSorted((a, b) => (a.role === 'lead' ? -1 : 0) - (b.role === 'lead' ? -1 : 0)).map((person) => person.id)
   const seed = `${view.org}/${view.team}:${start}`
   const at = (name: string): string => new Date(start + Math.floor(noise(`${seed}:${name}:at`) * BUCKET_MS)).toISOString()
@@ -48,7 +58,7 @@ function eventsOfBucket(view: TeamView, start: number): ActivityEvent[] {
   const title = pick(TITLES, noise(`${seed}:title`))
 
   if (noise(`${seed}:message`) < 0.3) {
-    const pair = pairOf(agents, seed)
+    const pair = noise(`${seed}:outside`) < 0.25 ? withOutsider(agents, [...outsiders, GUEST], seed) : pairOf(agents, seed)
     if (pair !== undefined) found.push({ id: shortId('m', `${seed}:message`), at: at('message'), kind: 'message', ...pair, summary: noise(`${seed}:blank`) < 0.1 ? '' : pick(MESSAGES, noise(`${seed}:summary`)) })
   }
   if (noise(`${seed}:added`) < 0.02) found.push({ id: shortId('b', `${seed}:added`), at: at('added'), kind: 'itemAdded', ref, title, ...withEpic })
@@ -66,10 +76,10 @@ function eventsOfBucket(view: TeamView, start: number): ActivityEvent[] {
 }
 
 /** The feed of a team since a time, as the node would answer: oldest first, strictly after `since`, cut at the limit. */
-export function activityFor(view: TeamView, sinceMs: number, nowMs: number, limit: number = MAX_EVENTS): Activity {
+export function activityFor(view: TeamView, sinceMs: number, nowMs: number, limit: number = MAX_EVENTS, outsiders: readonly string[] = []): Activity {
   const first = Math.floor(sinceMs / BUCKET_MS) * BUCKET_MS
   const events: ActivityEvent[] = []
-  for (let start = first; start <= nowMs; start += BUCKET_MS) events.push(...eventsOfBucket(view, start))
+  for (let start = first; start <= nowMs; start += BUCKET_MS) events.push(...eventsOfBucket(view, start, outsiders))
   const inWindow = events.filter((event) => Date.parse(event.at) > sinceMs && Date.parse(event.at) <= nowMs).toSorted((a, b) => Date.parse(a.at) - Date.parse(b.at))
   return { org: view.org, team: view.team, generatedAt: new Date(nowMs).toISOString(), events: inWindow.slice(0, limit), truncated: inWindow.length > limit }
 }

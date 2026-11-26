@@ -33,6 +33,8 @@ final class NativeSession {
     let costs: CostsStore
     /// How fast each team ships, and where its effort goes, read from the same client.
     let evaluation: EvaluationStore
+    /// The org chart: every org under the account, with the overview's signals on each team.
+    let orgChart: OrgChartStore
     /// What is new since the last read, as banners.
     let news: NewsStore
     /// What the owner wants to be told, for this home node.
@@ -68,6 +70,7 @@ final class NativeSession {
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
         evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
+        orgChart = OrgChartStore(source: CachedOrgChartSource(cache: cache, client: client))
         let pairing = pairing
         let ownKey = signer?.publicKey.string ?? ""
         let news = NewsStore(source: CachedNewsSource(cache: cache, client: client)) {
@@ -89,6 +92,7 @@ final class NativeSession {
             await people.refresh()
             await costs.refresh()
             await evaluation.refresh()
+            await orgChart.refresh()
         case .canceled:
             break
         case .unavailable:

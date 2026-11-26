@@ -88,6 +88,22 @@ struct PeopleSectionTests {
         #expect(second.segments.isEmpty)
     }
 
+    @Test("a finished epic says when it finished and gives no forecast; one whose time is not known just says it is done")
+    func finishedRow() throws {
+        func row(_ extra: String) throws -> EpicRow {
+            let json = #"{"ref":"app#9","title":"Old","total":3,"done":3,"doing":0,"remainingPoints":0,"blocked":[],"basis":"No throughput"\#(extra)}"#
+            return EpicRow(epic: try JSONDecoder().decode(EpicForecast.self, from: Data(json.utf8)))
+        }
+        let dated = try row(#","doneAt":"2026-11-20T10:00:00Z""#)
+        #expect(dated.isFinished)
+        #expect(dated.meta.hasSuffix("に完了しました"))
+        #expect(dated.blockedBy == nil)
+        let undated = try row("")
+        #expect(undated.isFinished)
+        #expect(undated.meta == "完了しました")
+        #expect(section.epics.allSatisfy { !$0.isFinished })
+    }
+
     @Test("a long list shows its first rows and says how many are folded away")
     func folding() {
         let rows = Array(1...20)

@@ -50,6 +50,25 @@ expect "only the data directory's own file is there" "$(ls "$work/s/data")" "con
 [ ! -e "$FAKE_AGENCY.deploy-lock" ] || fail "the lock was left behind"
 [ "$(find "$work/s/bin" -name '*.new.*' -o -name '*.deploy.*' | wc -l | tr -d ' ')" = 0 ] || fail "temporary files were left behind"
 
+# The build goes where cargo puts it (CARGO_TARGET_DIR, which the team's build wrapper sets), not only
+# where it usually does.
+scenario "GOOD v1" "unused"
+rm -rf "$work/repo" "$work/elsewhere"
+mkdir -p "$work/repo/web"
+git -C "$work/repo" init -q -b main
+echo x > "$work/repo/file"
+git -C "$work/repo" add -A
+git -C "$work/repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false commit -q -m "feat: x"
+set +e
+output="$(CARGO_TARGET_DIR="$work/elsewhere" PATH="$fakes:$PATH" "$deploy_script" --agency "$FAKE_AGENCY" --dir "$work/s/data" \
+  --label test.agency --repo "$work/repo" --skip-preflight --timeout 3 --settle 1 2>&1)"
+status=$?
+set -e
+expect "a build that cargo puts elsewhere is deployed" "$status" 0
+expect "it is the binary cargo built that is installed" "$(installed)" "GOOD built"
+[ ! -e "$work/repo/target" ] || fail "the binary was looked for in the repository's target directory"
+expect "the web client was built first" "$(cat "$FAKE_STATE/npm")" "$(printf 'ci\nrun build')"
+
 scenario "GOOD v1" "BAD v2"
 deploy
 expect "a node that does not answer exits 1" "$status" 1

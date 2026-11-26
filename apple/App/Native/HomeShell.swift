@@ -11,13 +11,13 @@ struct HomeShell: View {
 
     /// The tabs, in the order of the bar. Each has its own view in `screen(_:session:)`.
     enum Tab: CaseIterable, Hashable {
-        case desk, overview, people, results, devices
+        case desk, overview, organization, results, devices
 
         var title: String {
             switch self {
             case .desk: Ja.Tabs.desk
             case .overview: Ja.Tabs.overview
-            case .people: Ja.Tabs.people
+            case .organization: Ja.Tabs.organization
             case .results: Ja.Tabs.results
             case .devices: Ja.Tabs.devices
             }
@@ -27,7 +27,7 @@ struct HomeShell: View {
             switch self {
             case .desk: "tray.full"
             case .overview: "square.grid.2x2"
-            case .people: "person.2"
+            case .organization: "rectangle.3.group"
             case .results: "chart.line.uptrend.xyaxis"
             case .devices: "iphone"
             }
@@ -37,6 +37,7 @@ struct HomeShell: View {
     @State private var session: NativeSession?
     @State private var flow: AccessSignInFlow?
     @State private var tab: Tab = .desk
+    @State private var organizationPage: OrganizationPage = .orgChart
     @State private var openItemID: String?
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsSettings = false
@@ -78,8 +79,7 @@ struct HomeShell: View {
                             showsSettings = false
                             Task { await leave() }
                         },
-                        onResetKey: resetKey,
-                        onOpenOrgChart: openOrgChart
+                        onResetKey: resetKey
                     )
                 }
             } else {
@@ -116,10 +116,10 @@ struct HomeShell: View {
                 store: session.overview, onOpenDesk: { self.tab = .desk },
                 onSignInAgain: { Task { await session.signInAgain() } }
             )
-        case .people:
-            PeopleScreen(
-                store: session.people, onOpenDesk: { self.tab = .desk },
-                onSignInAgain: { Task { await session.signInAgain() } }
+        case .organization:
+            OrganizationScreen(
+                orgChart: session.orgChart, people: session.people, page: $organizationPage, onOpenDesk: { self.tab = .desk },
+                onOpenOverview: { self.tab = .overview }, onSignInAgain: { Task { await session.signInAgain() } }
             )
         case .results:
             ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: { Task { await session.signInAgain() } })
@@ -168,7 +168,8 @@ struct HomeShell: View {
             tab = .desk
             openItemID = itemID
         case .people:
-            tab = .people
+            organizationPage = .people
+            tab = .organization
         case .devices:
             tab = .devices
         }
@@ -202,14 +203,6 @@ struct HomeShell: View {
         default:
             break
         }
-    }
-
-    /// The org chart is not a tab (the bar holds five); it opens in the browser, which holds the Access
-    /// session too, until a native chart exists.
-    private func openOrgChart() {
-        guard let url = URL(string: "/org", relativeTo: homeNode.url)?.absoluteURL else { return }
-        showsSettings = false
-        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 
     /// Makes this phone's key again, for when Face ID was changed and the old key can no longer sign.

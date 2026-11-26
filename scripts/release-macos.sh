@@ -42,7 +42,7 @@ gh release view "$tag" >/dev/null || fail "there is no GitHub Release for $tag y
 echo "release-macos: building $tag for macOS $arch"
 (cd web && npm ci && npm run build)
 cargo build --release --locked -p agency-node
-binary="target/release/agency"
+binary="$(scripts/release/target-dir.sh .)/release/agency"
 [ -x "$binary" ] || fail "the build made no $binary"
 if [ "$smoke" -eq 1 ]; then scripts/release/smoke-test.sh "$binary"; fi
 
