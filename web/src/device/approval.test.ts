@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { DeviceList } from '../api/clientApi'
 import { approvalOf, nodeCommandOf } from './approval'
 
@@ -51,8 +52,9 @@ describe('nodeCommandOf', () => {
   })
 })
 
+// The tests run from `web/`, next to `testdata/`.
 describe('the node’s own samples', () => {
-  const sample = (name: string): DeviceList => JSON.parse(readFileSync(new URL(`../../../testdata/client/${name}`, import.meta.url), 'utf8')) as DeviceList
+  const sample = (name: string): DeviceList => JSON.parse(readFileSync(join(process.cwd(), '..', 'testdata', 'client', name), 'utf8')) as DeviceList
 
   it('give the command the node wrote for its owner, as it is', () => {
     expect(nodeCommandOf(sample('device-list.json'))).toBe('/opt/agency/bin/agency --dir /var/lib/agency device-add')
