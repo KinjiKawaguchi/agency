@@ -19,8 +19,9 @@ enum SecureEnclaveError: Error, CustomStringConvertible {
 /// This device's key: a P-256 key made inside the Secure Enclave, which no process can read, and which signs
 /// only after the person confirms each signature. On the iPhone that is Face ID alone (the current set of
 /// faces: adding or removing one destroys the key, and the phone has to be added again). On the Mac it is
-/// Touch ID or the Mac's password, because a Mac may have no Touch ID, or be used closed with another
-/// keyboard. The Keychain keeps an opaque handle to the key, not the key.
+/// Touch ID or the Mac's password (`.userPresence`), because a Mac may have no Touch ID, or be used closed with
+/// another keyboard; with the password as an alternative, tying the key to the current set of fingers would
+/// protect nothing. The Keychain keeps an opaque handle to the key, not the key.
 ///
 /// There is one key for each home node: a node is a separate account, and its key never signs for another.
 struct SecureEnclaveSigner: DeviceSigner {
@@ -29,7 +30,7 @@ struct SecureEnclaveSigner: DeviceSigner {
     /// What the key asks of the person for each signature.
     private static var confirmation: SecAccessControlCreateFlags {
         #if os(macOS)
-        [.privateKeyUsage, .biometryCurrentSet, .or, .devicePasscode]
+        [.privateKeyUsage, .userPresence]
         #else
         [.privateKeyUsage, .biometryCurrentSet]
         #endif

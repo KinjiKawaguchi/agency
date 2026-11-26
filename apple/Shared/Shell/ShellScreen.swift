@@ -15,8 +15,6 @@ struct ShellScreen: View {
                 store: session.desk, pairing: session.pairing, notice: model.notice, openItemID: Bindable(model.router).openItemID,
                 onSignInAgain: signInAgain, onSettings: { model.showsSettings = true }
             )
-            .onChange(of: session.desk.waitingCount) { _, count in model.push.setBadge(count) }
-            .onChange(of: session.desk.loading) { _, loading in model.deskLoaded(loading) }
         case .overview:
             OverviewScreen(store: session.overview, onOpenDesk: { model.router.tab = .desk }, onSignInAgain: signInAgain)
         case .organization:

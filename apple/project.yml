@@ -133,3 +133,6 @@ targets:
         AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
         ITSAppUsesNonExemptEncryption: false
+        # Lets a node on this Mac or the local network be opened over plain http, as on the iPhone.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
