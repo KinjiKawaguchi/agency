@@ -155,7 +155,9 @@ public final class DeskStore {
         }
     }
 
-    private static func isCancelled(_ error: Error) -> Bool {
+    /// A read the screen that asked for it went away from (the Mac's sidebar cancels it when another screen is chosen): it says
+    /// nothing about the node.
+    static func isCancelled(_ error: Error) -> Bool {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 

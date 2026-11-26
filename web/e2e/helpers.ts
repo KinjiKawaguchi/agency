@@ -21,6 +21,10 @@ export interface NodeOptions {
   homeNodes?: boolean
   /** The org's recovery was started and waits, as the node says it. */
   recovery?: boolean
+  /** Two changes wait for the root key's signature, as the node tells its owner. */
+  rootChanges?: boolean
+  /** The root key's node holds a device change for its owner to sign: the approval answers `pending`. */
+  pendingRoot?: boolean
   /** The owner is reading: the node serves the outcomes and the readings (the shared samples). Otherwise it answers 403, as to anyone but the owner. */
   outcomes?: boolean
   /** The evaluation carries each team's participants, as it does for the team's owner. */
@@ -46,6 +50,8 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.webPush === true) query.set('webPush', '1')
   if (options.homeNodes === true) query.set('homeNodes', '1')
   if (options.recovery === true) query.set('recovery', '1')
+  if (options.rootChanges === true) query.set('rootChanges', '1')
+  if (options.pendingRoot === true) query.set('pendingRoot', '1')
   if (options.guest !== undefined) query.set('guest', options.guest)
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
