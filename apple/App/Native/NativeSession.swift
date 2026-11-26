@@ -14,6 +14,8 @@ final class NativeSession {
     /// `nil` when this phone cannot make the key that signs decisions (no Secure Enclave, or Face ID is not set up).
     let pairing: PairingStore?
     let keyProblem: String?
+    /// The devices screen's state; `nil` when this phone has no key.
+    let devices: DevicesStore?
     private(set) var signInProblem: String?
 
     /// The client of the home node, for the screens that read from it.
@@ -42,6 +44,7 @@ final class NativeSession {
         }
         keyProblem = problem
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
+        devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
         desk = DeskStore(
             source: client,
             sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),

@@ -106,6 +106,12 @@ public actor NodeClient {
         return try await write("POST", "/api/devices/requests", body: body)
     }
 
+    /// Sends a device change signed by one of this person's devices. The change's time must come from `nodeNow()`.
+    public func submitDeviceChange(_ change: SignedDeviceChange) async throws -> DeviceChangeResult {
+        let body = Data(try CanonicalJSON.encode(change.json).utf8)
+        return try await write("POST", "/api/devices/changes", body: body)
+    }
+
     /// Fetches the write token and the node's time (the clock offset is kept for `nodeNow()`).
     @discardableResult
     public func refreshSession() async throws -> Session {
