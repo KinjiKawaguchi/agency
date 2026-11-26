@@ -21,6 +21,8 @@ final class NativeSession {
     @ObservationIgnored private let transport: URLSessionTransport
     @ObservationIgnored private let signIn: AccessSignInFlow
     @ObservationIgnored private var registeredPush: PushRegistration?
+    /// The overview of every org and team, read from the same client.
+    let overview: OverviewStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -43,6 +45,7 @@ final class NativeSession {
             sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
             storage: DraftDefaultsStorage(host: homeNode.host)
         )
+        overview = OverviewStore(source: client)
     }
 
     /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
@@ -58,6 +61,7 @@ final class NativeSession {
         case .signedIn:
             await desk.refresh()
             await pairing?.refresh()
+            await overview.refresh()
         case .canceled:
             break
         case .unavailable:

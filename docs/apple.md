@@ -19,7 +19,7 @@ apple/
 
 ## How the app behaves
 
-The app is becoming native, one screen at a time (agency#77). The desk is a SwiftUI screen that talks to the node's Client API; the tabs for people, the org chart, costs and devices are still the web client's pages in one shared web view. The rest of this section describes the web view and the home node; the next section describes the native part.
+The app is becoming native, one screen at a time (agency#77). The desk is a SwiftUI screen that talks to the node's Client API; the overview is native too; the tabs for participants and work, costs and devices are still the web client's pages in one shared web view. The rest of this section describes the web view and the home node; the next section describes the native part.
 
 - On the first launch it asks for the home node address and keeps it in `UserDefaults`. Only the origin is kept: a pasted path is dropped. Plain `http` is accepted only for `localhost`, `127.0.0.1`, and `.local` names, so a node on the owner's machine can be tried.
 - It loads the node in a `WKWebView` that uses the default website data store, which is persistent. The Cloudflare Access session cookie and the web client's own storage survive app launches. How long the sign-in lasts is the session duration of the Access application.
@@ -30,13 +30,24 @@ The app is becoming native, one screen at a time (agency#77). The desk is a Swif
 
 ## The native desk
 
-- **The tabs** (five, the most a phone's bar shows without folding the rest into "More") are 決めること (native), 全体, 参加者と仕事, 費用 and 端末 (web pages, until each is native). One web view serves the web tabs and opens the page of the tab selected. A screen becomes native in the shell's `Tab` (its `webPath` goes) and in one switch (`screen(_:session:)`). The org chart is not a tab: the settings open it in the browser, which holds the Access session too, until a native chart exists.
+- **The tabs** (five, the most a phone's bar shows without folding the rest into "More") are 決めること and 全体 (native), 参加者と仕事, 費用 and 端末 (web pages, until each is native). One web view serves the web tabs and opens the page of the tab selected. A screen becomes native in the shell's `Tab` (its `webPath` goes) and in one switch (`screen(_:session:)`). The org chart is not a tab: the settings open it in the browser, which holds the Access session too, until a native chart exists.
 - **Calls to the node** go through `NodeClient` (`AgencyAPI`) over `URLSessionTransport`, which never follows a redirect: Access answers an ended session with one, and the app then runs the sign-in again. The Access token that the sign-in hands over is kept in the Keychain (`AccessTokenStore`, this phone only, not synced) and sent as `cf-access-token`. The same token is still written to the web view as a cookie while web tabs exist. If the Access application binds the cookie to the browser, this does not work and the app says so.
 - **The device key** is a P-256 key made inside the Secure Enclave (`SecureEnclaveSigner`). No process can read it. It signs only after Face ID, each time, and only while the current set of faces is enrolled: adding or removing a face destroys the key, and the phone is added again. The Keychain keeps an opaque handle to the key, not the key. A phone without a Secure Enclave or without Face ID set up cannot decide; it can still read. The settings can make the key again, for when a change of faces left the old one unusable. There is one key, one Keychain token and one set of drafts for each home node host, never shared between nodes, so a second home node later is a second session and not a rewrite.
 - **Adding this phone.** A key signs decisions only once it is added to the org. The desk shows a card that says so, asks the node to add this phone (`POST /api/devices/requests`) and shows the pairing code (`xxxx-xxxx-xxxx`, from the key's fingerprint, the same as the node's). The owner compares it on a device that is already added, or at the node's terminal, and adds the phone there. Until then the desk can be read, options picked and text typed, and nothing can be sent. A web view key (the web client's Ed25519 key) is a different device; both can be added.
 - **Sending** (`DeviceDecisionSender`): the envelope comes from the request's own `answerWith`, is stamped with the node's time from `GET /api/session`, is checked for the shape the node requires, and is signed after Face ID, which names the action and the request's title. The node's own device id for this key is read from the device list and used as the signer.
 - **Push** is registered by the app itself (`POST /api/push/tokens`) once the desk loads, and the badge is the number of requests waiting on the owner. A tapped notification opens that request on the desk.
 - **Settings** (the gear on the desk) show the home node and change it. Changing it forgets the token and the cookie.
+
+## The native overview
+
+The overview tab mirrors the web client's Overview screen (`web/src/overview`): every org and team the account sees on one screen, with the funding sources' usage below. `AgencyModel/Overview` holds what it decides, ported from the web with its test cases:
+
+- `TeamSummary` says what a team needs from the viewer: **mine** (the node's `mine` list is not empty, however busy the team is), **stuck** (work is blocked, counted by the reason the runtime gives), **idle** (participants, none working) or the rest. The viewer is not counted among the participants. Whose a request is stays the node's call.
+- `OverviewOrder` puts teams in the order mine, stuck, unreadable, idle, the rest, still loading; within a rank the team with more waiting or more blocked comes first, then by name. An org stands where its most pressing team does.
+- `WindowForecast` projects a funding window to its reset from the pace so far, and `FundingSummary` lists the weekly window before the five-hour one. A window whose reset has passed has no forecast.
+- `OverviewStore` reads `GET /api/me`, each team's view and each readable team's usage over 7 days (`NodeClient.usage`), and keeps each team's own outcome: a team that cannot be read is shown as that, in its place, and a team that was read keeps its last answer when a later read fails. A team whose node cannot be reached is not asked for usage (a 404 means its runtime reports none).
+
+The views are in `AgencyUI/Overview`; a long team name is cut after two lines and opens in full when tapped.
 
 ## Build
 

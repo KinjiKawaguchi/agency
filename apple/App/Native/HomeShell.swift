@@ -41,7 +41,7 @@ struct HomeShell: View {
         var webPath: String? {
             switch self {
             case .desk: nil
-            case .overview: "/overview"
+            case .overview: nil
             case .people: "/people"
             case .costs: "/costs"
             case .devices: "/devices"
@@ -110,7 +110,12 @@ struct HomeShell: View {
         switch tab {
         case .desk:
             desk(session)
-        case .overview, .people, .costs, .devices:
+        case .overview:
+            OverviewScreen(
+                store: session.overview, onOpenDesk: { self.tab = .desk },
+                onSignInAgain: { Task { await session.signInAgain() } }
+            )
+        case .people, .costs, .devices:
             webScreen(tab)
         }
     }
