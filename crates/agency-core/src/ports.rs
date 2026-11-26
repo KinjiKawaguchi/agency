@@ -1,4 +1,5 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
+use crate::clients_seen::ClientsSeen;
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
@@ -179,6 +180,12 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The app releases the node has seen (`clients_seen`), kept in its data directory.
+pub trait ClientsSeenStore {
+    fn clients_seen(&self) -> ClientsSeen;
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -199,6 +206,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + ClientsSeenStore
     + Send
     + Sync
 {
@@ -217,6 +225,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + ClientsSeenStore
             + Send
             + Sync,
     > Store for T

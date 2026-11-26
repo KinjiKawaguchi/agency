@@ -6,6 +6,7 @@ mod kpi_cli;
 mod logs_cli;
 mod outcome_cli;
 mod peer_cli;
+mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -275,6 +276,9 @@ fn status(node: &Node) {
         {
             println!("{line}");
         }
+    }
+    for line in seen_cli::seen_lines(node) {
+        println!("{line}");
     }
     for doc in node.store().orgs() {
         let devices = doc
