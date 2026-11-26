@@ -18,6 +18,10 @@ const REQUEST_ID: u64 = 2;
 
 pub struct CodexUsage {
     command: PathBuf,
+    /// Arguments that come before `app-server`; none for `codex` itself. The tests run a script
+    /// through `/bin/sh`, since a script that was just written can still be held open for writing by
+    /// a process that another test forked, and the system then refuses to run it.
+    leading_args: Vec<PathBuf>,
     codex_home: Option<PathBuf>,
     answer_within: Duration,
 }
@@ -26,6 +30,7 @@ impl CodexUsage {
     pub fn new(command: PathBuf, codex_home: Option<PathBuf>, answer_within: Duration) -> Self {
         Self {
             command,
+            leading_args: vec![],
             codex_home,
             answer_within,
         }
@@ -33,7 +38,7 @@ impl CodexUsage {
 
     fn app_server(&self) -> Command {
         let mut command = Command::new(&self.command);
-        command.arg("app-server");
+        command.args(&self.leading_args).arg("app-server");
         if let Some(home) = &self.codex_home {
             command.env("CODEX_HOME", home);
         }
@@ -56,12 +61,13 @@ impl CodexUsage {
             json!({"method": "initialized"}),
             json!({"id": REQUEST_ID, "method": "account/rateLimits/read"}),
         ];
+        // A program that ends before it reads its requests makes this write fail; its output then ends
+        // without an answer, which is what is reported.
         for request in requests {
             let line = format!("{request}\n");
-            stdin
-                .write_all(line.as_bytes())
-                .await
-                .map_err(unavailable)?;
+            if stdin.write_all(line.as_bytes()).await.is_err() {
+                break;
+            }
         }
         let answer = answer(BufReader::new(stdout)).await;
         drop(stdin);
@@ -142,14 +148,15 @@ impl UsageSource for CodexUsage {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
-    /// A `codex` that runs `body` (a shell script) instead of an app server.
+    /// A `codex` that runs `body` (a shell script) instead of an app server, as `sh <script> app-server`.
     fn fake_codex(dir: &std::path::Path, body: &str) -> CodexUsage {
-        let path = dir.join("codex");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        CodexUsage::new(path, Some(dir.join("home")), Duration::from_secs(5))
+        let script = dir.join("codex.sh");
+        std::fs::write(&script, format!("{body}\n")).unwrap();
+        let home = Some(dir.join("home"));
+        let mut usage = CodexUsage::new("/bin/sh".into(), home, Duration::from_secs(60));
+        usage.leading_args = vec![script];
+        usage
     }
 
     /// Answers the initialize request, sends a notification of its own, then answers the rate limits
