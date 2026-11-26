@@ -377,3 +377,77 @@ describe('an empty desk', () => {
     expect(screen.queryByText(/Pick a document/)).not.toBeInTheDocument()
   })
 })
+
+describe('whether this browser keeps its key', () => {
+  const storage = (value: unknown): void => void Object.defineProperty(navigator, 'storage', { value, configurable: true })
+  afterEach(() => Reflect.deleteProperty(navigator, 'storage'))
+
+  it('says the browser keeps the key when it has promised to', async () => {
+    storage({ persisted: () => Promise.resolve(true), persist: () => Promise.resolve(true) })
+    renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/keeps this device’s key until you clear its site data/)).toBeInTheDocument()
+    expect(screen.queryByText(/may remove this device’s key/)).not.toBeInTheDocument()
+  })
+
+  it('says the browser may remove it, and that this browser would have to be added again, when it has not promised or cannot say', async () => {
+    storage({ persisted: () => Promise.resolve(false), persist: () => Promise.resolve(false) })
+    const first = renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/may remove this device’s key if you clear its site data/)).toBeInTheDocument()
+    first.unmount()
+    storage(undefined)
+    renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/may remove this device’s key if you clear its site data/)).toBeInTheDocument()
+  })
+
+  it('asks the browser to keep the key when the person asks to add this device, not before', async () => {
+    const persist = vi.fn(() => Promise.resolve(true))
+    storage({ persisted: () => Promise.resolve(false), persist })
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore() })
+    const ask = await screen.findByRole('button', { name: 'Add this device' })
+    expect(persist).not.toHaveBeenCalled()
+    await user.click(ask)
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/keeps this device’s key until you clear its site data/)).toBeInTheDocument()
+  })
+
+  it('does not say a key is lost on a first visit, nor when the key is found again on the next one', async () => {
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    const first = renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    await screen.findByRole('button', { name: 'Add this device' })
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    first.unmount()
+    // The same key is held now: it is found, not made, and the note of the first visit is there. (Another store object
+    // over it, as a reload makes one: a store is read once, so the first would answer from memory.)
+    renderApp({ path: '/devices', node, enrolled: false, keyStore: { load: keyStore.load, save: keyStore.save } })
+    await screen.findByRole('button', { name: 'Add this device' })
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
+  })
+
+  it('says an earlier key is gone, in both languages, when a new one had to be made after one was noted', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    const first = renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore() })
+    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent('earlier key is gone')
+    first.unmount()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore(), locale: 'ja' })
+    expect(await screen.findByText(/このブラウザの前の鍵が消えています/)).toBeInTheDocument()
+  })
+
+  it('stops saying it once the new key is added, and does not say it again after a reload', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    expect(await screen.findByText(/earlier key is gone/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add this device' }))
+    await screen.findByText(/Waiting for you to approve this device/)
+    expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
+    await refreshQueries()
+    await screen.findByText(/This device is added\./)
+    await waitFor(() => expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument())
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
+  })
+})
