@@ -133,7 +133,7 @@ public final class OrgChartStore {
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
-        } catch is CancellationError {
+        } catch where DeskStore.isCancelled(error) {
             // A read that was cancelled says nothing: what was there stays.
             loading = before
         } catch {

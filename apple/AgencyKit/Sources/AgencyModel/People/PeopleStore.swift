@@ -41,6 +41,7 @@ public final class PeopleStore {
     }
 
     private func reload() async {
+        let before = loading
         loading = .loading
         do {
             let me = try await source.me()
@@ -65,6 +66,9 @@ public final class PeopleStore {
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
+        } catch where DeskStore.isCancelled(error) {
+            // A read that was cancelled says nothing: what was there stays.
+            loading = before
         } catch {
             loading = .failed(DeskStore.reason(error))
         }
