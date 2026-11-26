@@ -37,6 +37,9 @@ final class NativeSession {
     let orgChart: OrgChartStore
     /// What is new since the last read, as banners.
     let news: NewsStore
+    /// What the widgets show, written after the desk is read.
+    let widgets: WidgetPublisher
+    private let cache: SnapshotCache
     /// What the owner wants to be told, for this home node.
     let notifications: NotificationPreferencesStore
 
@@ -60,6 +63,7 @@ final class NativeSession {
         // for what several screens want, and a decision drops what was read before it.
         let sent = SentDecisions()
         let cache = SnapshotCache(source: client)
+        self.cache = cache
         let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
             source: cached,
@@ -80,6 +84,10 @@ final class NativeSession {
         notifications = NotificationPreferencesStore(storage: NotificationDefaultsStorage(host: homeNode.host)) { news.enabledKinds = $0.bannerKinds }
         news.enabledKinds = notifications.preferences.bannerKinds
         self.news = news
+        widgets = WidgetPublisher(
+            host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)),
+            sink: WidgetAppGroupSink()
+        )
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
@@ -99,6 +107,14 @@ final class NativeSession {
         case .unavailable:
             signInProblem = Ja.Desk.signInUnavailable
         }
+    }
+
+    /// Writes the desk for the widgets, once the node has said whether it keeps titles off devices. When the node cannot be
+    /// asked nothing is written, so no title leaves the app on a guess.
+    func publishWidgets() async {
+        guard let me = try? await cache.me() else { return }
+        widgets.preferences.nodeSays(hidesTitles: me.hidesTitles)
+        widgets.publish(items: desk.items)
     }
 
     /// Tells the node this phone's push token and the kinds of notification the owner wants, once the desk can be
