@@ -1,0 +1,451 @@
+//! How fast a team's work ships, worked out by the team's node from its pull requests on GitHub and its
+//! token usage (docs/protocol.md, "Evaluation"). Counts and seconds are integers; costs are estimates at
+//! API prices in US dollars, as in `usage`. An optional field is left out, never null.
+use crate::ids::Id;
+use crate::timestamp::{Date, Timestamp};
+use crate::usage::valid_days;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// Merged pull requests by the Conventional Commits type of their titles. Anything that is not one of
+/// the six types is `other`. A pull request that reverts another is counted in `reverts`, not here, so
+/// the pull requests merged are these counts and `reverts` together.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct MergedCounts {
+    pub feat: u32,
+    pub fix: u32,
+    pub refactor: u32,
+    pub docs: u32,
+    pub test: u32,
+    pub chore: u32,
+    pub other: u32,
+}
+
+/// One calendar day in the node's time zone.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DayEvaluation {
+    pub date: Date,
+    pub merged: MergedCounts,
+    /// Pull requests merged that day that revert another.
+    pub reverts: u32,
+    /// Seconds main's CI was red that day; a span across midnight is split between the days.
+    #[ts(type = "number")]
+    pub main_red_seconds: u64,
+    /// Estimated cost of that day's tokens.
+    pub cost_usd: f64,
+    /// Pull request opened to merged, one for each pull request merged that day.
+    #[ts(type = "Array<number>")]
+    pub pr_lead_seconds: Vec<u64>,
+    /// Issue started (its first move to In Progress on the board, else the pull request's first commit)
+    /// to merged, one for each merged pull request that has an issue.
+    #[ts(type = "Array<number>")]
+    pub issue_lead_seconds: Vec<u64>,
+}
+
+/// The numbers for the whole period, worked out by the node so that a screen and an agent that cites
+/// them agree. A median or p90 is left out when there are no samples. The p90 is the nearest rank
+/// (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples,
+/// rounded down to a whole second.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct EvaluationSummary {
+    pub merged: MergedCounts,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub pr_lead_median_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub pr_lead_p90_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub issue_lead_median_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub issue_lead_p90_seconds: Option<u64>,
+    #[ts(type = "number")]
+    pub main_red_seconds: u64,
+    /// The longest single span main was red in the period.
+    #[ts(type = "number")]
+    pub longest_red_seconds: u64,
+    pub reverts: u32,
+    /// The period's cost divided by the pull requests merged in it (`merged` and `reverts`); the token
+    /// usage is per day, so there is no per-pull-request attribution. Left out when nothing merged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_per_merged_pr_usd: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TeamEvaluation {
+    pub team: Id,
+    /// The period's first and last calendar day in the time zone of the team's node, written like
+    /// `byDay[].date`. Every day in `byDay` lies inside it, so a team is drawn against its own period.
+    pub from: Date,
+    pub until: Date,
+    pub summary: EvaluationSummary,
+    /// Oldest day first; days with nothing in them may be left out.
+    pub by_day: Vec<DayEvaluation>,
+}
+
+/// A team the node could not get numbers for. The reason is plain text with no secret and no address.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TeamUnavailable {
+    pub team: Id,
+    pub reason: String,
+}
+
+/// `GET /api/orgs/<org>/evaluation?days=<n>`: every team of the org. The federation route answers the
+/// same type with one team in `teams` (or the team in `unavailable`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Evaluation {
+    pub org: Id,
+    pub days: u32,
+    /// The period's first and last calendar day in the time zone of the node that answers, written like
+    /// `byDay[].date`. A team on a node in another time zone has its own `from` and `until`.
+    pub from: Date,
+    pub until: Date,
+    pub generated_at: Timestamp,
+    pub teams: Vec<TeamEvaluation>,
+    /// Teams that could not answer, so that one of them does not blank the others.
+    pub unavailable: Vec<TeamUnavailable>,
+}
+
+fn valid_cost(cost: f64) -> bool {
+    cost.is_finite() && cost >= 0.0
+}
+
+/// The median of the samples: the middle one, or for an even count the mean of the two middle ones,
+/// rounded down to a whole second. `None` without samples.
+pub fn median(samples: &[u64]) -> Option<u64> {
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let middle = sorted.len() / 2;
+    match sorted.len() {
+        0 => None,
+        count if count % 2 == 1 => Some(sorted[middle]),
+        _ => {
+            let (low, high) = (sorted[middle - 1], sorted[middle]);
+            Some(low / 2 + high / 2 + (low % 2 + high % 2) / 2)
+        }
+    }
+}
+
+/// The p90 by nearest rank: `sorted[ceil(0.9 n) - 1]`. `None` without samples.
+pub fn p90(samples: &[u64]) -> Option<u64> {
+    let mut sorted = samples.to_vec();
+    sorted.sort_unstable();
+    let rank = (9 * sorted.len()).div_ceil(10);
+    rank.checked_sub(1).map(|index| sorted[index])
+}
+
+/// The number of calendar days from `from` to `until`, both included.
+fn period_days(from: &Date, until: &Date) -> Option<i64> {
+    let format = time::macros::format_description!("[year]-[month]-[day]");
+    let day = |date: &Date| time::Date::parse(date.as_str(), &format).ok();
+    Some(i64::from(day(until)?.to_julian_day() - day(from)?.to_julian_day()) + 1)
+}
+
+/// The days an answer says it covers: `from` is not after `until`, and the period is `days` long.
+pub(crate) fn check_period(from: &Date, until: &Date, days: u32) -> Result<(), String> {
+    if from.as_str() > until.as_str() {
+        return Err("reported a period that ends before it starts".into());
+    }
+    if period_days(from, until) != Some(i64::from(days)) {
+        return Err(format!("reported a period that is not {days} days long"));
+    }
+    Ok(())
+}
+
+/// What `Evaluation` and `Effort` have in common, for one check.
+pub(crate) struct Answer<'a> {
+    pub org: &'a Id,
+    pub days: u32,
+    pub from: &'a Date,
+    pub until: &'a Date,
+    pub teams: Vec<&'a Id>,
+    pub unavailable: &'a [TeamUnavailable],
+}
+
+/// Checks that an answer is for the org and range that were asked for, covers a period of that many
+/// days, and names no team twice.
+pub(crate) fn check_answer(org: &Id, days: u32, answer: &Answer) -> Result<(), String> {
+    if answer.org != org || answer.days != days || !valid_days(days) {
+        return Err(format!(
+            "reported {} over {} days instead of {org} over {days} days",
+            answer.org, answer.days
+        ));
+    }
+    check_period(answer.from, answer.until, days)?;
+    let mut named = answer.teams.clone();
+    named.extend(answer.unavailable.iter().map(|team| &team.team));
+    let count = named.len();
+    named.sort();
+    named.dedup();
+    if named.len() != count {
+        return Err("reported a team twice".into());
+    }
+    Ok(())
+}
+
+/// Checks the days of one team's report: in order, inside the team's own period, at most `days` of them,
+/// and every cost a number that is not negative.
+pub(crate) fn check_days(
+    dates: &[&Date],
+    from: &Date,
+    until: &Date,
+    costs: &[f64],
+    days: u32,
+) -> Result<(), String> {
+    check_period(from, until, days)?;
+    if dates
+        .windows(2)
+        .any(|pair| pair[0].as_str() >= pair[1].as_str())
+    {
+        return Err("reported days out of order".into());
+    }
+    if dates
+        .iter()
+        .any(|date| date.as_str() < from.as_str() || date.as_str() > until.as_str())
+    {
+        return Err("reported a day outside the period".into());
+    }
+    if dates.len() > days as usize {
+        return Err(format!("reported more than {days} days"));
+    }
+    if costs.iter().any(|cost| !valid_cost(*cost)) {
+        return Err("reported a malformed cost".into());
+    }
+    Ok(())
+}
+
+impl Evaluation {
+    /// Checks that this is a well-formed report of the org and range that were asked for.
+    pub fn check(&self, org: &Id, days: u32) -> Result<(), String> {
+        let answer = Answer {
+            org: &self.org,
+            days: self.days,
+            from: &self.from,
+            until: &self.until,
+            teams: self.teams.iter().map(|team| &team.team).collect(),
+            unavailable: &self.unavailable,
+        };
+        check_answer(org, days, &answer)?;
+        for team in &self.teams {
+            let dates: Vec<&Date> = team.by_day.iter().map(|day| &day.date).collect();
+            let mut costs: Vec<f64> = team.by_day.iter().map(|day| day.cost_usd).collect();
+            costs.extend(team.summary.cost_per_merged_pr_usd);
+            check_days(&dates, &team.from, &team.until, &costs, days)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    const SAMPLE: &str = include_str!("../../../testdata/evaluation.sample.json");
+
+    fn sample() -> Evaluation {
+        serde_json::from_str(SAMPLE).unwrap()
+    }
+
+    fn acme() -> Id {
+        Id::parse("acme").unwrap()
+    }
+
+    #[test]
+    fn the_sample_survives_a_round_trip_and_leaves_out_what_has_no_value() {
+        let again = serde_json::to_value(sample()).unwrap();
+        assert_eq!(again, serde_json::from_str::<Value>(SAMPLE).unwrap());
+        let quiet = &again["teams"][1]["summary"];
+        assert!(
+            quiet.get("prLeadMedianSeconds").is_none() && quiet.get("costPerMergedPrUsd").is_none()
+        );
+        assert!(
+            !SAMPLE.contains("null"),
+            "an optional field is left out, never null"
+        );
+    }
+
+    #[test]
+    fn accepts_the_sample_and_refuses_reports_that_are_not_what_was_asked_for() {
+        assert_eq!(sample().check(&acme(), 14), Ok(()));
+        assert!(sample().check(&Id::parse("other").unwrap(), 14).is_err());
+        assert!(sample().check(&acme(), 7).is_err());
+        assert!(sample().check(&acme(), 91).is_err());
+    }
+
+    #[test]
+    fn a_team_in_another_time_zone_is_drawn_against_its_own_period() {
+        let mut report = sample();
+        report.teams[0].from = Date::parse("2026-11-12").unwrap();
+        report.teams[0].until = Date::parse("2026-11-25").unwrap();
+        report.teams[0].by_day[1].date = Date::parse("2026-11-25").unwrap();
+        assert_eq!(
+            report.check(&acme(), 14),
+            Ok(()),
+            "a day after the answering node's `until`"
+        );
+        report.teams[0].from = Date::parse("2026-11-11").unwrap();
+        report.teams[0].until = Date::parse("2026-11-24").unwrap();
+        let outside = report.check(&acme(), 14).unwrap_err();
+        assert!(
+            outside.contains("outside"),
+            "but not outside its own period: {outside}"
+        );
+        let team = &mut report.teams[0];
+        std::mem::swap(&mut team.from, &mut team.until);
+        assert!(report
+            .check(&acme(), 14)
+            .unwrap_err()
+            .contains("ends before"));
+    }
+
+    #[test]
+    fn refuses_a_malformed_report() {
+        let refused = |change: &dyn Fn(&mut Evaluation)| {
+            let mut report = sample();
+            change(&mut report);
+            report.check(&acme(), 14).unwrap_err()
+        };
+        assert!(refused(&|r| r.teams[0].by_day.reverse()).contains("out of order"));
+        assert!(
+            refused(&|r| r.teams[0].by_day[1].date = Date::parse("2026-12-01").unwrap())
+                .contains("outside")
+        );
+        assert!(refused(&|r| r.teams[0].by_day[0].cost_usd = -1.0).contains("malformed cost"));
+        assert!(refused(&|r| r.teams[0].by_day[0].cost_usd = f64::NAN).contains("malformed cost"));
+        assert!(
+            refused(&|r| r.teams[0].summary.cost_per_merged_pr_usd = Some(f64::INFINITY))
+                .contains("malformed cost")
+        );
+        assert!(refused(&|r| r.unavailable[0].team = Id::parse("app").unwrap()).contains("twice"));
+        assert!(refused(&|r| std::mem::swap(&mut r.from, &mut r.until)).contains("ends before"));
+    }
+
+    #[test]
+    fn the_period_is_as_long_as_the_days_asked_for() {
+        let mut report = sample();
+        report.until = Date::parse("2030-01-01").unwrap();
+        assert!(report
+            .check(&acme(), 14)
+            .unwrap_err()
+            .contains("not 14 days long"));
+        let mut report = sample();
+        report.teams[0].from = Date::parse("2020-01-01").unwrap();
+        assert!(report
+            .check(&acme(), 14)
+            .unwrap_err()
+            .contains("not 14 days long"));
+        assert_eq!(
+            period_days(
+                &Date::parse("2026-02-27").unwrap(),
+                &Date::parse("2026-03-02").unwrap()
+            ),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn the_samples_numbers_follow_the_rules() {
+        let team = &sample().teams[0];
+        let days = &team.by_day;
+        let all = |pick: fn(&DayEvaluation) -> &Vec<u64>| -> Vec<u64> {
+            days.iter().flat_map(|day| pick(day).clone()).collect()
+        };
+        let pr_leads = all(|day| &day.pr_lead_seconds);
+        let issue_leads = all(|day| &day.issue_lead_seconds);
+        let summary = &team.summary;
+        assert_eq!(summary.pr_lead_median_seconds, median(&pr_leads));
+        assert_eq!(summary.pr_lead_p90_seconds, p90(&pr_leads));
+        assert_eq!(summary.issue_lead_median_seconds, median(&issue_leads));
+        assert_eq!(summary.issue_lead_p90_seconds, p90(&issue_leads));
+        let red: u64 = days.iter().map(|day| day.main_red_seconds).sum();
+        assert_eq!(summary.main_red_seconds, red);
+        let longest = summary.longest_red_seconds;
+        assert!(
+            longest <= red && (red == 0) == (longest == 0),
+            "a span is part of the red time"
+        );
+        assert_eq!(
+            summary.reverts,
+            days.iter().map(|day| day.reverts).sum::<u32>()
+        );
+        let sum =
+            |pick: fn(&MergedCounts) -> u32| days.iter().map(|day| pick(&day.merged)).sum::<u32>();
+        let merged = &summary.merged;
+        assert_eq!(
+            [
+                merged.feat,
+                merged.fix,
+                merged.refactor,
+                merged.docs,
+                merged.test,
+                merged.chore,
+                merged.other
+            ],
+            [
+                sum(|m| m.feat),
+                sum(|m| m.fix),
+                sum(|m| m.refactor),
+                sum(|m| m.docs),
+                sum(|m| m.test),
+                sum(|m| m.chore),
+                sum(|m| m.other)
+            ]
+        );
+        let total = merged.feat
+            + merged.fix
+            + merged.refactor
+            + merged.docs
+            + merged.test
+            + merged.chore
+            + merged.other
+            + summary.reverts;
+        assert_eq!(
+            pr_leads.len() as u32,
+            total,
+            "one lead time for each pull request merged, reverts included"
+        );
+        let cost: f64 = days.iter().map(|day| day.cost_usd).sum();
+        let per_pr = summary.cost_per_merged_pr_usd.unwrap();
+        assert!(
+            (per_pr - cost / f64::from(total)).abs() < 0.005,
+            "{per_pr} against {cost} over {total}"
+        );
+    }
+
+    #[test]
+    fn the_median_and_the_p90_are_worked_out_as_the_spec_says() {
+        assert_eq!((median(&[]), p90(&[])), (None, None));
+        assert_eq!((median(&[7]), p90(&[7])), (Some(7), Some(7)));
+        assert_eq!(
+            median(&[9000, 21600]),
+            Some(15300),
+            "the mean of the two middle samples"
+        );
+        assert_eq!(median(&[3, 4]), Some(3), "rounded down");
+        assert_eq!(
+            median(&[u64::MAX, u64::MAX]),
+            Some(u64::MAX),
+            "without overflow"
+        );
+        let ten: Vec<u64> = (1..=10).collect();
+        assert_eq!(p90(&ten), Some(9), "9 in 10 samples do not exceed it");
+        let eleven: Vec<u64> = (1..=11).collect();
+        assert_eq!(p90(&eleven), Some(10), "ceil(0.9 * 11) = 10");
+        assert_eq!(p90(&[5, 1, 3]), Some(5));
+    }
+}

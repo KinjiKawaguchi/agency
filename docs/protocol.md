@@ -128,6 +128,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
 | GET | `/fed/v1/teams/<org>/<team>/usage?days=<n>` | A signed read of the path with its query, and membership (answers `TokenUsage`; 400 for a range outside 1 to 90; 404 when the team's runtime does not report usage) |
+| GET | `/fed/v1/teams/<org>/<team>/evaluation?days=<n>` and `/effort?days=<n>` | Like `usage`: a signed read of the path with its query, and membership as a member (an answerer gets 403). Answers `Evaluation` or `Effort` with that one team in `teams` or `unavailable`; 400 for a range outside 1 to 90 |
 | POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
 
 The federation routes bypass Cloudflare Access, so anyone can call them, and nothing in an answer may tell a caller what the node holds until the caller is authenticated.
@@ -254,6 +255,39 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 - The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every participant has a name. A report that fails is 503.
 - The shared sample is `testdata/tokenusage.sample.json`.
 
+## Evaluation
+
+How fast a team's work ships, and where its tokens go. The team's node works the numbers out (nothing is stored: each read asks GitHub and the team's runtime, and the node reuses an answer for 10 minutes), so a screen and an agent that cites them agree.
+
+```
+Evaluation       { org, days, from: Date, until: Date, generatedAt, teams: TeamEvaluation[], unavailable: TeamUnavailable[] }
+TeamUnavailable  { team: Id, reason: string }
+TeamEvaluation   { team, from: Date, until: Date, summary: EvaluationSummary, byDay: DayEvaluation[] }
+EvaluationSummary{ merged: MergedCounts, prLeadMedianSeconds?, prLeadP90Seconds?, issueLeadMedianSeconds?, issueLeadP90Seconds?,
+                   mainRedSeconds, longestRedSeconds, reverts, costPerMergedPrUsd? }     // ? = left out when there is no value
+MergedCounts     { feat, fix, refactor, docs, test, chore, other }
+DayEvaluation    { date, merged: MergedCounts, reverts, mainRedSeconds, costUsd, prLeadSeconds: int[], issueLeadSeconds: int[] }
+
+Effort           { org, days, from, until, generatedAt, teams: TeamEffort[], unavailable: TeamUnavailable[] }
+TeamEffort       { team, from, until, byType: ByWorkType<TypeUsage>, byDay: DayEffort[] }
+DayEffort        { date, costUsd: ByWorkType<number> }
+ByWorkType<T>    { newFeature: T, improvement: T, maintenance: T, debt: T, incident: T, unclassified: T }
+TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
+```
+
+- The period is the last `days` calendar days (1 to 90), today included. `from` and `until` are its first and last day, written like `byDay[].date`, in the time zone of the node that computed them: each team has its own (the time zone of the team's node), and every day of its `byDay` lies inside them, so a client draws a team against its own period. The answer's own `from` and `until` are the answering node's. `byDay` is oldest first, and days with nothing in them may be left out.
+- Counts and seconds are integers. Costs are estimates at API prices, as in "Token usage". An optional field is left out, never null.
+- A pull request counts on the day it merged. Its type is the Conventional Commits type of its title (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`); anything else, including `ci`, `build`, `perf`, `style`, is `other`.
+- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body says "This reverts commit". It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
+- **PR lead time** is opened to merged. **Issue lead time** is the issue's first move to In Progress on the board (else the pull request's first commit) to merged; a pull request with no closing issue has none.
+- **Main red**: for each push to the default branch, the commit's workflow runs decide (all workflows). A commit is red when a run failed or timed out and green when all passed or were skipped; a run cancelled by a newer push counts for nothing. Red lasts from the completion of the first red commit to the completion of the next green one, or to `generatedAt` while it is red. A span across midnight is split between the days. `longestRedSeconds` is the longest single span.
+- The summary's p90 is the nearest rank (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples, rounded down. A median or p90 is left out with no samples.
+- `costPerMergedPrUsd` is the period's cost divided by the pull requests merged in it (`merged` and `reverts`). Token usage is per day, so there is no per-pull-request attribution. It is left out when nothing merged.
+- **Work type** (`Effort`): the board's "Work type" field when the item has one; otherwise the pull request's type: `feat` is `newFeature`, `refactor` is `debt`, `fix` is `maintenance` (`incident` when its issue carries the label `incident`), and `docs`, `test`, `chore` are `maintenance`. Work with neither is `unclassified`. `improvement` comes only from the board field. The intended allocation and budget are the org definition's team plan; `Effort` does not copy them.
+- A team whose answer cannot be had (not configured, its node unreachable, GitHub unavailable) is listed in `unavailable` with a reason in plain text, without a secret or an address, and the other teams are answered. A malformed answer from another node is such a failure.
+- Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
+- The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.
+
 ## Client API
 
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
@@ -266,6 +300,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
+| GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through, and so does the 403 for a request on this node that is not the account's to decide; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |

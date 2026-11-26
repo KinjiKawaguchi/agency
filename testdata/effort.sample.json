@@ -1,0 +1,27 @@
+{
+  "org": "acme",
+  "days": 14,
+  "from": "2026-11-11",
+  "until": "2026-11-24",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "teams": [
+    {
+      "team": "app",
+      "from": "2026-11-11",
+      "until": "2026-11-24",
+      "byType": {
+        "newFeature": { "costUsd": 8.1, "tokens": { "input": 90000, "output": 30000, "cacheRead": 1800000, "cacheWrite": 120000 } },
+        "improvement": { "costUsd": 0.0, "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } },
+        "maintenance": { "costUsd": 3.2, "tokens": { "input": 40000, "output": 12000, "cacheRead": 700000, "cacheWrite": 50000 } },
+        "debt": { "costUsd": 1.5, "tokens": { "input": 20000, "output": 6000, "cacheRead": 300000, "cacheWrite": 20000 } },
+        "incident": { "costUsd": 0.5, "tokens": { "input": 6000, "output": 2000, "cacheRead": 90000, "cacheWrite": 7000 } },
+        "unclassified": { "costUsd": 0.0, "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } }
+      },
+      "byDay": [
+        { "date": "2026-11-23", "costUsd": { "newFeature": 5.1, "improvement": 0.0, "maintenance": 2.0, "debt": 1.5, "incident": 0.5, "unclassified": 0.0 } },
+        { "date": "2026-11-24", "costUsd": { "newFeature": 3.0, "improvement": 0.0, "maintenance": 1.2, "debt": 0.0, "incident": 0.0, "unclassified": 0.0 } }
+      ]
+    }
+  ],
+  "unavailable": []
+}
