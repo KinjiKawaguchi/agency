@@ -7,14 +7,14 @@ import { guestOf } from './provisional'
  * What the node says the viewer is to it: a member hosted by the node (a guest), anyone else, or not known yet. A read that
  * failed with nothing earlier to go by is `unknown`, and is treated as anyone else: the pages then show their own failures.
  */
-export type Standing = { status: 'loading' } | { status: 'unknown' } | { status: 'guest'; member: string } | { status: 'member' }
+export type Standing = { status: 'loading' } | { status: 'unknown' } | { status: 'guest'; member?: string } | { status: 'member' }
 
 export function useStanding(): Standing {
   const me = useQuery(meQuery(useApi()))
   // An answer already held stands even when a later read of it fails: only a read with nothing to show is a failure.
   if (me.data !== undefined) {
     const guest = guestOf(me.data)
-    return guest === undefined ? { status: 'member' } : { status: 'guest', member: guest.member }
+    return guest === undefined ? { status: 'member' } : { status: 'guest', ...guest }
   }
   // A read started again after a failure shows as pending with no error, so what has failed before is counted: otherwise the
   // pages opened for the failure would be taken away by the read they start, and opened again by the next failure.

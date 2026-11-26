@@ -176,11 +176,23 @@ describe('before the node has said who the viewer is', () => {
 describe('how the node says a viewer is a guest', () => {
   const base = createMockNode().handle(new Request('http://mock.local/api/me'))
 
-  it('reads a member id, and nothing else counts', async () => {
+  it('reads a member id when there is one, and counts any guest that is not null as a guest, in whatever shape', async () => {
     const me = await (await base).json()
     expect(guestOf(me)).toBeUndefined()
+    expect(guestOf({ ...me, guest: null })).toBeUndefined()
     expect(guestOf({ ...me, guest: { member: 'carol' } })).toEqual({ member: 'carol' })
-    for (const guest of [null, 'carol', 7, {}, { member: '' }, { member: 3 }, { member: null }, []]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toBeUndefined()
+    for (const guest of ['carol', 7, true, {}, { member: '' }, { member: 3 }, { member: null }, [], { id: 'carol' }]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toEqual({})
+  })
+
+  it('opens a guest’s pages, not the owner’s, when the node says the guest in another shape', async () => {
+    const node = createMockNode()
+    const client = createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      return new URL(request.url, 'http://mock.local').pathname === '/api/me' ? new Response(JSON.stringify({ ...(await reply.json()), guest: { seat: 'carol' } }), { headers: { 'content-type': 'application/json' } }) : reply
+    })
+    const { history } = renderApp({ node, client, path: '/overview', enrolled: true })
+    await waitFor(() => expect(history.location.pathname).toBe('/desk'))
+    expect(labels(await screen.findByRole('navigation', { name: 'Main menu' }))).toEqual(['Decisions', 'Devices'])
   })
 
   it('has the desk and the devices as the pages of a guest, with what is under them, and no other', () => {
