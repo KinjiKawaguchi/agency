@@ -93,6 +93,11 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))")
     }
 
+    /// The org's definition: its departments, members and the teams placed in them.
+    public func orgDefinition(org: String) async throws -> OrgDefinition {
+        try await get("/api/orgs/\(Self.segment(org))")
+    }
+
     public func decisions(limit: Int = 50) async throws -> DecisionLog {
         try await get("/api/decisions?limit=\(limit)")
     }
