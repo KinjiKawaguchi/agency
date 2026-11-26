@@ -22,7 +22,7 @@ struct SettingsSheet: View {
                 }
                 NotificationSettingsSections(store: notifications, nodeSendsKinds: nodeSendsPushKinds)
                 widgetSection
-                Section(footer: Text(Ja.Device.resetExplain)) {
+                Section(footer: Text(Ja.Key.resetExplain(.platform))) {
                     Button(Ja.Device.reset, role: .destructive) { confirmsReset = true }
                 }
                 Section {
@@ -40,7 +40,7 @@ struct SettingsSheet: View {
         .confirmationDialog(Ja.Device.reset, isPresented: $confirmsReset, titleVisibility: .visible) {
             Button(Ja.Device.resetConfirm, role: .destructive, action: onResetKey)
         } message: {
-            Text(Ja.Device.resetExplain)
+            Text(Ja.Key.resetExplain(.platform))
         }
         .presentationDetents([.medium, .large])
     }

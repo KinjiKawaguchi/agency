@@ -3,18 +3,6 @@ import AgencyAPI
 import AgencyModel
 import SwiftUI
 
-/// The two pages of the organization tab.
-public enum OrganizationPage: CaseIterable, Hashable, Sendable {
-    case orgChart, people
-
-    var title: String {
-        switch self {
-        case .orgChart: Ja.Tabs.orgChart
-        case .people: Ja.Tabs.people
-        }
-    }
-}
-
 /// The organization tab: the org chart and the participants and work, behind a switch at the top, as the web client groups them.
 public struct OrganizationScreen: View {
     private let orgChart: OrgChartStore

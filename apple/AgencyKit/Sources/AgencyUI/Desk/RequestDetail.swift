@@ -28,6 +28,7 @@ struct RequestDetail: View {
     let onComment: () -> Void
 
     @State private var showsDocument = false
+    @Environment(\.keyProtection) private var protection
 
     private var request: Request { item.request }
     private var hasOptions: Bool { !request.options.isEmpty }
@@ -120,7 +121,7 @@ struct RequestDetail: View {
             decideButton
             if controls.showsComment { commentSection }
             statusLine
-            Label(Ja.Paper.faceIDNote, systemImage: "faceid").font(.caption).foregroundStyle(.secondary).wrapping()
+            Label(Ja.Key.confirmSend(protection), systemImage: Ja.Key.symbol(protection)).font(.caption).foregroundStyle(.secondary).wrapping()
         }
     }
 
