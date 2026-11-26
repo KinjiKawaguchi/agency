@@ -5,6 +5,7 @@ mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
+mod metrics_cli;
 mod outcome_cli;
 mod peer_cli;
 mod recovery_cli;
@@ -187,6 +188,8 @@ enum Command {
     },
     /// Prints the node's log (logs/node.jsonl and the closed files), oldest first, filtered; reads no key and needs no running node
     Logs(logs_cli::LogsArgs),
+    /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
+    Metrics(metrics_cli::MetricsArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -511,11 +514,16 @@ async fn run(cli: Cli) -> Result<()> {
     if let Command::Logs(args) = &cli.command {
         return logs_cli::run(&data, args);
     }
+    if let Command::Metrics(args) = &cli.command {
+        return metrics_cli::run(&data, args);
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
     match cli.command {
-        Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) => unreachable!(),
+        Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) | Command::Metrics(_) => {
+            unreachable!()
+        }
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(
