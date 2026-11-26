@@ -251,6 +251,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 | `activity` (optional) | `"since": <Timestamp>`, `"limit": <1 to 500>` | `Activity` (see "Activity") |
+| `participantMetrics` (optional) | `"days": <1 to 90>`, `"utcOffsetMinutes"?: <-720 to 840>` | `ParticipantMetrics` (see "Participant metrics") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses usage for 60 seconds (for the same range).
@@ -260,6 +261,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `activity` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. It runs at most one `activity` call per team at a time, and the answer is kept and refreshed as above (young for 10 seconds): the command is asked for the events after five minutes before the first reader's `since`, at the largest `limit`, and each reader gets the events after its own `since`, cut at its own `limit`, so readers with different questions start one process. A reader whose question the shared answer cannot give (it asks from before the shared answer began, or for more events than an answer the runtime cut holds) gets a run of its own.
+- `participantMetrics` is optional in the same way: the node calls it only when `describe` lists it, and a runtime without it is a team with no participant metrics, not an error. A runtime that lists it cuts the days at `utcOffsetMinutes` when the request has it.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## Token usage
@@ -275,6 +277,25 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 - `costUsd` is an estimate: tokens priced at API rates, in US dollars rounded to cents by the runtime, whatever actually pays for them (a subscription or an API key). It is the one exception to "numbers are non-negative integers": a non-negative JSON number. Token counts are non-negative integers.
 - The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every participant has a name. A report that fails is 503.
 - The shared sample is `testdata/tokenusage.sample.json`.
+
+## Participant metrics
+
+What a team runtime knows about each participant's days, and whose pull requests were whose. It is the optional op `participantMetrics` of agency-runtime/1, and it carries only what GitHub does not have: the times of the pull requests and of the issues (when one opened, merged, or moved to In Progress) are GitHub's, which the node reads for "Evaluation", so no second source of the same times exists. A work item's work type and epic are in the `TeamView`, and so are not here either.
+
+```
+ParticipantMetrics { org: Id, team: Id, days, generatedAt: Timestamp, utcOffsetMinutes, participants: ParticipantDays[], pullRequests: PullRequestAuthor[] }
+ParticipantDays    { name: <runtime name>, byDay: ParticipantDay[] }
+ParticipantDay     { date: Date, busySeconds, waitingSeconds, idleSeconds, costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
+PullRequestAuthor  { repo: "owner/name", number, by: <runtime name> }
+```
+
+- A report covers the last `days` calendar days (1 to 90), today included. The days are cut at `utcOffsetMinutes`, minutes east of UTC (-720 to 840): the offset the node gave in the request, which is its own time zone, so that a day here is a day of "Evaluation"; or, when the request has none, the runtime's own. The report says which one it used, and the node refuses a report that used another than the one it asked for.
+- `participants` are named by their runtime names, as in `TeamView` and `TokenUsage`, not by org member ids, and each appears once. `byDay` is oldest first; days with nothing in them may be left out.
+- The three times of a day add up to the time at least one of the participant's sessions was alive. When several sessions overlap, the overlap counts once, not once for each. `busySeconds` is the time at least one session was working. `waitingSeconds` is the rest of the time in which at least one session waited for a decision of a human. Only a human's decision is waiting: a session that waits for an agent participant, or for anything else, is idle in that time, so that two runtimes cannot split the same minute differently. `idleSeconds` is the rest: sessions were alive and none worked or waited. A moment that is both busy and waiting is busy. Time in which no session was alive is in none of them, so a day's three numbers may add up to less than the day. A day is cut at a fixed offset, so it lasts exactly 24 hours (86 400 seconds) whatever the clocks do, and the three numbers never add up to more than that.
+- `costUsd` and `tokens` add up over the participant's sessions, as in "Token usage" (an estimate at API rates, rounded to cents).
+- `pullRequests` lists a pull request only when the runtime knows whose session made it, for example from the session's own record that it opened that pull request. It never guesses, and a pull request it cannot attribute is left out. A pull request is named by `repo` and `number` on GitHub, so the node joins it to the pull requests it reads from GitHub without parsing an item reference (which stays opaque, see "Item references"). `by` is the participant's runtime name.
+- Before using a report, the node checks that `org`, `team`, and `days` are the ones it asked for; that `utcOffsetMinutes` is a time zone and the one asked for; that the days of each participant are in order, within the range, and no more than 24 hours of time in a day; that costs are finite and not negative; that a participant, and a pull request, is listed once, with a name and, for a pull request, an `owner/name` and a number above 0; and that the report lists at most 1000 participants and 10 000 pull requests. A report that fails is answered as an unavailable runtime, and nothing of it is used.
+- The shared sample is `testdata/participantmetrics.sample.json`. Its costs and tokens are those of `testdata/tokenusage.sample.json`, split by day.
 
 ## Evaluation
 
