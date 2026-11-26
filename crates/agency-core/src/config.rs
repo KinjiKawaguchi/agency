@@ -1,4 +1,5 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::logging_config::LoggingConfig;
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -143,6 +144,9 @@ pub struct NodeConfig {
     /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push: Option<PushConfig>,
+    /// The node's log: its level, and when its files are rotated and deleted.
+    #[serde(default, skip_serializing_if = "LoggingConfig::is_default")]
+    pub logging: LoggingConfig,
 }
 
 /// The GitHub repositories (`owner/name`) a hosted team's delivery numbers are worked out from: its
@@ -285,6 +289,7 @@ impl NodeConfig {
             funding: vec![],
             access: None,
             push: None,
+            logging: LoggingConfig::default(),
         }
     }
 

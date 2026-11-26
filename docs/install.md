@@ -107,7 +107,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 ```
 
 The agent starts `agency serve` at login and starts it again if it stops.
-The node's output goes to `~/.agency/logs/serve.log`.
+The node's log is `~/.agency/logs/node.jsonl` (see [The log](#the-log)); `~/.agency/logs/serve.log` keeps what the agent catches: the start lines and a crash.
 
 | To | Run |
 |---|---|
@@ -131,7 +131,7 @@ systemctl --user enable --now agency-node
 ```
 
 The unit starts `agency serve` when you log in (at boot, with lingering, below) and starts it again 10 seconds after it stops.
-The node's output goes to `~/.agency/logs/serve.log`, and `journalctl --user -u agency-node` shows when systemd started and stopped it.
+The node's log is `~/.agency/logs/node.jsonl` (see [The log](#the-log)); `~/.agency/logs/serve.log` keeps what the unit catches: the start lines and a crash. `journalctl --user -u agency-node` shows when systemd started and stopped it.
 
 | To | Run |
 |---|---|
@@ -170,7 +170,7 @@ If the browser is already added, the CLI device asks to be added instead: confir
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/serve.log
+tail -n 20 ~/.agency/logs/node.jsonl
 ```
 
 - `/api/me` lists the account, and the org with the team `app` and `"location":"local"`.
@@ -403,11 +403,39 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
+### The log
+
+While it runs, the node writes what it has to say to `~/.agency/logs/node.jsonl`, one JSON object on each line:
+
+```json
+{"ts":"2026-11-26T04:55:22.123Z","level":"warn","event":"runtime","message":"team acme/app: the team runtime fails: …"}
+```
+
+- `ts` is UTC. `level` is `error`, `warn`, `info`, or `debug`; the node writes `info` and the more urgent ones unless `logging.level` says otherwise.
+- `event` names the part that wrote the line: `start`, `runtime`, `refused`, `access`, `usage`, `push`, `placement`, `replicas`, `requests`, or `outbox`. The `message` is a sentence about the node, never a request body, a token, or a query string.
+- When the file passes `maxSizeMib`, the node closes it as `node-<UTC time>.jsonl` and starts a new one. It deletes the closed files that are older than `maxAgeDays` days, and all but the newest `maxFiles` of them, when it starts and each time it closes a file. Only the node's account can read the files.
+- Run in a terminal, the node also prints each line there. When the file cannot be written, the lines go to standard error, which is `serve.log` under launchd or systemd.
+
+Set it in `config.json`, then restart the node. Every field is optional, and a value out of range stops the node at start and says which:
+
+```json
+"logging": { "level": "info", "maxSizeMib": 20, "maxAgeDays": 14, "maxFiles": 50 }
+```
+
+| Field | Meaning | Allowed | Default |
+|---|---|---|---|
+| `level` | The least urgent level that is written | `error`, `warn`, `info`, `debug` | `info` |
+| `maxSizeMib` | The size at which the file is closed, in MiB | 1 to 1024 | 20 |
+| `maxAgeDays` | How long a closed file is kept | 1 to 365 | 14 |
+| `maxFiles` | How many closed files are kept | 1 to 1000 | 50 |
+
+`serve.log` keeps what launchd or systemd catches: the lines printed when the node starts, the line of a failure that stops it, and a crash. It is small, and nothing rotates it.
+
 ## Troubleshooting
 
 ### Log lines
 
-The node writes these to `~/.agency/logs/serve.log`:
+The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `agency: <message>`, as a terminal and `serve.log` show it; in `node.jsonl` the text after `agency: ` is the `message` of the line. `cannot listen` and the line of a failure that stops the node are in `serve.log` only.
 
 | Line | Meaning |
 |---|---|
