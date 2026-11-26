@@ -14,6 +14,7 @@ getent passwd agency >/dev/null && { echo "package created an agency account" >&
 systemctl list-unit-files 'agency*' | grep -q agency && { echo "package installed an agency unit" >&2; exit 1; }
 sudo dpkg -r agency
 test -e /usr/bin/agency && { echo "binary remains after removal" >&2; exit 1; }
+hash -r
 command -v agency >/dev/null && { echo "agency remains on PATH after removal" >&2; exit 1; }
 sudo dpkg --purge agency
 lintian --fail-on error "$package"
