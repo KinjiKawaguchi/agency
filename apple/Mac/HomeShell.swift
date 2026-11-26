@@ -29,5 +29,6 @@ struct HomeShell: View {
             }
         }
         .shellChrome(model)
+        .focusedSceneValue(\.shellModel, model)
     }
 }

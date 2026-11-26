@@ -12,6 +12,11 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationC
         push.start()
     }
 
+    /// Closing the window leaves the app running in the menu bar, where its item shows what waits.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         push.didRegister(deviceToken: deviceToken)
     }

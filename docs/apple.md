@@ -76,7 +76,9 @@ The `AgencyMac` target (macOS 14.4 or later, the same reason as iOS 17.4: the ht
 - **The key.** Each Mac makes its own P-256 key in the Secure Enclave, one for each home node, and is added as another device through the same pairing (approve it from a device that is already added). The rule differs from the iPhone's on purpose: the iPhone's key needs Face ID alone (`.biometryCurrentSet`); the Mac's key needs Touch ID **or the Mac's password** (`.biometryCurrentSet` or `.devicePasscode`), because a Mac may have no Touch ID, or be used closed with an external keyboard, where a Touch-ID-only key could never sign. It is still a Secure Enclave key that cannot be read, and each signature still asks for the person. The settings and the confirmation lines say "Touch ID か Mac のパスワード" there.
 - **Keychain.** The Mac uses the data protection keychain (`kSecUseDataProtectionKeychain`), which the sandboxed app reaches through its `keychain-access-groups` entitlement; the login keychain would ignore the accessibility class and ask the person for access.
 - **Push and the Dock.** The same coordinator asks for permission and registers for remote notifications (`com.apple.developer.aps-environment` in the entitlements); the push label is `Mac`, never the computer's name. The badge on the Dock icon is the number of requests waiting.
-- **Not on the Mac yet:** a menu-bar item, the Settings window on ⌘, (the settings are the sheet behind the gear, as on the iPhone), the widgets.
+- **The menu bar.** A menu-bar item (`MenuBarExtra`) shows a tray symbol, with the number of requests waiting when some do (the same number as the desk tab and the Dock badge), and a menu with that count, "Agency を開く" and "Agency を終了". Closing the window leaves the app running; the item then says it has not read the desk, because the session belongs to the window. It shows the count only, never a title.
+- **Settings.** ⌘, in the app menu opens the settings sheet of the window in front (the same sheet as the gear).
+- **Not on the Mac yet:** the widgets.
 
 ## A read that is not ready yet
 

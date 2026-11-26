@@ -15,6 +15,7 @@ private struct NewsWatch: Hashable {
 private struct ShellChrome: ViewModifier {
     @Bindable var model: ShellModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.waitingStatus) private var waitingStatus
 
     func body(content: Content) -> some View {
         content
@@ -36,6 +37,8 @@ private struct ShellChrome: ViewModifier {
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
             .onChange(of: model.router.tab) { model.tabChanged() }
+            .onChange(of: model.session?.desk.waitingCount) { waitingStatus?.set(model.session?.desk.waitingCount) }
+            .onDisappear { waitingStatus?.set(nil) }
             .onChange(of: model.push.registration) { model.registerPush() }
             .onChange(of: model.push.pendingLink) { model.takeLink() }
             .sheet(isPresented: $model.showsSettings) {
