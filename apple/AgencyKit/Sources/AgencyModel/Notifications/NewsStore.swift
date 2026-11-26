@@ -125,6 +125,7 @@ public final class NewsStore {
         case .delivered: "delivered"
         case .queued: "queued"
         case .refused: "refused"
+        case .unknown: "unknown"
         }
     }
 

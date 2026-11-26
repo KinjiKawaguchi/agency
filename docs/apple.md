@@ -126,6 +126,17 @@ The node's push of the kind `recovery` (`agency: { type: "recovery", org }`, its
 
 The cancel command is built from the org's id, which the node gave, and is made to be pasted into a terminal, so it is shown only when the id is one the node itself would have made (its `Id` rule: lower-case letters, digits and hyphens, not starting with a hyphen, at most 40, the web's rule too); otherwise the item says in words where to run `agency root-cancel-recovery` (the web's sentence).
 
+## Words of the node the app does not know
+
+A newer node may say a word an older app has never seen (`docs/compatibility.md`: "A new enum value in an answer"). Every enum the package decodes reads it as `unknown` and carries on: the rest of the answer still reads, and the new word is never one of the known ones, a success among them. `OpenWireEnum` does it for the enums of plain words; `DecisionState`, `WaitingOn`, `TeamSnapshot.Source` and `DeviceChangeResult.Outcome` decode themselves and keep the word. What the app does with an unknown word is the safe thing, and the screen says so where the owner could be misled:
+
+- a request of an unknown kind is on the desk and counted, in a group of its own (「このアプリが知らない種類の依頼」), named 「依頼」; it is answered like any request when the node's `answerWith` names a kind of envelope the app knows, and when it does not, nothing is offered and the request says it cannot be answered here (`DeskItem.isAnswerableHere`, `DecisionEnvelope.Kind.unknown` is refused by `validate()` before anything is signed);
+- a decision in an unknown state is listed without a colour that says it went well (「状態を読み取れません」); an unknown outcome of a device change is shown with the node's message and is not a success;
+- an unknown kind of funding, usage window or blocked reason has a plain word (「ほかの資金源」, 「ほかの枠」, 「待機中」), and a participant who is not a human is listed with the agents;
+- a source of a team's view the app does not know is shown as the node gave it, with no word on its age.
+
+`OpenWireEnumsGuardTests` reads the package's sources and fails for a decoded enum that does not do this, unless it is named there with why it is not a word of a node's (the three it names are kept on the device by the app itself).
+
 ## What waits for the root key's signature (agency#381)
 
 An org whose root key asks for its owner's presence holds a change someone else asked for (a new member, a new device) until the owner signs it on the root key's node with `agency root-sign`. The apps say it in two places, in the same words as the web's.

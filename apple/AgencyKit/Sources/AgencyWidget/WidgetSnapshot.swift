@@ -2,7 +2,7 @@ import Foundation
 
 /// One request a widget lists: its title and team to read, and the key that opens it in the app.
 public struct WidgetRequest: Codable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case proposal, question, pendingDecision }
+    public enum Kind: String, Codable, Sendable { case proposal, question, pendingDecision, other }
 
     /// The most characters of a title the snapshot keeps: a widget has room for a line or two.
     public static let titleLimit = 80
