@@ -143,6 +143,23 @@ pub struct NodeConfig {
     pub hide_titles: bool,
 }
 
+impl WebPushConfig {
+    /// Why the node cannot send with this setting: an entry of `extraHosts` that is not a host name (or `*.` and a
+    /// domain) in lowercase, such as an address or a form of one (`0x7f.1`).
+    pub fn check(&self) -> Result<(), String> {
+        match self
+            .extra_hosts
+            .iter()
+            .find(|entry| !crate::web_push::is_host_pattern(entry))
+        {
+            Some(entry) => Err(format!(
+                "webPush.extraHosts: \"{entry}\" is not a host name in lowercase, or `*.` and a domain"
+            )),
+            None => Ok(()),
+        }
+    }
+}
+
 /// Web Push: the node's own VAPID key lives in its data directory, never here.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -335,6 +352,29 @@ mod tests {
 
     fn id(raw: &str) -> Id {
         Id::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn web_push_hosts_must_be_names_and_say_which_entry_is_not() {
+        let hosts = |list: &[&str]| WebPushConfig {
+            subject: None,
+            extra_hosts: list.iter().map(|one| (*one).to_owned()).collect(),
+        };
+        assert_eq!(hosts(&[]).check(), Ok(()));
+        assert_eq!(
+            hosts(&["push.acme.example", "*.edge.acme.example"]).check(),
+            Ok(())
+        );
+        for bad in [
+            "127.0.0.1",
+            "0x7f.1",
+            "2130706433",
+            "*.com",
+            "Push.Acme.example",
+        ] {
+            let error = hosts(&["push.acme.example", bad]).check().unwrap_err();
+            assert!(error.contains(bad), "{error}");
+        }
     }
 
     #[test]

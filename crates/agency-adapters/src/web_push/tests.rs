@@ -360,4 +360,37 @@ async fn the_client_of_a_real_node_does_not_connect_to_a_name_that_resolves_insi
         1,
         "the stand-in saw nothing more"
     );
+
+    // `http` is refused by the client itself, even to an address, which no name resolution would stop.
+    let by_address = format!("http://127.0.0.1:{port}/other");
+    assert!(web_push().http.post(&by_address).send().await.is_ok());
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        2,
+        "the stand-in takes it by address"
+    );
+    assert!(node_sender.http.post(&by_address).send().await.is_err());
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        2,
+        "the node's client does not speak plain http"
+    );
+}
+
+#[test]
+fn keys_are_checked_to_be_a_browsers() {
+    let browser = Browser::new();
+    let (public, auth) = (B64.encode(browser.public()), B64.encode(browser.auth));
+    assert!(check_keys(&public, &auth).is_ok());
+    let off_curve = B64.encode([4u8; 65]);
+    let short_auth = B64.encode([1u8; 15]);
+    for (p256dh, secret) in [
+        (off_curve.as_str(), auth.as_str()),
+        (public.as_str(), short_auth.as_str()),
+        (public.as_str(), "***"),
+        ("***", auth.as_str()),
+        ("", auth.as_str()),
+    ] {
+        assert!(check_keys(p256dh, secret).is_err(), "{p256dh} {secret}");
+    }
 }

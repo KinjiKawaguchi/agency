@@ -75,6 +75,10 @@ fn notifier(
         return tokens;
     };
     let key_path = data_dir.join("web-push-vapid.key");
+    if let Err(error) = web_config.check() {
+        eprintln!("agency: web push is off: {error}");
+        return tokens;
+    }
     match WebPush::new(web_config, web_push_subject(config), &key_path, clock) {
         Ok(web) => Arc::new(WithWebPush { tokens, web }),
         Err(error) => {

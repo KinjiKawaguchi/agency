@@ -37,6 +37,31 @@ pub struct WebSubscription {
     pub key_id: String,
 }
 
+/// A DNS host name: at least two labels of letters, digits, and hyphens, the last starting with a letter. That
+/// leaves out every form a parser may read as an IPv4 address (`127.0.0.1`, `0x7f.1`, `2130706433`, `0177.0.0.1`).
+pub fn is_host_name(host: &str) -> bool {
+    let labels: Vec<&str> = host.split('.').collect();
+    let is_label = |label: &&str| {
+        (1..=63).contains(&label.len())
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    };
+    host.len() <= 253
+        && labels.len() >= 2
+        && labels.iter().all(is_label)
+        && labels
+            .last()
+            .is_some_and(|last| last.starts_with(|c: char| c.is_ascii_alphabetic()))
+}
+
+/// An entry of the list of push services: a host name in lowercase, or `*.` and a domain of at least two labels.
+pub fn is_host_pattern(entry: &str) -> bool {
+    is_host_name(entry.strip_prefix("*.").unwrap_or(entry)) && entry == entry.to_ascii_lowercase()
+}
+
 fn host_matches(pattern: &str, host: &str) -> bool {
     match pattern.strip_prefix("*.") {
         Some(domain) => host
@@ -57,20 +82,19 @@ pub fn check_endpoint(raw: &str, extra_hosts: &[String]) -> Result<String> {
     }
     let rest = raw.strip_prefix("https://").ok_or_else(refuse)?;
     let (host, path) = rest.split_once('/').ok_or_else(refuse)?;
-    let is_name = host
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
-        && host.bytes().any(|b| b.is_ascii_alphabetic())
-        && !host.starts_with('.')
-        && !host.ends_with('.');
-    if !is_name || path.contains('#') {
+    let host = host.to_ascii_lowercase();
+    if !is_host_name(&host) || path.contains('#') {
         return Err(refuse());
     }
-    let host = host.to_ascii_lowercase();
     let is_allowed = PUSH_SERVICES
         .iter()
         .copied()
-        .chain(extra_hosts.iter().map(String::as_str))
+        .chain(
+            extra_hosts
+                .iter()
+                .map(String::as_str)
+                .filter(|entry| is_host_pattern(entry)),
+        )
         .any(|pattern| host_matches(pattern, &host));
     if !is_allowed {
         return Err(refuse());
@@ -138,6 +162,9 @@ pub fn register_subscription(
             "p256dh is 65 octets and auth is 16, as base64url",
         ));
     }
+    node.notifier()
+        .web_push_check_keys(&input.p256dh, &input.auth)
+        .map_err(Error::bad_request)?;
     let label = input.label.trim().to_owned();
     if !(1..=80).contains(&label.chars().count()) || label.chars().any(char::is_control) {
         return Err(Error::bad_request("the label is 1 to 80 characters"));
@@ -204,4 +231,78 @@ pub(crate) fn wanting(node: &Node, notice: &Notice) -> Vec<WebSubscription> {
         .into_iter()
         .filter(|one| one.key_id == key.key_id && one.events.contains(&notice.event()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_host_name_is_not_an_address_or_a_form_of_one() {
+        for name in [
+            "fcm.googleapis.com",
+            "a.b",
+            "web.push.apple.com",
+            "x-y.example",
+            "1.example",
+            "a1.b2c",
+        ] {
+            assert!(is_host_name(name), "{name}");
+        }
+        for not_name in [
+            "127.0.0.1",
+            "0x7f.1",
+            "0x7f.0.0.1",
+            "2130706433",
+            "0177.0.0.1",
+            "127.1",
+            "localhost",
+            "a.1",
+            "a.0x7f",
+            "example.com.",
+            ".example.com",
+            "a..b",
+            "-a.example",
+            "a-.example",
+            "a b.example",
+            "exa_mple.com",
+            "a@b.example",
+            "a.b:8443",
+            "",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(!is_host_name(not_name), "{not_name}");
+        }
+        assert!(
+            !is_host_name(&format!("{}.com", "a".repeat(64))),
+            "a label is at most 63 characters"
+        );
+    }
+
+    #[test]
+    fn an_entry_of_the_list_is_a_lowercase_name_or_a_wildcard_domain() {
+        for entry in [
+            "push.acme.example",
+            "*.edge.acme.example",
+            "*.push.apple.com",
+        ] {
+            assert!(is_host_pattern(entry), "{entry}");
+        }
+        for entry in [
+            "*",
+            "*.com",
+            "*.",
+            "**.acme.example",
+            "Push.Acme.example",
+            "0x7f.1",
+            "10.0.0.1",
+            "*.127.0.0.1",
+            "*.0x7f.1",
+            "acme.example/x",
+            "",
+        ] {
+            assert!(!is_host_pattern(entry), "{entry}");
+        }
+    }
 }
