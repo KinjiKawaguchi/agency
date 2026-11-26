@@ -69,13 +69,21 @@ impl<'a> Reader<'a> {
 }
 
 /// The members who answer a request that is addressed to `addressee` on the team `hosted`: the member
-/// itself; for a seat, the members in its `relays`, or the team's owner when it has none; for an external
-/// party, the members in its `relays`. A seat and an external party answer nothing themselves.
+/// itself; for a seat someone took, that member; for a seat, the members in its `relays`, or the team's owner
+/// when it has none; for an external party, the members in its `relays`. A seat and an external party answer
+/// nothing themselves.
 pub fn answerers<'a>(
     definition: &'a OrgDefinition,
     hosted: &'a HostedTeam,
     addressee: &'a Id,
 ) -> Vec<&'a Id> {
+    if let Some(taker) = definition
+        .people
+        .iter()
+        .find(|one| one.formerly.contains(addressee))
+    {
+        return vec![&taker.id];
+    }
     if let Some(seat) = definition.seats.iter().find(|one| &one.id == addressee) {
         return if seat.relays.is_empty() {
             vec![&hosted.owner]
@@ -107,7 +115,7 @@ pub fn addressed_party<'a>(
 /// reader answers for it, with its id and its label as `definition` has it. When the definition has no such
 /// seat or external party yet (this node has not read the version that added it), the label is the id: the
 /// request is still the reader's to answer, and what it is for can still be said. `None` when `to` names no
-/// party the reader answers for.
+/// party the reader answers for, or a seat the reader took: the request is their own, and answers for no one.
 pub fn remote_addressed_party<'a>(
     definition: &'a OrgDefinition,
     answers_for: &'a [AnswersFor],
@@ -116,6 +124,9 @@ pub fn remote_addressed_party<'a>(
     let answered = answers_for
         .iter()
         .find(|one| Some(one.name.as_str()) == to)?;
+    if is_taken_seat(definition, &answered.id) {
+        return None;
+    }
     let seat = definition.seats.iter().find(|one| one.id == answered.id);
     let external = definition
         .externals
@@ -229,15 +240,25 @@ pub async fn hosted_view(
     })
 }
 
+/// Whether `id` is a seat that a member took: it is no seat now, and is in that member's `formerly`.
+fn is_taken_seat(definition: &OrgDefinition, id: &Id) -> bool {
+    definition
+        .people
+        .iter()
+        .any(|one| one.formerly.contains(id))
+}
+
 /// The seats and external parties of the org that the team's `people` name and that `person` answers for
-/// on the team `hosted`, by the name the team's runtime knows each by.
+/// on the team `hosted`, by the name the team's runtime knows each by. A seat the member took counts too: the
+/// request to it is theirs, so the team's node keeps it in their list.
 fn answers_for(definition: &OrgDefinition, hosted: &HostedTeam, person: &Id) -> Vec<AnswersFor> {
     hosted
         .people
         .iter()
         .filter(|(_, id)| {
             let is_party = definition.seats.iter().any(|one| &one.id == *id)
-                || definition.externals.iter().any(|one| &one.id == *id);
+                || definition.externals.iter().any(|one| &one.id == *id)
+                || is_taken_seat(definition, id);
             is_party && answerers(definition, hosted, id).contains(&person)
         })
         .map(|(name, id)| AnswersFor {
@@ -625,6 +646,8 @@ mod tests {
                 department: None,
                 role: Role::Member,
                 devices: vec![],
+                formerly: vec![],
+                ask_about: vec![],
             })
             .collect();
         OrgDefinition::new(

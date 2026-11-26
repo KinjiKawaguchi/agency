@@ -2,8 +2,8 @@
 import type { Id } from "./Id.js";
 
 /**
- * A place in the org that no one has taken yet. It keeps its id when someone takes it, so the requests and
- * the history that named it stay attached.
+ * A place in the org that no one has taken yet. When someone takes it, the seat is gone and its id is kept
+ * in that member's `formerly`, so the requests and the history that named it stay attached.
  */
 export type Seat = { id: Id, label: string, department?: Id, 
 /**

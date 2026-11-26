@@ -36,11 +36,8 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
     if key == &node.key().public() {
         return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
     }
-    let purpose = format!(
-        "Sign version {} of {}",
-        body.version,
-        agency_proto::org::printable(&body.label)
-    );
+    let before = node.store().load_org(&body.org);
+    let purpose = crate::change_words::describe(before.as_ref().map(|doc| &doc.body), &body);
     let org = body.org.clone();
     sign_by(node, body, &|text: &[u8]| {
         node.root_keys().sign(&org, key, text, &purpose)
@@ -83,11 +80,30 @@ fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
     all
 }
 
-/// A label this node writes now must not hold a character that could reorder or hide how a line reads
-/// (`label_ok_to_write`). Labels the version before already had stay, so an old org can still be changed.
+/// Every text of `body` that says what to ask a member, a seat, or an external party about, with whose it is.
+fn ask_about_texts(body: &OrgDefinition) -> Vec<(String, &str)> {
+    let mut all = vec![];
+    for person in &body.people {
+        let texts = person.ask_about.iter();
+        all.extend(texts.map(|text| (format!("member {}", person.id), text.as_str())));
+    }
+    for seat in &body.seats {
+        let texts = seat.ask_about.iter();
+        all.extend(texts.map(|text| (format!("seat {}", seat.id), text.as_str())));
+    }
+    for external in &body.externals {
+        let texts = external.ask_about.iter();
+        all.extend(texts.map(|text| (format!("external party {}", external.id), text.as_str())));
+    }
+    all
+}
+
+/// A label or an ask-about text this node writes now must not hold a character that could reorder or hide
+/// how a line reads (`label_ok_to_write`, `is_hidden_char`). What the version before already had stays, so an
+/// old org can still be changed.
 fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
     let before = node.store().load_org(&body.org);
-    let kept: std::collections::HashSet<&str> = before
+    let kept_labels: std::collections::HashSet<&str> = before
         .as_ref()
         .map(|doc| {
             labels(&doc.body)
@@ -96,10 +112,27 @@ fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
                 .collect()
         })
         .unwrap_or_default();
+    let kept_texts: std::collections::HashSet<&str> = before
+        .as_ref()
+        .map(|doc| {
+            ask_about_texts(&doc.body)
+                .into_iter()
+                .map(|(_, text)| text)
+                .collect()
+        })
+        .unwrap_or_default();
     for (what, label) in labels(body) {
-        if !kept.contains(label) && !agency_proto::org::label_ok_to_write(label) {
+        if !kept_labels.contains(label) && !agency_proto::org::label_ok_to_write(label) {
             return Err(Error::bad_request(format!(
                 "the label of {what} has a character that could reorder or hide how it reads"
+            )));
+        }
+    }
+    for (what, text) in ask_about_texts(body) {
+        let is_hidden = text.chars().any(agency_proto::org::is_hidden_char);
+        if !kept_texts.contains(text) && is_hidden {
+            return Err(Error::bad_request(format!(
+                "what to ask {what} about has a character that could reorder or hide how it reads"
             )));
         }
     }
@@ -131,7 +164,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
     let root = &doc.body.root;
     root.account == node.account()
         && (root.public_key == node.key().public()
-            || node.root_keys().holds(&doc.body.org, &root.public_key))
+            || node.root_keys().may_hold(&doc.body.org, &root.public_key))
 }
 
 /// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that
@@ -244,6 +277,8 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let root = Root::new(account, root_key.clone());
     let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
@@ -263,6 +298,14 @@ pub fn rotate_root(node: &Node, org: &Id) -> Result<SignedOrg> {
         return Err(Error::new(
             ErrorKind::Forbidden,
             format!("this node does not hold the root key of org {org}"),
+        ));
+    }
+    if node.root_keys().needs_recovery() && current.body.root.recovery.is_none() {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "a root key kept here cannot be copied out, so org {org} needs a recovery key first: run `agency root-recovery --org {org}`"
+            ),
         ));
     }
     let old = current.body.root.public_key.clone();
@@ -406,7 +449,10 @@ pub fn unknown_addressees(node: &Node) -> Vec<UnknownAddressee> {
         };
         let body = &doc.body;
         for (name, id) in &hosted.people {
-            let is_known = body.people.iter().any(|one| &one.id == id)
+            let is_known = body
+                .people
+                .iter()
+                .any(|one| &one.id == id || one.formerly.contains(id))
                 || body.seats.iter().any(|one| &one.id == id)
                 || body.externals.iter().any(|one| &one.id == id);
             if !is_known {

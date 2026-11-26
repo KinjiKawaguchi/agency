@@ -379,6 +379,7 @@ export const ja: Messages = {
         others: 'ほかのメンバーの返事待ち',
       },
       kinds: { proposal: '稟議', question: '質問', pendingDecision: '判断待ち' },
+      answerFor: (label) => `${label} の代理で答える`,
       blocking: (count) => `参加者 ${count} 人が待機`,
       showMore: (count) => `あと ${count} 件を表示`,
     },
@@ -386,6 +387,7 @@ export const ja: Messages = {
       head: '最近決めたもの',
       states: { applied: '反映済み', delivered: '届きました', queued: '送信待ち', refused: '断られました' },
       chose: (choice) => `「${choice}」を選びました。`,
+      answeredFor: (label) => `${label} の代理で答えました。`,
       queuedDetail: (attempts, retry) =>
         `${attempts === 0 ? 'まだ送れていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
       underMinute: '1 分以内',

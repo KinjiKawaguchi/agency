@@ -3,6 +3,7 @@
 //! it. The rules (an id used once, a department of the org, members to answer for them) are the definition's
 //! own, checked when the version is signed, so a refusal names the id that broke one.
 use crate::error::{Error, ErrorKind, Result};
+use crate::invites::take_seat;
 use crate::node::Node;
 use crate::orgs::amend;
 use agency_proto::org::SignedOrg;
@@ -32,7 +33,10 @@ fn not_found(what: &str, id: &Id, org: &Id) -> Error {
 
 /// The id is free among the org's members, seats and external parties.
 fn check_free(body: &OrgDefinition, id: &Id) -> Result<()> {
-    let is_taken = body.people.iter().any(|one| &one.id == id)
+    let is_taken = body
+        .people
+        .iter()
+        .any(|one| &one.id == id || one.formerly.contains(id))
         || body.seats.iter().any(|one| &one.id == id)
         || body.externals.iter().any(|one| &one.id == id);
     if is_taken {
@@ -71,6 +75,28 @@ pub fn change_seat(node: &Node, org: &Id, id: &Id, change: SeatChange) -> Result
         }
         if let Some(relays) = change.relays {
             seat.relays = relays;
+        }
+        Ok(())
+    })
+}
+
+/// A member takes a seat that is in the org already, for example someone who joined before the seat's claim
+/// link was made: the seat is gone, its id is the member's `formerly`, and what to ask about it is added to
+/// what to ask the member about (a text once; refused when that is more than the limit allows). Their
+/// department stays theirs.
+pub fn merge_seat(node: &Node, org: &Id, seat: &Id, into: &Id) -> Result<SignedOrg> {
+    amend(node, org, |body| {
+        let taken = take_seat(body, seat).map_err(|_| not_found("seat", seat, org))?;
+        let member = body
+            .people
+            .iter_mut()
+            .find(|one| &one.id == into)
+            .ok_or_else(|| not_found("member", into, org))?;
+        member.formerly.push(taken.id);
+        for text in taken.ask_about {
+            if !member.ask_about.contains(&text) {
+                member.ask_about.push(text);
+            }
         }
         Ok(())
     })

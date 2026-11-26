@@ -74,6 +74,9 @@ struct RequestDetail: View {
             Text(request.title).font(.title2.bold()).multilineTextAlignment(.leading).wrapping()
             Text("\(Ja.Paper.team(org: item.org, team: item.team)) · \(Ja.Desk.drafter(item.drafter?.label ?? request.from)) · \(Ago.text(from: request.createdAt.date, now: now))")
                 .font(.footnote).foregroundStyle(.secondary).wrapping()
+            if let label = item.answersFor {
+                Text(Ja.Desk.answerFor(label)).font(.footnote.weight(.semibold)).wrapping()
+            }
         }
     }
 

@@ -7,7 +7,7 @@
 use crate::error::Result;
 use crate::node::Node;
 use crate::notice::{Notice, NoticeKind};
-use crate::push::{remove_tokens, sent_of, Candidate, Pass, PushError};
+use crate::push::{record_token_sends, remove_tokens, sent_of, Candidate, Pass, PushError};
 use crate::web_push::{record_sends, remove_subscriptions, wanting};
 use agency_proto::clock;
 use serde::{Deserialize, Serialize};
@@ -53,6 +53,7 @@ async fn send_again(
                 return Ok(None);
             };
             let answer = node.notifier().send(&found, notice).await;
+            record_token_sends(node, &[(token.clone(), answer.clone())])?;
             if answer == Err(PushError::Gone) {
                 remove_tokens(node, std::slice::from_ref(token))?;
             }

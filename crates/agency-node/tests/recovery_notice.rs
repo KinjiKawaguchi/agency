@@ -257,3 +257,52 @@ async fn the_node_logs_a_started_recovery_even_with_no_device() {
         pass.recoveries[0].contains("acme") && pass.recoveries[0].contains("root-cancel-recovery")
     );
 }
+
+#[tokio::test]
+async fn a_root_moves_into_a_keychain_only_once_the_org_has_a_recovery_key() {
+    let (alice, _) = alice().await;
+    let org = id("acme");
+    alice.root_keys.need_recovery(true);
+    let before = alice.node.store().load_org(&org).unwrap();
+    let refused = orgs::rotate_root(&alice.node, &org).unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Conflict);
+    assert!(refused.message.contains("root-recovery"), "{refused:?}");
+    assert_eq!(
+        alice.node.store().load_org(&org).unwrap().digest(),
+        before.digest()
+    );
+
+    recovery::add(
+        &alice.node,
+        &org,
+        AccountKey::from_seed([0x38; 32]).public(),
+    )
+    .unwrap();
+    orgs::rotate_root(&alice.node, &org).unwrap();
+}
+
+#[tokio::test]
+async fn a_locked_keychain_keeps_the_node_the_root_but_finishes_no_recovery() {
+    let (alice, _) = alice().await;
+    let org = id("acme");
+    let words = AccountKey::from_seed([0x3c; 32]);
+    recovery::add(&alice.node, &org, words.public()).unwrap();
+    recovery::start(&alice.node, &org, &words, recovery::Recovering::RootKey)
+        .await
+        .unwrap();
+    alice.clock.advance(agency_proto::clock::Duration::seconds(
+        agency_proto::org::RECOVERY_WAIT_SECONDS,
+    ));
+    alice.root_keys.lock(true);
+    let current = alice.node.store().load_org(&org).unwrap();
+    assert!(
+        orgs::is_root(&alice.node, &current),
+        "still the root while locked"
+    );
+    let refused = recovery::finish(&alice.node, &org, &words)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Conflict, "{refused:?}");
+    alice.root_keys.lock(false);
+    recovery::finish(&alice.node, &org, &words).await.unwrap();
+}

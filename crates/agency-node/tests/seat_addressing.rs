@@ -391,6 +391,39 @@ async fn the_decision_log_of_a_team_elsewhere_keeps_whom_the_decision_answered_f
     assert_eq!(by_target("r-4").relayed_for, None);
 }
 
+/// Cara takes the seat carol (finance) by a merge: its requests are hers, no one answers for it any more, and
+/// the team's node still says she has them, under the name it knew the seat by.
+#[tokio::test]
+async fn a_member_on_another_node_who_took_a_seat_has_its_requests_as_her_own() {
+    let (alice, _, bob, cara) = world().await;
+    let (acme, app) = (id("acme"), id("app"));
+    seats::merge_seat(&alice.node, &acme, &id("carol"), &id("cara")).unwrap();
+    refresh(&bob.node).await.unwrap();
+    refresh(&cara.node).await.unwrap();
+    let replica = cara.node.store().load_replica(&acme, &app).unwrap();
+    let said: Vec<(&str, &str)> = replica
+        .answers_for
+        .iter()
+        .map(|one| (one.name.as_str(), one.id.as_str()))
+        .collect();
+    assert_eq!(said, [("counsel", "erin"), ("finance", "carol")]);
+    let snapshot = team_snapshot(&cara.node, &acme, &app).await.unwrap();
+    let mut mine = snapshot.mine;
+    mine.dedup(); // the runtime fixture already has an r-1 of its own
+    assert_eq!(mine, ["r-1", "r-3"]);
+    assert_eq!(
+        snapshot.relayed_for.into_iter().collect::<Vec<_>>(),
+        [("r-3".to_owned(), "Erin (outside counsel)".to_owned())],
+        "r-1 is hers: it is for no one else"
+    );
+
+    let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
+    assert!(
+        !snapshot.mine.contains(&"r-1".to_owned()),
+        "bob answered for the seat only while it was one"
+    );
+}
+
 /// The team's node knows a seat this node's definition of the org does not have yet.
 #[tokio::test]
 async fn a_party_the_definition_does_not_have_yet_is_said_by_its_id() {

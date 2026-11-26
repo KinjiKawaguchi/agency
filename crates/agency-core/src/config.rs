@@ -159,6 +159,26 @@ pub struct NodeConfig {
     /// The node's log: its level, and when its files are rotated and deleted.
     #[serde(default, skip_serializing_if = "LoggingConfig::is_default")]
     pub logging: LoggingConfig,
+    /// Where the org root keys this node holds are kept.
+    #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
+    pub root_keys: RootKeyStore,
+}
+
+/// Where a node keeps the org root keys it holds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RootKeyStore {
+    /// Files outside the data directory, readable by the owner's OS user only.
+    #[default]
+    Files,
+    /// The macOS login keychain, with Touch ID or the login password before each root signature.
+    Keychain,
+}
+
+impl RootKeyStore {
+    fn is_default(&self) -> bool {
+        *self == Self::Files
+    }
 }
 
 /// One of the owner's other home nodes, as configured: a label and its node origin.
@@ -380,6 +400,7 @@ impl NodeConfig {
             hide_titles: false,
             home_nodes: vec![],
             logging: LoggingConfig::default(),
+            root_keys: RootKeyStore::Files,
         }
     }
 

@@ -4,9 +4,9 @@
     { "id": "ops", "label": "Operations" }
   ],
   "members": [
-    { "id": "alice", "label": "ALICE", "role": "member", "runtimeNames": [{ "team": "app", "names": ["owner"] }] },
-    { "id": "bob", "label": "BOB", "role": "member", "runtimeNames": [{ "team": "app", "names": ["reviewer"] }] },
-    { "id": "cara", "label": "CARA", "role": "answerer", "runtimeNames": [] }
+    { "id": "alice", "label": "ALICE", "role": "member", "askAbout": [], "runtimeNames": [{ "team": "app", "names": ["owner"] }] },
+    { "id": "bob", "label": "BOB", "role": "member", "askAbout": [], "runtimeNames": [{ "team": "app", "names": ["reviewer"] }] },
+    { "id": "cara", "label": "CARA", "role": "answerer", "askAbout": [], "runtimeNames": [] }
   ],
   "seats": [
     {

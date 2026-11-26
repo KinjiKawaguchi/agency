@@ -53,6 +53,8 @@ fn org_with_the_account_key_as_root(running: &Running) {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let body = OrgDefinition::new(
         id("legacy"),
@@ -180,6 +182,8 @@ fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }]);
     let doc = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     running.node.store().save_org(&doc).unwrap();
@@ -272,4 +276,64 @@ async fn a_node_takes_one_rotation_signed_by_the_old_root_and_nothing_else() {
     let by_new_root = Signed::sign(Kind::Org, v3, id("alice"), &new).unwrap();
     orgs::receive(&carol.node, by_new_root).await.unwrap();
     assert_eq!(current(&carol).body.label, "Acme Inc");
+}
+
+#[tokio::test]
+async fn the_presence_prompt_names_what_the_version_changes() {
+    let (alice, _) = alice().await;
+    alice.root_keys.ask_presence(true);
+    departments::add(&alice.node, &id("acme"), department("ops")).unwrap();
+    agency_core::recovery::add(
+        &alice.node,
+        &id("acme"),
+        agency_proto::AccountKey::from_seed([0x51; 32]).public(),
+    )
+    .unwrap();
+    orgs::rotate_root(&alice.node, &id("acme")).unwrap();
+    let prompts = alice.root_keys.prompts();
+    assert_eq!(
+        prompts,
+        [
+            "acme: add department ops (ops)",
+            "acme: add a recovery key",
+            "acme: move the root to a new key",
+        ],
+        "{prompts:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_prompt_names_a_key_swap_a_role_and_counts_what_it_does_not_name() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let _ = bob;
+    alice.root_keys.ask_presence(true);
+    let other = agency_proto::AccountKey::from_seed([0x52; 32]).public();
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        let member = body
+            .people
+            .iter_mut()
+            .find(|one| one.id == id("bob"))
+            .unwrap();
+        member.public_key = other.clone();
+        member.role = Role::Answerer;
+        Ok(())
+    })
+    .unwrap();
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        for raw in ["a", "b", "c", "d", "e"] {
+            body.departments.push(department(raw));
+        }
+        Ok(())
+    })
+    .unwrap();
+    let prompts = alice.root_keys.prompts();
+    assert_eq!(
+        prompts[0],
+        "acme: replace the key of member bob, make bob an answerer"
+    );
+    assert_eq!(
+        prompts[1],
+        "acme: add department a (a), add department b (b), add department c (c), add department d (d), and 1 other changes: department"
+    );
 }
