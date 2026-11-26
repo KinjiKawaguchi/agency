@@ -69,7 +69,7 @@ pub struct MemoryRuntimeState {
     pub requests: Vec<(String, String)>,
     /// The runtime name a request is addressed to (`to`), by request id; absent for the team's owner.
     pub to: BTreeMap<String, String>,
-    /// Board items waiting for a decision (`pendingDecision`, judged by `repo#N`): (ref, title).
+    /// Board items waiting for a decision (`pendingDecision`, judged by their item reference): (ref, title).
     pub pending: Vec<(String, String)>,
     /// The people the view shows.
     pub people: Vec<PersonStatus>,

@@ -6,6 +6,7 @@ pub mod access;
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;
+use agency_adapters::launch::Launch;
 use agency_adapters::memory::{
     CountingRandom, ManualClock, MemoryNotifier, MemoryRuntime, MemoryRuntimeState,
 };
@@ -173,6 +174,10 @@ async fn node_from(
             .map(|_| Arc::new(CountingRandom::default()) as Arc<dyn agency_core::ports::Random>),
         certs,
         notifier: Some(Arc::new(notifier.clone())),
+        launch: Some(Launch {
+            executable: "/opt/agency/bin/agency".into(),
+            data_dir: "/var/lib/agency".into(),
+        }),
     };
     let opened = agency_node::open(data, overrides).unwrap();
     let mut running = Running {

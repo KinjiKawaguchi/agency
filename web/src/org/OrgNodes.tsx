@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
+import { Skeleton } from '../shared/Skeleton'
 import type { Team } from '../api/teams'
 import type { AgentNode, DepartmentNode, OrgNode, PersonNode, TeamNode } from './tree'
 
@@ -47,7 +48,9 @@ function CompactTeam({ node }: { node: TeamNode }) {
       <span className="oc-kind">{t.org.kinds.team}</span>
       <span className="oc-name">{node.team.label}</span>
       <OldData source={node.source} />
-      {signals === undefined ? (
+      {node.isLoading ? (
+        <Skeleton kind="short" />
+      ) : signals === undefined ? (
         <span className="oc-wait">{t.org.teamUnavailable}</span>
       ) : (
         <>
@@ -82,7 +85,7 @@ export function TeamCard({ node, compact = false }: { node: TeamNode; compact?: 
       <span className="oc-kind">{t.org.kinds.team}</span>
       <span className="oc-name">{node.team.label}</span>
       {node.view === undefined ? (
-        <span className="oc-wait">{t.org.teamUnavailable}</span>
+        node.isLoading ? <Skeleton kind="short" /> : <span className="oc-wait">{t.org.teamUnavailable}</span>
       ) : (
         <span className="oc-sub">{t.org.agents(node.agents.length, node.working)}</span>
       )}
@@ -124,7 +127,7 @@ export function OrgCard({ node }: { node: OrgNode }) {
       <span className="oc-kind">{t.org.kinds.organization}</span>
       <span className="oc-name">{node.org.label}</span>
       {node.state === 'failed' ? <span className="oc-wait">{t.org.orgUnavailable}</span> : null}
-      {node.state === 'loading' ? <span className="oc-sub">{t.app.loading}</span> : null}
+      {node.state === 'loading' ? <Skeleton kind="short" /> : null}
       <Waiting count={node.mine} />
     </Link>
   )

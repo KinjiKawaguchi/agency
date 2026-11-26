@@ -1,0 +1,79 @@
+import { QueryErrorResetBoundary } from '@tanstack/react-query'
+import { Component, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
+import { failureText } from '../api/failure'
+import { POLL_MS } from '../api/queries'
+import { SignInExpiredError } from '../api/session'
+import { useI18n } from '../i18n'
+import { useSecondsUntil } from './useCountdown'
+
+/** The region went wrong for good: what, why, when it tries again by itself, and a button to try now. */
+function RegionFailed({ what, error, retry }: { what: string; error: Error; retry: () => void }) {
+  const { t } = useI18n()
+  const [failedAt] = useState(() => Date.now())
+  const seconds = useSecondsUntil(failedAt + POLL_MS)
+  useEffect(() => {
+    if (seconds === 0) retry()
+  }, [seconds, retry])
+  return (
+    <div className="region-failed" role="alert">
+      <p>
+        {error instanceof SignInExpiredError ? failureText(t, error) : t.loading.failed(what, error.message)}
+        <span className="muted">{seconds > 0 ? t.loading.retryIn(seconds) : t.loading.retrying}</span>
+      </p>
+      <button type="button" className="btn small" onClick={retry}>{t.loading.tryAgain}</button>
+    </div>
+  )
+}
+
+interface BoundaryProps {
+  children: ReactNode
+  /** Clears what the queries remember of their failure, so that trying again asks again. */
+  onReset: () => void
+  failed: (error: Error, retry: () => void) => ReactNode
+}
+
+class Boundary extends Component<BoundaryProps, { error: Error | null }> {
+  override state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+
+  override componentDidCatch(_error: Error, _info: ErrorInfo): void {
+    // The failure is shown by `failed`; nothing else is done with it.
+  }
+
+  private readonly retry = (): void => {
+    this.props.onReset()
+    this.setState({ error: null })
+  }
+
+  override render(): ReactNode {
+    return this.state.error === null ? this.props.children : this.props.failed(this.state.error, this.retry)
+  }
+}
+
+interface RegionProps {
+  /** What the region shows, for its failure message ("the overview"). */
+  what: string
+  /** The shape of the region while it loads. */
+  skeleton: ReactNode
+  children: ReactNode
+}
+
+/**
+ * A part of a screen that reads on its own: while it reads, its skeleton stands in; when the read fails for good,
+ * only this part says so, with the reason and when it tries again, and a button to try now. The rest of the
+ * page is never blanked by it.
+ */
+export function Region({ what, skeleton, children }: RegionProps) {
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <Boundary onReset={reset} failed={(error, retry) => <RegionFailed what={what} error={error} retry={retry} />}>
+          <Suspense fallback={skeleton}>{children}</Suspense>
+        </Boundary>
+      )}
+    </QueryErrorResetBoundary>
+  )
+}

@@ -1,5 +1,5 @@
 import type { DayEvaluation } from '../api/evaluationApi'
-import { countMax, emptyCounts, fillDays, lastDayOf, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
+import { allMerged, countMax, emptyCounts, fillDays, lastDayOf, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
 
 const day = (date: string, overrides: Partial<DayEvaluation> = {}): DayEvaluation => ({ date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [], ...overrides })
 
@@ -59,12 +59,15 @@ describe('rollingMedian', () => {
 
 describe('rollingCostPerPullRequest', () => {
   it('divides the window’s cost by the window’s merged pull requests, and says nothing when none merged', () => {
-    const rows = [day('a', { costUsd: 10 }), day('b', { costUsd: 20, merged: { ...emptyCounts(), feat: 2, fix: 1 } }), day('c', { costUsd: 30 })]
+    // Day b merged 2 features and a fix, and day c one revert, which the node counts on its own.
+    const rows = [day('a', { costUsd: 10 }), day('b', { costUsd: 20, merged: { ...emptyCounts(), feat: 2, fix: 1 } }), day('c', { costUsd: 30, reverts: 1 })]
     const [first, second, third] = rollingCostPerPullRequest(rows, 2)
     expect(first).toBeNull()
     expect(second).toBe(10)
-    expect(third).toBeCloseTo(50 / 3)
+    expect(third).toBeCloseTo(50 / 4)
     expect(totalMerged(rows[1]!.merged)).toBe(3)
+    expect(allMerged(rows[2]!)).toBe(1)
+    expect(allMerged({ merged: { ...emptyCounts(), feat: 2 }, reverts: 1 })).toBe(3)
   })
 })
 

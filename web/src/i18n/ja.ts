@@ -356,7 +356,7 @@ export const ja: Messages = {
     noData: 'この期間はありません',
     teamUnavailable: (reason) => `このチームは数字を返せませんでした: ${reason}`,
     units: { minute: '分', hour: '時間', day: '日' },
-    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他' },
+    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他', revert: 'リバート' },
     tiles: {
       features: 'マージした新機能',
       merged: 'マージしたプルリクエスト',
@@ -425,5 +425,13 @@ export const ja: Messages = {
       table: { show: '数字を表で見る', caption: (team) => `${team}チームの作業種別別`, type: '作業種別', cost: 'API 価格', share: '割合', intended: '意図', total: '合計' },
       source: (path) => `エージェントが引用する同じ数字: GET ${path}。意図する割合は組織定義の \`teams[].plan\` です。`,
     },
+  },
+  loading: {
+    label: '読み込んでいます…',
+    failed: (what, reason) => `${what}を読み込めませんでした: ${reason}`,
+    retryIn: (seconds) => `${seconds} 秒後にもう一度試します。`,
+    retrying: 'もう一度試しています…',
+    tryAgain: 'もう一度試す',
+    what: { overview: '全体', orgChart: '組織図', people: '参加者と仕事' },
   },
 }

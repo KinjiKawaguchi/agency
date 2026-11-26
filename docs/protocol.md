@@ -103,7 +103,7 @@ A read that fails any of these checks is refused like a read of an org or team t
   "payload": { "text": "", "choice": "a" }, "account": "alice", "at": "2026-11-24T12:00:00Z" }
 ```
 
-- `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is `repo#N`).
+- `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is the item's reference). Either way `target` is 1 to 120 bytes of ASCII letters, digits, `.`, `_`, `#`, and `-`; anything else is refused as a malformed target (see "Item references").
 - `signer` is the id of one of the deciding member's devices. The signature is checked with that device's key, found under the member whose `account` is the envelope's `account`. A signature by an account key is refused.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, that its id has not been applied before, and that its account is the addressee of the request it decides. A repeated envelope is not applied again; the node answers that it received it, even if the request no longer waits.
 - The request an envelope decides is the one in the team's current view whose `answerWith` is the envelope's `kind` and `target`. Its addressee is the member the rule in "Requests" gives (the same rule as `mine`). An envelope from anyone else, or for a request that is not waiting, is refused with 403, and both get the same refusal.
@@ -128,6 +128,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
 | GET | `/fed/v1/teams/<org>/<team>/usage?days=<n>` | A signed read of the path with its query, and membership (answers `TokenUsage`; 400 for a range outside 1 to 90; 404 when the team's runtime does not report usage) |
+| GET | `/fed/v1/teams/<org>/<team>/evaluation?days=<n>` and `/effort?days=<n>` | Like `usage`: a signed read of the path with its query, and membership as a member (an answerer gets 403). Answers `Evaluation` or `Effort` with that one team in `teams` or `unavailable`; 400 for a range outside 1 to 90 |
 | POST | `/fed/v1/teams/<org>/<team>/envelopes` | The envelope's signature, membership, expiry, and that it was not applied before |
 
 The federation routes bypass Cloudflare Access, so anyone can call them, and nothing in an answer may tell a caller what the node holds until the caller is authenticated.
@@ -181,13 +182,21 @@ Request       { id, kind: "question" | "proposal" | "pendingDecision", title, co
                 answerWith: { kind: "answer" | "judge", target } }
 RequestOption { key, text, isRecommended: boolean, detail?: string }
 ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
-WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
+WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
-                points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
+                points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
+                workType?: WorkType }
+WorkType      "newFeature" | "improvement" | "maintenance" | "debt" | "incident"
 BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
                 forecast?: { days, at: Timestamp }, basis }
 ```
+
+Item references:
+
+- A work item is named by an **item reference** (`WorkItem.ref`, `EpicForecast.ref`, and where a work item is named: `WorkItem.epic`, `Request.issue`, `Request.blocks`, `PersonStatus.holding`). It is an opaque string that the team's harness chooses, for example `app#12` or `ENG-123`. Nothing in a node or a client splits it, reads a number out of it, or builds a link from it, and two references are the same only when the strings are equal. A view allows 200 characters.
+- One use is stricter. The `target` of a `judge` envelope is an item reference, and an envelope's `target` is checked by the node (400, `malformed target`) and by the iPhone app before it signs: 1 to 120 bytes of ASCII letters, digits, `.`, `_`, `#`, and `-`. So a pending decision's `answerWith.target` has to follow that rule, even where `ref` and `issue` are longer or hold other characters (`owner/repo#12`, a URL).
+- A runtime whose tracker's ids do not fit gives the pending decision a reference that does (for example `PROJ-12`, or a short hash), keeps a lookup from it to the item, and reads it back in `decide`. The item's `ref` and `issue` may stay as the tracker writes them. The rule is widened only when a real tracker needs it, because every node and the app must accept the wider rule before a harness sends it.
 
 Participants (`people`, humans and agents):
 
@@ -195,10 +204,14 @@ Participants (`people`, humans and agents):
 - `waitingOn.person` uses the same names as `Request.to`.
 - Who waits on the reader is decided by the reader's home node and given to clients as `TeamSnapshot.waitingOnViewer`: the `id`s of the participants whose `waitingOn` is `person` with the reader's runtime name in that team (`viewer`). Unlike a request's `to`, a name that is not the reader's is never theirs, because `waitingOn` can name anyone on the team, agents included. A reader the team does not address (no `viewer`) has nobody waiting on them.
 
+Work items:
+
+- `workType` is the board's "Work type" field of the item (see "Work type" in the glossary), as the team's runtime reads it. It is left out when the board has none; a runtime never guesses it, and whoever needs a type for an item without one (the node, when it splits effort by work type) works it out from the item's pull request itself. A value outside the five names fails the view's parse, like any other malformed field.
+
 Requests:
 
 - `question`: the team asks something. `proposal`: the team asks for approval of a document (`document`) with options. `pendingDecision`: a board item is blocked until someone decides.
-- `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
+- `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its item reference; the others with `answer` and the request id. So the `answerWith.target` of a pending decision follows the stricter rule of "Item references" below.
 - `to` absent means the team's owner. The node maps runtime names to org members through its hosted-team configuration: `owner` is the org member id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org member id>" }`). A `to` that is not in `people` goes to the owner.
 - In the other direction, an org member's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
 - Which requests are a reader's to decide ("mine") is one rule, computed by the reader's home node and given to clients as `TeamSnapshot.mine`. The desk, the badge counts, and push notifications all use it, and the team's node applies a decision only from the member it gives (see "Decision envelope").
@@ -248,6 +261,39 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 - The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every participant has a name. A report that fails is 503.
 - The shared sample is `testdata/tokenusage.sample.json`.
 
+## Evaluation
+
+How fast a team's work ships, and where its tokens go. The team's node works the numbers out (nothing is stored: each read asks GitHub and the team's runtime, and the node reuses an answer for 10 minutes), so a screen and an agent that cites them agree.
+
+```
+Evaluation       { org, days, from: Date, until: Date, generatedAt, teams: TeamEvaluation[], unavailable: TeamUnavailable[] }
+TeamUnavailable  { team: Id, reason: string }
+TeamEvaluation   { team, from: Date, until: Date, summary: EvaluationSummary, byDay: DayEvaluation[] }
+EvaluationSummary{ merged: MergedCounts, prLeadMedianSeconds?, prLeadP90Seconds?, issueLeadMedianSeconds?, issueLeadP90Seconds?,
+                   mainRedSeconds, longestRedSeconds, reverts, costPerMergedPrUsd? }     // ? = left out when there is no value
+MergedCounts     { feat, fix, refactor, docs, test, chore, other }
+DayEvaluation    { date, merged: MergedCounts, reverts, mainRedSeconds, costUsd, prLeadSeconds: int[], issueLeadSeconds: int[] }
+
+Effort           { org, days, from, until, generatedAt, teams: TeamEffort[], unavailable: TeamUnavailable[] }
+TeamEffort       { team, from, until, byType: ByWorkType<TypeUsage>, byDay: DayEffort[] }
+DayEffort        { date, costUsd: ByWorkType<number> }
+ByWorkType<T>    { newFeature: T, improvement: T, maintenance: T, debt: T, incident: T, unclassified: T }
+TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
+```
+
+- The period is the last `days` calendar days (1 to 90), today included. `from` and `until` are its first and last day, written like `byDay[].date`, in the time zone of the node that computed them: each team has its own (the time zone of the team's node), and every day of its `byDay` lies inside them, so a client draws a team against its own period. The answer's own `from` and `until` are the answering node's. `byDay` is oldest first, and days with nothing in them may be left out.
+- Counts and seconds are integers. Costs are estimates at API prices, as in "Token usage". An optional field is left out, never null.
+- A pull request counts on the day it merged. Its type is the Conventional Commits type of its title (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`); anything else, including `ci`, `build`, `perf`, `style`, is `other`.
+- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body says "This reverts commit". It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
+- **PR lead time** is opened to merged. **Issue lead time** is the issue's first move to In Progress on the board (else the pull request's first commit) to merged; a pull request with no closing issue has none.
+- **Main red**: for each push to the default branch, the commit's workflow runs decide (all workflows). A commit is red when a run failed or timed out and green when all passed or were skipped; a run cancelled by a newer push counts for nothing. Red lasts from the completion of the first red commit to the completion of the next green one, or to `generatedAt` while it is red. A span across midnight is split between the days. `longestRedSeconds` is the longest single span.
+- The summary's p90 is the nearest rank (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples, rounded down. A median or p90 is left out with no samples.
+- `costPerMergedPrUsd` is the period's cost divided by the pull requests merged in it (`merged` and `reverts`). Token usage is per day, so there is no per-pull-request attribution. It is left out when nothing merged.
+- **Work type** (`Effort`): the board's "Work type" field when the item has one; otherwise the pull request's type: `feat` is `newFeature`, `refactor` is `debt`, `fix` is `maintenance` (`incident` when its issue carries the label `incident`), and `docs`, `test`, `chore` are `maintenance`. Work with neither is `unclassified`. `improvement` comes only from the board field. The intended allocation and budget are the org definition's team plan; `Effort` does not copy them.
+- A team whose answer cannot be had (not configured, its node unreachable, GitHub unavailable) is listed in `unavailable` with a reason in plain text, without a secret or an address, and the other teams are answered. A malformed answer from another node is such a failure.
+- Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
+- The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.
+
 ## Client API
 
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
@@ -260,14 +306,17 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
+| GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through, and so does the 403 for a request on this node that is not the account's to decide; a refusal by the team's node is 409 |
-| GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, and the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`) |
+| GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`), and, for the node's owner only, `node` (below) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
 | POST | `/api/devices/changes` | Body `Signed<DeviceChange>` for the account, signed by one of its devices. Checked here, then written by the root's node. Answer `DeviceChangeResult`: `applied` (this node holds the root key), `delivered`, or `queued` (with `message`). A refusal by the root's node is 409 |
 | GET | `/api/push/tokens` | `PushTokenList`: the owner's registered APNs push tokens, each `token` shortened to its last 8 characters, with `environment`, `label`, `registeredAt` |
 | POST | `/api/push/tokens` | Body `PushTokenInput`: `token` (hex, 32 to 200 characters, stored lowercased), `environment` (`production` or `sandbox`, as the app was signed; the node never guesses), `label` (1 to 80 characters). Registering a known token updates it. Answer the `PushToken` |
 | DELETE | `/api/push/tokens/<token>` | 204, also for an unknown token. A DELETE needs the write token but has no body |
 | GET | `/api/decisions?limit=<n>` | `DecisionLog`: the account's recent decisions, newest first (`limit` defaults to 50, at most 200). Each entry has `org`, `team`, `kind`, `target`, `title`, `text`, `choice`, `choiceLabel`, `decidedAt`, and `state`: `applied` (to a team on this node), `queued` (in the outbox, with `attempts`, `nextAt`, `lastError`), `refused` (by the team's node, with `message`), or `delivered`. The node keeps the last 500 decisions; decisions in orgs the account no longer belongs to are hidden |
+
+`DeviceList.node` is `{ url, dataDir, command }`: the node's origin, the absolute data directory it runs with, and the command that approves a device at the node's terminal, so a client shows the owner the exact words and not a guess. `command` is the absolute path of the running program, `--dir` and the data directory unless that directory is `~/.agency` (the `AGENCY_DIR` variable does not count as the default, because a terminal may not have the node's environment), and `device-add`; a path that needs it is quoted for a POSIX shell. It is given only to the node's owner: a direct local request, or one through Access signed in as `ownerEmail`. Other signed-in emails read the list without it, because the program's path can hold a user name. It is left out, never `null`, when the owner is not asking or the paths cannot be written out as text; a client then shows its own wording. `agency device-add` prints the node's URL and the data directory it read before it asks anything.
 
 Errors are `{ "error": <text> }`. JSON answers carry `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 

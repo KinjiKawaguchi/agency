@@ -1,7 +1,7 @@
 import type { DayEvaluation } from '../api/evaluationApi'
 import { useI18n } from '../i18n'
 import { formatDuration } from './duration'
-import { totalMerged } from './series'
+import { allMerged } from './series'
 
 /** The same days as the charts, in figures: for anyone who cannot tell the colors apart, and to copy from. */
 export function DayTable({ team, rows }: { team: string; rows: readonly DayEvaluation[] }) {
@@ -26,7 +26,7 @@ export function DayTable({ team, rows }: { team: string; rows: readonly DayEvalu
             {rows.toReversed().map((row) => (
               <tr key={row.date}>
                 <th scope="row">{fmt.shortDate(row.date)}</th>
-                <td className="num">{fmt.integer(totalMerged(row.merged))}</td>
+                <td className="num">{fmt.integer(allMerged(row))}</td>
                 <td className="num">{formatDuration(row.mainRedSeconds, t.evaluation.units)}</td>
                 <td className="num">{fmt.integer(row.reverts)}</td>
                 <td className="num">{fmt.money(row.costUsd)}</td>

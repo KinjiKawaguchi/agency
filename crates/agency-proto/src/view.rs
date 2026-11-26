@@ -41,7 +41,7 @@ pub struct PersonStatus {
     pub waiting_on: Option<WaitingOn>,
     /// One line for people to read, for example "Waiting on the owner: agency#3".
     pub status: String,
-    /// Work item refs (`repo#N`) assigned to them.
+    /// The item references of the work items assigned to them.
     pub holding: Vec<String>,
 }
 
@@ -101,7 +101,7 @@ pub struct Request {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
     pub created_at: Timestamp,
-    /// The related work item (`repo#N`).
+    /// The related work item's item reference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<String>,
     /// People and work item refs that wait for the answer.
@@ -166,7 +166,8 @@ pub struct AnswerWith {
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
 pub struct WorkItem {
-    /// `repo#N`
+    /// The work item's item reference: an opaque string the team's harness chooses (for example
+    /// `app#12`). Nothing parses it. See "TeamView" in docs/protocol.md.
     #[serde(rename = "ref")]
     #[ts(rename = "ref")]
     pub reference: String,
@@ -176,13 +177,29 @@ pub struct WorkItem {
     pub assignee: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked: Option<Blocked>,
-    /// The parent epic's ref (`repo#N`).
+    /// The parent epic's item reference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub epic: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub points: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eta: Option<Eta>,
+    /// What the work is for, as the board's "Work type" field says. Absent when the item has none: the
+    /// field is the board's value and is never guessed here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_type: Option<WorkType>,
+}
+
+/// What a piece of work is for (docs/glossary.md, "Work type").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum WorkType {
+    NewFeature,
+    Improvement,
+    Maintenance,
+    Debt,
+    Incident,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -232,7 +249,7 @@ pub struct Eta {
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
 pub struct EpicForecast {
-    /// `repo#N`
+    /// The epic's item reference.
     #[serde(rename = "ref")]
     #[ts(rename = "ref")]
     pub reference: String,

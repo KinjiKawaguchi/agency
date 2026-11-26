@@ -59,7 +59,7 @@ pub const TOKEN_USAGE_OP: &str = "tokenUsage";
 #[ts(export)]
 pub struct RuntimeDecision {
     pub kind: EnvelopeKind,
-    /// A request id (`answer`) or a work item ref `repo#N` (`judge`).
+    /// A request id (`answer`) or a work item's item reference (`judge`).
     pub target: String,
     /// The org member who decided.
     pub by: Id,

@@ -21,7 +21,7 @@ describe('evaluation', () => {
     const app = await section('App team')
     expect(app.getByRole('group', { name: 'Merged pull requests per day' }).querySelectorAll('.ev-col')).toHaveLength(14)
     const legend = app.getAllByRole('list')[0] as HTMLElement
-    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['New feature', 'Fix', 'Refactor', 'Docs', 'Test', 'Chore', 'Other'])
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['New feature', 'Fix', 'Refactor', 'Docs', 'Test', 'Chore', 'Other', 'Revert'])
   })
 
   it('draws the lead time and the cost per merged pull request as lines over the same days', async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { resetNode, trackErrors } from './helpers'
+import { resetNode, trackErrors, waitOnClock } from './helpers'
 
 let errors: () => string[]
 
@@ -14,9 +14,12 @@ test.afterEach(() => {
 
 test('overview: every org and team, what needs the viewer first, and a team that cannot be read in its place', async ({ page, request }) => {
   await resetNode(request, { moreOrgs: true, usage: true })
+  // The team nobody can read is tried again with backoff before it is called failed; the page's clock is moved on by hand.
+  await page.clock.install()
   await page.goto('/overview')
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible()
   await expect(page.locator('article.ov-team')).toHaveCount(6)
+  await waitOnClock(page, async () => (await page.getByRole('article', { name: 'club/shop' }).getByText('Could not load this team').count()) > 0)
   await expect(page.locator('section.ov-org h2').allTextContents()).resolves.toEqual(['Acme', 'Lab', 'Club', 'Usage limits'])
   const research = page.getByRole('article', { name: 'lab/research' })
   await expect(research).toContainText('3 blocked items')
