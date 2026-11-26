@@ -178,7 +178,7 @@ loginctl show-user "$USER" --property=Linger
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/node.jsonl
+agency logs --since 10m
 ```
 
 - `/api/me` には、アカウントと、チーム `app` を含む組織が `"location":"local"` 付きで出ます。
@@ -490,6 +490,16 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 - `event` は行を書いた部分の名前で、`start`、`runtime`、`refused`、`access`、`usage`、`push`、`placement`、`replicas`、`requests`、`outbox` のどれかです。`message` はノードについての文で、リクエストの本文、トークン、クエリ文字列は入りません。
 - ファイルが `maxSizeMib` を超えると、ノードはそれを `node-<UTC の時刻>.jsonl` として閉じ、新しいファイルを始めます。閉じたファイルのうち `maxAgeDays` 日より古いものと、新しい `maxFiles` 個より前のものは、ノードの起動時と、ファイルを閉じるたびに削除されます。ファイルを読めるのはノードのアカウントだけです。
 - ターミナルで動かすと、ノードは各行をそこにも表示します。ファイルに書けないときは、行は標準エラー出力へ行きます。launchd や systemd の下では、それが `serve.log` です。
+
+`agency logs` は、閉じたファイルも含めてファイルを読み、ノードが止まっているときも、アカウントの鍵なしで、古い順に行を表示します。
+
+```sh
+agency logs --since 1h --level warn          # 直近 1 時間の warn と error
+agency logs --event runtime                  # 1 つの部分だけ
+agency logs --json | jq 'select(.event == "push")'   # ファイルにあるままの行
+```
+
+`--since` は整数と `s`、`m`、`h`、`d` のどれか（`90s`、`30m`、`2h`、`1d`）です。`--level` は、そのレベルとそれより緊急なものを残します。`--event` は 1 つの event を残します。ノードが書いている途中でクラッシュしたファイルの最後の行のように、1 行として完全でない行は飛ばします。
 
 `config.json` に書いて、ノードを再起動します。どのフィールドも省けます。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。
 
