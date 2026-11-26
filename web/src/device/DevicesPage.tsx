@@ -8,6 +8,7 @@ import { useToast } from '../shared/Toasts'
 import { addChangeFor, signChange } from './changes'
 import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
+import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
@@ -197,6 +198,7 @@ export function DevicesPage() {
       {key.status === 'unsupported' ? <Unsupported /> : null}
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
+      <HomeNodesCard />
     </>
   )
 }
