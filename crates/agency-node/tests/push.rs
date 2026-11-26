@@ -2,7 +2,7 @@
 //! notifying once per request that starts waiting for the owner, on a team here or on another node.
 mod common;
 
-use agency_core::push::notify_waiting;
+use agency_core::push::{notify_waiting, NoticeKind};
 use agency_core::views::refresh;
 use common::{alice, body, get, id, joined_bob, Running, TOKEN};
 use reqwest::{Client, StatusCode};
@@ -44,7 +44,7 @@ async fn the_owner_registers_and_removes_device_tokens() {
         .1;
     assert_eq!(
         listed["tokens"],
-        json!([{ "token": "34ef56ab12"[2..], "environment": "production", "label": "iPhone", "registeredAt": "2026-11-24T12:00:00Z" }]),
+        json!([{ "token": "34ef56ab12"[2..], "environment": "production", "label": "iPhone", "registeredAt": "2026-11-24T12:00:00Z", "events": ["request"] }]),
         "one entry per token, shortened in lists"
     );
 
@@ -132,18 +132,16 @@ async fn each_new_request_for_the_owner_is_notified_once() {
     let (to, notice) = &sent[0];
     assert_eq!(to, &TOKEN_HEX.to_ascii_lowercase());
     assert_eq!(
-        (
-            notice.title.as_str(),
-            notice.body.as_str(),
-            notice.request.as_str()
-        ),
-        ("app", "Ship it?", "r-2")
+        notice.kind,
+        NoticeKind::Request {
+            org: id("acme"),
+            team: id("app"),
+            request: "r-2".into(),
+            team_label: Some("app".into()),
+            title: Some("Ship it?".into()),
+        }
     );
     assert_eq!(notice.badge, 2, "r-1 and r-2 wait for alice");
-    assert_eq!(
-        (notice.org.clone(), notice.team.clone()),
-        (id("acme"), id("app"))
-    );
 
     alice
         .node
@@ -235,6 +233,9 @@ async fn a_member_is_notified_of_requests_on_another_node_addressed_to_them() {
         "bob now owns the team, so r-1, r-2, and r-3 start waiting for him"
     );
     let sent = bob.notifier.0.lock().unwrap().sent.clone();
-    assert!(sent.iter().any(|(_, notice)| notice.request == "r-3"));
+    assert!(sent.iter().any(|(_, notice)| matches!(
+        &notice.kind,
+        NoticeKind::Request { request, .. } if request == "r-3"
+    )));
     assert!(sent.iter().all(|(_, notice)| notice.badge == 3));
 }

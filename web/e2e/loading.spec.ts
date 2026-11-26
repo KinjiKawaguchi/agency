@@ -35,7 +35,7 @@ for (const screen of SCREENS) {
     await notReady(page)
     await page.setViewportSize({ width: 375, height: 800 })
     await page.goto(screen.path)
-    await expect(page.getByText('Loading…').first()).toBeAttached()
+    await expect(page.locator('[aria-busy="true"]').first()).toBeAttached()
     await page.clock.runFor(1500)
     // Tried again after the first wait, and still loading: no failure is shown.
     await expect(page.locator('.skeleton').first()).toBeVisible()

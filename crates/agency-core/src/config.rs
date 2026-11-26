@@ -108,6 +108,11 @@ pub struct PushConfig {
     pub team_id: String,
     /// The app's bundle id, the APNs topic.
     pub bundle_id: String,
+    /// Leave every title and label out of a notification (the team's label, a request's or a decision's
+    /// title, a device's label), for a node whose data must stay where it is. The notification then
+    /// says only what kind it is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_titles: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

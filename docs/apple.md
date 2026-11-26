@@ -58,6 +58,10 @@ The tab mirrors the web client's participants and work screen (`web/src/people`)
 
 The tab mirrors the web client's costs screen (`web/src/costs`): the funding sources, each with its weekly and five-hour window projected to its reset (the same cards as on the overview), then, for every team the account can read, its token use over 7, 14 or 30 days, priced as if billed by the API: three figures, the cost by day stacked by participant, and a card for each participant. `AgencyModel/Costs` holds what it decides, ported with the web's test cases: `UsageChart` (the series in the team's own order, each participant's fixed color slot with the ninth and later folded into "other", the columns and the totals), `TokenReport`, and `CostsStore` (a team whose runtime reports no usage answers 404 and says so; 503 says the team could not answer just now; any other failure is shown as that). A table of five columns would be wider than a phone, so each participant is a card. A tap on a day shows what each participant cost on it, and a long name is cut and opens in full when tapped.
 
+## A read that is not ready yet
+
+A node answers 503 for a team's view while its board is still being read (and for its usage when the team's runtime does not answer in time), and a slow node times out. The native screens that read team views (the overview, participants and work, costs) do not show that as a failure (agency#170, the same rule as the web client). `RetryPolicy` asks again after 1, 2, 4, 8 and 15 seconds for the answers that say "not now" (408, 429, 502, 503, 504, and a read with no answer at all); every other refusal, a 404 and the ended sign-in are final and shown at once. While a team is not ready its card is grey bars (a skeleton), and the other teams are shown as they arrive. What is on screen stays when a refresh fails. Only when the retries are used up does the region say what could not be read, why (the node's own words) and that it asks again 30 seconds later, with a "Try again" button; one region failing never blanks the screen. A screen that is shown reads again every 30 seconds.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
@@ -189,6 +193,10 @@ What has to be in place outside the repository:
 
 - The App ID for the bundle ID has the Push Notifications capability. With automatic signing and the API key, `-allowProvisioningUpdates` normally enables it when the entitlement is present; check it on the first archive.
 - The node has an APNs key (a `.p8` from the developer account), its key ID, the team ID, and the same bundle ID as the topic. These are credentials: keep them out of the repository.
+
+## What is new
+
+The app and the web client use one definition of "what is new" (agency#167), pinned by `testdata/notifications.json`. A client keeps the last answer it read for each team, for the list of devices that asked to be added, and for the decision log. An event is the difference between that answer and the next one; the first answer of each is a baseline and makes no event, and a part that could not be read keeps its last answer, so the read after a failure is not "everything is new". The events are a request that now waits on the viewer (`mine`), a participant who now waits on the viewer, a work item that is newly blocked, a device that asks to be added (other than this phone's own key, and only when this phone can approve one), and a decision that changed state (a success this phone sent is not news, a failure or a queued one is). Each has a stable key (`request:org/team/id`, `participant:org/team/id`, `blocked:org/team/ref`, `device:<key>`, `decision:id:state`), and the events of one reading come ordered by kind and then by key. `EventEngine` in `AgencyModel` is the Swift side; the web client's engine reads the same file and has to make the same events. The counts (the badge, the mark on the devices tab) are not events: they are the current number.
 
 ## Protocol code in Swift
 

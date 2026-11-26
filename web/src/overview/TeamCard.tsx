@@ -88,7 +88,7 @@ export function TeamCard({ orgId, teamRef, state }: { orgId: string; teamRef: Te
       </header>
       {state.status === 'ready' ? <Body team={state.team} /> : null}
       {state.status === 'loading' ? (
-        <Loading>
+        <Loading quiet>
           <Skeleton />
           <Skeleton kind="short" />
         </Loading>

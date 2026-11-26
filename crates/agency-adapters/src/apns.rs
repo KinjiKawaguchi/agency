@@ -3,7 +3,7 @@
 //! or sandbox host that matches the device token.
 use agency_core::config::PushConfig;
 use agency_core::ports::{Clock, Notifier};
-use agency_core::push::{Notice, PushError};
+use agency_core::push::{Notice, NoticeKind, PushError};
 use agency_proto::client::{PushEnvironment, PushToken};
 use agency_proto::clock::{Duration, OffsetDateTime};
 use async_trait::async_trait;
@@ -131,17 +131,67 @@ impl Apns {
     }
 }
 
-/// The notification: the team label as the title, the request title as the body, grouped by team, the
-/// badge count, and the `agency` keys the app opens the request with.
+/// An alert the app words itself: the key of a string it ships, and the one text it fills in (none when
+/// the node leaves the text out, which picks the string that names no title).
+fn localized(key: &str, no_text_key: &str, text: Option<&String>) -> Value {
+    match text {
+        Some(text) => json!({ "loc-key": key, "loc-args": [text] }),
+        None => json!({ "loc-key": no_text_key }),
+    }
+}
+
+/// The notification. A request keeps its alert as written (the team's label as the title and the request's
+/// title as the body) and the `agency` keys the app opens it with, and has no `type`; a device or a
+/// refused decision is an alert the app words from its own strings, with `agency.type` telling the app
+/// which screen to open. Every kind carries the badge and is grouped by its thread.
 pub fn payload(notice: &Notice) -> Value {
+    let (alert, agency) = match &notice.kind {
+        NoticeKind::Request {
+            org,
+            team,
+            request,
+            team_label: Some(label),
+            title: Some(title),
+        } => (
+            json!({ "title": label, "body": title }),
+            json!({ "org": org, "team": team, "request": request }),
+        ),
+        NoticeKind::Request {
+            org, team, request, ..
+        } => (
+            json!({ "loc-key": "PUSH_REQUEST_WAITING_HIDDEN" }),
+            json!({ "org": org, "team": team, "request": request }),
+        ),
+        NoticeKind::Device { label, .. } => (
+            localized(
+                "PUSH_DEVICE_WAITING",
+                "PUSH_DEVICE_WAITING_NO_LABEL",
+                label.as_ref(),
+            ),
+            json!({ "type": "device" }),
+        ),
+        NoticeKind::Decision {
+            org,
+            team,
+            id,
+            title,
+        } => (
+            localized(
+                "PUSH_DECISION_REFUSED",
+                "PUSH_DECISION_REFUSED_NO_TITLE",
+                title.as_ref(),
+            ),
+            json!({ "type": "decision", "org": org, "team": team, "id": id }),
+        ),
+    };
     json!({
         "aps": {
-            "alert": { "title": notice.title, "body": notice.body },
+            "alert": alert,
             "sound": "default",
             "thread-id": notice.thread(),
             "badge": notice.badge,
         },
-        "agency": { "org": notice.org, "team": notice.team, "request": notice.request },
+        "agency": agency,
     })
 }
 
@@ -150,7 +200,7 @@ impl Notifier for Apns {
     async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError> {
         let provider = self.provider_token()?;
         let url = format!("{}/3/device/{}", self.host(token.environment), token.token);
-        let collapse: String = notice.request.chars().take(64).collect();
+        let collapse: String = notice.collapse_id().chars().take(64).collect();
         let response = self
             .http
             .post(url)

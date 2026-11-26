@@ -7,9 +7,14 @@ export function Skeleton({ kind = 'line' }: { kind?: 'line' | 'short' | 'title' 
   return <span className={`skeleton ${kind}`} aria-hidden="true" />
 }
 
-/** What stands in a region while it loads: the placeholders, announced to a screen reader once as "Loading…". */
-export function Loading({ children }: { children: ReactNode }) {
+/**
+ * What stands in a region while it loads: the placeholders, announced to a screen reader once as "Loading…".
+ * Placeholders inside a page that is already there (a team's card among the others) are `quiet`: they only say
+ * they are busy, so that a page of many does not announce each.
+ */
+export function Loading({ children, quiet = false }: { children: ReactNode; quiet?: boolean }) {
   const { t } = useI18n()
+  if (quiet) return <div aria-busy="true">{children}</div>
   return (
     <div role="status" aria-busy="true">
       <span className="sr-only">{t.loading.label}</span>

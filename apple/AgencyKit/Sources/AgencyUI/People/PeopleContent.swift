@@ -30,6 +30,7 @@ struct PeopleContent: View {
     let failures: [String: String]
     let now: Date
     var onOpenDesk: (() -> Void)?
+    var onTryAgain: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -37,7 +38,7 @@ struct PeopleContent: View {
                 Text(Ja.People.noTeams).font(.subheadline).foregroundStyle(.secondary).wrapping()
             }
             ForEach(failures.sorted { $0.key < $1.key }, id: \.key) { team, reason in
-                Text(Ja.Desk.unreadableTeam(team, reason: reason)).font(.footnote).foregroundStyle(Theme.warning).wrapping()
+                FailedRegion(what: Ja.People.team(team), why: reason, onTryAgain: onTryAgain)
             }
             ForEach(sections) { TeamSectionView(section: $0, now: now, onOpenDesk: onOpenDesk) }
         }

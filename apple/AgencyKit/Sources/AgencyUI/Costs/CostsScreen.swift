@@ -22,7 +22,8 @@ public struct CostsScreen: View {
                     if store.loading == .loaded || !store.teams.isEmpty {
                         CostsContent(
                             funding: store.fundingSummaries(now: Date()), teams: store.teams, days: store.days, now: Date(),
-                            onChoose: { days in Task { await store.choose(days: days) } }
+                            onChoose: { days in Task { await store.choose(days: days) } },
+                            onTryAgain: { Task { await store.refresh() } }
                         )
                     }
                 }
@@ -31,7 +32,7 @@ public struct CostsScreen: View {
             .refreshable { await store.refresh() }
             .navigationTitle(Ja.Costs.title)
         }
-        .task { await store.refresh() }
+        .polling { await store.refresh() }
     }
 
     @ViewBuilder
@@ -49,7 +50,7 @@ public struct CostsScreen: View {
             }
             .card()
         } else if store.loading == .loading && store.teams.isEmpty {
-            ProgressView(Ja.Desk.loading)
+            SkeletonCard()
         }
     }
 }

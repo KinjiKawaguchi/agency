@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { flakyNode } from '../test/flakyNode'
 import { renderApp } from '../test/render'
@@ -8,9 +8,10 @@ describe('a team view that is not ready yet', () => {
   it('is a skeleton, not an error, until the node answers', async () => {
     const { client, reads } = flakyNode([{ match: '/teams/app/view', failures: 2 }])
     renderApp({ path: '/overview', client, retryDelays: [0, 0, 0] })
-    expect(await screen.findByText('Loading…')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).not.toBeNull())
     expect(await screen.findByRole('heading', { level: 3, name: 'App' })).toBeInTheDocument()
-    expect(reads('/teams/app/view')).toBe(3)
+    await waitFor(() => expect(reads('/teams/app/view')).toBe(3))
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'acme/app' })?.querySelector('[aria-busy="true"]')).toBeNull())
     expect(screen.queryByText(/Could not load/)).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -21,7 +22,9 @@ describe('a team view that is not ready yet', () => {
     renderApp({ path: '/overview', client, retryDelays: [60_000] })
     expect(await screen.findByRole('heading', { level: 3, name: 'App' })).toBeInTheDocument()
     const site = screen.getByRole('article', { name: 'acme/site' })
-    expect(within(site).getByText('Loading…')).toBeInTheDocument()
+    expect(site.querySelector('[aria-busy="true"]')).not.toBeNull()
+    // A card among the others does not announce itself: the page says "Loading…" once, not once for each team.
+    expect(within(site).queryByText('Loading…')).toBeNull()
     expect(within(site).queryByRole('button', { name: 'Try again' })).toBeNull()
   })
 
