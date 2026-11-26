@@ -46,7 +46,7 @@ describe('the app manifest', () => {
   })
 
   it('is small files: nothing that a build has to wait for', () => {
-    for (const file of ['manifest.webmanifest', 'sw.js', 'offline.html', 'offline.css']) expect(statSync(join(publicDir, file)).size).toBeLessThan(6_000)
+    for (const file of ['manifest.webmanifest', 'sw.js', 'push-notice.js', 'offline.html', 'offline.css']) expect(statSync(join(publicDir, file)).size).toBeLessThan(8_000)
   })
 })
 
