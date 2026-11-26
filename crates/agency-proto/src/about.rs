@@ -196,8 +196,8 @@ mod tests {
     const VECTORS: &str = include_str!("../../../testdata/vectors.json");
 
     /// The paths of the org definition's JSON that the first release (v0.1.0) already had, as far as the
-    /// org vectors show them (`departments[].parent` and `people[].devices` are there too, with no vector
-    /// that carries them). A path a vector shows that is in neither list fails the test below.
+    /// org vectors show them (`departments[].parent` and the `people[].devices` paths are there too, with no
+    /// vector that carries them yet). A path a vector shows that is in neither list fails the test below.
     const FIRST_RELEASE: &[&str] = &[
         "at",
         "departments",
@@ -211,6 +211,10 @@ mod tests {
         "people[].account",
         "people[].department",
         "people[].devices",
+        "people[].devices[].addedAt",
+        "people[].devices[].id",
+        "people[].devices[].label",
+        "people[].devices[].publicKey",
         "people[].id",
         "people[].label",
         "people[].publicKey",
