@@ -58,6 +58,7 @@ To change something, send a signed envelope to its writer.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
 - `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - Departments form a tree: a department's `parent` is another department of the org (or absent at the top), following parents never leads back to the department, and `head` is a member's `id`. A member's and a team's `department` is one of the org's departments. The root's node changes them with `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept` (and `team-add --department`), each a new version.
+- A team's `label` is changed with `agency team-set`, and a team leaves the definition with `agency team-remove`, each a new version written by the root's node. A node refuses `team-remove` for a team that is still in its own configuration: it runs a team from that configuration whatever the definition says, so removing the team from the definition first would leave it running outside its org.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers). Either decides only the requests addressed to them (see "Requests"). An answerer also reads only those: a team's node serves an answerer a TeamView with just the requests addressed to it, and no people, work items, or epics, and does not serve it token usage (403).
 
@@ -164,7 +165,7 @@ Conventions:
 - Keys are camelCase. Numbers are non-negative integers.
 - `Timestamp`: RFC 3339 in UTC, ending in `Z` (`2026-11-24T12:00:00Z`; fractional seconds are allowed). `Date`: a calendar date, `YYYY-MM-DD`. They are different types.
 - An optional field is omitted when absent. It is never written as `null`.
-- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids.
+- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids, except the one the node gives it in a decision (`by`), which is why a thread message can carry it (below).
 - Unknown fields are ignored, so a team runtime may add fields before the contract names them.
 
 ```
@@ -179,7 +180,7 @@ Request       { id, kind: "question" | "proposal" | "pendingDecision", title, co
                 issue?: string, blocks: string[], options: RequestOption[], thread?: ThreadMessage[],
                 answerWith: { kind: "answer" | "judge", target } }
 RequestOption { key, text, isRecommended: boolean, detail?: string }
-ThreadMessage { from, text, choice?: string, at: Timestamp }
+ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
@@ -212,6 +213,7 @@ Requests:
   - A reader the team does not address (no `viewer`) has none.
 - `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
 - `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
+  - `from` is the runtime's name of the participant the message is from. `by` is optional and, when a message carries a decision, names the org member who decided: an `Id`, the `by` of the decision the node passed to the runtime (see "agency-runtime/1"), never a participant name. A message the team wrote has no `by`. A `by` that is not a valid `Id` makes the whole view fail to parse, like any other malformed field.
 
 ## agency-runtime/1
 

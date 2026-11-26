@@ -2,6 +2,7 @@
 mod dept_cli;
 mod device_cli;
 mod funding_cli;
+mod team_cli;
 
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
@@ -84,6 +85,8 @@ enum Command {
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
+    TeamSet(team_cli::TeamSet),
+    TeamRemove(team_cli::TeamRemove),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
     /// this node's URL changed
     TeamMove {
@@ -440,6 +443,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
+        Command::TeamSet(args) => team_cli::team_set(&node, args)?,
+        Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
         Command::TeamMove {
             org,
             team,

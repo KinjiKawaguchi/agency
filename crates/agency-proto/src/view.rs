@@ -140,10 +140,16 @@ pub struct RequestOption {
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
 pub struct ThreadMessage {
+    /// The runtime's name of the participant the message is from.
     pub from: String,
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice: Option<String>,
+    /// The org member who decided, when the message carries a decision: their member id, the one the
+    /// node passes to the runtime as `decision.by`, not a participant name. Absent on a message the
+    /// team wrote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<Id>,
     pub at: Timestamp,
 }
 

@@ -6,6 +6,9 @@ import { toTeam, type Team } from './teams'
 
 export const POLL_MS = 30_000
 
+/** How often the device list is read while a screen that shows a device waiting is open. A hidden tab does not poll. */
+export const DEVICES_LIVE_MS = 4_000
+
 export const meQuery = (api: ApiClient) => queryOptions({ queryKey: ['me'], queryFn: () => api.me(), refetchInterval: POLL_MS })
 
 export const TEAM_KEY = ['team'] as const

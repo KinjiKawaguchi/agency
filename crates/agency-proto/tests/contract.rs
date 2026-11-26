@@ -65,12 +65,13 @@ fn sample_teamview_covers_every_variant_clients_render() {
 
 #[test]
 fn teamview_rejects_values_outside_the_contract() {
-    let cases: [(&str, Value); 5] = [
+    let cases: [(&str, Value); 6] = [
         ("/org", json!("Acme")),
         ("/generatedAt", json!("2026-11-24T21:00:00+09:00")),
         ("/people/0/state", json!("waiting")),
         ("/work/1/blocked/since", json!("2026-11-23T00:00:00Z")),
         ("/requests/0/answerWith/kind", json!("approve")),
+        ("/requests/0/thread/0/by", json!("Alice Smith")),
     ];
     for (pointer, bad) in cases {
         let mut value = sample_value();
