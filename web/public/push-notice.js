@@ -41,7 +41,8 @@
 
   /** A time as the viewer reads one (their locale and zone), or nothing when it is not a time. */
   function timeOf(value, language) {
-    const ms = typeof value === 'string' ? Date.parse(value) : NaN
+    // Only a time of the node's own shape (RFC 3339): `Date.parse` takes many words and numbers for a date, such as '12' or 'Mar 3'.
+    const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN
     if (Number.isNaN(ms)) return undefined
     try {
       return new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(ms))
@@ -134,7 +135,7 @@
       const at = { started: timeOf(payload.agency.startedAt, language), finishes: timeOf(payload.agency.finishesAt, language) }
       return { title: words.app, body: words.recovery(org, at), tag, url }
     }
-    if (kind === 'root') return { title: words.app, body: words.root(org, Number.isInteger(payload.agency.waiting) ? payload.agency.waiting : 1), tag, url }
+    if (kind === 'root') return { title: words.app, body: words.root(org, payload.agency.waiting >= 2 && payload.agency.waiting <= 9999 && Number.isInteger(payload.agency.waiting) ? payload.agency.waiting : 1), tag, url }
     return { title: words.app, body: words[kind](cut(payload.detail, BODY_CHARS)), tag, url }
   }
 

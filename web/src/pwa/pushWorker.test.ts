@@ -171,6 +171,8 @@ describe('a recovery of an org that was started', () => {
 
   it('carries the times, in the viewer’s locale, when the node gives them', async () => {
     const timed = { agency: { ...recovery.agency, startedAt: START, finishesAt: FINISH }, badge: 0 }
+    const offset = { agency: { ...recovery.agency, finishesAt: '2026-12-04T18:30:00.5+09:00' }, badge: 0 }
+    expect((await pushed(payload(offset), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
     expect((await pushed(payload(timed), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started at ${shownAt(START, 'en-US')}. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
     expect((await pushed(payload(timed), [], 'ja-JP')).shown[0]?.options.body).toBe(`acme のルート鍵の回復が始まりました（${shownAt(START, 'ja-JP')}）。${shownAt(FINISH, 'ja-JP')} に有効になります。机で確認してください。`)
   })
@@ -178,7 +180,7 @@ describe('a recovery of an org that was started', () => {
   it('leaves out a time that is not one, and says the one that is', async () => {
     const half = { agency: { ...recovery.agency, startedAt: 'yesterday', finishesAt: FINISH }, badge: 0 }
     expect((await pushed(payload(half), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
-    for (const bad of [7, null, '', {}]) expect((await pushed(payload({ agency: { ...recovery.agency, finishesAt: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A recovery of acme was started. Open the desk to see it.')
+    for (const bad of [7, null, '', {}, '5', '12', '2026', 'Mar 3', '2026-12-04', '2026-12-04T09:30:00', 'Dec 4, 2026 09:30 UTC']) expect((await pushed(payload({ agency: { ...recovery.agency, finishesAt: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A recovery of acme was started. Open the desk to see it.')
   })
 
   it('names no org, and has no tag, when the id is not a plain one', async () => {
@@ -205,9 +207,10 @@ describe('a change that waits for the root key', () => {
 
   it('says how many wait when more than one does', async () => {
     const many = { agency: { ...held.agency, waiting: 3 }, badge: 0 }
+    expect((await pushed(payload({ agency: { ...held.agency, waiting: 9999 }, badge: 0 }))).shown[0]?.options.body).toContain('9999 changes to acme wait')
     expect((await pushed(payload(many))).shown[0]?.options.body).toBe('3 changes to acme wait for the root key’s signature. Open the desk to see them.')
     expect((await pushed(payload(many), [], 'ja-JP')).shown[0]?.options.body).toBe('acme の変更 3 件が、ルート鍵の署名を待っています。机で確認してください。')
-    for (const bad of [0, -2, 1.5, '3', null]) expect((await pushed(payload({ agency: { ...held.agency, waiting: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A change to acme waits for the root key’s signature. Open the desk to see it.')
+    for (const bad of [0, -2, 1.5, '3', null, 1e21, 10_000, 10_000_000]) expect((await pushed(payload({ agency: { ...held.agency, waiting: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A change to acme waits for the root key’s signature. Open the desk to see it.')
   })
 
   it('says it in Japanese', async () => {
