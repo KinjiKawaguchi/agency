@@ -97,6 +97,8 @@ Keep it on this machine, and out of anything that syncs or shares files.
 `scripts/launchd-plist.sh` writes the agent's file.
 The agent gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does. Run it from a terminal where `scrum` and the harness's tools work.
 
+The `PATH` is a copy, taken when you run the script, of that shell's. Every command the team runtime runs must be in a directory on it: for the scrum harness, `node` and `gh` as well as `scrum` (check with `command -v scrum node gh` in that terminal). A tool installed or moved afterwards, or a `PATH` that your terminal sets in a file the script's shell did not read, is missing from the agent, and the runtime then fails with `spawnSync gh ENOENT` (`ENOENT` is "not found"); the node logs `a command the team runtime runs was not found` when it does. Run the script again from a terminal where they all work.
+
 ```sh
 scripts/launchd-plist.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/Library/LaunchAgents/local.agency.node.plist
@@ -119,7 +121,7 @@ If your `PATH` changes (for example, the harness moves), run the script again, t
 
 `scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
 The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
-Run it from a terminal where `scrum` and the harness's tools work.
+Run it from a terminal where `scrum` and the harness's tools work. As for the launchd agent above, every command the team runtime runs (for the scrum harness, `node` and `gh`) must be in a directory on that `PATH`.
 
 ```sh
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
@@ -426,6 +428,7 @@ The node writes these to `~/.agency/logs/serve.log`:
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
+| `agency: team acme/app: a command the team runtime runs was not found: …` | The team runtime failed because a command it runs (such as `gh` or `node`) is not on the `PATH` of the launchd agent or the systemd unit. Check with `command -v` in your terminal, run the script of "Run it with launchd" or "Run it with systemd" again from a terminal where they work, and restart. It follows the line `the team runtime fails: … ENOENT`. |
 | `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd or systemd tries again every 10 seconds. |
 
 ### Answers from the node
@@ -449,7 +452,7 @@ Set up the harness by its own instructions. What the node needs from it:
 
 - A command that answers agency-runtime/1: `describe`, `view`, and `decide`, and `tokenUsage` for the costs screen. Each call must answer within 20 seconds.
 - The team's state directory, the same one as `team-add --state-dir`.
-- Every tool the runtime calls, on the `PATH` written into the launchd agent or the systemd unit.
+- Every tool the runtime calls (for the scrum harness `node` and `gh`), on the `PATH` written into the launchd agent or the systemd unit. A command that is not there stops the runtime, and the node's log says so.
 - Requests for you leave `to` out or set it to `owner`. In an org where you are the only member, every request is yours. A participant waiting on you has `waitingOn` set to `{ "kind": "person", "person": "owner" }`.
 
 While it runs, the node asks the runtime for the team's view every 30 seconds and each time a page reads the team, so `view` should be cheap.
