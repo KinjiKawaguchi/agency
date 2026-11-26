@@ -1,6 +1,7 @@
 //! Org definitions. The node with the root key signs each new version and sends it, through the outbox,
 //! to the nodes of the org's teams. Other nodes accept only the next version of the one they have, or a
 //! first copy signed by a root key they trust.
+use crate::capabilities;
 use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
@@ -229,6 +230,7 @@ pub fn amend(
     }
     let mut body = OrgDefinition::successor_of(&current, node.now_text());
     edit(&mut body)?;
+    capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
     tell_removed(node, &current.body, &doc)?;

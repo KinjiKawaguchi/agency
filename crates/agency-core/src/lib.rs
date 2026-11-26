@@ -4,6 +4,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod capabilities;
 pub mod client;
 pub mod config;
 pub mod decisions;
