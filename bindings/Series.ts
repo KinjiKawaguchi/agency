@@ -23,7 +23,15 @@ peer?: string,
 /**
  * For what a client reported: `web` or `ios`.
  */
-client?: string, count: number, 
+client?: string, 
+/**
+ * The group of the series (`group_of`): for a screen to draw against, not for it to work out.
+ */
+group: string, 
+/**
+ * Whether the budget applies to the series (`is_in_node_read`).
+ */
+isInNodeRead: boolean, count: number, 
 /**
  * How many of `count` were errors: a 5xx, or a call that failed.
  */

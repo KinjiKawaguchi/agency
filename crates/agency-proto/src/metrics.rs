@@ -29,6 +29,107 @@ pub const OVERFLOW: &str = "overflow";
 pub const INVALID: &str = "invalid";
 /// The clients that report what they observed.
 pub const CLIENTS: [&str; 2] = ["web", "ios"];
+/// The performance budget of an in-node read, in milliseconds at the 95th percentile, in the reference
+/// environment the project names. A percentile is the upper bound of its bucket and 100 is one of the
+/// bounds, so `p95Ms <= 100` is the test.
+pub const IN_NODE_READ_P95_BUDGET_MS: u32 = 100;
+/// The groups a route belongs to, which a screen has words for (a `serve` or `client` series).
+pub const ROUTE_GROUPS: [&str; 11] = [
+    "desk",
+    "teams",
+    "usage",
+    "evaluation",
+    "outcomes",
+    "devices",
+    "push",
+    "federation",
+    "metrics",
+    "unmatched",
+    "other",
+];
+/// The groups of a `call` series.
+pub const CALL_GROUPS: [&str; 5] = ["runtime", "peer", "push", "github", "other"];
+
+/// The group of a series of `kind` named `name`, which a screen draws against: for a route (`serve`,
+/// `client`) by its template, and for a call by its first word. The node says it, so that a screen holds no
+/// table of the node's routes.
+pub fn group_of(kind: SeriesKind, name: &str) -> &'static str {
+    match kind {
+        SeriesKind::Call => match name.split(' ').next().unwrap_or("") {
+            "runtime" => "runtime",
+            "peer" => "peer",
+            "apns" | "webpush" => "push",
+            "github" => "github",
+            _ => "other",
+        },
+        SeriesKind::Serve | SeriesKind::Client => {
+            if name == UNMATCHED {
+                return "unmatched";
+            }
+            let template = name.split_once(' ').map_or("", |(_, template)| template);
+            route_group(template)
+        }
+    }
+}
+
+fn route_group(template: &str) -> &'static str {
+    let starts = |prefix: &str| template.starts_with(prefix);
+    if starts("/fed/v1/") {
+        "federation"
+    } else if template == "/metrics" || starts("/api/metrics") {
+        "metrics"
+    } else if starts("/api/push") {
+        "push"
+    } else if starts("/api/devices") {
+        "devices"
+    } else if starts("/api/orgs/{org}/outcomes") {
+        "outcomes"
+    } else if starts("/api/orgs/{org}/evaluation") || starts("/api/orgs/{org}/effort") {
+        "evaluation"
+    } else if starts("/api/orgs/{org}/teams/{team}/usage") {
+        "usage"
+    } else if template == "/api/orgs/{org}" || starts("/api/orgs/{org}/teams/") {
+        "teams"
+    } else if ["/api/me", "/api/session", "/api/decisions", "/api/about"].contains(&template) {
+        "desk"
+    } else {
+        "other"
+    }
+}
+
+/// Whether a series is a read the node answers from its own state, which the budget of
+/// `IN_NODE_READ_P95_BUDGET_MS` applies to: a `serve` series of a GET of the desk, the devices, the push
+/// settings, the outcomes the owner entered, an org, a team's view (kept in memory and refreshed in the
+/// background), and, between nodes, an org's about and versions and a team's view. What calls the team's
+/// runtime, GitHub, or a peer (usage, evaluation, activity) is not one.
+pub fn is_in_node_read(kind: SeriesKind, name: &str) -> bool {
+    if kind != SeriesKind::Serve {
+        return false;
+    }
+    let Some(("GET", template)) = name.split_once(' ') else {
+        return false;
+    };
+    matches!(
+        group_of(kind, name),
+        "desk" | "devices" | "push" | "outcomes"
+    ) || [
+        "/api/orgs/{org}",
+        "/api/orgs/{org}/teams/{team}/view",
+        "/fed/v1/orgs/{org}/about",
+        "/fed/v1/orgs/{org}/versions",
+        "/fed/v1/teams/{org}/{team}/view",
+    ]
+    .contains(&template)
+}
+
+/// What the answer says of the budget, so that a screen does not decide it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Budget {
+    /// The most the 95th percentile of an in-node read may be, in milliseconds (`IN_NODE_READ_P95_BUDGET_MS`).
+    pub in_node_read_p95_ms: u32,
+}
 
 /// What a series measures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
@@ -62,6 +163,10 @@ pub struct Series {
     /// For what a client reported: `web` or `ios`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
+    /// The group of the series (`group_of`): for a screen to draw against, not for it to work out.
+    pub group: String,
+    /// Whether the budget applies to the series (`is_in_node_read`).
+    pub is_in_node_read: bool,
     #[ts(type = "number")]
     pub count: u64,
     /// How many of `count` were errors: a 5xx, or a call that failed.
@@ -112,6 +217,8 @@ pub struct Metrics {
     pub from: Timestamp,
     pub until: Timestamp,
     pub generated_at: Timestamp,
+    /// The budget an in-node read is held to.
+    pub budget: Budget,
     /// Ordered by kind, then name, then status.
     pub series: Vec<Series>,
 }
@@ -193,7 +300,7 @@ pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
 }
 
 impl Series {
-    /// Whether the series is what the protocol allows: a name, status, peer, and client that a series of its
+    /// Whether the series is what the protocol allows: a name, group, status, peer, and client that a series of its
     /// kind may have (the answer holds nothing a requester could choose freely), `BUCKETS` buckets that add up
     /// to `count`, errors that are all of the calls or none as the status says, and the percentiles those of
     /// the buckets (so a reader can trust either).
@@ -204,6 +311,8 @@ impl Series {
             self.errors == 0
         };
         valid_name(self.kind, &self.name)
+            && self.group == group_of(self.kind, &self.name)
+            && self.is_in_node_read == is_in_node_read(self.kind, &self.name)
             && valid_status(self.kind, &self.status)
             && (self.peer.is_none() || self.kind == SeriesKind::Call)
             && self
