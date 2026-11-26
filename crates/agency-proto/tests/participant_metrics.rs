@@ -2,6 +2,7 @@
 //! the checks a node makes before it uses a report.
 use agency_proto::participant_metrics::{valid_utc_offset, ParticipantMetrics, PullRequestAuthor};
 use agency_proto::runtime::Describe;
+use agency_proto::timestamp::Date;
 use agency_proto::usage::TokenUsage;
 use agency_proto::{Id, RuntimeCall, RuntimeRequest};
 use serde_json::{json, Value};
@@ -134,7 +135,8 @@ fn refuses_a_report_that_is_not_well_formed() {
             r.participants[1].name = "backend".into()
         }),
         ("more days than the range", |r| {
-            let day = r.participants[0].by_day[0].clone();
+            let mut day = r.participants[0].by_day[1].clone();
+            day.date = Date::parse("2026-11-25").unwrap();
             r.participants[0].by_day.push(day);
         }),
         ("days newest first", |r| r.participants[0].by_day.reverse()),
