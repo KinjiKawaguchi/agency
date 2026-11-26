@@ -128,7 +128,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
     let root = &doc.body.root;
     root.account == node.account()
         && (root.public_key == node.key().public()
-            || node.root_keys().holds(&doc.body.org, &root.public_key))
+            || node.root_keys().may_hold(&doc.body.org, &root.public_key))
 }
 
 /// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that

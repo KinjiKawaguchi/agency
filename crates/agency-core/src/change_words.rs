@@ -76,7 +76,21 @@ fn member_changes(before: &OrgDefinition, after: &OrgDefinition, changes: &mut V
             };
             changes.push(change("member", format!("make {} {role}", person.id)));
         }
+        let named_before = changes.len();
         if (&old.label, &old.department) != (&person.label, &person.department) {
+            changes.push(change("member", format!("change member {}", person.id)));
+        }
+        // Any other signed field of a member (one added later, too) is still said.
+        let without_devices = |one: &Person| {
+            let mut kept = one.clone();
+            kept.devices.clear();
+            kept
+        };
+        let is_named = changes.len() > named_before
+            || old.public_key != person.public_key
+            || old.account != person.account
+            || old.role != person.role;
+        if !is_named && without_devices(old) != without_devices(person) {
             changes.push(change("member", format!("change member {}", person.id)));
         }
         device_changes(old, person, changes);
@@ -129,6 +143,9 @@ fn root_changes(before: &OrgDefinition, after: &OrgDefinition, changes: &mut Vec
             "replace the recovery key"
         };
         changes.push(change("root", words.into()));
+    }
+    if new.pending.is_some() && old.pending != new.pending {
+        changes.push(change("root", "start a recovery".into()));
     }
     if old.pending.is_some() && new.pending.is_none() && old.public_key == new.public_key {
         changes.push(change("root", "cancel the waiting recovery".into()));
@@ -206,6 +223,14 @@ pub fn describe(before: Option<&OrgDefinition>, after: &OrgDefinition) -> String
     };
     let changes = all_changes(before, after);
     if changes.is_empty() {
+        // A kind of change these words do not know yet is never left unsaid.
+        let mut same_place = after.clone();
+        same_place.version = before.version;
+        same_place.prev = before.prev.clone();
+        same_place.at = before.at.clone();
+        if &same_place != before {
+            return format!("{org}: change something this prompt does not name");
+        }
         return format!("{org}: sign the next version, which changes nothing else");
     }
     let named: Vec<&str> = changes
@@ -226,4 +251,36 @@ pub fn describe(before: Option<&OrgDefinition>, after: &OrgDefinition) -> String
         ));
     }
     words
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agency_proto::org::Root;
+    use agency_proto::AccountKey;
+
+    fn org() -> OrgDefinition {
+        let alice = Id::parse("alice").unwrap();
+        let root = Root::new(alice, AccountKey::from_seed([1; 32]).public());
+        let at = "2026-11-24T12:00:00Z".to_owned();
+        OrgDefinition::new(Id::parse("acme").unwrap(), "Acme".into(), root, at)
+    }
+
+    #[test]
+    fn a_change_no_words_name_is_still_said() {
+        let mut before = org();
+        before.revoked = vec![AccountKey::from_seed([2; 32]).public()];
+        let mut after = before.clone();
+        after.version = 2;
+        after.revoked.clear();
+        let said = describe(Some(&before), &after);
+        assert_eq!(said, "acme: change something this prompt does not name");
+        let mut same = before.clone();
+        same.version = 2;
+        let said = describe(Some(&before), &same);
+        assert_eq!(
+            said,
+            "acme: sign the next version, which changes nothing else"
+        );
+    }
 }

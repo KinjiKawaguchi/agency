@@ -82,10 +82,15 @@ impl RootKeys for KeychainRootKeys {
         Ok(public)
     }
 
-    /// A keychain that cannot answer (locked) is taken to hold the key: the node then still knows it is the
-    /// root, and the signature itself says the keychain is locked, instead of every root command saying
-    /// this node does not hold the root key.
+    /// Only a key the keychain says it holds: a recovery finishes only where its new root key really is.
     fn holds(&self, org: &Id, key: &PublicKey) -> bool {
+        self.store.has(&name(org, key)).unwrap_or(false)
+    }
+
+    /// A keychain that cannot answer (locked) may hold the key: the node then still knows it is the root,
+    /// and the signature itself says the keychain is locked, instead of every root command saying this node
+    /// does not hold the root key.
+    fn may_hold(&self, org: &Id, key: &PublicKey) -> bool {
         self.store.has(&name(org, key)).unwrap_or(true)
     }
 
@@ -363,7 +368,11 @@ mod tests {
         let org = Id::parse("acme").unwrap();
         let key = keys.create(&org).unwrap();
         fake.0.lock().unwrap().is_locked = true;
-        assert!(keys.holds(&org, &key), "the node is still the root");
+        assert!(keys.may_hold(&org, &key), "the node is still the root");
+        assert!(
+            !keys.holds(&org, &key),
+            "but nothing acts as if the key were surely here"
+        );
         let why = keys.sign(&org, &key, b"text", "x").unwrap_err();
         assert!(why.contains("locked"), "{why}");
     }
@@ -381,5 +390,20 @@ mod tests {
             fake.0.lock().unwrap().prompts.is_empty(),
             "no prompt before the keychain answers"
         );
+    }
+
+    /// Against the real login keychain, by hand: `cargo test -p agency-adapters -- --ignored
+    /// the_login_keychain`. It makes, finds and removes one item with a random name, and asks for nothing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore]
+    fn the_login_keychain_keeps_finds_and_forgets_an_item() {
+        let keychain = macos::LoginKeychain;
+        let name = format!("test/{}", AccountKey::generate().public().fingerprint());
+        assert_eq!(keychain.has(&name), Ok(false));
+        keychain.put(&name, b"seed").unwrap();
+        assert_eq!(keychain.has(&name), Ok(true));
+        keychain.delete(&name).unwrap();
+        assert_eq!(keychain.has(&name), Ok(false));
     }
 }
