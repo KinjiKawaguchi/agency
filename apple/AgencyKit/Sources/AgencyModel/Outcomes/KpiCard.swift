@@ -69,10 +69,13 @@ public struct KpiCard: Equatable, Identifiable, Sendable {
     /// The numbers of the period, oldest first, each on its own day: a day without a number has no point, never a 0.
     public let points: [Point]
     public let unit: Kpi.Unit
+    /// The KPI itself, which entering a number for it needs.
+    public let kpi: Kpi
 
     /// - Parameter until: the period's last day, which a day in the same year is written without its year.
     public init(series: KpiSeries, until: String? = nil) {
         let kpi = series.kpi
+        self.kpi = kpi
         id = kpi.id
         label = kpi.label
         unit = kpi.unit
