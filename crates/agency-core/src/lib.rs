@@ -4,6 +4,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod budget;
 pub mod capabilities;
 pub mod client;
 pub mod clients_seen;
