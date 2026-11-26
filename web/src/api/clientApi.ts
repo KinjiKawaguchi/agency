@@ -61,5 +61,7 @@ export interface DecisionAnswer {
   choice?: string
   /** What the chosen option says, kept in the decision log because the request is gone from the team's view once answered. */
   choiceLabel?: string
+  /** Whom the decision answers for, when the request was addressed to a seat or an external party the viewer answers for: the label the node gave. */
+  relayedFor?: string
   text: string
 }

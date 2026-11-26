@@ -53,6 +53,8 @@ export interface MockNode {
 export const PENDING_ROOT_MESSAGE = 'Approved here; it takes effect once the root key\'s node signs it: run `agency root-sign` there.'
 
 interface MockNodeOptions {
+  /** Requests of the sample that are addressed to a seat or an external party the viewer answers for (request id → the label of whom it is for), as `TeamSnapshot.relayedFor` says. */
+  relayedFor?: Readonly<Record<string, string>>
   /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
   pendingRoot?: boolean
   /** Changes that wait for the root key's signature, as `GET /api/me` tells the owner. */
@@ -209,10 +211,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
   // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
-  const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === viewerName).map((request) => request.id)
+  const relayedForOf = (view: TeamView): Record<string, string> => Object.fromEntries(view.requests.flatMap((request): Array<[string, string]> => { const label = options.relayedFor?.[request.id]; return label === undefined ? [] : [[request.id, label]] }))
+  const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === viewerName || options.relayedFor?.[request.id] !== undefined).map((request) => request.id)
   // And who waits on them: the people whose `waitingOn` names the viewer.
   const waitingOnViewerOf = (view: TeamView): string[] => view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === viewerName).map((person) => person.id)
-  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: viewerName, mine: mineOf(view), waitingOnViewer: waitingOnViewerOf(view), source: sourceOf(view) })
+  const snapshotOf = (view: TeamView): TeamSnapshot => ({ view, viewer: viewerName, mine: mineOf(view), waitingOnViewer: waitingOnViewerOf(view), ...(Object.keys(relayedForOf(view)).length === 0 ? {} : { relayedFor: relayedForOf(view) }), source: sourceOf(view) })
 
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
@@ -237,27 +240,27 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.refuseDecisionsWith !== undefined) return failure(409, options.refuseDecisionsWith)
     const signed = body.envelope as Signed<Envelope>
     const { kind, target, payload } = signed.body
-    const notes = body as { title?: string; choiceLabel?: string }
+    const notes = body as { title?: string; choiceLabel?: string; relayedFor?: string }
     // The node's note limit, counted in characters (Rust `chars`), not UTF-16 units.
-    for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel]] as const) {
+    for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel], ['relayedFor', notes.relayedFor]] as const) {
       if (text !== undefined && [...text.trim()].length > MAX_NOTE) return failure(400, `${field} is at most ${MAX_NOTE} characters`)
     }
-    const reply = await accept(view, { id: signed.body.id, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
+    const reply = await accept(view, { id: signed.body.id, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }), ...(notes.relayedFor === undefined ? {} : { relayedFor: notes.relayedFor }) })
     if (reply.ok) accepted = [...accepted, signed]
     return reply
   }
 
-  const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
+  const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string; relayedFor?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
-    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
+    received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }), ...(body.relayedFor === undefined ? {} : { relayedFor: body.relayedFor }) }]
     views = new Map([...views, [teamKey(view.org, view.team), { ...view, requests: view.requests.filter((one) => one !== target) }]])
     const outcome = options.outcome ?? 'applied'
     const state: DecisionEntry['state'] =
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
       // The log names a decision by its envelope's id, as the real node does.
-      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
+      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }), ...(body.relayedFor === undefined ? {} : { relayedFor: body.relayedFor }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)

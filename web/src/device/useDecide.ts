@@ -44,6 +44,7 @@ export function useDecide(): (answer: DecisionAnswer) => Promise<DecisionResult>
         envelope: await signEnvelope(held.key, deviceId, envelope),
         title: answer.title,
         ...(answer.choiceLabel === undefined ? {} : { choiceLabel: answer.choiceLabel }),
+        ...(answer.relayedFor === undefined ? {} : { relayedFor: answer.relayedFor }),
       })
     },
     [api, queryClient, settledKey],

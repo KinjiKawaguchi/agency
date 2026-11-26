@@ -223,10 +223,10 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     enterNumber: (org, input) => post<unknown>(`/api/orgs/${segment(org)}/outcomes/observations`, input).then(checked(readNumberEntry)),
     effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
-    decideSigned: (org, team, { envelope, title, choiceLabel }) => {
+    decideSigned: (org, team, { envelope, title, choiceLabel, relayedFor }) => {
       // The label travels only with a choice, and both notes are trimmed and cut for the log.
       const label = envelope.body.payload.choice === undefined || choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }
-      const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label }
+      const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label, ...(relayedFor === undefined || forLog(relayedFor) === '' ? {} : { relayedFor: forLog(relayedFor) }) }
       return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
     },
     registerPushToken: async (input) => void (await post<unknown>('/api/push/tokens', input)),

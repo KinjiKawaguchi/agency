@@ -383,6 +383,7 @@ export const en = {
         others: 'Waiting on someone else',
       },
       kinds: { proposal: 'Proposal', question: 'Question', pendingDecision: 'Pending decision' },
+      answerFor: (label: string) => `Answer for ${label}`,
       blocking: (count: number) => (count === 1 ? '1 participant waiting' : `${count} participants waiting`),
       showMore: (count: number) => `Show ${count} more`,
     },
@@ -390,6 +391,7 @@ export const en = {
       head: 'Recently decided',
       states: { applied: 'Applied', delivered: 'Delivered', queued: 'Waiting to send', refused: 'Refused' },
       chose: (choice: string) => `Chose “${choice}”.`,
+      answeredFor: (label: string) => `Answered for ${label}.`,
       queuedDetail: (attempts: number, retry: string | null) =>
         `${attempts === 0 ? 'Not sent yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
       underMinute: 'in under a minute',

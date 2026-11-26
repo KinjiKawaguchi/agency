@@ -11,6 +11,8 @@ export interface Team {
   mine: ReadonlySet<string>
   /** The ids of the team's people who wait on the viewer: the node's rule, never worked out here. */
   waitingOnViewer: ReadonlySet<string>
+  /** For each request addressed to a seat or an external party that the viewer answers for: the label of whom it is for (the node's `relayedFor`). */
+  relayedFor: ReadonlyMap<string, string>
 }
 
 export const toTeam = (snapshot: TeamSnapshot): Team => ({
@@ -19,6 +21,7 @@ export const toTeam = (snapshot: TeamSnapshot): Team => ({
   source: snapshot.source,
   mine: new Set(snapshot.mine),
   waitingOnViewer: new Set(snapshot.waitingOnViewer ?? [] /* stand-in-ok(optional): the node leaves the list out when it is empty, in an answer that has come */),
+  relayedFor: new Map(Object.entries(snapshot.relayedFor ?? {} /* stand-in-ok(optional): the node leaves it out when no request is for a seat the viewer answers for, in an answer that has come */)),
 })
 
 export const teamKey = (team: Team): string => `${team.view.org}/${team.view.team}`

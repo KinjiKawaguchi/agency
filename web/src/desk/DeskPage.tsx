@@ -86,7 +86,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
+        const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft), ...(item.relayedFor === undefined ? {} : { relayedFor: item.relayedFor }) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, { at: new Date().toISOString(), isComment: asComment }]]))
         toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : (asComment ? t.desk.paper.sentComment : t.desk.paper.sent)(item.drafter?.label ?? item.request.from))
