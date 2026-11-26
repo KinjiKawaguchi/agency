@@ -9,7 +9,7 @@ mod period;
 mod red;
 
 pub use evaluate::{evaluate, Input};
-pub use facts::{MainRun, MergedPullRequest, Verdict};
+pub use facts::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 pub use kinds::{classify, Kind};
 
 #[cfg(test)]

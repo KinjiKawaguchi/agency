@@ -35,12 +35,15 @@ fn standings(runs: &[MainRun]) -> Vec<(OffsetDateTime, Standing)> {
     standings
 }
 
-/// The spans during which the branch was red: from the finish of the first red commit to the finish of
-/// the next green one, or to `now` while it is still red.
-pub fn red_spans(runs: &[MainRun], now: OffsetDateTime) -> Vec<(OffsetDateTime, OffsetDateTime)> {
+type Span = (OffsetDateTime, OffsetDateTime);
+
+/// The spans during which the default branch of one repository was red: from the finish of the first red
+/// commit to the finish of the next green one, or to `now` while it is still red.
+fn branch_spans(runs: &[&MainRun], now: OffsetDateTime) -> Vec<Span> {
+    let runs: Vec<MainRun> = runs.iter().map(|run| (*run).clone()).collect();
     let mut spans = vec![];
     let mut red_since: Option<OffsetDateTime> = None;
-    for (finished, standing) in standings(runs) {
+    for (finished, standing) in standings(&runs) {
         match (standing, red_since) {
             (Standing::Red, None) => red_since = Some(finished),
             (Standing::Green, Some(since)) => {
@@ -56,6 +59,28 @@ pub fn red_spans(runs: &[MainRun], now: OffsetDateTime) -> Vec<(OffsetDateTime, 
     spans
 }
 
+/// The spans during which a default branch of the team was red: each repository's branch by itself,
+/// together, so that a green branch of one repository does not end the red of another.
+pub fn red_spans(runs: &[MainRun], now: OffsetDateTime) -> Vec<Span> {
+    let mut by_repo: BTreeMap<&str, Vec<&MainRun>> = BTreeMap::new();
+    for run in runs {
+        by_repo.entry(run.repo.as_str()).or_default().push(run);
+    }
+    let mut spans: Vec<Span> = by_repo
+        .values()
+        .flat_map(|repo_runs| branch_spans(repo_runs, now))
+        .collect();
+    spans.sort();
+    let mut merged: Vec<Span> = vec![];
+    for (from, until) in spans {
+        match merged.last_mut() {
+            Some(last) if from <= last.1 => last.1 = last.1.max(until),
+            _ => merged.push((from, until)),
+        }
+    }
+    merged
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +92,7 @@ mod tests {
 
     fn run(commit: &str, finished: &str, verdict: Verdict) -> MainRun {
         MainRun {
+            repo: "acme/app".into(),
             commit: commit.into(),
             finished_at: at(finished),
             verdict,
@@ -155,6 +181,41 @@ mod tests {
             "2026-11-24T12:00:00Z"
         )
         .is_empty());
+    }
+
+    #[test]
+    fn each_repository_is_red_by_itself_and_the_spans_are_joined() {
+        let in_repo = |repo: &str, mut run: MainRun| {
+            run.repo = repo.into();
+            run
+        };
+        let runs = [
+            in_repo("acme/a", run("a1", "2026-11-24T10:00:00Z", Verdict::Failed)),
+            in_repo("acme/b", run("b1", "2026-11-24T10:30:00Z", Verdict::Failed)),
+            in_repo("acme/b", run("b2", "2026-11-24T10:40:00Z", Verdict::Passed)),
+            in_repo("acme/a", run("a2", "2026-11-24T11:00:00Z", Verdict::Passed)),
+            in_repo("acme/b", run("b3", "2026-11-24T12:00:00Z", Verdict::Failed)),
+            in_repo("acme/b", run("b4", "2026-11-24T12:30:00Z", Verdict::Passed)),
+            in_repo("acme/a", run("a3", "2026-11-24T14:00:00Z", Verdict::Failed)),
+        ];
+        assert_eq!(
+            spans(&runs, "2026-11-24T15:00:00Z"),
+            [
+                (
+                    "2026-11-24T10:00:00Z".to_string(),
+                    "2026-11-24T11:00:00Z".to_string()
+                ),
+                (
+                    "2026-11-24T12:00:00Z".to_string(),
+                    "2026-11-24T12:30:00Z".to_string()
+                ),
+                (
+                    "2026-11-24T14:00:00Z".to_string(),
+                    "2026-11-24T15:00:00Z".to_string()
+                ),
+            ],
+            "b's green at 10:40 does not end a's red; the overlapping reds of a and b are one span"
+        );
     }
 
     #[test]

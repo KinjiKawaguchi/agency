@@ -86,6 +86,9 @@ pub struct NodeConfig {
     /// The account's sources of funding, shown to clients with their usage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub funding: Vec<FundingConfig>,
+    /// Where each hosted team's delivery numbers come from. A team that is not listed has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delivery: Vec<DeliveryConfig>,
     /// Cloudflare Access in front of the Client API. Without it, the Client API answers only direct
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,6 +96,17 @@ pub struct NodeConfig {
     /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push: Option<PushConfig>,
+}
+
+/// The GitHub repositories (`owner/name`) a hosted team's delivery numbers are worked out from: its
+/// merged pull requests, the issues they close, and the CI runs on their default branches. GitHub is
+/// read with the machine's own `gh` login, read-only; the configuration holds no token.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeliveryConfig {
+    pub org: Id,
+    pub team: Id,
+    pub repos: Vec<String>,
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -277,6 +291,7 @@ mod tests {
             teams: vec![],
             trusted: vec![],
             funding: vec![],
+            delivery: vec![],
             access: None,
             push: None,
         };
