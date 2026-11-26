@@ -162,14 +162,18 @@ describe('the cost on the same days', () => {
     expect(lead.queryByText('The cost of these days could not be read.')).not.toBeInTheDocument()
   })
 
-  it('leaves a day no team reported without a column, which reads aloud as no cost, and does not show it as 0', async () => {
+  it('leaves a day that no team’s period covers without a column, which reads aloud as no cost, and shows a quiet day inside a period as 0', async () => {
     const node = costNode()
-    // The evaluation's answer, without its oldest 10 days.
+    // The evaluation's answer, with each team's period starting 10 days later and the days before it left out of byDay as well.
     const client = createApiClient(async (request) => {
       const answer = await node.handle(request)
       if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/evaluation')) return answer
-      const body = (await answer.json()) as { teams: Array<{ byDay: Array<{ date: string }> }> }
-      for (const team of body.teams) team.byDay = team.byDay.slice(10)
+      const body = (await answer.json()) as { teams: Array<{ from: string; byDay: Array<{ date: string }> }> }
+      for (const team of body.teams) {
+        const kept = team.byDay.slice(10)
+        team.from = kept[0]?.date ?? team.from
+        team.byDay = kept.filter((_day, index) => index % 2 === 0)
+      }
       return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
     })
     renderApp({ path: '/outcomes', node, client, enrolled: true })
@@ -178,9 +182,24 @@ describe('the cost on the same days', () => {
     const columns = [...document.querySelectorAll('.oc-kpi')[0]!.querySelectorAll('.oc-cost .ev-col')]
     expect(columns).toHaveLength(90)
     const missing = columns.filter((column) => column.getAttribute('aria-label')?.endsWith(': no cost reported'))
-    expect(missing).toHaveLength(10)
+    expect(missing, 'the days before every team’s period').toHaveLength(10)
     expect(missing.every((column) => column.querySelector('.ev-stack') === null && column.querySelector('.ev-tip') === null)).toBe(true)
-    expect(columns.filter((column) => column.querySelector('.ev-stack') !== null)).toHaveLength(80)
+    const inside = columns.slice(10)
+    expect(inside.every((column) => !column.getAttribute('aria-label')?.endsWith('no cost reported')), 'a day the byDay leaves out is inside the period, not missing').toBe(true)
+  })
+
+  it('says both that no cost is reported and that a team could not report, when every day is missing', async () => {
+    const node = costNode()
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/evaluation')) return answer
+      const body = (await answer.json()) as Record<string, unknown>
+      return new Response(JSON.stringify({ ...body, teams: [], unavailable: [{ team: 'site', reason: 'down' }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    const revenue = await card('Monthly revenue')
+    expect(await revenue.findByText('No cost is reported for these days.')).toBeInTheDocument()
+    expect(revenue.getByText('Without 1 team that could not report.')).toBeInTheDocument()
   })
 
   it('says it could not be read, and leaves the KPI as it is, when the evaluation fails', async () => {

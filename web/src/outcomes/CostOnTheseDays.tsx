@@ -24,7 +24,14 @@ export function CostOnTheseDays({ org, dates }: Props) {
   }
   const { days, teamsWithout } = costByDay(evaluation.data, dates)
   const known = days.filter((day) => day.usd !== undefined)
-  if (known.length === 0) return <p className="muted oc-cost-note">{text.none}</p>
+  if (known.length === 0) {
+    return (
+      <>
+        <p className="muted oc-cost-note">{text.none}</p>
+        {teamsWithout === 0 ? null : <p className="muted oc-cost-note">{text.partial(teamsWithout)}</p>}
+      </>
+    )
+  }
   const max = niceMax(Math.max(...known.map((day) => day.usd ?? 0))) /* stand-in-ok(scale): an axis maximum from the days that have a cost */
   return (
     <div className="oc-cost">
