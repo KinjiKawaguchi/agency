@@ -67,6 +67,9 @@ pub struct Running {
     pub delivery: MemoryDelivery,
     opened: Opened,
     pub port: u16,
+    /// The socket the node will serve on, held from the moment its port was chosen until `start`: a port
+    /// that is chosen and then closed can be handed to another test before this node opens it again.
+    listener: Option<TcpListener>,
     server: Option<JoinHandle<()>>,
     _dir: TempDir,
 }
@@ -84,7 +87,10 @@ impl Running {
     }
 
     pub async fn start(&mut self) {
-        let listener = TcpListener::bind(("127.0.0.1", self.port)).await.unwrap();
+        let listener = match self.listener.take() {
+            Some(listener) => listener,
+            None => TcpListener::bind(("127.0.0.1", self.port)).await.unwrap(),
+        };
         let app = self
             .opened
             .app_with(self.port, TOKEN.into(), Arc::new(TestWeb))
@@ -135,15 +141,11 @@ async fn node_from(
     fixed: Option<(u8, u16)>,
 ) -> Running {
     let dir = TempDir::new().unwrap();
-    let port = match fixed {
-        Some((_, port)) => port,
-        None => TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port(),
+    let listener = match fixed {
+        Some((_, port)) => TcpListener::bind(("127.0.0.1", port)).await.unwrap(),
+        None => TcpListener::bind("127.0.0.1:0").await.unwrap(),
     };
+    let port = listener.local_addr().unwrap().port();
     let seed = fixed.map(|(seed, _)| seed);
     let data = DataDir::new(dir.path().join("node"));
     data.create_key().unwrap();
@@ -192,6 +194,7 @@ async fn node_from(
         delivery,
         opened,
         port,
+        listener: Some(listener),
         server: None,
         _dir: dir,
     };
