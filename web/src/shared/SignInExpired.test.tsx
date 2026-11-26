@@ -26,6 +26,21 @@ describe('an expired sign-in', () => {
     expect(screen.queryByText(/Could not reach the node/)).not.toBeInTheDocument()
   })
 
+  it('tells the installed app’s worker to forget the files it kept', async () => {
+    const posted: unknown[] = []
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { controller: { postMessage: (message: unknown) => posted.push(message) } } })
+    try {
+      const { client, state } = clientWithSignIn()
+      state.isExpired = true
+      renderApp({ client })
+      await screen.findByRole('button', { name: 'Reload' })
+      expect(posted.length).toBeGreaterThan(0)
+      expect(posted.every((message) => JSON.stringify(message) === JSON.stringify({ type: 'signed-out' }))).toBe(true)
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker')
+    }
+  })
+
   it('keeps what was written, and tells the viewer when sending fails for it', async () => {
     const user = userEvent.setup()
     const { client, state } = clientWithSignIn()

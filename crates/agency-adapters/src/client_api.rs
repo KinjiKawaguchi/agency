@@ -385,6 +385,7 @@ fn content_type(path: &str) -> &'static str {
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "json" | "map" => "application/json",
+        "webmanifest" => "application/manifest+json",
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "ico" => "image/x-icon",
@@ -466,4 +467,31 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         // Added after the guard, so it answers without an Access sign-in: Apple's servers fetch it.
         .route(ASSOCIATION_PATH, get(handoff::association))
         .with_state(api)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::content_type;
+
+    #[test]
+    fn serves_the_app_manifest_as_a_manifest() {
+        assert_eq!(
+            content_type("manifest.webmanifest"),
+            "application/manifest+json"
+        );
+    }
+
+    #[test]
+    fn keeps_the_types_of_the_other_built_files() {
+        assert_eq!(
+            content_type("assets/index-abc.js"),
+            "text/javascript; charset=utf-8"
+        );
+        assert_eq!(content_type("sw.js"), "text/javascript; charset=utf-8");
+        assert_eq!(content_type("offline.css"), "text/css; charset=utf-8");
+        assert_eq!(content_type("offline.html"), "text/html; charset=utf-8");
+        assert_eq!(content_type("icons/icon-192.png"), "image/png");
+        assert_eq!(content_type("icons/seal.svg"), "image/svg+xml");
+        assert_eq!(content_type("unknown.bin"), "application/octet-stream");
+    }
 }
