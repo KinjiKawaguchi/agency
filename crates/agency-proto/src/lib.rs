@@ -21,6 +21,7 @@ pub mod outcome;
 pub mod participant_metrics;
 pub mod reading;
 pub mod runtime;
+pub mod seat;
 pub mod signed;
 pub mod timestamp;
 pub mod usage;

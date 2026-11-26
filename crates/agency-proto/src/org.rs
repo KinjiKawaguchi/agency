@@ -2,6 +2,7 @@
 use crate::ids::Id;
 use crate::keys::PublicKey;
 use crate::outcome::{Aim, Kpi};
+use crate::seat::{External, Seat};
 use crate::signed::{Kind, Signed};
 use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -241,6 +242,15 @@ pub struct OrgDefinition {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Kpi>>", optional)]
     pub kpis: Vec<Kpi>,
+    /// Places in the org that no one has taken yet. Left out when empty, so a version signed before seats
+    /// existed keeps its canonical JSON and signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Seat>>", optional)]
+    pub seats: Vec<Seat>,
+    /// People the org works with who never take a seat. Left out when empty, like `seats`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<External>>", optional)]
+    pub externals: Vec<External>,
     pub at: String,
 }
 
@@ -297,6 +307,8 @@ impl OrgDefinition {
             teams: vec![],
             revoked: vec![],
             kpis: vec![],
+            seats: vec![],
+            externals: vec![],
             at,
         }
     }
@@ -445,6 +457,7 @@ impl OrgDefinition {
             return Err("a team's plan allocation does not add up to 100".into());
         }
         crate::outcome::validate(self)?;
+        crate::seat::validate(self)?;
         self.validate_devices()
     }
 

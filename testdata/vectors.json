@@ -122,6 +122,11 @@
     "digest": "b9f1bde23ba785c4912172cf7077aba6ae8878e764230748f31d3d84c5fa02d6",
     "signature": "tY/tk6Vl/Y083clHeDHzYH+rEvzRWLfBIRPA8owRVOo6lOEBxvZn6zqrOF1jCwrlWFN9iMgVP3nUX9UEbqtfDQ=="
   },
+  "orgWithSeats": {
+    "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"externals\":[{\"askAbout\":[\"contract review\",\"legal checks\"],\"id\":\"erin\",\"label\":\"Erin (outside counsel)\",\"relays\":[\"owner\"]}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\"},\"seats\":[{\"askAbout\":[\"invoices\",\"budget approval\"],\"department\":\"dev\",\"id\":\"carol\",\"label\":\"Carol (finance)\",\"relays\":[\"owner\"]}],\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":2}",
+    "digest": "815d29153cd9957e14a1d022501502b4138de9a064ccd0a508128ec882dd3fa6",
+    "signature": "vgdOkgrcriYxxYCZEfs/L1IMHYnJpGB3WGqhZBQ+oulPfGE+dqNAAb3x8WLLvxfh/xaNhTh98EpIvJa2aaI8Bw=="
+  },
   "p256Device": {
     "commentSignature": "SMoU0WHlWHXyP/vft+7CVpvBD1y9qj2dU8ygGkvrrie/DEQc4k4+XpevDimTxs4Itj9qt8RDHaluV0WBPO/6Gw==",
     "deviceId": "d-a652124afda7",

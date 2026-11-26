@@ -72,7 +72,7 @@ pub fn change(node: &Node, org: &Id, id: &Id, change: Change) -> Result<SignedOr
     })
 }
 
-/// Removes a department that nothing is in: no department under it, and no member or team in it.
+/// Removes a department that nothing is in: no department under it, and no member, seat, or team in it.
 pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
     amend(node, org, |body| {
         if !body.departments.iter().any(|one| &one.id == id) {
@@ -81,10 +81,12 @@ pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
         let is_here = |department: &Option<Id>| department.as_ref() == Some(id);
         let children = body.departments.iter().filter(|one| is_here(&one.parent));
         let people = body.people.iter().filter(|one| is_here(&one.department));
+        let seats = body.seats.iter().filter(|one| is_here(&one.department));
         let teams = body.teams.iter().filter(|one| is_here(&one.department));
         let in_it: Vec<String> = children
             .map(|one| format!("department {}", one.id))
             .chain(people.map(|one| format!("member {}", one.id)))
+            .chain(seats.map(|one| format!("seat {}", one.id)))
             .chain(teams.map(|one| format!("team {}", one.id)))
             .collect();
         if !in_it.is_empty() {
