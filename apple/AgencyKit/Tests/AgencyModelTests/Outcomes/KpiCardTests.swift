@@ -15,8 +15,16 @@ struct KpiCardTests {
         let movement = try #require(card.movement)
         #expect(movement.direction == .rose && movement.tone == .better)
         #expect(movement.change.hasPrefix("+") && movement.change.contains("150,000"))
-        #expect(movement.text == "上がった（良い方）")
+        #expect(movement.ratio == "+12.5%")
+        #expect(movement.text.hasPrefix("上がった +") && movement.text.contains("150,000") && movement.text.hasSuffix("（+12.5%）良い方"))
         #expect(card.points == [KpiCard.Point(day: "2026-11-20", value: 1_350_000)])
+    }
+
+    @Test("with the period's last day the days of the same year are the web's short date")
+    func shortDays() {
+        let card = KpiCard(series: samples.series[0], until: samples.until)
+        guard case .latest(_, let day) = card.figure else { Issue.record("no latest number"); return }
+        #expect(day == "11月20日")
     }
 
     @Test("activation: two numbers and no baseline, so a latest number and no movement")
@@ -50,15 +58,15 @@ struct KpiCardTests {
             return try #require(KpiCard(series: series).movement)
         }
         let fell = try movement(goodWhen: "lower", before: 10, latest: 6)
-        #expect(fell.direction == .fell && fell.tone == .better && fell.text == "下がった（良い方）")
+        #expect(fell.direction == .fell && fell.tone == .better && fell.text == "下がった -4（-40%）良い方")
         let rose = try movement(goodWhen: "lower", before: 10, latest: 12)
-        #expect(rose.direction == .rose && rose.tone == .worse && rose.text == "上がった（悪い方）")
+        #expect(rose.direction == .rose && rose.tone == .worse && rose.text == "上がった +2（+20%）悪い方")
         let fellHigher = try movement(goodWhen: "higher", before: 10, latest: 6)
         #expect(fellHigher.tone == .worse)
         let same = try movement(goodWhen: "higher", before: 10, latest: 10)
         #expect(same.direction == .unchanged && same.tone == .neutral && same.text == "変わらず")
         let unknown = try movement(goodWhen: "sideways", before: 10, latest: 12)
-        #expect(unknown.direction == .rose && unknown.tone == .neutral && unknown.text == "上がった", "the direction only, no colour")
+        #expect(unknown.direction == .rose && unknown.tone == .neutral && unknown.text == "上がった +2（+20%）", "no tag, so no colour")
     }
 
     @Test("a latest number of 0 is a number: it is drawn as 0, and is not the gap")

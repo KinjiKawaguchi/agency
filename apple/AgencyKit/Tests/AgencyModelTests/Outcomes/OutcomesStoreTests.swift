@@ -68,6 +68,7 @@ struct OutcomesStoreTests {
         #expect(lines.count == 8)
         #expect(lines[0].team == "App", "the team's own label")
         #expect(acme.from == "2026-11-11" && acme.until == "2026-11-24", "the period the trends are drawn between")
+        #expect(lines[0].headline.contains("10月15日") && !lines[0].headline.contains("年"), "short days: the readings are of the year of their day")
     }
 
     @Test("when every org refuses, there is nothing to show, no failure, and the page is not offered")

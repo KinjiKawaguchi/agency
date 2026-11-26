@@ -57,10 +57,19 @@ public enum OutcomeFormat {
         }
     }
 
-    /// A day `YYYY-MM-DD` as it is read in Japanese (`2026年11月20日`); anything else as it came.
-    public static func day(_ iso: String) -> String {
+    /// A day `YYYY-MM-DD` as it is read in Japanese: `11月20日` in the year of `reference` (the web's short date), and with its
+    /// year (`2025年12月3日`) in another year, or when there is no reference; anything else as it came.
+    public static func day(_ iso: String, relativeTo reference: String? = nil) -> String {
         let parts = iso.split(separator: "-")
         guard parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]) else { return iso }
-        return "\(year)年\(month)月\(day)日"
+        let referenceYear = reference.flatMap { $0.split(separator: "-").first }.flatMap { Int($0) }
+        return referenceYear == year ? "\(month)月\(day)日" : "\(year)年\(month)月\(day)日"
+    }
+
+    /// A change as a share of where it began, with its sign (`+10%`); none when it began at 0.
+    public static func changeRatio(from: Double, to: Double) -> String? {
+        guard from != 0 else { return nil }
+        let share = (to - from) / abs(from) * 100
+        return plain(share, fractionDigits: 1, signed: true) + "%"
     }
 }
