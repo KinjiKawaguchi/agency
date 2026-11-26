@@ -33,6 +33,45 @@ public struct TeamEvaluation: Decodable, Equatable, Sendable {
     public let summary: EvaluationSummary
     /// Oldest day first; days with nothing in them may be left out.
     public let byDay: [DayEvaluation]
+    /// What each participant did over the period. There only for the team's owner reading on their own node, and only when the
+    /// team's runtime reports it: without it nothing about participants is known, which is not the same as none.
+    public let participants: [ParticipantEvaluation]?
+    /// The pull requests merged in the period that no participant is named the author of, so that the participants' `merged` and
+    /// this add up to the summary's. There with `participants`.
+    public let unattributedMerged: Int?
+}
+
+/// One participant's numbers over the period, from the team runtime's own record and the pull requests GitHub says merged.
+public struct ParticipantEvaluation: Decodable, Equatable, Sendable {
+    /// The participant's name in the team's runtime.
+    public let name: String
+    /// Seconds in the period at least one of the participant's sessions was working, was waiting for a human's decision (a lower
+    /// bound: a runtime sees only some of the waits), or was alive and neither. Overlapping sessions count once.
+    public let busySeconds: Double
+    public let waitingSeconds: Double
+    public let idleSeconds: Double
+    public let costUsd: Double
+    public let tokens: TokenCounts
+    /// The pull requests merged in the period (`merged` and `reverts` of the summary together) whose author is this participant.
+    public let merged: Int
+    /// `costUsd` over `merged`; left out when the participant merged nothing.
+    public let costPerMergedPrUsd: Double?
+
+    private enum Keys: String, CodingKey {
+        case name, busySeconds, waitingSeconds, idleSeconds, costUsd, tokens, merged, costPerMergedPrUsd
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        name = try container.decode(String.self, forKey: .name)
+        busySeconds = try container.amount(.busySeconds)
+        waitingSeconds = try container.amount(.waitingSeconds)
+        idleSeconds = try container.amount(.idleSeconds)
+        costUsd = try container.amount(.costUsd)
+        tokens = try container.decode(TokenCounts.self, forKey: .tokens)
+        merged = Int(try container.amount(.merged))
+        costPerMergedPrUsd = try container.optionalAmount(.costPerMergedPrUsd)
+    }
 }
 
 /// Merged pull requests by the Conventional Commits type of their titles; anything else is `other`.
