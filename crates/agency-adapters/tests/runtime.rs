@@ -12,6 +12,7 @@ use tempfile::TempDir;
 
 const SAMPLE: &str = include_str!("../../../testdata/teamview.sample.json");
 const USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
+const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
 
 const FAKE: &str = r#"#!/bin/sh
 input=$(cat)
@@ -221,6 +222,65 @@ async fn reads_token_usage_only_from_a_runtime_that_lists_it() {
     let request: serde_json::Value =
         serde_json::from_str(&fake.read("last-tokenUsage.json")).unwrap();
     assert_eq!(request["days"], 14);
+}
+
+#[tokio::test]
+async fn participant_metrics_is_asked_with_the_range_and_time_zone_and_kept_for_the_same_ones() {
+    let fake = Fake::new();
+    let team = fake.team("app");
+    // A runtime that does not list the op is not run for it.
+    let error = CommandRuntime::default()
+        .participant_metrics(&team, 2, 540)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, 404);
+    assert!(!fake.read("calls").contains("participantMetrics"));
+
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","participantMetrics"],"label":"App"}}"#,
+        0,
+    );
+    fake.answer(
+        "participantMetrics",
+        &format!(r#"{{"result":{PARTICIPANTS}}}"#),
+        0,
+    );
+    let runtimes = CommandRuntime::default();
+    let report = runtimes.participant_metrics(&team, 2, 540).await.unwrap();
+    assert_eq!(report.participants.len(), 3);
+    assert_eq!(report.pull_requests[0].number, 101);
+    let asked: serde_json::Value =
+        serde_json::from_str(&fake.read("last-participantMetrics.json")).unwrap();
+    assert_eq!(
+        asked,
+        serde_json::json!({ "runtime": "agency-runtime/1", "org": "acme", "team": "app", "op": "participantMetrics", "days": 2, "utcOffsetMinutes": 540 })
+    );
+
+    let runs = || fake.read("calls").matches("participantMetrics").count();
+    runtimes.participant_metrics(&team, 2, 540).await.unwrap();
+    assert_eq!(runs(), 1, "the same range and time zone are kept");
+    runtimes.participant_metrics(&team, 2, 0).await.unwrap();
+    assert_eq!(runs(), 2, "another time zone is another read");
+    runtimes.participant_metrics(&team, 7, 0).await.unwrap();
+    assert_eq!(runs(), 3, "and another range");
+
+    // Where nothing is kept, each read runs the command.
+    let unkept =
+        CommandRuntime::default().keeping(std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let before = runs();
+    unkept.participant_metrics(&team, 2, 540).await.unwrap();
+    unkept.participant_metrics(&team, 2, 540).await.unwrap();
+    assert_eq!(runs(), before + 2);
+
+    fake.answer("participantMetrics", "not json", 1);
+    let failing =
+        CommandRuntime::default().keeping(std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let error = failing
+        .participant_metrics(&team, 2, 540)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, 503);
 }
 
 #[tokio::test]

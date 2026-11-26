@@ -112,6 +112,11 @@ pub struct MemoryRuntimeState {
     /// The epics the view shows.
     pub epics: Vec<EpicForecast>,
     pub applied: Vec<RuntimeDecision>,
+    /// The participant metrics it reports, with `days` and the time zone set to those asked for; `None`
+    /// answers 404 like a runtime without `participantMetrics`. The ranges and time zones asked for are
+    /// in `participant_asks`.
+    pub participants: Option<agency_proto::participant_metrics::ParticipantMetrics>,
+    pub participant_asks: Vec<(u32, i32)>,
     /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
     /// without `tokenUsage`.
     pub usage: Option<TokenUsage>,
@@ -226,6 +231,27 @@ impl TeamRuntime for MemoryRuntime {
         usage.ok_or_else(|| RuntimeError {
             status: 404,
             message: "the memory runtime does not report token usage".into(),
+        })
+    }
+
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        days: u32,
+        utc_offset_minutes: i32,
+    ) -> Result<agency_proto::participant_metrics::ParticipantMetrics, RuntimeError> {
+        let mut state = self.0.lock().map_err(|_| poisoned())?;
+        state.participant_asks.push((days, utc_offset_minutes));
+        let metrics = state.participants.clone().map(|metrics| {
+            agency_proto::participant_metrics::ParticipantMetrics {
+                days,
+                utc_offset_minutes,
+                ..metrics
+            }
+        });
+        metrics.ok_or_else(|| RuntimeError {
+            status: 404,
+            message: "the memory runtime does not report participant metrics".into(),
         })
     }
 
