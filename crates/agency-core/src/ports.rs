@@ -12,6 +12,7 @@ use crate::views::Replica;
 use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow};
 use agency_proto::clock::OffsetDateTime;
+use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
@@ -23,6 +24,12 @@ use async_trait::async_trait;
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
+
+    /// The node's time zone, as the offset from UTC now. The days of the delivery reports are its
+    /// calendar days. UTC unless the clock knows better.
+    fn utc_offset(&self) -> agency_proto::clock::UtcOffset {
+        agency_proto::clock::UtcOffset::UTC
+    }
 }
 
 pub trait Random: Send + Sync {
@@ -173,6 +180,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<TokenUsage, PeerError>;
+    /// A team's delivery evaluation, from the node it runs on.
+    async fn get_evaluation(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Evaluation, PeerError>;
     async fn get_definition(
         &self,
         node: &str,

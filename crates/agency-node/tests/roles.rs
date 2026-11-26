@@ -262,6 +262,10 @@ async fn an_answerer_answers_and_reads_only_what_is_addressed_to_them() {
     }
     let usage = read("/fed/v1/teams/acme/app/usage?days=7").await.unwrap();
     assert_eq!(usage.status(), 403, "an answerer does not read usage");
+    let evaluation = read("/fed/v1/teams/acme/app/evaluation?days=7")
+        .await
+        .unwrap();
+    assert_eq!(evaluation.status(), 403, "nor the delivery evaluation");
 
     let bob = joined_bob(&alice).await;
     let auth = sign_read(

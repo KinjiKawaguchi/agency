@@ -1,6 +1,7 @@
 //! In-memory test doubles: a clock that moves only when told to, counting randomness, and a team runtime.
 use agency_core::config::HostedTeam;
-use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
+use agency_core::delivery::DeliveryFacts;
+use agency_core::ports::{Clock, DeliveryError, DeliverySource, Notifier, Random, TeamRuntime};
 use agency_core::push::{Notice, PushError};
 use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::PushToken;
@@ -60,6 +61,39 @@ impl Random for CountingRandom {
         let mut bytes = [0u8; 16];
         bytes[8..].copy_from_slice(&next.to_be_bytes());
         bytes
+    }
+}
+
+/// What a `MemoryDelivery` answers, and what it was asked.
+#[derive(Default, Debug)]
+pub struct MemoryDeliveryState {
+    /// The facts it answers; the reason it fails with; `None` fails as GitHub being unavailable.
+    pub facts: Option<Result<DeliveryFacts, String>>,
+    /// The repositories and the start of the period of each read.
+    pub asked: Vec<(Vec<String>, OffsetDateTime)>,
+}
+
+/// A source of delivery facts that answers from memory.
+#[derive(Clone, Default)]
+pub struct MemoryDelivery(pub Arc<Mutex<MemoryDeliveryState>>);
+
+#[async_trait]
+impl DeliverySource for MemoryDelivery {
+    async fn facts(
+        &self,
+        repos: &[String],
+        since: OffsetDateTime,
+    ) -> Result<DeliveryFacts, DeliveryError> {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.asked.push((repos.to_vec(), since));
+        match &state.facts {
+            Some(Ok(facts)) => Ok(facts.clone()),
+            Some(Err(reason)) => Err(DeliveryError(reason.clone())),
+            None => Err(DeliveryError("GitHub did not answer the request".into())),
+        }
     }
 }
 

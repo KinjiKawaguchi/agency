@@ -10,6 +10,7 @@ pub mod delivery;
 pub mod departments;
 pub mod devices;
 pub mod error;
+pub mod evaluation;
 pub mod funding_pick;
 pub mod invites;
 pub mod node;

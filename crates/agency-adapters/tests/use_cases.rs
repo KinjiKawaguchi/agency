@@ -123,6 +123,7 @@ fn bare(account: &str) -> Fixture {
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
+        delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
         notifier: Arc::new(NoNotifier),
     };
     let node = Node::open(ports, key).unwrap();
