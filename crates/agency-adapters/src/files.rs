@@ -12,6 +12,7 @@ use agency_core::ports::{
     InviteStore, OrgStore, OutboxStore, OutcomeStore, PushStore, ReplicaStore, ShipLedger,
     ShipRecord,
 };
+use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
@@ -419,6 +420,14 @@ impl PushStore for DataDir {
 
     fn save_push_tokens(&self, tokens: &[PushToken]) -> Result<()> {
         write_json(&self.0.join("push-tokens.json"), tokens)
+    }
+
+    fn push_retries(&self) -> Vec<Retry> {
+        read_json(&self.0.join("push-retries.json")).unwrap_or_default()
+    }
+
+    fn save_push_retries(&self, retries: &[Retry]) -> Result<()> {
+        write_json(&self.0.join("push-retries.json"), retries)
     }
 
     fn web_subscriptions(&self) -> Vec<WebSubscription> {

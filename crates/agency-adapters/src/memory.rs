@@ -310,6 +310,8 @@ pub struct MemoryNotifierState {
     pub desk_attempts: usize,
     pub gone: Vec<String>,
     pub failing: bool,
+    /// Tokens and subscription ids whose sends fail (not gone: a push service having a bad minute); the others are taken.
+    pub refusing: Vec<String>,
     /// The VAPID key of a node with Web Push; none for a node without it.
     pub web_key: Option<VapidKey>,
     /// What was sent to browser subscriptions: the subscription's id and the notice.
@@ -326,7 +328,7 @@ impl Notifier for MemoryNotifier {
             .0
             .lock()
             .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
-        if state.failing {
+        if state.failing || state.refusing.contains(&token.token) {
             return Err(PushError::Failed("APNs did not answer".into()));
         }
         if state.gone.contains(&token.token) {
@@ -369,7 +371,7 @@ impl Notifier for MemoryNotifier {
             .0
             .lock()
             .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
-        if state.failing {
+        if state.failing || state.refusing.contains(&subscription.id) {
             return Err(PushError::Failed("a push service did not answer".into()));
         }
         if state.gone.contains(&subscription.id) {
