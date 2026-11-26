@@ -39,9 +39,9 @@ public enum Ja {
         }
 
         public static func itemsOnDesk(_ count: Int) -> String { "机の上に \(count) 件あります。" }
-        public static func someoneWaiting(_ count: Int) -> String { "\(count) 人があなたの返事を待っています。" }
-        public static func peopleWorking(working: Int, total: Int) -> String { "\(total) 人のうち \(working) 人が作業中です。" }
-        public static func blocking(_ count: Int) -> String { "\(count) 人が待機" }
+        public static func someoneWaiting(_ count: Int) -> String { "\(count) 人の参加者があなたの返事を待っています。" }
+        public static func peopleWorking(working: Int, total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
+        public static func blocking(_ count: Int) -> String { "参加者 \(count) 人が待機" }
         public static func drafter(_ name: String) -> String { "起案: \(name)" }
         public static func unreadableTeam(_ team: String, reason: String) -> String { "\(team) を読み込めませんでした: \(reason)" }
         public static func loadFailed(_ reason: String) -> String { "ノードに接続できません: \(reason)" }
