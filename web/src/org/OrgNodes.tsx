@@ -3,12 +3,13 @@ import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
 import { Skeleton } from '../shared/Skeleton'
 import type { Team } from '../api/teams'
-import type { AgentNode, DepartmentNode, OrgNode, PersonNode, TeamNode } from './tree'
+import type { AgentNode, DepartmentNode, Mine, OrgNode, PersonNode, TeamNode } from './tree'
 
 /** The requests that are the viewer's, in the overview's words: the same number in every chart. */
-function Waiting({ count }: { count: number }) {
+function Waiting({ count }: { count: Mine }) {
   const { t } = useI18n()
-  return count > 0 ? <span className="oc-wait">{t.overview.waitingForYou(count)}</span> : null
+  if (count === 'loading') return <Skeleton kind="short" />
+  return typeof count === 'number' && count > 0 ? <span className="oc-wait">{t.overview.waitingForYou(count)}</span> : null
 }
 
 /** A mark on a team whose data is a copy that could not be renewed; the age and the reason are in its title, as in the overview. */
@@ -74,7 +75,7 @@ function CompactTeam({ node }: { node: TeamNode }) {
 
 /** Where a team's box goes: its requests on the desk when the viewer has some, else the overview. */
 function destination(node: TeamNode): { to: '/desk'; search: { team: string } } | { to: '/overview' } {
-  return node.view !== undefined && (node.signals?.mine ?? 0) > 0 ? { to: '/desk', search: { team: `${node.view.org}/${node.view.team}` } } : { to: '/overview' }
+  return node.view !== undefined && node.signals !== undefined && node.signals.mine > 0 ? { to: '/desk', search: { team: `${node.view.org}/${node.view.team}` } } : { to: '/overview' }
 }
 
 export function TeamCard({ node, compact = false }: { node: TeamNode; compact?: boolean }) {
@@ -90,7 +91,7 @@ export function TeamCard({ node, compact = false }: { node: TeamNode; compact?: 
         <span className="oc-sub">{t.org.agents(node.agents.length, node.working)}</span>
       )}
       <OldData source={node.source} />
-      <Waiting count={node.signals?.mine ?? 0} />
+      {node.signals === undefined ? null : <Waiting count={node.signals.mine} />}
     </Link>
   )
 }
@@ -127,7 +128,6 @@ export function OrgCard({ node }: { node: OrgNode }) {
       <span className="oc-kind">{t.org.kinds.organization}</span>
       <span className="oc-name">{node.org.label}</span>
       {node.state === 'failed' ? <span className="oc-wait">{t.org.orgUnavailable}</span> : null}
-      {node.state === 'loading' ? <Skeleton kind="short" /> : null}
       <Waiting count={node.mine} />
     </Link>
   )

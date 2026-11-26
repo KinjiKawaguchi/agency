@@ -85,7 +85,7 @@ function OneOrgChart({ me, teams, loading, org, unit, onChoose }: ChartProps & {
       {tree.children.length === 0 && tree.focus !== undefined ? (
         <p className="empty">{t.org.emptyDepartment}</p>
       ) : (
-        <OrgChartViewer resetKey={`${org.id}/${unit ?? ''}`} fileName={`org-chart-${org.id}${unit === undefined ? '' : `-${unit}`}`}>
+        <OrgChartViewer resetKey={`${org.id}/${unit ?? '' /* stand-in-ok(routing): the key that resets the chart's view when the department changes */}`} fileName={`org-chart-${org.id}${unit === undefined ? '' : `-${unit}`}`}>
           <OrgTree tree={tree} org={org.id} orgLabel={org.label} />
         </OrgChartViewer>
       )}

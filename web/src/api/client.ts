@@ -89,7 +89,7 @@ const STALE_TOKEN = 'write token'
 
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
-  return document.querySelector('meta[name="agency-token"]')?.getAttribute('content') ?? ''
+  return document.querySelector('meta[name="agency-token"]')?.getAttribute('content') ?? '' /* stand-in-ok(device): the write token the node put in this page, not a value the node answers with */
 }
 
 async function readJson<T>(response: Response): Promise<T> {

@@ -16,7 +16,7 @@ import { draftOf, loadDrafts, saveDrafts, withDraft, withoutDraft, type Draft, t
 import { isComment } from './comment'
 import { canDecide, openItems, resolveSelection, situationOf, stepSelection, type DeskItem } from './items'
 import { Paper } from './Paper'
-import { Pile } from './Pile'
+import { Pile, PileSkeleton } from './Pile'
 import { RecentDecisions } from './RecentDecisions'
 import { useDeskKeys } from './useDeskKeys'
 import './desk.css'
@@ -73,7 +73,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
   const items = useMemo(() => openItems(teams), [teams])
   const selectedKey = resolveSelection(items, requested)
   const current = items.find((item) => item.key === selectedKey)
-  const signing = useSigningState(current?.view.org ?? '')
+  const signing = useSigningState(current?.view.org ?? '' /* stand-in-ok(routing): which org signs for the open request; there is none when no request is open */)
 
   const send = useCallback(
     async (item: DeskItem) => {
@@ -131,10 +131,11 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
           {t.desk.pile.scope.only(scope.view.label)} <Link to="/desk">{t.desk.pile.scope.all}</Link>
         </p>
       )}
-      <Briefing me={me} teams={teams} items={items} situation={situation} now={new Date()} />
+      <Briefing me={me} teams={teams} items={items} situation={situation} now={new Date()} isLoading={isLoading} />
       <div className="desk">
         <div className="desk-pile">
-          {isLoading && items.length === 0 ? <p className="muted">{t.app.loading}</p> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={pick} />}
+          {isLoading && items.length === 0 ? <PileSkeleton /> : <Pile items={items} selected={selectedKey} orgLabelOf={me.orgs.length > 1 ? orgLabelOf : null} onSelect={pick} />}
+          {isLoading && items.length > 0 ? <PileSkeleton rows={1} /> : null}
         </div>
         {current === undefined ? null : (
           <Paper
@@ -143,7 +144,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
             viewerLabel={me.account.label}
             draft={draftOf(drafts, current.key)}
             sealedAt={sealed.get(current.key)?.at ?? null}
-            wasComment={sealed.get(current.key)?.isComment ?? false}
+            wasComment={sealed.get(current.key)?.isComment ?? false /* stand-in-ok(device): what this device sealed in this page, not the node's */}
             isSending={sending.has(current.key)}
             signing={signing}
             onChange={(change: Partial<Draft>) => setDrafts((now) => withDraft(now, current.key, change))}

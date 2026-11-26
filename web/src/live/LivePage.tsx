@@ -51,7 +51,7 @@ function Live() {
 
   return (
     <div className="lv-grid">
-      <Throughput events={stream.events} fresh={stream.fresh} orgs={orgs.map(({ org }) => org.id)} now={now} />
+      <Throughput events={stream.events} fresh={stream.fresh} orgs={orgs.map(({ org }) => org.id)} now={now} isReading={stream.pending.length > 0} />
       <section className="lv-panel lv-graph-panel" aria-label={t.live.graph.title}>
         <header className="lv-panel-head">
           <h2>{t.live.graph.title}</h2>
@@ -77,7 +77,7 @@ function Live() {
         <header className="lv-panel-head">
           <h2>{t.live.feed.title}</h2>
         </header>
-        {refs.length > 0 && readable === 0 ? <p className="muted">{t.live.notReported}</p> : <Feed events={stream.events} fresh={isReduced ? [] : stream.fresh} teamLabels={teamLabels} />}
+        {refs.length > 0 && readable === 0 ? <p className="muted">{t.live.notReported}</p> : <Feed events={stream.events} fresh={isReduced ? [] : stream.fresh} teamLabels={teamLabels} isReading={stream.pending.length > 0} />}
         {delayed.length === 0 ? null : <p className="muted lv-late" role="status">{t.live.delayed(delayed.join(', '))}</p>}
       </section>
       <section className="lv-panel lv-board-panel" aria-label={t.live.board.title}>

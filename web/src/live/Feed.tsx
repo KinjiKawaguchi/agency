@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '../api/activityApi'
 import { useI18n } from '../i18n'
 import { formatDuration } from '../evaluation/duration'
+import { Loading, Skeleton } from '../shared/Skeleton'
 import type { TaggedEvent } from './stream'
 
 const SHOWN = 60
@@ -10,6 +11,8 @@ interface Props {
   /** The events that have just arrived: they come in with a stir (none where motion is not wanted). */
   fresh: readonly TaggedEvent[]
   teamLabels: ReadonlyMap<string, string>
+  /** Some team's feed has not been read yet: an empty list is not yet "nothing happened". */
+  isReading: boolean
 }
 
 function useDescribe(): (event: ActivityEvent) => { text: string; note?: string } {
@@ -32,12 +35,12 @@ function useDescribe(): (event: ActivityEvent) => { text: string; note?: string 
 }
 
 /** What is happening, newest first: items added, status changes, pull requests opened and merged, and messages between agents. */
-export function Feed({ events, fresh, teamLabels }: Props) {
+export function Feed({ events, fresh, teamLabels, isReading }: Props) {
   const { t, fmt } = useI18n()
   const describe = useDescribe()
   const isFresh = new Set(fresh.map((one) => one.event.id))
   const shown = events.slice(-SHOWN).toReversed()
-  if (shown.length === 0) return <p className="muted lv-empty">{t.live.feed.empty}</p>
+  if (shown.length === 0) return isReading ? <Loading quiet><Skeleton kind="box" /></Loading> : <p className="muted lv-empty">{t.live.feed.empty}</p>
   return (
     <ol className="lv-feed" aria-label={t.live.feed.title}>
       {shown.map(({ org, team, event }) => {

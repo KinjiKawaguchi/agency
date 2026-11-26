@@ -28,7 +28,7 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
   }
   const chosen = me.orgs.find((one) => one.id === org) ?? me.orgs[0]
   const period = PERIODS.find((one) => one === days) ?? DEFAULT_DAYS
-  const teamLabels = new Map((chosen?.teams ?? []).map((team) => [team.id, team.label]))
+  const teamLabels = new Map((chosen?.teams ?? [] /* stand-in-ok(routing): names for the teams of the org chosen; used only where an org is chosen */).map((team) => [team.id, team.label]))
   return (
     <>
       <h1 className="page-title">{t.evaluation.title}</h1>
@@ -77,11 +77,11 @@ function OrgEvaluation({ org, days, teamLabels }: { org: string; days: number; t
   const report = evaluation.data
   return (
     <>
-      {report.teams.length === 0 && (report.unavailable ?? []).length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
+      {report.teams.length === 0 && (report.unavailable ?? [] /* stand-in-ok(optional): the node leaves the list out when every team answered, in an answer that has come */).length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
       {report.teams.map((numbers) => (
         <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} />
       ))}
-      {(report.unavailable ?? []).map((one) => (
+      {(report.unavailable ?? [] /* stand-in-ok(optional): the node leaves the list out when every team answered, in an answer that has come */).map((one) => (
         <section key={one.team} className="ev-team">
           <h2 className="sub-head">{t.evaluation.team(teamLabels.get(one.team) ?? one.team)}</h2>
           <p className="empty">{t.evaluation.teamUnavailable(one.reason)}</p>

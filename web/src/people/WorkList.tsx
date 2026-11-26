@@ -34,7 +34,7 @@ function WorkRow({ item, view }: { item: WorkItem; view: TeamView }) {
               {t.people.blockedReasons[item.blocked.reason]} {t.people.blockedSince(fmt.shortDate(item.blocked.since))}
             </span>
           )}
-          {item.status === 'inProgress' ? <span title={item.eta?.basis ?? ''}><EtaText item={item} /></span> : null}
+          {item.status === 'inProgress' ? <span title={item.eta?.basis ?? '' /* stand-in-ok(optional): the basis of a forecast, which the node leaves out when it has none */}><EtaText item={item} /></span> : null}
         </p>
       </div>
     </div>

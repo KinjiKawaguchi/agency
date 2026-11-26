@@ -43,7 +43,7 @@ export function median(values: readonly number[]): number | null {
   if (values.length === 0) return null
   const sorted = values.toSorted((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? (sorted[middle] ?? null) : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
+  return sorted.length % 2 === 1 ? (sorted[middle] ?? null) : ((sorted[middle - 1] ?? 0 /* stand-in-ok(index): the middle of a sorted list that is not empty */) + (sorted[middle] ?? 0)) / 2
 }
 
 /** Days in the trailing window that ends at each day (the day itself and the ones before it). */

@@ -20,7 +20,7 @@ export function binsOf(events: readonly TaggedEvent[], now: number): number[] {
     const age = now - at
     if (age < 0 || age >= BINS * BIN_MS) continue
     const index = BINS - 1 - Math.floor(age / BIN_MS)
-    bins[index] = (bins[index] ?? 0) + 1
+    bins[index] = (bins[index] ?? 0 /* stand-in-ok(index): a bin of the last hour that counts from 0 as merges are added */) + 1
   }
   return bins
 }
@@ -51,7 +51,7 @@ export function countsOf(events: readonly TaggedEvent[], now: number, evaluation
   const merged = mergedAt(events).filter((at) => at <= now)
   const hour = merged.filter((at) => now - at < BINS * BIN_MS)
   const sinceMidnight = merged.filter((at) => at >= midnight).length
-  return { lastHour: hour.length, today: Math.max(evaluationToday ?? 0, sinceMidnight) }
+  return { lastHour: hour.length, today: Math.max(evaluationToday ?? 0 /* stand-in-ok(optional): no evaluation of the day (no team in any org): what the feed saw is the whole; an evaluation that failed is shown as a dash by the tile, and one being read as a skeleton */, sinceMidnight) }
 }
 
 /** The median of the given values, rounded down to a whole number; nothing when there are none. */
@@ -59,5 +59,5 @@ export function medianOf(values: readonly number[]): number | undefined {
   if (values.length === 0) return undefined
   const sorted = values.toSorted((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? sorted[middle] : Math.floor(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2)
+  return sorted.length % 2 === 1 ? sorted[middle] : Math.floor(((sorted[middle - 1] ?? 0 /* stand-in-ok(index): the middle of a sorted list that is not empty */) + (sorted[middle] ?? 0)) / 2)
 }
