@@ -371,6 +371,7 @@ struct MemoryRootKeysState {
     keys: Vec<(agency_proto::Id, agency_proto::AccountKey)>,
     is_refusing: bool,
     signed: usize,
+    is_needing_recovery: bool,
 }
 
 impl MemoryRootKeys {
@@ -389,6 +390,11 @@ impl MemoryRootKeys {
         self.state.lock().unwrap().is_refusing = is_refusing;
     }
 
+    /// Stands for a keychain: keys made here cannot be copied out.
+    pub fn need_recovery(&self, is_needing_recovery: bool) {
+        self.state.lock().unwrap().is_needing_recovery = is_needing_recovery;
+    }
+
     /// How many signatures were made.
     pub fn signed(&self) -> usize {
         self.state.lock().unwrap().signed
@@ -396,6 +402,10 @@ impl MemoryRootKeys {
 }
 
 impl agency_core::ports::RootKeys for MemoryRootKeys {
+    fn needs_recovery(&self) -> bool {
+        self.state.lock().unwrap().is_needing_recovery
+    }
+
     fn create(&self, org: &agency_proto::Id) -> Result<agency_proto::PublicKey, String> {
         let mut state = self.state.lock().unwrap();
         state.made = state.made.wrapping_add(1);

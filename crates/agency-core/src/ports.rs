@@ -76,6 +76,11 @@ pub trait RootKeys: Send + Sync {
     ) -> std::result::Result<String, String>;
     /// Forgets a root key of `org` that no version will be signed with again.
     fn forget(&self, org: &Id, key: &PublicKey) -> std::result::Result<(), String>;
+    /// Whether a key made here cannot be copied out (a keychain), so that an org must have a recovery key
+    /// before its root moves here: without one, losing this machine would lose the org.
+    fn needs_recovery(&self) -> bool {
+        false
+    }
 }
 
 pub trait OrgStore {

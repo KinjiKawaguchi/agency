@@ -96,6 +96,8 @@ An org made before root keys were kept apart uses `account.key` as its root unti
 
 Give each org a recovery key, so that the org is not lost with the root key: `agency root-recovery --org acme` shows 24 words once. Write them on paper, keep them away from this Mac, and type back the three words it asks for. With the words, `agency root-recover --org acme` moves the org to a new root key made on the node you run it on, 72 hours later (`agency root-recover --org acme --finish`). In those 72 hours your devices are told, and anything the root key signs cancels it, for example `agency root-cancel-recovery --org acme`. Whoever has the words can start a recovery, and only your answer in those 72 hours stops it.
 
+On a Mac, keep root keys in the login keychain instead of files: set `"rootKeys": "keychain"` in `config.json` and restart the node. Each signature with a root key then asks for Touch ID or your login password and says what it signs, and other programs cannot read the key without the keychain asking you. A key in the keychain cannot be copied out, so the node moves an org's root there only once the org has a recovery key: run `agency root-recovery --org acme` first, then `agency root-rotate --org acme`. After the node's binary is updated, the keychain asks once whether the new binary may use the key; choose Always Allow. Orgs whose root key is still a file keep it there until you rotate them.
+
 ### Run it with launchd
 
 `scripts/launchd-plist.sh` writes the agent's file.

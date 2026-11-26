@@ -198,6 +198,14 @@ pub fn rotate_root(node: &Node, org: &Id) -> Result<SignedOrg> {
             format!("this node does not hold the root key of org {org}"),
         ));
     }
+    if node.root_keys().needs_recovery() && current.body.root.recovery.is_none() {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "a root key kept here cannot be copied out, so org {org} needs a recovery key first: run `agency root-recovery --org {org}`"
+            ),
+        ));
+    }
     let old = current.body.root.public_key.clone();
     let new = node
         .root_keys()

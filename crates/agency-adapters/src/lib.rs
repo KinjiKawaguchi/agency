@@ -12,6 +12,7 @@ pub mod files;
 pub mod funding;
 pub mod github;
 pub mod handoff;
+pub mod keychain_root_keys;
 pub mod launch;
 pub mod logging;
 pub mod memory;

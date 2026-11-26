@@ -188,3 +188,26 @@ async fn new_words_replace_the_old_ones_after_the_wait() {
     assert_eq!(done.body.root.recovery, Some(new.public()));
     assert_eq!(done.body.root.public_key, root, "the root key stays");
 }
+
+#[tokio::test]
+async fn a_root_moves_into_a_keychain_only_once_the_org_has_a_recovery_key() {
+    let (alice, _) = alice().await;
+    let org = id("acme");
+    alice.root_keys.need_recovery(true);
+    let before = alice.node.store().load_org(&org).unwrap();
+    let refused = orgs::rotate_root(&alice.node, &org).unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Conflict);
+    assert!(refused.message.contains("root-recovery"), "{refused:?}");
+    assert_eq!(
+        alice.node.store().load_org(&org).unwrap().digest(),
+        before.digest()
+    );
+
+    recovery::add(
+        &alice.node,
+        &org,
+        AccountKey::from_seed([0x38; 32]).public(),
+    )
+    .unwrap();
+    orgs::rotate_root(&alice.node, &org).unwrap();
+}
