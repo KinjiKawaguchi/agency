@@ -74,18 +74,14 @@ struct AccessHandoffTests {
 
     // MARK: Receiving
 
-    @Test("a good callback gives the token, with the cookie attributes Access itself uses")
+    @Test("a good callback gives the token, with the host and the time it expires")
     func goodCallback() throws {
         let handoff = try #require(make())
         let jwt = token()
         let result = try handoff.token(from: callback(handoff, token: jwt), now: now)
         #expect(result.value == jwt)
         #expect(result.host == "node.example.com")
-        #expect(result.cookiePath == "/")
-        #expect(result.isCookieSecure)
-        #expect(result.isCookieHTTPOnly)
         #expect(result.expires == Date(timeIntervalSince1970: 1_800_003_600))
-        #expect(AccessToken.cookieName == "CF_Authorization")
         #expect(AccessToken.headerName == "cf-access-token")
     }
 
@@ -161,7 +157,7 @@ struct AccessHandoffTests {
         }
     }
 
-    @Test("an empty segment, or a character a cookie value must not carry, is refused", arguments: [
+    @Test("an empty segment, or a character a header value must not carry, is refused", arguments: [
         ".PAYLOAD.c2ln", "eyJhbGciOiJSUzI1NiJ9.PAYLOAD.", "eyJhbGciOiJSUzI1NiJ9.PAYLOAD", "eyJhbGciOiJSUzI1NiJ9.PAYLOAD.c2ln.c2ln", "eyJh;bGci.PAYLOAD.c2ln", "eyJhbGciOiJSUzI1NiJ9.PAYLOAD.c2 ln",
         "eyJhbGciOiJSUzI1NiJ9.PAYLOAD.c2ln;Path=/", "eyJhbGciOiJSUzI1NiJ9.PAYLOAD.c2ln\n",
     ])

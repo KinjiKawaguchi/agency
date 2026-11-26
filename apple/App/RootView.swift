@@ -13,6 +13,7 @@ struct RootView: View {
                 SetupView(onSave: store.save)
             }
         }
+        .task { await LegacyWebData.removeOnce() }
         .alert("Get notified?", isPresented: $push.isShowingPrompt) {
             Button("Turn on") { push.acceptPrompt() }
             Button("Not now", role: .cancel) { push.deferPrompt() }

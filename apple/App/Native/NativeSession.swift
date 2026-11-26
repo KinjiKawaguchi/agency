@@ -20,7 +20,6 @@ final class NativeSession {
 
     /// The client of the home node, for the screens that read from it.
     @ObservationIgnored let client: NodeClient
-    @ObservationIgnored private let transport: URLSessionTransport
     @ObservationIgnored private let signIn: AccessSignInFlow
     @ObservationIgnored private var registeredPush: PushRegistration?
     /// The overview of every org and team, read from the same client.
@@ -32,9 +31,7 @@ final class NativeSession {
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
-        let transport = URLSessionTransport(homeNode: homeNode)
-        self.transport = transport
-        let client = NodeClient(transport: transport, accessToken: { tokens.current()?.value })
+        let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
         self.client = client
         let signer: SecureEnclaveSigner?
         var problem: String?
@@ -57,16 +54,10 @@ final class NativeSession {
         costs = CostsStore(source: client)
     }
 
-    /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
-    /// only Access host the web view may show.
-    func discoverAccessTeam() async -> String? {
-        await transport.accessRedirectLocation().flatMap(AccessTeam.host(fromRedirect:))
-    }
-
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
     func signInAgain() async {
         signInProblem = nil
-        switch await signIn.signInAgain() {
+        switch await signIn.signIn() {
         case .signedIn:
             await desk.refresh()
             await pairing?.refresh()

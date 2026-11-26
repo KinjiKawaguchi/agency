@@ -13,8 +13,7 @@ public enum AccessHandoffError: Error, Equatable, Sendable {
 }
 
 /// One sign-in of the owner through the system's web authentication session, which runs in
-/// Safari's context, where passkeys and password managers work (a `WKWebView` cannot run WebAuthn
-/// for the Access team domain).
+/// Safari's context, where passkeys and password managers work.
 ///
 /// The session starts on the node's handoff route behind Access. After Access signs the owner in,
 /// the node redirects to the callback on its own host and carries the Access token and this
