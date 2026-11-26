@@ -85,6 +85,13 @@ struct PeopleSnapshotTests {
         expectFits(Snapshot.capture("people-sample", view), "the sample team")
     }
 
+    @Test("while the node gets the data ready, grey bars stand in for the cards")
+    func skeleton() {
+        let view = VStack(alignment: .leading, spacing: 12) { ForEach(0..<3, id: \.self) { _ in SkeletonCard() } }
+        expectFits(Snapshot.capture("people-skeleton", view), "the skeleton")
+        expectFits(Snapshot.capture("people-skeleton", view, scheme: .dark), "the skeleton (dark)")
+    }
+
     @Test("no teams says so")
     func empty() {
         expectFits(Snapshot.capture("people-empty", PeopleContent(sections: [], failures: [:], now: now)), "no teams")

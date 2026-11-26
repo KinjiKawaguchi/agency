@@ -9,11 +9,14 @@ private final class FakeOverviewSource: OverviewSource, @unchecked Sendable {
     private var snapshots: [String: Result<TeamSnapshot, Error>] = [:]
     private var usages: [String: Result<TokenUsage, Error>] = [:]
     private var asked: [String] = []
+    private var notReady = 0
 
     var usageAsked: [String] { lock.withLock { asked } }
 
     func set(me: Result<Me, Error>) { lock.withLock { meAnswer = me } }
     func set(snapshot: Result<TeamSnapshot, Error>, for key: String) { lock.withLock { snapshots[key] = snapshot } }
+    /// The next reads of any team's usage fail with 503 this many times in all.
+    func failUsageWithNotReady(times: Int) { lock.withLock { notReady = times } }
     func set(usage: Result<TokenUsage, Error>, for key: String) { lock.withLock { usages[key] = usage } }
 
     func me() async throws -> Me { try lock.withLock { try meAnswer.get() } }
@@ -25,6 +28,10 @@ private final class FakeOverviewSource: OverviewSource, @unchecked Sendable {
     func usage(org: String, team: String, days: Int) async throws -> TokenUsage {
         try lock.withLock {
             asked.append("\(org)/\(team)?days=\(days)")
+            if notReady > 0 {
+                notReady -= 1
+                throw NodeError.http(status: 503, message: "runtime busy")
+            }
             return try (usages["\(org)/\(team)"] ?? .success(Fixture.decode(TokenUsage.self, "usage"))).get()
         }
     }
@@ -46,7 +53,7 @@ struct OverviewStoreTests {
     @Test("reads the account, every team and each team's week of cost")
     func reads() async {
         let source = FakeOverviewSource()
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.loading == .loaded)
         let entries = store.sections.flatMap(\.teams)
@@ -64,7 +71,7 @@ struct OverviewStoreTests {
         source.set(snapshot: .success(T.snapshot(org: "acme", team: "app", people: [T.person("a", "working")])), for: "acme/app")
         source.set(snapshot: .success(T.snapshot(org: "acme", team: "docs", people: [T.person("a", "working")])), for: "acme/docs")
         source.set(snapshot: .success(T.snapshot(org: "zed", team: "ops", mine: ["r-1", "r-2"])), for: "zed/ops")
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.sections.map(\.org.id) == ["zed", "acme"])
         #expect(store.waiting.requests == 2)
@@ -76,7 +83,7 @@ struct OverviewStoreTests {
         let source = FakeOverviewSource()
         source.set(me: .success(twoOrgs))
         source.set(snapshot: .failure(NodeError.http(status: 502, message: "node away")), for: "zed/ops")
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         let ops = store.sections.flatMap(\.teams).first { $0.ref.id == "ops" }
         #expect(ops?.state == .failed(reason: "node away", signInEnded: false))
@@ -89,7 +96,7 @@ struct OverviewStoreTests {
         let source = FakeOverviewSource()
         let replica: [String: Any] = ["kind": "replica", "triedAt": "2026-11-24T12:00:00Z", "error": "refused"]
         source.set(snapshot: .success(T.snapshot(source: replica)), for: "acme/app")
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(source.usageAsked.isEmpty)
         #expect(store.weekCosts["acme/app"] == nil)
@@ -101,17 +108,32 @@ struct OverviewStoreTests {
         source.set(me: .success(twoOrgs))
         source.set(usage: .failure(NodeError.http(status: 404, message: nil)), for: "acme/app")
         source.set(usage: .failure(NodeError.http(status: 500, message: nil)), for: "acme/docs")
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.weekCosts["acme/app"] == WeekCost.none)
         #expect(store.weekCosts["acme/docs"] == .failed)
+    }
+
+    @Test("a week's cost that is not ready is asked again, and is a failure only when it keeps failing")
+    func costNotReady() async {
+        let source = FakeOverviewSource()
+        source.failUsageWithNotReady(times: 2)
+        let store = OverviewStore(source: source, retry: RetryPolicy(delays: [1, 2, 4], wait: { _ in }))
+        await store.refresh()
+        guard case .known = store.weekCosts["acme/app"] else { Issue.record("the cost was not read after it was asked again"); return }
+
+        let stuck = FakeOverviewSource()
+        stuck.failUsageWithNotReady(times: 100)
+        let second = OverviewStore(source: stuck, retry: RetryPolicy(delays: [1], wait: { _ in }))
+        await second.refresh()
+        #expect(second.weekCosts["acme/app"] == .failed)
     }
 
     @Test("an ended sign-in is a sign-in to run again, not an empty overview")
     func signInEnded() async {
         let source = FakeOverviewSource()
         source.set(me: .failure(NodeError.sessionExpired))
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.needsSignIn)
         #expect(store.loading == .failed(Ja.Desk.signInEnded))
@@ -123,7 +145,7 @@ struct OverviewStoreTests {
         let source = FakeOverviewSource()
         source.set(me: .success(twoOrgs))
         source.set(snapshot: .failure(NodeError.sessionExpired), for: "zed/ops")
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.needsSignIn)
         #expect(store.loading == .loaded)
@@ -132,7 +154,7 @@ struct OverviewStoreTests {
     @Test("a team that was read keeps its last answer when a later read fails")
     func keepsLastAnswer() async {
         let source = FakeOverviewSource()
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         source.set(snapshot: .failure(NodeError.http(status: 500, message: "down")), for: "acme/app")
         await store.refresh()
@@ -143,7 +165,7 @@ struct OverviewStoreTests {
     func dropsGoneTeams() async {
         let source = FakeOverviewSource()
         source.set(me: .success(twoOrgs))
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         source.set(me: .success(Fixture.decode(Me.self, "me")))
         await store.refresh()
@@ -156,7 +178,7 @@ struct OverviewStoreTests {
         let source = FakeOverviewSource()
         let withFunding = me(#"{"account":{"id":"a","label":"A","fingerprint":"f"},"orgs":[],"funding":[{"id":"s","label":"Plan","kind":"apiKey","windows":[]}]}"#)
         source.set(me: .success(withFunding))
-        let store = OverviewStore(source: source)
+        let store = OverviewStore(source: source, retry: .never)
         await store.refresh()
         #expect(store.fundingSummaries().map(\.label) == ["Plan"])
         #expect(store.fundingSummaries()[0].windows.isEmpty)
