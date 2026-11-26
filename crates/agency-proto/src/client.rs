@@ -46,6 +46,11 @@ pub struct Me {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub home_nodes: Option<Vec<HomeNode>>,
+    /// The changes others asked the root to sign that wait for the owner (`agency root-sign`), oldest
+    /// first. Given only to the owner, and absent when none wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root_changes: Option<Vec<crate::root_change::RootChangeRef>>,
 }
 
 /// Another home node of the same human: the home node of another of their accounts (for example a work
@@ -459,6 +464,8 @@ pub enum DeviceChangeOutcome {
     Applied,
     /// The root's node wrote the next version; this node has it.
     Delivered,
+    /// The root's node holds it until the owner signs it there (`agency root-sign`); `message` says so.
+    Pending,
     /// The root's node could not be reached; the change waits in the outbox.
     Queued,
 }
@@ -571,6 +578,24 @@ pub struct PushSubscription {
     pub events: Vec<PushEvent>,
     /// The `keyId` of the node's VAPID key it was made with.
     pub key_id: String,
+    /// When the push service last took a notice for this browser; left out until it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_succeeded_at: Option<Timestamp>,
+    /// The last time the push service did not take one, and why (the host and the status it answered, or that it
+    /// could not be reached; never what it said). Left out until there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_failure: Option<PushFailure>,
+}
+
+/// A notice the push service did not take: when, and the reason the node can give without the service's words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushFailure {
+    pub at: Timestamp,
+    pub reason: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
