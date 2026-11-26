@@ -485,3 +485,42 @@ fn the_node_warns_when_push_services_would_be_given_a_contact_they_refuse() {
         "a subject that is set is the operator's"
     );
 }
+
+#[tokio::test]
+async fn me_says_when_the_node_hides_titles_and_otherwise_says_nothing() {
+    let (alice, _) = alice().await;
+    let me = |alice: &Running| {
+        let request = get(alice, "/api/me").send();
+        async move { body(request.await.unwrap()).await.1 }
+    };
+    assert!(
+        me(&alice).await.get("hidesTitles").is_none(),
+        "left out, never false"
+    );
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    assert_eq!(me(&alice).await["hidesTitles"], true);
+    alice
+        .node
+        .update_config(|config| config.hide_titles = false)
+        .unwrap();
+    assert!(me(&alice).await.get("hidesTitles").is_none());
+    let push = agency_core::config::PushConfig {
+        key_path: "/nonexistent.p8".into(),
+        key_id: "ABCDE12345".into(),
+        team_id: "ABCDE12345".into(),
+        bundle_id: "com.example.agency".into(),
+        hide_titles: true,
+    };
+    alice
+        .node
+        .update_config(|config| config.push = Some(push))
+        .unwrap();
+    assert_eq!(
+        me(&alice).await["hidesTitles"],
+        true,
+        "push.hideTitles means the same"
+    );
+}

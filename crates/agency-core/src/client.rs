@@ -5,6 +5,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::is_root;
 use crate::outbox::Parcel;
+use crate::push::is_hiding_titles;
 use crate::signed_decisions::decide_signed;
 use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
@@ -87,6 +88,7 @@ pub fn me(node: &Node) -> Me {
         account,
         orgs: orgs.collect(),
         funding: funding(node),
+        hides_titles: is_hiding_titles(node),
     }
 }
 
