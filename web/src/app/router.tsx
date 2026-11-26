@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
+import { Navigate, Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
 import { LivePage } from '../live/LivePage'
@@ -8,11 +8,21 @@ import { OrgChartPage } from '../org/OrgChartPage'
 import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
+import { isGuestPage, useStanding } from '../guest/useStanding'
 import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { AppBar } from './AppBar'
 
 function Shell() {
+  const standing = useStanding()
+  const path = useRouterState({ select: (state) => state.location.pathname })
+  // The page on screen can still be the one left while the location is already the new one, so it is asked for itself.
+  const shown = useRouterState({ select: (state) => state.matches.at(-1)?.pathname ?? state.location.pathname })
+  // A page of the owner's would be refused to a guest, so it is not opened: they have the desk and their devices.
+  if (standing.status === 'guest' && !isGuestPage(path)) return <Navigate to="/desk" replace />
+  // The desk and the devices are the guest's own, so they open at once; the owner's pages wait to learn who is asking.
+  const isWaiting = (standing.status === 'loading' || standing.status === 'guest') && !isGuestPage(shown)
   return (
     <>
       <AppBar />
@@ -20,7 +30,14 @@ function Shell() {
       <main className="page">
         <SignInExpiredBanner />
         <AddDeviceNotice />
-        <Outlet />
+        {isWaiting ? (
+          <Loading>
+            <Skeleton kind="title" />
+            <Skeleton />
+          </Loading>
+        ) : (
+          <Outlet />
+        )}
       </main>
     </>
   )
