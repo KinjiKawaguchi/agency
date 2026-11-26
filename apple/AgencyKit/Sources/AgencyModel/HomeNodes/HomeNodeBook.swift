@@ -15,10 +15,15 @@ public struct HomeNodeBook: Equatable, Sendable {
     public private(set) var added: [HomeNodeEntry]
     /// What the current node last said about the owner's other nodes (`Me.homeNodes`), kept so the list shows offline.
     public private(set) var configured: [HomeNodeRef]
+    /// The id each node said it uses in its pushes (`Me.nodeId`), by the origin the app reaches it at. A node reached at one address
+    /// and configured with another names itself by its own, so what it said is what a push is mapped by; a node that has not said
+    /// is mapped by the id worked out from its address (`nodeID(of:)`).
+    public private(set) var nodeIDs: [String: String]
 
-    public init(current: HomeNodeURL? = nil, added: [HomeNodeEntry] = [], configured: [HomeNodeRef] = []) {
+    public init(current: HomeNodeURL? = nil, added: [HomeNodeEntry] = [], configured: [HomeNodeRef] = [], nodeIDs: [String: String] = [:]) {
         self.current = current
         self.configured = configured
+        self.nodeIDs = nodeIDs.filter { NotificationTap.isNodeID($0.value) }
         self.added = []
         for entry in added where entry.source == .added { remember(entry) }
         if let current { forgetEntry(of: current) }
@@ -68,6 +73,7 @@ public struct HomeNodeBook: Equatable, Sendable {
         // The current node is never in `added`, so this also refuses it.
         guard added.contains(where: { $0.url.sameNode(as: node) }) else { return false }
         forgetEntry(of: node)
+        nodeIDs[node.origin] = nil
         return !hostIsUsed(by: node)
     }
 
@@ -76,6 +82,17 @@ public struct HomeNodeBook: Equatable, Sendable {
         let configuredNodes = configured.compactMap { try? HomeNodeURL(validating: $0.url) }
         let known = (current.map { [$0] } ?? []) + added.map(\.url) + configuredNodes
         return known.contains { !$0.sameNode(as: node) && $0.host == node.host }
+    }
+
+    /// What a node said of its own id in `/api/me`: kept for the node (by origin) when it is an id, and forgotten when the node
+    /// says none or something that is not one.
+    public mutating func note(nodeID: String?, of node: HomeNodeURL) {
+        if let nodeID, NotificationTap.isNodeID(nodeID) { nodeIDs[node.origin] = nodeID } else { nodeIDs[node.origin] = nil }
+    }
+
+    /// The id a push from `node` carries: what the node said of it, else the one worked out from its address.
+    public func nodeID(of node: HomeNodeURL) -> String {
+        nodeIDs[node.origin] ?? NodeID.of(node)
     }
 
     /// What the current node said about the owner's other nodes.
@@ -108,6 +125,7 @@ extension HomeNodeBook {
         var current: String?
         var added: [Entry]
         var configured: [Ref]
+        var nodeIDs: [String: String]?
 
         struct Entry: Codable {
             var url: String
@@ -125,7 +143,8 @@ extension HomeNodeBook {
         let stored = Stored(
             current: current?.url.absoluteString,
             added: added.map { .init(url: $0.url.url.absoluteString, label: $0.label) },
-            configured: configured.map { .init(label: $0.label, url: $0.url) }
+            configured: configured.map { .init(label: $0.label, url: $0.url) },
+            nodeIDs: nodeIDs
         )
         return (try? JSONEncoder().encode(stored)) ?? Data()
     }
@@ -139,7 +158,8 @@ extension HomeNodeBook {
                 added: stored.added.compactMap { entry in
                     (try? HomeNodeURL(validating: entry.url)).map { HomeNodeEntry(url: $0, label: entry.label, source: .added) }
                 },
-                configured: stored.configured.map { HomeNodeRef(label: $0.label, url: $0.url) }
+                configured: stored.configured.map { HomeNodeRef(label: $0.label, url: $0.url) },
+                nodeIDs: stored.nodeIDs ?? [:]
             )
         } else {
             self.init(current: legacyAddress.flatMap { try? HomeNodeURL(validating: $0) })

@@ -428,6 +428,12 @@ struct MeHomeNodesTests {
         return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
     }
 
+    @Test("the id the node says it uses in its pushes is read when it is there, and none when it is not")
+    func nodeId() throws {
+        #expect(try me(#","nodeId":"02ae509c6b20999646d3c600687ee1bf""#).nodeId == "02ae509c6b20999646d3c600687ee1bf")
+        #expect(try me("").nodeId == nil)
+    }
+
     @Test("the node's answer lists them in its order, from the node's own fixture")
     func fixtureAnswer() throws {
         let me = try JSONDecoder().decode(Me.self, from: Fixtures.data("me-home-nodes"))

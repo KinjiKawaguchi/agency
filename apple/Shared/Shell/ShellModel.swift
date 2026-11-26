@@ -14,6 +14,8 @@ final class ShellModel {
     /// Which screen is open, and where a banner or a notification leads.
     let router = ShellRouter()
     var showsSettings = false
+    /// Said once when a tapped notification belongs to a home node this device does not have.
+    var linkNotice: String?
 
     let homeNode: HomeNodeURL
     @ObservationIgnored let push: PushCoordinator
@@ -87,10 +89,22 @@ final class ShellModel {
         router.open(banner)
     }
 
-    /// A notification was tapped: go where it leads.
+    /// A notification was tapped: go where it leads, on the node that sent it. A tap that names another node of this device goes
+    /// to that node first and stays pending until its shell is up, which opens it; one that names a node this device does not
+    /// have opens nothing of it and says so.
     func takeLink() {
-        guard session != nil, let link = push.takePendingLink() else { return }
-        router.open(link)
+        guard session != nil, let tap = push.pendingTap else { return }
+        let others = nodes.others.map(\.url)
+        switch NotificationRouting.action(forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:)) {
+        case .openHere:
+            push.takePendingTap()
+            router.open(tap.link)
+        case .switchTo(let node):
+            switchHomeNode(to: node)
+        case .unknownNode:
+            push.takePendingTap()
+            linkNotice = Ja.HomeNodes.notificationOfAnotherNode
+        }
     }
 
     // MARK: News
@@ -159,6 +173,11 @@ final class ShellModel {
     private func noteHomeNodes() {
         guard let session else { return }
         let nodes = nodes
-        Task { if let me = await session.readAccount() { nodes.note(configured: me.homeNodes) } }
+        let homeNode = homeNode
+        Task {
+            guard let me = await session.readAccount() else { return }
+            nodes.note(configured: me.homeNodes)
+            nodes.note(nodeID: me.nodeId, of: homeNode)
+        }
     }
 }

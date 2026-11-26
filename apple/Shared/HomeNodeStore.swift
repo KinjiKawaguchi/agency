@@ -29,6 +29,8 @@ final class HomeNodeStore {
     func switchTo(_ node: HomeNodeURL) { change { $0.switchTo(node) } }
     func add(_ node: HomeNodeURL, label: String) { change { $0.add(node, label: label) } }
     func note(configured: [HomeNodeRef]) { change { $0.note(configured: configured) } }
+    func note(nodeID: String?, of node: HomeNodeURL) { change { $0.note(nodeID: nodeID, of: node) } }
+    func nodeID(of node: HomeNodeURL) -> String { book.nodeID(of: node) }
 
     /// Leaves the current node: the setup comes back.
     func clear() { change { $0.leaveCurrent() } }

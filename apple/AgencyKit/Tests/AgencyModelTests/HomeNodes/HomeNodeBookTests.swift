@@ -139,6 +139,42 @@ struct HomeNodeBookTests {
         #expect(hosts(read.others) == ["b.example.com"])
     }
 
+    @Test("what a node says of its own id is kept for it, replaced by what it says later, forgotten when it says none, and not kept when it is not an id")
+    func nodeIDs() throws {
+        let a = try node("https://a.example.com")
+        var book = HomeNodeBook(current: a)
+        #expect(book.nodeID(of: a) == NodeID.of(a), "worked out from the address until it has said")
+        let said = "02ae509c6b20999646d3c600687ee1bf"
+        book.note(nodeID: said, of: a)
+        #expect(book.nodeID(of: a) == said)
+        #expect(book.nodeID(of: try node("https://A.example.com:443/")) == said, "however the address is written")
+        #expect(HomeNodeBook(decoding: book.encoded(), legacyAddress: nil).nodeID(of: a) == said, "kept with the book")
+        book.note(nodeID: "not an id", of: a)
+        #expect(book.nodeID(of: a) == NodeID.of(a))
+        book.note(nodeID: said, of: a)
+        book.note(nodeID: nil, of: a)
+        #expect(book.nodeID(of: a) == NodeID.of(a))
+    }
+
+    @Test("an id that is not one is not read back from what was kept")
+    func keptJunkID() throws {
+        let a = try node("https://a.example.com")
+        let kept = HomeNodeBook(current: a, nodeIDs: [a.origin: "work.example.com"])
+        #expect(kept.nodeID(of: a) == NodeID.of(a))
+    }
+
+    @Test("forgetting a node forgets the id it said, and a book kept before ids were kept reads as having none")
+    func nodeIDsForgotten() throws {
+        let b = try node("https://b.example.com")
+        var book = HomeNodeBook(current: try node("https://a.example.com"))
+        book.add(b, label: "B")
+        book.note(nodeID: "02ae509c6b20999646d3c600687ee1bf", of: b)
+        book.forget(b)
+        #expect(book.nodeID(of: b) == NodeID.of(b))
+        let older = #"{"current":"https://a.example.com","added":[],"configured":[]}"#
+        #expect(HomeNodeBook(decoding: Data(older.utf8), legacyAddress: nil).nodeIDs.isEmpty)
+    }
+
     @Test("an earlier version's one address becomes the current node, and an unreadable book falls back to it")
     func legacy() throws {
         #expect(HomeNodeBook(decoding: nil, legacyAddress: "https://a.example.com").current?.host == "a.example.com")

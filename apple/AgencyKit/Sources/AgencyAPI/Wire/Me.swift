@@ -12,8 +12,11 @@ public struct Me: Decodable, Equatable, Sendable {
     /// The owner's other home nodes, as this node's configuration names them. Only the node's owner is told; for anyone
     /// else, and for a node that names none, the list is empty.
     public let homeNodes: [HomeNodeRef]
+    /// The id this node puts in its pushes (`agency.node`), as the node works it out from its own address; absent from a node
+    /// that has none or does not say. An app maps a push to a node by it.
+    public let nodeId: String?
 
-    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes }
+    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes, nodeId }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
@@ -22,6 +25,7 @@ public struct Me: Decodable, Equatable, Sendable {
         funding = try container.decode([Funding].self, forKey: .funding)
         hidesTitles = try container.decodeIfPresent(Bool.self, forKey: .hidesTitles) ?? false
         homeNodes = try container.decodeIfPresent([HomeNodeRef].self, forKey: .homeNodes) ?? []
+        nodeId = try container.decodeIfPresent(String.self, forKey: .nodeId)
     }
 }
 

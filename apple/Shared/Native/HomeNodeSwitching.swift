@@ -17,6 +17,10 @@ protocol HomeNodeSwitching: AnyObject {
     func leave()
     /// What the current node says about the owner's other nodes.
     func note(configured: [HomeNodeRef])
+    /// The id the current node says it puts in its pushes.
+    func note(nodeID: String?, of node: HomeNodeURL)
+    /// The id a push from `node` carries.
+    func nodeID(of node: HomeNodeURL) -> String
 }
 
 extension HomeNodeStore: HomeNodeSwitching {

@@ -25,6 +25,7 @@ extension Ja {
         public static let forgetAnyway = "それでも忘れる"
         public static let leaveAnyway = "それでも出る"
         public static let cancel = "やめる"
+        public static let notificationOfAnotherNode = "この通知は、この端末にないホームノードのものです。"
         public static let working = "ホームノードに伝えています"
         public static let switchHint = "切り替えると、このホームノードのサインインと鍵はそのまま残ります。"
         public static let signInTitle = "サインインが必要です"
