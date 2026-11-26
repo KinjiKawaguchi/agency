@@ -6,6 +6,7 @@
 //! belongs to, and keeps it nowhere. It is not written to a file, a log line, or a failure message.
 mod claude;
 mod claude_login;
+mod codex;
 mod schedule;
 mod usage_file;
 
@@ -15,6 +16,7 @@ use agency_core::Node;
 use async_trait::async_trait;
 use claude::{ClaudeUsage, USAGE_URL};
 use claude_login::ClaudeConfigDir;
+use codex::CodexUsage;
 use schedule::{wait_after_failure, Failure, INTERVAL};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -158,6 +160,14 @@ fn connect(clock: Arc<dyn Clock>, home: PathBuf, user: String) -> Connect {
             let store = ClaudeConfigDir::new(config_dir.clone(), home.clone(), user.clone());
             let usage = ClaudeUsage::new(Arc::new(store), clock.clone(), USAGE_URL.to_owned())
                 .map_err(|error| error.without_url().to_string())?;
+            Ok(Arc::new(usage) as Arc<dyn UsageSource>)
+        }
+        UsageCollector::Codex {
+            codex_home,
+            command,
+        } => {
+            let command = command.clone().unwrap_or_else(|| PathBuf::from("codex"));
+            let usage = CodexUsage::new(command, codex_home.clone(), codex::ANSWER_WITHIN);
             Ok(Arc::new(usage) as Arc<dyn UsageSource>)
         }
     })

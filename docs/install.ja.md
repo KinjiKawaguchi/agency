@@ -272,6 +272,18 @@ Claude Code はログインを次の場所に保存します。
 - トークンの更新はしません。更新すると、Claude Code がそのログインのために持つ更新トークンが差し替わってしまうからです。アクセストークンは数時間もち、そのログインで Claude Code を動かしたときに Claude Code が更新します。丸一日使っていないログインは、次に使うまで期限切れとして扱われます。
 - macOS では、キーチェーンの項目を最初に読むとき、`security` に使用を許可するか尋ねられます。**常に許可** を選んでください。ノードは答えを 20 秒待ち、あきらめて、あとでもう一度試します。
 
+ChatGPT のプランを Codex 経由で使っている場合は、ChatGPT でログインし（`codex login`）、資金源として並べます。
+
+```json
+{ "id": "codex", "label": "ChatGPT (Codex)", "kind": "subscription",
+  "collector": { "type": "codex" } }
+```
+
+- `codexHome` には、別のログインの `CODEX_HOME` を書きます（既定は `~/.codex`）。`command` には、ノードの動く `PATH` に `codex` がないときの、`codex` のパスを書きます。
+- ノードは `codex app-server` を起動し、プランのレート制限（`account/rateLimits/read`）を尋ねます。5 時間窓と週の窓が、Claude と同じ間隔で使用量ファイルに書かれます。
+- Codex は自分でログインを持つので、ノードは Codex のトークンを読みません。ログインの更新は、Codex が自分の実行のときと同じように行います。
+- API キーのログインにはプランの窓がなく、ログがそう伝えます。Codex は `app-server` を実験的な機能としています。確かめたのは Codex CLI 0.151 です。
+
 ## ノードの更新
 
 ```sh

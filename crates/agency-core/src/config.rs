@@ -150,6 +150,16 @@ pub enum UsageCollector {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         config_dir: Option<PathBuf>,
     },
+    /// A ChatGPT plan used through Codex, read from `codex app-server`, which holds the login itself.
+    /// `codex_home` is the `CODEX_HOME` the login lives in (default `~/.codex`); `command` is the
+    /// `codex` program (default: `codex` on the node's `PATH`).
+    #[serde(rename_all = "camelCase")]
+    Codex {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        codex_home: Option<PathBuf>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<PathBuf>,
+    },
 }
 
 /// Cloudflare Access for requests that arrive through a tunnel or at the public host name.
