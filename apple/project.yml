@@ -88,6 +88,9 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # A push with `content-available` wakes the app to read the desk for the widgets (agency#261).
+        UIBackgroundModes:
+          - remote-notification
         # The app only uses HTTPS, which needs no export compliance paperwork.
         ITSAppUsesNonExemptEncryption: false
         # Lets a node on this device or the local network be opened over plain http.
