@@ -6,7 +6,6 @@ struct SettingsSheet: View {
     let host: String
     let onChangeHomeNode: () -> Void
     let onResetKey: () -> Void
-    let onOpenOrgChart: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var confirmsReset = false
 
@@ -15,9 +14,6 @@ struct SettingsSheet: View {
             Form {
                 Section(Ja.Desk.homeNode) {
                     Text(host).textSelection(.enabled).lineLimit(2).truncationMode(.middle)
-                }
-                Section {
-                    Button(Ja.Tabs.orgChart, action: onOpenOrgChart)
                 }
                 Section(footer: Text(Ja.Device.resetExplain)) {
                     Button(Ja.Device.reset, role: .destructive) { confirmsReset = true }

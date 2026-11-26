@@ -30,6 +30,8 @@ final class NativeSession {
     let costs: CostsStore
     /// How fast each team ships, and where its effort goes, read from the same client.
     let evaluation: EvaluationStore
+    /// The org chart: every org under the account, with the overview's signals on each team.
+    let orgChart: OrgChartStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -60,6 +62,7 @@ final class NativeSession {
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
         evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
+        orgChart = OrgChartStore(source: CachedOrgChartSource(cache: cache, client: client))
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
@@ -73,6 +76,7 @@ final class NativeSession {
             await people.refresh()
             await costs.refresh()
             await evaluation.refresh()
+            await orgChart.refresh()
         case .canceled:
             break
         case .unavailable:
