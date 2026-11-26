@@ -8,7 +8,8 @@ mod store;
 
 use agency_core::ports::Clock;
 use agency_proto::metrics::{
-    bucket_of, percentile_ms, HourSeries, Metrics, Series, SeriesKind, BUCKETS,
+    bucket_of, is_error_status, percentile_ms, valid_name, valid_status, HourSeries, Metrics,
+    Series, SeriesKind, BUCKETS, CLIENTS, INVALID, OVERFLOW,
 };
 use agency_proto::{clock, Timestamp};
 use std::collections::BTreeMap;
@@ -19,8 +20,9 @@ use std::time::Duration;
 /// How many days of measurements are kept.
 pub const KEPT_DAYS: u32 = 30;
 /// The most distinct series an hour may hold. A name is a template or a fixed phrase, so there are far
-/// fewer; this bounds the memory if one is ever not.
-pub const MOST_SERIES_IN_AN_HOUR: usize = 2000;
+/// fewer; this bounds the memory if one is ever not. A series past it is recorded under the one series
+/// `overflow` of its kind, status, and client, which have no limit of their own because there are few.
+pub const MOST_SERIES_IN_AN_HOUR: usize = 500;
 
 /// Which series a measurement belongs to.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -77,6 +79,30 @@ impl Default for Counts {
             sum_ms: 0,
             buckets: [0; BUCKETS],
         }
+    }
+}
+
+impl State {
+    /// The series a measurement of `key` goes in for this hour: its own, or `overflow` when the hour has
+    /// no room for another. A series that is new is counted against the hour.
+    fn series_for(&mut self, hour: Hour, key: SeriesKey) -> SeriesKey {
+        if self.pending.contains_key(&(hour, key.clone())) {
+            return key;
+        }
+        let in_this_hour = self.series_in_hour.get(&hour).copied().unwrap_or(0);
+        let key = if in_this_hour >= MOST_SERIES_IN_AN_HOUR && key.name != OVERFLOW {
+            SeriesKey {
+                name: OVERFLOW.to_owned(),
+                peer: None,
+                ..key
+            }
+        } else {
+            key
+        };
+        if !self.pending.contains_key(&(hour, key.clone())) {
+            *self.series_in_hour.entry(hour).or_default() += 1;
+        }
+        key
     }
 }
 
@@ -139,8 +165,16 @@ impl Recorder {
         }
     }
 
-    /// Adds one measurement: a duration, and whether it was an error.
-    pub fn record(&self, key: SeriesKey, elapsed: Duration, is_error: bool) {
+    /// Adds one measurement of a series. Nothing a requester could choose gets into a name: a name a series
+    /// of its kind may not have is recorded under `invalid`, and a series past the limit of an hour under
+    /// `overflow`. A status that is not one of its kind, or a client that is not `web` or `ios` for what a
+    /// client reported, is a mistake of the caller: the measurement is not recorded. Whether it was an
+    /// error follows from the status.
+    pub fn record(&self, key: SeriesKey, elapsed: Duration) {
+        let Some(key) = normalized(key) else {
+            return;
+        };
+        let is_error = is_error_status(key.kind, &key.status);
         let millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
         let hour = hour_of(self.inner.clock.now().unix_timestamp());
         let mut state = self
@@ -148,19 +182,12 @@ impl Recorder {
             .state
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
+        let key = state.series_for(hour, key);
         state
             .totals
             .entry(key.clone())
             .or_default()
             .add(millis, is_error);
-        let is_new = !state.pending.contains_key(&(hour, key.clone()));
-        if is_new {
-            let in_this_hour = state.series_in_hour.entry(hour).or_default();
-            if *in_this_hour >= MOST_SERIES_IN_AN_HOUR {
-                return;
-            }
-            *in_this_hour += 1;
-        }
         state
             .pending
             .entry((hour, key))
@@ -244,6 +271,35 @@ impl Recorder {
             series: series_of(hours, wanted),
         }
     }
+}
+
+/// The key as a series may have it, or `None` for a measurement that is not one.
+fn normalized(key: SeriesKey) -> Option<SeriesKey> {
+    if !valid_status(key.kind, &key.status) {
+        return None;
+    }
+    let client_is_right = match key.kind {
+        SeriesKind::Client => key
+            .client
+            .as_deref()
+            .is_some_and(|client| CLIENTS.contains(&client)),
+        _ => key.client.is_none(),
+    };
+    if !client_is_right {
+        return None;
+    }
+    let name = if valid_name(key.kind, &key.name) {
+        key.name
+    } else {
+        INVALID.to_owned()
+    };
+    // The host of a peer is the node's own configuration, but it is held to the same rule as a name.
+    let peer = match (key.kind, key.peer) {
+        (SeriesKind::Call, Some(host)) if valid_name(SeriesKind::Call, &host) => Some(host),
+        (SeriesKind::Call, Some(_)) => Some(INVALID.to_owned()),
+        _ => None,
+    };
+    Some(SeriesKey { name, peer, ..key })
 }
 
 fn timestamp(unix_seconds: i64) -> Timestamp {
