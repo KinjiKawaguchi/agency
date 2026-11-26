@@ -16,7 +16,11 @@ export interface TaggedEvent {
 export interface StreamSnapshot {
   /** Everything kept, oldest first. */
   events: readonly TaggedEvent[]
-  /** The events that arrived in the latest read of an already running feed: the ones to make a stir about. The first read is the past. */
+  /**
+   * The events that arrived in the last few seconds of an already running feed: the ones to make a stir about. The
+   * first read, and what comes after a long gap, is the past. Two teams that answer together are both here, so that
+   * a screen that renders once for both sees both; one that acts on them keeps the ids it has acted on.
+   */
   fresh: readonly TaggedEvent[]
   /** The teams whose latest read failed. */
   failing: readonly string[]
@@ -48,6 +52,8 @@ const MAX_PAGES = 5
 const UNREPORTED_EVERY = 6
 /** A gap this many intervals long between two rounds (a tab that was hidden) makes what comes after it the past, not news. */
 const GAP_INTERVALS = 6
+/** How long an event that has just arrived counts as new. */
+export const FRESH_MS = 3_000
 
 /** A promise that fails when the signal aborts, to race a read that may ignore it. */
 const aborted = (signal: AbortSignal): Promise<never> =>
@@ -84,6 +90,8 @@ export class ActivityStream {
   private isStopped = false
   private isPaused = true
   private readonly controllers = new Set<AbortController>()
+  /** When each event that counts as new arrived. */
+  private arrivals: ReadonlyArray<{ tagged: TaggedEvent; at: number }> = []
   private readonly onVisibility = (): void => {
     if (document.hidden) this.pause()
     else this.resume()
@@ -158,7 +166,9 @@ export class ActivityStream {
       if (this.isStopped) return
       const events = [...this.snapshot.events, ...added].toSorted((a, b) => Date.parse(a.event.at) - Date.parse(b.event.at)).slice(-this.options.keep)
       this.prune(events)
-      this.snapshot = { events, fresh: feed.isFirstRead || isAfterGap ? [] : added, failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted() }
+      const now = this.options.now()
+      this.arrivals = [...this.arrivals, ...(feed.isFirstRead || isAfterGap ? [] : added.map((tagged) => ({ tagged, at: now })))].filter((one) => now - one.at < FRESH_MS)
+      this.snapshot = { events, fresh: this.arrivals.map((one) => one.tagged), failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted() }
       feed.isFirstRead = false
       for (const listener of this.listeners) listener(this.snapshot)
     } finally {

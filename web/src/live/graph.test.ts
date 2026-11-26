@@ -51,11 +51,21 @@ describe('who a name in a message is', () => {
     const events = [message('designer', 'lead', 5, 'site'), message('lead', 'AgencyLead', 6)]
     const edges = edgesOf(events, { now: NOW, resolve })
     expect(edges.map((edge) => [edge.a, edge.b])).toEqual([['acme/-/AgencyLead', 'acme/app/lead'], ['acme/app/lead', 'acme/site/designer']])
-    expect(guestsOf(events, resolve, { now: NOW }).map((guest) => [keyOf(guest), guest.label, guest.team])).toEqual([['acme/-/AgencyLead', 'AgencyLead', '-']])
+    expect(guestsOf(events, resolve, { now: NOW }).shown.map((guest) => [keyOf(guest), guest.label, guest.team])).toEqual([['acme/-/AgencyLead', 'AgencyLead', '-']])
+  })
+
+  it('draws at most a dozen guests, the busiest first, and says how many there are', () => {
+    const many = Array.from({ length: 20 }, (_, index) => message('lead', `Guest${String(index).padStart(2, '0')}`, 5 + index))
+    // Guest07 writes three more times, so it comes first whatever its name.
+    const busy = [message('lead', 'Guest07', 1), message('lead', 'Guest07', 2), message('lead', 'Guest07', 3)]
+    const { shown, total } = guestsOf([...many, ...busy], resolve, { now: NOW })
+    expect(total).toBe(20)
+    expect(shown).toHaveLength(12)
+    expect(shown[0]!.label).toBe('Guest07')
   })
 
   it('draws a guest only while a recent message names them', () => {
-    expect(guestsOf([message('lead', 'AgencyLead', 700)], resolve, { now: NOW })).toEqual([])
+    expect(guestsOf([message('lead', 'AgencyLead', 700)], resolve, { now: NOW })).toEqual({ shown: [], total: 0 })
   })
 })
 

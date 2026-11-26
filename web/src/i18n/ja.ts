@@ -449,6 +449,7 @@ export const ja: Messages = {
       label: 'エージェント間のメッセージ: エージェントを点、やり取りを線で表した図',
       agent: (name, team) => `${name} (${team}チーム)`,
       others: 'ほか (ここのチームにいない)',
+      othersMore: (shown, total) => `ほか (ここのチームにいない): ${total} 人のうち ${shown} 人を表示`,
     },
     feed: {
       title: '今起きていること',

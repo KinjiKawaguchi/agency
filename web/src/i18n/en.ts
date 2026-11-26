@@ -454,6 +454,7 @@ export const en = {
       label: 'Messages between agents: agents as points, joined by lines',
       agent: (name: string, team: string) => `${name}, ${team} team`,
       others: 'Others (not in a team here)',
+      othersMore: (shown: number, total: number) => `Others (not in a team here): ${shown} of ${total} shown`,
     },
     feed: {
       title: 'What is happening',

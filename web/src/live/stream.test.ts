@@ -1,6 +1,6 @@
 import type { Activity, ActivityEvent } from '../api/activityApi'
 import { ApiError } from '../api/client'
-import { ActivityStream, type StreamSnapshot } from './stream'
+import { ActivityStream, FRESH_MS, type StreamSnapshot } from './stream'
 
 const T0 = Date.parse('2026-11-26T10:00:00Z')
 const message = (id: string, seconds: number): ActivityEvent => ({ id, at: new Date(T0 + seconds * 1000).toISOString(), kind: 'message', from: 'lead', to: 'backend', summary: '' })
@@ -34,17 +34,40 @@ describe('an activity stream', () => {
 
   it('then reads from a second before the last event, shows each event once, and calls the new ones fresh', async () => {
     const node = nodeWith([message('m-1', -10)])
-    const stream = streamOf(node)
+    let clock = T0
+    const stream = streamOf(node, () => clock)
     await stream.poll()
     node.add(message('m-2', -10)) // the same time as the last one: a read strictly after it would miss it without the overlap
     node.add(message('m-3', 5))
+    clock += 10_000
     await stream.poll()
     expect(node.asked[1]).toBe(new Date(T0 - 11_000).toISOString())
     expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1', 'm-2', 'm-3'])
     expect(stream.current.fresh.map((one) => one.event.id)).toEqual(['m-2', 'm-3'])
+    // A few seconds on, nothing is news any more, and nothing is shown twice.
+    clock += FRESH_MS + 1
     await stream.poll()
     expect(stream.current.events).toHaveLength(3)
     expect(stream.current.fresh).toEqual([])
+  })
+
+  it('keeps what two teams that answered together have just sent, so that a screen that draws once for both sees both', async () => {
+    const [first, second] = [nodeWith([]), nodeWith([])]
+    let clock = T0
+    const stream = new ActivityStream({
+      read: (org, team, since) => (team === 'app' ? first : second).read(org, team, since),
+      teams: [{ org: 'acme', team: 'app' }, { org: 'acme', team: 'site' }],
+      now: () => clock,
+    })
+    await stream.poll()
+    first.add(message('m-a', 70))
+    second.add(message('m-b', 71))
+    clock += 10_000
+    const heard: StreamSnapshot[] = []
+    stream.subscribe((snapshot) => heard.push(snapshot))
+    await stream.poll()
+    // Whatever the screen saw of the two notifications, the last one has both.
+    expect(heard.at(-1)?.fresh.map((one) => one.event.id).toSorted()).toEqual(['m-a', 'm-b'])
   })
 
   it('asks again from where it stopped when the node cut the answer', async () => {

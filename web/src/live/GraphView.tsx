@@ -31,6 +31,10 @@ interface Packet {
   startedAt: number
 }
 
+/** A name as it is written under its point: long ones are cut (the whole name is in the point's title). */
+const NAME_CHARS = 24
+const shortName = (name: string): string => (name.length > NAME_CHARS ? `${name.slice(0, NAME_CHARS - 1)}…` : name)
+
 const edgeId = (edge: { a: string; b: string }): string => `${edge.a}|${edge.b}`
 const lerp = (from: number, to: number, t: number): number => from + (to - from) * t
 
@@ -48,6 +52,8 @@ export function GraphView({ agents, resolve, events, fresh, isReduced, colors }:
   const resolveRef = useRef(resolve)
   resolveRef.current = resolve
   const litAt = useRef(new Map<string, number>())
+  // The messages already acted on: a message stays in `fresh` for a few seconds, and must send its packet once.
+  const acted = useRef(new Set<string>())
   const [clock, setClock] = useState(() => Date.now())
 
   useEffect(() => {
@@ -70,7 +76,8 @@ export function GraphView({ agents, resolve, events, fresh, isReduced, colors }:
   useEffect(() => {
     const now = Date.now()
     for (const { org, team, event } of fresh) {
-      if (event.kind !== 'message') continue
+      if (event.kind !== 'message' || acted.current.has(`${org}/${team}/${event.id}`)) continue
+      acted.current.add(`${org}/${team}/${event.id}`)
       const [from, to] = [resolveRef.current(org, team, event.from), resolveRef.current(org, team, event.to)]
       for (const lit of [from, to, edgeId({ a: from < to ? from : to, b: from < to ? to : from })]) litAt.current.set(lit, now)
       if (!isReduced) packets.current = [...packets.current.filter((packet) => now - packet.startedAt < PACKET_MS), { id: event.id, from, to, startedAt: now }]
@@ -122,7 +129,7 @@ export function GraphView({ agents, resolve, events, fresh, isReduced, colors }:
                 {glow > 0 ? <circle className="lv-halo" r={16 + (1 - glow) * 14} style={{ opacity: glow * 0.8, stroke: color }} /> : null}
                 <circle className="lv-dot" r={15} style={{ fill: color }} />
                 <text className="lv-initials" textAnchor="middle" dy="0.35em">{initials(agent.label)}</text>
-                <text className="lv-name" textAnchor="middle" y={30}>{agent.label}</text>
+                <text className="lv-name" textAnchor="middle" y={30}>{shortName(agent.label)}</text>
               </g>
             )
           })}

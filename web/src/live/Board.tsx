@@ -29,6 +29,34 @@ const shown = (items: readonly WorkItem[]): WorkItem[] => {
   return going.length > 0 ? going : items.slice(0, 1)
 }
 
+/** One agent: who, and what they are on (worked out once), with the epic of each item. */
+function AgentRow({ team, person, items }: { team: Team; person: PersonStatus; items: WorkItem[] }) {
+  const { t } = useI18n()
+  const visible = shown(items)
+  return (
+    <li className="lv-agent">
+      <Face label={person.label} kind="agent" state={presenceOf(person, team.waitingOnViewer)} size="sm" />
+      <div className="lv-agent-body">
+        <b>{person.label}</b>
+        {visible.length === 0 ? (
+          <span className="muted">{person.status === '' ? t.live.board.idle : person.status}</span>
+        ) : (
+          visible.map((item) => {
+            const epic = team.view.epics.find((one) => one.ref === item.epic)
+            return (
+              <span key={item.ref} className="lv-item">
+                <span className="lv-ref">{item.ref}</span> {item.title}
+                {item.epic === undefined ? null : <span className="muted lv-epic">{t.live.board.epic(item.epic, epic?.title ?? item.epic)}</span>}
+              </span>
+            )
+          })
+        )}
+        {items.length > visible.length && visible.length > 0 ? <span className="muted">{t.live.board.more(items.length - visible.length)}</span> : null}
+      </div>
+    </li>
+  )
+}
+
 /** What each agent works on now, and the epic that work belongs to. */
 export function Board({ teams }: { teams: readonly Team[] }) {
   const { t } = useI18n()
@@ -39,26 +67,7 @@ export function Board({ teams }: { teams: readonly Team[] }) {
           <h3 className="lv-board-team">{team.view.label}</h3>
           <ul>
             {rowsOf(team).map(({ person, items }) => (
-              <li key={person.id} className="lv-agent">
-                <Face label={person.label} kind="agent" state={presenceOf(person, team.waitingOnViewer)} size="sm" />
-                <div className="lv-agent-body">
-                  <b>{person.label}</b>
-                  {items.length === 0 ? (
-                    <span className="muted">{person.status === '' ? t.live.board.idle : person.status}</span>
-                  ) : (
-                    shown(items).map((item) => {
-                      const epic = team.view.epics.find((one) => one.ref === item.epic)
-                      return (
-                        <span key={item.ref} className="lv-item">
-                          <span className="lv-ref">{item.ref}</span> {item.title}
-                          {item.epic === undefined ? null : <span className="muted lv-epic">{t.live.board.epic(item.epic, epic?.title ?? item.epic)}</span>}
-                        </span>
-                      )
-                    })
-                  )}
-                  {items.length > shown(items).length ? <span className="muted">{t.live.board.more(items.length - shown(items).length)}</span> : null}
-                </div>
-              </li>
+              <AgentRow key={person.id} team={team} person={person} items={items} />
             ))}
           </ul>
         </section>

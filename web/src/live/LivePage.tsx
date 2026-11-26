@@ -42,7 +42,7 @@ function Live() {
     team.view.people.filter((person) => person.kind === 'agent').map((person) => ({ id: person.id, label: person.label, team: team.view.team, org: team.view.org })),
   )
   const resolve = useMemo(() => resolverOf(agents), [agents])
-  const guests = guestsOf(stream.events, resolve, { now })
+  const { shown: guests, total: guestTotal } = guestsOf(stream.events, resolve, { now })
   const teamKeys = [...new Set(refs.map((ref) => `${ref.org}/${ref.team}`))].toSorted()
   const colors = new Map(teamKeys.map((key, index) => [key, `var(--series-${(index % 8) + 1})`]))
   const teamLabels = new Map<string, string>(orgs.flatMap(({ org, teams: inOrg }) => inOrg.map(({ ref }) => [`${org.id}/${ref.id}`, ref.label] as [string, string])))
@@ -68,7 +68,7 @@ function Live() {
           {guests.length === 0 ? null : (
             <li>
               <i style={{ background: 'var(--series-other)' }} />
-              {t.live.graph.others}
+              {guestTotal > guests.length ? t.live.graph.othersMore(guests.length, guestTotal) : t.live.graph.others}
             </li>
           )}
         </ul>

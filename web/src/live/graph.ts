@@ -167,19 +167,34 @@ export function resolverOf(agents: readonly Agent[]): Resolve {
   }
 }
 
-/** The guests that appear in recent messages, as agents to draw. */
-export function guestsOf(events: readonly TaggedEvent[], resolve: Resolve, { now, windowMs = 10 * 60_000 }: { now: number; windowMs?: number }): Agent[] {
+/** The most guests drawn: the layout works on every pair, so the number of points is kept small however many names messages bring. */
+export const MAX_GUESTS = 12
+
+export interface Guests {
+  /** The guests drawn: those named by the most recent messages. */
+  shown: Agent[]
+  /** How many there are in all. */
+  total: number
+}
+
+/** The guests that appear in recent messages, the busiest first, as agents to draw. */
+export function guestsOf(events: readonly TaggedEvent[], resolve: Resolve, { now, windowMs = 10 * 60_000, limit = MAX_GUESTS }: { now: number; windowMs?: number; limit?: number }): Guests {
   const found = new Map<string, Agent>()
+  const counts = new Map<string, number>()
   for (const { org, team, event } of events) {
     if (event.kind !== 'message') continue
     const at = Date.parse(event.at)
     if (at > now || now - at > windowMs) continue
     for (const name of [event.from, event.to]) {
       const key = resolve(org, team, name)
-      if (key === keyOf({ org, team: GUEST_TEAM, id: name })) found.set(key, { id: name, label: name, team: GUEST_TEAM, org })
+      if (key === keyOf({ org, team: GUEST_TEAM, id: name })) {
+        found.set(key, { id: name, label: name, team: GUEST_TEAM, org })
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
     }
   }
-  return [...found.values()].toSorted((a, b) => keyOf(a).localeCompare(keyOf(b)))
+  const ordered = [...found.values()].toSorted((a, b) => (counts.get(keyOf(b)) ?? 0) - (counts.get(keyOf(a)) ?? 0) || keyOf(a).localeCompare(keyOf(b)))
+  return { shown: ordered.slice(0, limit), total: ordered.length }
 }
 
 export interface EdgeOptions {
