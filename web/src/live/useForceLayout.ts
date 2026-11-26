@@ -17,7 +17,9 @@ export function useForceLayout(agents: readonly Agent[], edges: readonly Edge[],
   const [isMoving, setIsMoving] = useState(false)
   const energy = useRef(0)
   // What the forces are made of, as a text: the layout moves when this changes, not for every tick of the weights fading.
-  const signature = `${agents.map(keyOf).join(',')}|${edges.map((edge) => `${edge.a}-${edge.b}:${Math.round(edge.weight * 2)}`).join(',')}|${Math.round(size.width)}x${Math.round(size.height)}`
+  // Where less motion is asked for, the picture stays where it is until the agents or the room change: a new line does not move a point.
+  const weights = isReduced ? '' : edges.map((edge) => `${edge.a}-${edge.b}:${Math.round(edge.weight * 2)}`).join(',')
+  const signature = `${agents.map(keyOf).join(',')}|${weights}|${Math.round(size.width)}x${Math.round(size.height)}`
 
   useEffect(() => {
     if (isReduced) {
