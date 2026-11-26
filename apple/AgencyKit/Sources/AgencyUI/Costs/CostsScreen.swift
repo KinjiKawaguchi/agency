@@ -3,7 +3,7 @@ import AgencyAPI
 import AgencyModel
 import SwiftUI
 
-/// The costs tab: what funds the work and how fast it is used, then each team's token use over a period.
+/// The costs on their own: what funds the work and how fast it is used, then each team's token use over a period.
 public struct CostsScreen: View {
     private let store: CostsStore
     private let onSignInAgain: () -> Void
@@ -16,22 +16,31 @@ public struct CostsScreen: View {
 
     public var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.spacing) {
-                    banner
-                    if store.loading == .loaded || !store.teams.isEmpty {
-                        CostsContent(
-                            funding: store.fundingSummaries(now: Date()), teams: store.teams, days: store.days, now: Date(),
-                            onChoose: { days in Task { await store.choose(days: days) } },
-                            onTryAgain: { Task { await store.refresh() } }
-                        )
-                    }
-                }
-                .padding(Theme.gutter)
-            }
-            .refreshable { await store.refresh() }
-            .navigationTitle(Ja.Costs.title)
+            CostsPage(store: store, onSignInAgain: onSignInAgain).navigationTitle(Ja.Costs.title)
         }
+    }
+}
+
+/// The costs without a navigation stack around them, so that a screen with several pages can hold them.
+struct CostsPage: View {
+    let store: CostsStore
+    let onSignInAgain: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.spacing) {
+                banner
+                if store.loading == .loaded || !store.teams.isEmpty {
+                    CostsContent(
+                        funding: store.fundingSummaries(now: Date()), teams: store.teams, days: store.days, now: Date(),
+                        onChoose: { days in Task { await store.choose(days: days) } },
+                        onTryAgain: { Task { await store.refresh() } }
+                    )
+                }
+            }
+            .padding(Theme.gutter)
+        }
+        .refreshable { await store.refresh() }
         .polling { await store.refresh() }
     }
 

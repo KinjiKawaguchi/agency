@@ -78,6 +78,11 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/usage?days=\(days)")
     }
 
+    /// How fast each team of an org ships over the last `days` days (1 to 90). A node that does not serve it answers 404.
+    public func evaluation(org: String, days: Int) async throws -> Evaluation {
+        try await get("/api/orgs/\(Self.segment(org))/evaluation?days=\(days)")
+    }
+
     public func decisions(limit: Int = 50) async throws -> DecisionLog {
         try await get("/api/decisions?limit=\(limit)")
     }
