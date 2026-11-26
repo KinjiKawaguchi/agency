@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Agency</title>
+    <link rel="stylesheet" href="/landing/claim.css" />
+  </head>
+  <body>
+    <!--
+      The page a claim link opens, served by the node to anyone, before any sign-in: it holds nothing of the node, no
+      token, and no organization's name. It reads the code from the address, takes the code out of the address, keeps it in
+      this tab (session storage), and sends the person on to /claim/continue, which is behind the sign-in. Its words are
+      in landing/claim.js, in English and Japanese.
+    -->
+    <main>
+      <p class="brand"><span class="seal" aria-hidden="true"></span> Agency</p>
+      <h1 id="title">Take your seat</h1>
+      <p id="lead">You were invited to take a seat.</p>
+      <p><a id="go" class="button" href="/claim/continue">Sign in to continue</a></p>
+    </main>
+    <script src="/landing/claim.js"></script>
+  </body>
+</html>
