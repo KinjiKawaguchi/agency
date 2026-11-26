@@ -9,7 +9,7 @@ use crate::outbox::Parcel;
 use crate::signed_decisions::decide_signed;
 use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
-    is_home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
+    home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
     DecisionState, Funding, HomeNode, Me, OrgRef, SignedDecisionInput, SnapshotSource,
     TeamLocation, TeamRef, TeamSnapshot, MAX_NOTE,
 };
@@ -271,31 +271,32 @@ pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
 pub fn home_nodes(config: &NodeConfig) -> (Vec<HomeNode>, Vec<String>) {
     let mut kept: Vec<HomeNode> = vec![];
     let mut left_out = vec![];
+    let own = home_node_origin(&config.url);
     for entry in &config.home_nodes {
         let label = entry.label.trim();
-        let url = entry.url.trim_end_matches('/');
-        let reason = if !(1..=80).contains(&label.chars().count()) {
-            Some("its label must be 1 to 80 characters")
-        } else if !is_home_node_origin(url) {
-            Some(
+        let url = home_node_origin(&entry.url);
+        let reason = match &url {
+            _ if !(1..=80).contains(&label.chars().count()) => {
+                Some("its label must be 1 to 80 characters")
+            }
+            None => Some(
                 "its url must be https://<host>[:<port>], or http:// on this machine, with no path",
-            )
-        } else if url == config.url.trim_end_matches('/') {
-            Some("it is this node")
-        } else if kept.iter().any(|one| one.url == url) {
-            Some("it is listed twice")
-        } else {
-            None
+            ),
+            Some(url) if Some(url) == own.as_ref() => Some("it is this node"),
+            Some(url) if kept.iter().any(|one| &one.url == url) => Some("it is listed twice"),
+            Some(_) => None,
         };
-        match reason {
-            Some(reason) => left_out.push(format!(
-                "home node {:?} ({}) is left out: {reason}",
-                entry.label, entry.url
-            )),
-            None => kept.push(HomeNode {
+        match (reason, url) {
+            (None, Some(url)) => kept.push(HomeNode {
                 label: label.to_owned(),
-                url: url.to_owned(),
+                url,
             }),
+            (reason, _) => left_out.push(format!(
+                "home node {:?} ({}) is left out: {}",
+                entry.label,
+                entry.url,
+                reason.unwrap_or("its url is not usable")
+            )),
         }
     }
     (kept, left_out)

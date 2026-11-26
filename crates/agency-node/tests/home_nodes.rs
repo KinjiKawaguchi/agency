@@ -23,6 +23,8 @@ fn configure(running: &Running) {
         entry("Plain", "http://work.example.com"),
         entry("Me again", &own),
         entry("Twice", "https://work.example.com"),
+        entry("Twice in capitals", "https://WORK.example.com:443"),
+        entry("Me with a slash", &format!("{own}/")),
     ];
     running
         .node
@@ -90,14 +92,12 @@ async fn the_owner_is_given_the_usable_home_nodes_and_no_one_else_any() {
 #[test]
 fn entries_that_cannot_be_used_are_left_out_with_a_reason() {
     let mut config: agency_core::config::NodeConfig = serde_json::from_value(json!({
-        "url": "http://127.0.0.1:4400", "listen": "127.0.0.1:4400",
+        "url": "http://Localhost:4400/", "listen": "127.0.0.1:4400",
         "account": { "id": "alice", "label": "Alice" }, "scrum": "scrum",
         "homeNodes": [{ "label": "Work", "url": "https://work.example.com" }]
     }))
     .unwrap();
-    config
-        .home_nodes
-        .push(entry("Me", "http://127.0.0.1:4400/"));
+    config.home_nodes.push(entry("Me", "http://localhost:4400"));
     config
         .home_nodes
         .push(entry("Far", "https://far.example.com/path"));

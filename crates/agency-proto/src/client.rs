@@ -49,42 +49,61 @@ pub struct HomeNode {
     pub url: String,
 }
 
-/// Whether `url` can be a home node's origin for a client: `https` with a host and an optional port and
-/// nothing else, or `http` only on the loopback (`localhost`, `127.0.0.1`, `[::1]`). No user name,
-/// path, query, or fragment.
-pub fn is_home_node_origin(url: &str) -> bool {
-    let (rest, is_https) = match url.strip_prefix("https://") {
-        Some(rest) => (rest, true),
-        None => match url.strip_prefix("http://") {
-            Some(rest) => (rest, false),
-            None => return false,
-        },
+/// A home node's origin as a client uses it, written one way, or `None` when `url` cannot be one:
+/// `https://<host>[:<port>]`, or `http://` only on the loopback (`localhost`, `127.0.0.1`, `[::1]`), with
+/// no user name, path, query, or fragment (a trailing `/` is dropped). The host is dot-joined labels of
+/// letters, digits, and hyphens, lowercased; `[::1]` is the only address in brackets. The port is 1 to
+/// 65535, and the scheme's default port is left out, so `https://Work.Example.com:443/` is
+/// `https://work.example.com`.
+pub fn home_node_origin(url: &str) -> Option<String> {
+    let url = url.strip_suffix('/').unwrap_or(url);
+    let (scheme, rest, default_port) = match url.split_once("://")? {
+        ("https", rest) => ("https", rest, 443),
+        ("http", rest) => ("http", rest, 80),
+        _ => return None,
     };
-    let (host, port) = match rest.strip_prefix('[') {
-        Some(bracketed) => match bracketed.split_once(']') {
-            Some((inside, after)) => (format!("[{inside}]"), after),
-            None => return false,
-        },
-        None => match rest.find(':') {
-            Some(colon) => (rest[..colon].to_owned(), &rest[colon..]),
-            None => (rest.to_owned(), ""),
-        },
+    let (host, port) = match rest.strip_prefix("[::1]") {
+        Some(after) => ("[::1]".to_owned(), after),
+        None => {
+            let colon = rest.find(':').unwrap_or(rest.len());
+            (rest[..colon].to_ascii_lowercase(), &rest[colon..])
+        }
     };
     let port = match port {
-        "" => true,
-        with_colon => with_colon.strip_prefix(':').is_some_and(|digits| {
-            !digits.is_empty() && digits.len() <= 5 && digits.bytes().all(|b| b.is_ascii_digit())
-        }),
+        "" => None,
+        with_colon => {
+            let digits = with_colon.strip_prefix(':')?;
+            let is_digits = !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit());
+            let number = digits
+                .parse::<u16>()
+                .ok()
+                .filter(|n| is_digits && *n >= 1)?;
+            (number != default_port).then_some(number)
+        }
     };
-    let is_name = !host.is_empty()
-        && host.len() <= 253
-        && host
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b".-[]:".contains(&b))
-        && !host.starts_with('.')
-        && !host.ends_with('.');
+    let is_label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    };
+    let is_name = host != "[::1]" && host.len() <= 253 && host.split('.').all(is_label);
     let is_loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
-    port && is_name && (is_https || is_loopback)
+    let is_allowed = match scheme {
+        "https" => is_name,
+        _ => is_loopback,
+    };
+    is_allowed.then(|| match port {
+        Some(port) => format!("{scheme}://{host}:{port}"),
+        None => format!("{scheme}://{host}"),
+    })
+}
+
+/// Whether `url` can be a home node's origin for a client (`home_node_origin`).
+pub fn is_home_node_origin(url: &str) -> bool {
+    home_node_origin(url).is_some()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -239,14 +239,14 @@ fn a_home_node_origin_is_https_or_loopback_http_and_nothing_more() {
         "http://127.0.0.1:4400",
         "http://localhost:4400",
         "http://[::1]:4400",
-        "https://[2001:db8::1]",
+        "https://work.example.com/",
+        "https://Work.Example.COM:443",
     ] {
         assert!(is_home_node_origin(accepted), "{accepted}");
     }
     for refused in [
         "http://work.example.com",
         "http://192.168.1.2:4400",
-        "https://work.example.com/",
         "https://work.example.com/desk",
         "https://alice@work.example.com",
         "https://work.example.com?x=1",
@@ -258,7 +258,35 @@ fn a_home_node_origin_is_https_or_loopback_http_and_nothing_more() {
         "https://.example.com",
         "ftp://work.example.com",
         "work.example.com",
+        "https://[2001:db8::1]",
+        "https://[::1]",
+        "https://work.example.com:0",
+        "https://work.example.com:65536",
+        "https://-work.example.com",
+        "https://work-.example.com",
+        "https://work..example.com",
+        "https://work_1.example.com",
+        "https://work.example.com.",
+        "HTTPS://work.example.com",
     ] {
         assert!(!is_home_node_origin(refused), "{refused}");
+    }
+}
+
+#[test]
+fn a_home_node_origin_is_written_one_way() {
+    use agency_proto::client::home_node_origin;
+    for (given, written) in [
+        ("https://Work.Example.com", "https://work.example.com"),
+        ("https://work.example.com:443/", "https://work.example.com"),
+        (
+            "https://work.example.com:8443",
+            "https://work.example.com:8443",
+        ),
+        ("http://LOCALHOST:80", "http://localhost"),
+        ("http://127.0.0.1:4400/", "http://127.0.0.1:4400"),
+        ("http://[::1]:4400", "http://[::1]:4400"),
+    ] {
+        assert_eq!(home_node_origin(given).as_deref(), Some(written), "{given}");
     }
 }
