@@ -165,6 +165,15 @@ pub struct HomeNodeConfig {
     pub url: String,
 }
 
+impl HomeNodeConfig {
+    pub fn new(label: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            url: url.into(),
+        }
+    }
+}
+
 impl WebPushConfig {
     /// Why the node cannot send with this setting: an entry of `extraHosts` that is not a host name (or `*.` and a
     /// domain) in lowercase, such as an address or a form of one (`0x7f.1`).

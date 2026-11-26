@@ -8,10 +8,7 @@ use common::{alice, get, Running};
 use serde_json::{json, Value};
 
 fn entry(label: &str, url: &str) -> HomeNodeConfig {
-    HomeNodeConfig {
-        label: label.into(),
-        url: url.into(),
-    }
+    HomeNodeConfig::new(label, url)
 }
 
 fn configure(running: &Running) {

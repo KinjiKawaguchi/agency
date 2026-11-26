@@ -93,14 +93,8 @@ fn signed_add(account: &str, label: &str, key: &PublicKey, signer: &AccountKey) 
 /// https and one on this machine.
 async fn me_with_home_nodes(alice: &Running) -> Value {
     let entries = vec![
-        agency_core::config::HomeNodeConfig {
-            label: "Work".into(),
-            url: "https://work.example.com".into(),
-        },
-        agency_core::config::HomeNodeConfig {
-            label: "Lab".into(),
-            url: "http://127.0.0.1:4500".into(),
-        },
+        agency_core::config::HomeNodeConfig::new("Work", "https://work.example.com"),
+        agency_core::config::HomeNodeConfig::new("Lab", "http://127.0.0.1:4500"),
     ];
     alice
         .node
