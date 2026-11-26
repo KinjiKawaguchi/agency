@@ -60,7 +60,7 @@ struct PeoplePage: View {
                 Button(Ja.Desk.reload) { Task { await store.refresh() } }.buttonStyle(.bordered)
             }
             .card()
-        } else if store.loading == .loading && store.sections.isEmpty {
+        } else if (store.loading == .loading || store.loading == .idle) && store.sections.isEmpty {
             ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }

@@ -6,11 +6,12 @@ import SwiftUI
 /// A switch for each kind of news; the text wraps, so nothing here is wider than the screen.
 public struct NotificationSettingsSections: View {
     private let store: NotificationPreferencesStore
-    private let nodeSendsKinds: Bool
+    private let nodeSendsKinds: Bool?
 
     /// - Parameter nodeSendsKinds: `false` when the home node is older than kinds and sends requests only; the
-    ///   other kinds cannot be turned on then, and the screen says why.
-    public init(store: NotificationPreferencesStore, nodeSendsKinds: Bool = true) {
+    ///   other kinds cannot be turned on then, and the screen says why. `nil` while the node has not said: the screen
+    ///   claims nothing about the node.
+    public init(store: NotificationPreferencesStore, nodeSendsKinds: Bool? = nil) {
         self.store = store
         self.nodeSendsKinds = nodeSendsKinds
     }
@@ -34,12 +35,12 @@ public struct NotificationSettingsSections: View {
                     Ja.NotificationSettings.title(of: kind),
                     isOn: Binding(get: { store.preferences.pushKinds.contains(kind) }, set: { store.setPush(kind, isOn: $0) })
                 )
-                .disabled(kind != .request && !nodeSendsKinds)
+                .disabled(kind != .request && nodeSendsKinds == false)
             }
         } header: {
             Text(Ja.NotificationSettings.appClosedHeading)
         } footer: {
-            Text(nodeSendsKinds ? Ja.NotificationSettings.appClosedFooter : Ja.NotificationSettings.requestsOnly + Ja.NotificationSettings.appClosedFooter)
+            Text(nodeSendsKinds == false ? Ja.NotificationSettings.requestsOnly + Ja.NotificationSettings.appClosedFooter : Ja.NotificationSettings.appClosedFooter)
         }
     }
 }
