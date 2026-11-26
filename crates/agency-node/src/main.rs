@@ -85,6 +85,7 @@ enum Command {
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
+    TeamPlan(dept_cli::TeamPlanArgs),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
@@ -251,7 +252,8 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        for line in dept_cli::department_lines(&doc.body) {
+        let lines = dept_cli::department_lines(&doc.body);
+        for line in lines.into_iter().chain(dept_cli::plan_lines(&doc.body)) {
             println!("{line}");
         }
     }
@@ -421,6 +423,7 @@ async fn run(cli: Cli) -> Result<()> {
                     label,
                     department: department.as_deref().map(id).transpose()?,
                     node: place_url,
+                    plan: None,
                 },
             )?;
             if let (true, Some(state_dir)) = (is_here, state_dir) {
@@ -445,6 +448,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
+        Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
         Command::TeamMove {

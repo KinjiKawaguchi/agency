@@ -44,7 +44,15 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fmt --all -- --check
-      - run: cargo test --workspace --locked
+      # A test that fails is run once more. One that then passes is a flake: the run stays green and the
+      # summary below names it, so it is seen and not left to come back.
+      - name: Run the tests
+        env:
+          FLAKY_REPORT: ${{ runner.temp }}/flaky-rust.txt
+        run: scripts/ci/cargo-test-retry.sh --workspace --locked
+      - name: Show the tests that passed only on a retry
+        if: always()
+        run: scripts/ci/flaky-summary.sh "${{ runner.temp }}/flaky-rust.txt"
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Check that generated TypeScript bindings match the Rust types
         run: scripts/check-bindings.sh
@@ -53,7 +61,7 @@ jobs:
   # so it is tested on Linux. The app itself needs Xcode, and this repository has no macOS runner.
   apple-package:
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:6.4
     defaults:
       run:
         working-directory: apple/AgencyKit
@@ -79,13 +87,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check the scripts
-        run: shellcheck -x scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
+        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
       - name: Test the systemd unit script
         run: scripts/test/systemd-unit.sh
       - name: Test the deploy script, against stand-ins for launchctl and curl
         run: scripts/test/deploy-macos.sh
       - name: Test the macOS release script and the packaging, against stand-ins for gh, cargo, and npm
         run: scripts/test/release-macos.sh
+      - name: Test the scripts that show the tests that passed only on a retry
+        run: scripts/test/ci-scripts.sh
 
   web:
     runs-on: ubuntu-latest
@@ -98,13 +108,19 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
+      # On CI vitest runs a failing test twice more and writes down the ones that then pass (vitest.config.ts).
       - if: steps.web.outputs.present == 'true'
         working-directory: web
+        env:
+          FLAKY_REPORT: ${{ runner.temp }}/flaky-web.txt
         run: |
           corepack enable
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else npm ci; fi
           npm test
           npm run build
+      - if: always() && steps.web.outputs.present == 'true'
+        name: Show the tests that passed only on a retry
+        run: scripts/ci/flaky-summary.sh "${{ runner.temp }}/flaky-web.txt"
 
   # Runs the built web client in headless Chromium against the mock node, and keeps a screenshot of
   # every screen (light and dark, desktop and phone width) as an artifact for reviewers.
@@ -139,7 +155,12 @@ jobs:
       - if: steps.web.outputs.present == 'true'
         name: Run the end-to-end tests
         working-directory: web
+        env:
+          FLAKY_REPORT: ${{ runner.temp }}/flaky-e2e.txt
         run: npm run e2e
+      - if: always() && steps.web.outputs.present == 'true'
+        name: Show the tests that passed only on a retry
+        run: scripts/ci/flaky-summary.sh "${{ runner.temp }}/flaky-e2e.txt"
       - if: always() && steps.web.outputs.present == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

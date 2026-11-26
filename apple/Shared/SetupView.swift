@@ -18,9 +18,11 @@ struct SetupView: View {
                 .foregroundStyle(.secondary)
             TextField("node.example.com", text: $input)
                 .textFieldStyle(.roundedBorder)
+                #if os(iOS)
                 .keyboardType(.URL)
                 .textContentType(.URL)
                 .textInputAutocapitalization(.never)
+                #endif
                 .autocorrectionDisabled()
                 .submitLabel(.go)
                 .focused($isFieldFocused)

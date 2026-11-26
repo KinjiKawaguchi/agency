@@ -13,6 +13,7 @@ fn body(running: &Running) -> agency_proto::OrgDefinition {
 /// A team in the org's definition that is not in alice's own configuration.
 fn add_unhosted_team(alice: &Running, team: &str) {
     let place = TeamPlace {
+        plan: None,
         id: id(team),
         label: team.into(),
         department: None,

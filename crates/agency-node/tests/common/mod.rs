@@ -225,6 +225,7 @@ pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Ru
             label: "app".into(),
             department: None,
             node: running.url(),
+            plan: None,
         },
     )
     .unwrap();
