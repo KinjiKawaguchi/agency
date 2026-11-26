@@ -1,5 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createApiClient } from '../api/client'
+import { createMockNode } from '../mock/node'
 import { renderApp } from '../test/render'
 
 const section = async (name: string) => within((await screen.findByRole('heading', { level: 2, name })).closest('section') as HTMLElement)
@@ -59,8 +61,22 @@ describe('evaluation', () => {
 
   it('says so, in the place of the numbers, when the node could not read them', async () => {
     renderApp({ path: '/evaluation', evaluation: true, evaluationFailsWith: 503 })
-    expect(await screen.findByRole('alert')).toHaveTextContent('A team could not report its numbers right now: The evaluation could not be read.')
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2))
+    const texts = screen.getAllByRole('alert').map((alert) => alert.textContent)
+    expect(texts).toContain('A team could not report its numbers right now: The evaluation could not be read.')
+    expect(texts).toContain('A team could not report its effort right now: The evaluation could not be read.')
     expect(screen.getByRole('heading', { level: 1, name: 'Evaluation' })).toBeInTheDocument()
+  })
+
+  it('draws the teams that answered and says why one could not, instead of blanking the screen', async () => {
+    renderApp({ path: '/evaluation', evaluation: true, evaluationUnavailableTeam: 'site' })
+    const app = await section('App team')
+    expect(app.getByRole('group', { name: 'Merged pull requests per day' })).toBeInTheDocument()
+    const speed = (await screen.findAllByRole('heading', { level: 2, name: 'Site team' }))[0] as HTMLElement
+    expect(within(speed.closest('section') as HTMLElement).getByText('This team could not report its numbers: Its node did not answer.')).toBeInTheDocument()
+    const effort = (await screen.findAllByRole('heading', { level: 3, name: 'Site team' }))[0] as HTMLElement
+    expect(within(effort.closest('section') as HTMLElement).getByText('This team could not report its numbers: Its node did not answer.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('lets the viewer pick an org when they belong to several', async () => {
@@ -80,5 +96,89 @@ describe('evaluation', () => {
     renderApp({ path: '/desk' })
     const links = within(await screen.findByRole('navigation', { name: 'Main menu' })).getAllByRole('link').map((link) => link.textContent)
     expect(links.indexOf('Evaluation')).toBe(links.indexOf('Costs') + 1)
+  })
+})
+
+describe('evaluation: where effort goes', () => {
+  const effortOf = async (team: string) => {
+    const heading = (await screen.findAllByRole('heading', { level: 3, name: `${team} team` }))[0] as HTMLElement
+    return within(heading.closest('section') as HTMLElement)
+  }
+
+  it('shows each work type of a team with its share, and the plan beside it', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    const app = await effortOf('App')
+    const rows = app.getAllByRole('listitem').filter((item) => item.classList.contains('ev-alloc-row'))
+    expect(rows.map((row) => row.querySelector('.ev-alloc-name')?.textContent)).toEqual(['New feature', 'Improvement', 'Maintenance', 'Tech debt', 'Incident', 'Unclassified'])
+    expect(rows[0]?.textContent).toMatch(/intended 50%/)
+    expect(rows[5]?.textContent).not.toMatch(/intended/)
+    expect(rows[0]?.querySelector('.ev-alloc-mark')).not.toBeNull()
+    expect(rows[5]?.querySelector('.ev-alloc-mark')).toBeNull()
+  })
+
+  it('says unclassified work is left unclassified, not guessed', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    expect(await within((await effortOf('App')).getByText(/stays unclassified/).parentElement as HTMLElement).findByText(/It is not guessed\./)).toBeInTheDocument()
+  })
+
+  it('measures the last seven days against the weekly budget', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    const app = await effortOf('App')
+    expect(app.getByRole('img', { name: /spent of a weekly budget of \$100$/ })).toBeInTheDocument()
+    expect(app.getByText(/over$/)).toBeInTheDocument()
+    expect(app.getByText(/over$/)).toBeInTheDocument()
+  })
+
+  it('says a team has no plan, and compares nothing', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    const site = await effortOf('Site')
+    expect(site.getByText('The org has stated no plan for this team, so there is nothing to compare with.')).toBeInTheDocument()
+    expect(site.queryByText(/intended/)).toBeNull()
+    expect(site.queryByRole('img', { name: /weekly budget/ })).toBeNull()
+  })
+
+  it('draws cost by day for every work type', async () => {
+    renderApp({ path: '/evaluation', evaluation: true })
+    const app = await effortOf('App')
+    expect(app.getByRole('group', { name: 'Cost by day' }).querySelectorAll('.ev-col')).toHaveLength(14)
+  })
+
+  it('says so, in the place of the numbers, when the node does not report effort', async () => {
+    renderApp({ path: '/evaluation' })
+    expect(await screen.findByText('This node does not report effort by work type yet.')).toBeInTheDocument()
+  })
+
+  it('names the route an agent reads for the effort', async () => {
+    renderApp({ path: '/evaluation?days=30', evaluation: true })
+    expect(await screen.findByText(/GET \/api\/orgs\/acme\/effort\?days=30/)).toBeInTheDocument()
+  })
+
+  /** A client whose node leaves out `incident` from the effort, and `other` from the merged counts, as an older node might. */
+  const clientWithGaps = () => {
+    const node = createMockNode({ evaluation: true })
+    return createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      const path = new URL(request.url, 'http://mock.local').pathname
+      if (!path.endsWith('/effort') && !path.endsWith('/evaluation')) return reply
+      const body = JSON.parse(await reply.text()) as { teams: Array<Record<string, any>> }
+      for (const team of body.teams) {
+        if (team.byType !== undefined) delete team.byType.incident
+        for (const day of team.byDay) {
+          if (day.costUsd !== null && typeof day.costUsd === 'object') delete day.costUsd.debt
+          if (day.merged !== undefined) delete day.merged.other
+        }
+        if (team.summary !== undefined) delete team.summary.merged.other
+      }
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+  }
+
+  it('still draws both sections when the node leaves a type out of a total or of a day', async () => {
+    renderApp({ path: '/evaluation', client: clientWithGaps() })
+    const app = await effortOf('App')
+    expect(app.getAllByRole('listitem').filter((item) => item.classList.contains('ev-alloc-row'))).toHaveLength(6)
+    expect(app.getByRole('group', { name: 'Cost by day' }).querySelectorAll('.ev-col')).toHaveLength(14)
+    expect(await section('App team')).toBeDefined()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

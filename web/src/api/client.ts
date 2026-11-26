@@ -1,6 +1,7 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
-import type { Evaluation } from './evaluationApi'
+import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
+import type { Effort, Evaluation } from './evaluationApi'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -49,9 +50,22 @@ export interface ApiClient {
   usage: (org: string, team: string, days: number) => Promise<TokenUsage>
   /** How fast each team of the org ships: merged pull requests, lead times, red main, reverts, cost. */
   evaluation: (org: string, days: number) => Promise<Evaluation>
+  /** What each team of the org spent, by work type. */
+  effort: (org: string, days: number) => Promise<Effort>
 }
 
 const segment = encodeURIComponent
+
+/** Reads an answer the node gave; one that is not what the route promises is a 503, "could not answer", not a crash of the screen. */
+const checked =
+  <T,>(read: (raw: unknown) => T) =>
+  (raw: unknown): T => {
+    try {
+      return read(raw)
+    } catch (error) {
+      throw error instanceof MalformedAnswer ? new ApiError(error.message, 503) : error
+    }
+  }
 
 /** The longest title or option label the node keeps in its decision log. */
 const MAX_LOGGED_TEXT = 200
@@ -114,7 +128,8 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
-    evaluation: (org, days) => get<Evaluation>(`/api/orgs/${segment(org)}/evaluation?days=${days}`),
+    evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
+    effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {
       // The label travels only with a choice, and both notes are trimmed and cut for the log.

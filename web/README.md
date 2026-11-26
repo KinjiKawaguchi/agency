@@ -16,7 +16,7 @@ npm run e2e      # build, then drive the built client in headless Chromium again
 - **People and work** (`/people`): one card per person, work in progress and blocked work, epic forecasts.
 - **Org chart** (`/org`, `?unit=<department>` focuses on one department): departments, teams, people, and the agents of each team.
 - **Costs** (`/costs`): each subscription window projected to its reset from the pace so far, and token use by day and by person.
-- **Evaluation** (`/evaluation`, `?org=<org>&days=14|30|90`): how fast each team of an org ships. Pull requests merged per day by type, lead times, how long main's CI stayed red, reverts, and cost per merged pull request. It reads `GET /api/orgs/<org>/evaluation?days=<n>`, which an agent reads too, so a proposal can cite the same numbers.
+- **Evaluation** (`/evaluation`, `?org=<org>&days=14|30|90`): how fast each team of an org ships. Pull requests merged per day by type, lead times, how long main's CI stayed red, reverts, and cost per merged pull request. It reads `GET /api/orgs/<org>/evaluation?days=<n>`, which an agent reads too, so a proposal can cite the same numbers. Below it, where each team's effort goes (`GET /api/orgs/<org>/effort?days=<n>`): its cost by work type against the plan in the org definition (`teams[].plan`), and its last seven days against the weekly budget.
 
 ## The mock node
 

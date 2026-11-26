@@ -3,6 +3,7 @@
 import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
+import { effortReport, withPlans } from './effort.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
 
@@ -43,6 +44,8 @@ interface MockNodeOptions {
   evaluation?: boolean
   /** Makes only the evaluation calls fail with this status. */
   evaluationFailsWith?: number
+  /** A team the evaluation routes leave out, naming it in `unavailable` with a reason, as the node does for a team that cannot answer. */
+  evaluationUnavailableTeam?: string
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
@@ -87,7 +90,7 @@ const MAX_LIMIT = 200
 /** The longest `title` and `choiceLabel` the node takes. */
 const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
-const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/evaluation$/
+const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|envelopes)$/
 const DEVICES_PATH = '/api/devices'
 const PUSH_TOKENS_PATH = '/api/push/tokens'
@@ -193,14 +196,18 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
   }
 
-  const handleEvaluation = (url: URL, org: string): Response => {
+  const handleEvaluation = (url: URL, org: string, route: string): Response => {
     if (options.evaluationFailsWith !== undefined) return failure(options.evaluationFailsWith, 'The evaluation could not be read.')
     if (options.evaluation !== true) return failure(404, 'The evaluation is not available.')
     const known = me.orgs.find((one) => one.id === org)
     if (known === undefined) return failure(404, 'No such organization.')
     const days = Number(url.searchParams.get('days') ?? 14)
     if (!Number.isInteger(days) || days < 1 || days > 90) return failure(400, 'days must be between 1 and 90.')
-    return json(evaluationReport(org, known.teams.map((team) => team.id), days, now))
+    const all = known.teams.map((team) => team.id)
+    const left = options.evaluationUnavailableTeam
+    const teams = all.filter((team) => team !== left)
+    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now)
+    return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
   /** The owner's write: the page's token and JSON, a lowercase-hex token, its environment, and a label. Idempotent per token. */
@@ -248,10 +255,10 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (request.method === 'GET' && orgMatch) {
       const extra = options.moreOrgs === true ? MORE_ORGS.find((org) => org.id === orgMatch[1]) : undefined
       if (extra !== undefined) return json(moreOrgDefinition(extra))
-      return orgMatch[1] === ORG_DEFINITION.org ? json(ORG_DEFINITION) : failure(404, 'No such organization.')
+      return orgMatch[1] === ORG_DEFINITION.org ? json({ ...ORG_DEFINITION, teams: withPlans(ORG_DEFINITION.teams) }) : failure(404, 'No such organization.')
     }
     const evaluationMatch = EVALUATION_PATH.exec(url.pathname)
-    if (request.method === 'GET' && evaluationMatch) return handleEvaluation(url, evaluationMatch[1] ?? '')
+    if (request.method === 'GET' && evaluationMatch) return handleEvaluation(url, evaluationMatch[1] ?? '', evaluationMatch[2] ?? '')
     const teamMatch = TEAM_PATH.exec(url.pathname)
     return teamMatch ? handleTeam(request, url, teamMatch) : failure(404, 'No such route.')
   }

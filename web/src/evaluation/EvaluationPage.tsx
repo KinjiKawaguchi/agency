@@ -4,6 +4,7 @@ import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
 import { evaluationQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
+import { EffortSection } from './EffortSection'
 import { TeamEvaluation } from './TeamEvaluation'
 import './evaluation.css'
 
@@ -27,6 +28,7 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
   }
   const chosen = me.orgs.find((one) => one.id === org) ?? me.orgs[0]
   const period = PERIODS.find((one) => one === days) ?? DEFAULT_DAYS
+  const teamLabels = new Map((chosen?.teams ?? []).map((team) => [team.id, team.label]))
   return (
     <>
       <h1 className="page-title">{t.evaluation.title}</h1>
@@ -54,7 +56,8 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
               ))}
             </div>
           </div>
-          <OrgEvaluation org={chosen.id} days={period} teamLabels={new Map(chosen.teams.map((team) => [team.id, team.label]))} />
+          <OrgEvaluation org={chosen.id} days={period} teamLabels={teamLabels} />
+          <EffortSection org={chosen.id} days={period} teamLabels={teamLabels} />
         </>
       )}
     </>
@@ -74,9 +77,15 @@ function OrgEvaluation({ org, days, teamLabels }: { org: string; days: number; t
   const report = evaluation.data
   return (
     <>
-      {report.teams.length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
+      {report.teams.length === 0 && (report.unavailable ?? []).length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
       {report.teams.map((numbers) => (
         <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} generatedAt={report.generatedAt} until={report.until} />
+      ))}
+      {(report.unavailable ?? []).map((one) => (
+        <section key={one.team} className="ev-team">
+          <h2 className="sub-head">{t.evaluation.team(teamLabels.get(one.team) ?? one.team)}</h2>
+          <p className="empty">{t.evaluation.teamUnavailable(one.reason)}</p>
+        </section>
       ))}
       <p className="muted ev-source">{t.evaluation.source(`/api/orgs/${encodeURIComponent(org)}/evaluation?days=${days}`)}</p>
     </>
