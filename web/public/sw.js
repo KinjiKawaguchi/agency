@@ -5,9 +5,16 @@
 // - When the network fails for a navigation, it shows /offline.html, a static page that says the node cannot be reached. A
 //   redirect to the sign-in (Access) is not a failure: it passes through untouched, so an expired sign-in is never hidden.
 // - When the page says the viewer signed out (`signed-out`), it deletes what it kept.
+// - When the node pushes a notice (`push`), it shows it, unless a window of the app is in front, where the page itself tells what
+//   is new. What the notice says and where a tap goes is decided in /push-notice.js, which this file only calls (it is tested
+//   there); a tap brings an open window of the app forward, or opens one. A notification never makes a sound again when it
+//   replaces another about the same thing (no `renotify`).
 // It holds no state of its own, which is why a new worker may take over the open pages at once (`skipWaiting`, `claim`).
 // It cannot rely on the node to answer a missing built file with a 404: the node answers any path it does not know with the
 // page (a 200 `text/html` that carries the write token), so a file is kept only when it is a file of the kind that was asked for.
+importScripts('/push-notice.js')
+const notice = self.AgencyNotice
+
 const SHELL = 'agency-shell-1'
 const ASSETS = 'agency-assets-1'
 const OFFLINE = '/offline.html'
@@ -70,4 +77,50 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'signed-out') event.waitUntil(caches.delete(ASSETS))
+})
+
+const windowsOfTheApp = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+async function showNotice(data) {
+  const content = notice.contentOf(data, self.navigator && self.navigator.language)
+  if (!notice.shouldShow(await windowsOfTheApp())) return
+  const options = { body: content.body, icon: '/icons/icon-192.png', data: { url: content.url } }
+  if (content.tag !== undefined) options.tag = content.tag
+  await self.registration.showNotification(content.title, options)
+}
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(showNotice(event.data ? event.data.text() : undefined))
+})
+
+/** A path of the app and nothing else (never another origin, never `//host`), whatever the notification carried. */
+const pathOf = (value) => (typeof value === 'string' && /^\/(?![/\\\s])/.test(value) && !/[\u0000-\u001f\u007f]/.test(value) ? value : '/desk')
+
+async function openOrFocus(path) {
+  const one = notice.windowToFocus(await windowsOfTheApp())
+  if (one !== undefined) {
+    await one.focus()
+    // A window that cannot be taken there (it is not controlled by this worker) is left as it is, and one is opened at the request.
+    const isMoved = typeof one.navigate === 'function' ? await one.navigate(path).then(() => true, () => false) : false
+    if (!isMoved) await self.clients.openWindow(path)
+    return
+  }
+  await self.clients.openWindow(path)
+}
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(openOrFocus(pathOf(event.notification.data && event.notification.data.url)))
+})
+
+// The browser ended a subscription (its push service renewed it). The worker has no write token to tell the node, so it takes
+// a new one with the same options and tells the open windows; the page registers it at the node, and does so when it next opens.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const options = event.oldSubscription ? event.oldSubscription.options : undefined
+      if (options !== undefined) await self.registration.pushManager.subscribe(options).catch(() => undefined)
+      for (const one of await windowsOfTheApp()) one.postMessage({ type: 'push-subscription-changed' })
+    })(),
+  )
 })

@@ -41,6 +41,14 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Client** (クライアント). A program with device keys that talks to a home node: the web client, the iPhone app, the CLI on the node's terminal. A client is not a node.
 - **Push token**. An APNs token for the iPhone app to be notified at. Apple calls it a device token; the protocol does not, since a *device* here is a signing key.
 
+## Seats and claiming
+
+- **Seat** (席 *(proposed)*). A place in an org that has been given a name and a department but that no one has taken yet. A seat has no account, no key, and no devices, so it is **not a member**: it is addressed, but it never decides. In the protocol it is `seats[]` of the org definition. Say *seat* for it and keep *member* for one who has taken a seat, because a member has an account (or is hosted, below). A seat taken by someone keeps its id, so its requests and history stay attached.
+- **Claim link** (席の受け取りリンク *(proposed)*). A link, for one seat, for one person, that works once and expires, which the org's root node makes. Opening it, signing in with the address it was made for, and confirming a pairing code makes the person a member in place of the seat. The code in the link is secret: a page reads it from the address and removes it at once, and sends it only to the node, in the request that claims the seat.
+- **Hosted member** (ノードを持たないメンバー *(proposed)*). A member who has no node of their own: their client talks to the org root's node, which holds no key of theirs. Their devices hold their keys and sign their decisions, as for every member. They read only the requests addressed to them.
+- **Answer for** (代理で答える *(proposed)*). To record an answer on behalf of a seat or an external party who does not answer themselves. The protocol field `relays` names who may. Do not use *relay* for this: a node relays a change or an envelope to another node, and a screen that says "relayed for" will be read as that.
+- **External party** (外部の相談先 *(proposed)*). Someone the org asks through a member and who never takes a seat.
+
 ## Requests and decisions
 
 - **Request** (依頼). What a team asks of a member. Its kinds (`Request.kind`):
@@ -98,6 +106,8 @@ What the org's work achieves, as numbers about the business or the product, not 
 | デバイス | 端末 | The Japanese name of a device is 端末. |
 | 判断のお願い | 判断待ち | The kind `pendingDecision` has one name. A sentence may say 「…さんの判断待ち」. |
 | person, for a member | member (メンバー) | "Person" stays for the human. |
+| unclaimed member; 未参加のメンバー | seat (席) | A seat is not a member: it has no account, key, or device. |
+| relay, for answering on someone's behalf | answer for (代理で答える) | A node relays changes to another node; a person answers for someone. |
 | person, for a participant; 人 for a participant or a count of them | participant (参加者) | A participant may be an agent. |
 | device, for a push token | push token | A device is a signing key. |
 

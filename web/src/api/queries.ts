@@ -75,6 +75,12 @@ export const usageQuery = (api: ApiClient, org: string, team: string, days: numb
 export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['evaluation', org, days], queryFn: () => api.evaluation(org, days), staleTime: 2 * POLL_MS })
 
+export const outcomesQuery = (api: ApiClient, org: string, days: number) =>
+  queryOptions({ queryKey: ['outcomes', org, days], queryFn: () => api.outcomes(org, days), staleTime: 2 * POLL_MS })
+
+export const readingsQuery = (api: ApiClient, org: string) =>
+  queryOptions({ queryKey: ['readings', org], queryFn: () => api.readings(org), staleTime: 2 * POLL_MS })
+
 export const effortQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['effort', org, days], queryFn: () => api.effort(org, days), staleTime: 2 * POLL_MS })
 

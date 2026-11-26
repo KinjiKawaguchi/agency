@@ -1,0 +1,86 @@
+.oc-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  margin: 10px 0 24px;
+}
+
+.oc-kpi .oc-value {
+  margin: 6px 0 2px;
+  font-size: 28px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.oc-kpi .oc-good,
+.oc-kpi .oc-none {
+  margin: 2px 0;
+}
+
+.oc-move {
+  margin: 8px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-move.is-better {
+  color: var(--ok);
+}
+
+.oc-move.is-worse {
+  color: var(--seal);
+}
+
+.oc-quality {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid currentcolor;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.oc-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oc-readings .oc-team {
+  margin: 12px 0 20px;
+}
+
+.oc-reading-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oc-reading {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.oc-reading h4 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.oc-reading p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.oc-refusal {
+  color: var(--ink);
+}
+
+.oc-overlap {
+  padding: 6px 10px;
+  border-left: 3px solid var(--border-strong);
+  background: var(--hover);
+}

@@ -1,3 +1,4 @@
+import { useOutcomesAccess } from '../outcomes/useOutcomesAccess'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -21,7 +22,7 @@ const THEME_LABELS = (t: ReturnType<typeof useI18n>['t']): Record<Theme, string>
   dark: t.settings.themeDark,
 })
 
-type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live'
+type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live' | '/outcomes'
 
 interface Group {
   key: 'desk' | 'overview' | 'organization' | 'results'
@@ -49,6 +50,7 @@ const GROUPS: readonly Group[] = [
       { to: '/costs', label: (t) => t.nav.costs },
       { to: '/evaluation', label: (t) => t.nav.evaluation },
       { to: '/live', label: (t) => t.nav.live },
+      { to: '/outcomes', label: (t) => t.nav.outcomes },
     ],
   },
 ]
@@ -77,7 +79,10 @@ export function AppBar() {
   const nodeName = listed.length === 0 || isNativeApp() ? undefined : (nodes.self ?? window.location.host)
   const themeLabels = THEME_LABELS(t)
   const path = useRouterState({ select: (state) => state.location.pathname })
-  const current = GROUPS.find((group) => group.pages.some((page) => isOn(path, page.to)))
+  const outcomes = useOutcomesAccess()
+  // The owner's page is in the menu only once the owner's read has answered: no entry while it is read, and none for anyone else.
+  const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => page.to !== '/outcomes' || outcomes.status === 'available')
+  const current = GROUPS.find((group) => pagesOf(group).some((page) => isOn(path, page.to)))
 
   useEffect(() => {
     document.title = waiting.status === 'known' && waiting.count > 0 ? `(${waiting.count}) ${t.app.name}` : t.app.name
@@ -93,7 +98,7 @@ export function AppBar() {
         {nodeName === undefined ? null : <Link className="node-chip" to="/devices" title={t.devices.homeNodes.title}>{nodeName}</Link>}
         <nav className="mainnav" aria-label={t.nav.label}>
           {GROUPS.map((group) => (
-            <Link key={group.key} to={group.pages[0]?.to ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
+            <Link key={group.key} to={pagesOf(group)[0]?.to ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
               {group.label(t)}
               {group.key === 'desk' ? <WaitingCount waiting={waiting} /> : null}
             </Link>
@@ -115,9 +120,9 @@ export function AppBar() {
             {isReadingApprovals ? <span className="me-count skeleton-count" aria-hidden="true" /> : approvals > 0 ? <span className="me-count" aria-hidden="true">{approvals}</span> : null}
           </Link>
         </div>
-        {current === undefined || current.pages.length < 2 ? null : (
+        {current === undefined || pagesOf(current).length < 2 ? null : (
           <nav className="subnav" aria-label={t.nav.section(current.label(t))}>
-            {current.pages.map((page) => (
+            {pagesOf(current).map((page) => (
               <Link key={page.to} to={page.to}>
                 {page.label(t)}
               </Link>

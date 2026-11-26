@@ -150,6 +150,8 @@ impl UsageSource for Scripted {
 fn spec() -> UsageCollector {
     UsageCollector::Claude {
         config_dir: Some("/home/alice/.claude-a".into()),
+        renew: true,
+        command: None,
     }
 }
 
@@ -281,4 +283,161 @@ async fn no_token_reaches_a_log_line_or_the_usage_file() {
             "{id}: only the windows are kept"
         );
     }
+}
+
+/// A login store whose logins a run of `claude` can change, as a real run changes the stored login.
+struct SharedLogins(Arc<Mutex<Vec<String>>>);
+
+#[async_trait]
+impl LoginStore for SharedLogins {
+    async fn logins(&self) -> Vec<Login> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|text| Login::parse(text))
+            .collect()
+    }
+    fn describe(&self) -> String {
+        "log in somewhere".into()
+    }
+}
+
+/// A `claude` that, when run, stores `renewed` as the login (when it has one) and exits with `result`.
+struct FakeClaude {
+    logins: Arc<Mutex<Vec<String>>>,
+    renewed: Option<String>,
+    result: Result<(), renew::RunFailure>,
+    runs: Mutex<u32>,
+}
+
+#[async_trait]
+impl renew::RunClaude for FakeClaude {
+    async fn run(&self) -> Result<(), renew::RunFailure> {
+        *self.runs.lock().unwrap() += 1;
+        if let Some(renewed) = &self.renewed {
+            *self.logins.lock().unwrap() = vec![renewed.clone()];
+        }
+        self.result.clone()
+    }
+}
+
+struct Renewing {
+    usage: ClaudeUsage,
+    claude: Arc<FakeClaude>,
+    _dir: tempfile::TempDir,
+}
+
+impl Renewing {
+    fn runs(&self) -> u32 {
+        *self.claude.runs.lock().unwrap()
+    }
+}
+
+/// A login that expired `expired_ago_minutes` ago, and a `claude` that renews it (`renews`) or not.
+fn renewing(
+    expired_ago_minutes: i64,
+    renews: bool,
+    result: Result<(), renew::RunFailure>,
+    url: &str,
+) -> Renewing {
+    let expired = login_text(
+        "sk-ant-oat01-EXPIRED",
+        NOW_MS - expired_ago_minutes * 60_000,
+    );
+    let renewed = login_text("sk-ant-oat01-RENEWED", NOW_MS + 8 * 3600 * 1000);
+    let logins = Arc::new(Mutex::new(vec![expired]));
+    let claude = Arc::new(FakeClaude {
+        logins: logins.clone(),
+        renewed: renews.then_some(renewed),
+        result,
+        runs: Mutex::new(0),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Arc::new(ManualClock::at(NOW));
+    let log: Log = Arc::new(|_| {});
+    let renewer = renew::Renewer::new(claude.clone(), renew::record_path(dir.path(), None), log);
+    let usage = ClaudeUsage::new(Arc::new(SharedLogins(logins)), clock, url.to_owned())
+        .unwrap()
+        .with_renewer(renewer);
+    Renewing {
+        usage,
+        claude,
+        _dir: dir,
+    }
+}
+
+#[tokio::test]
+async fn an_expired_login_is_renewed_by_claude_and_read_again_with_the_new_token() {
+    let endpoint = endpoint(200, ANSWER, &[]).await;
+    let case = renewing(30, true, Ok(()), &endpoint.url);
+    let usage = case.usage.read().await.unwrap();
+    assert!(usage["five_hour"].is_object());
+    assert_eq!(case.runs(), 1);
+    assert_eq!(
+        *endpoint.seen.lock().unwrap(),
+        ["Bearer sk-ant-oat01-RENEWED"],
+        "the expired token is never sent"
+    );
+    case.usage.read().await.unwrap();
+    assert_eq!(case.runs(), 1, "a login that is fresh again is not renewed");
+}
+
+#[tokio::test]
+async fn a_token_that_expired_a_moment_ago_is_left_to_the_sessions_that_use_it() {
+    let endpoint = endpoint(200, ANSWER, &[]).await;
+    let case = renewing(5, true, Ok(()), &endpoint.url);
+    assert_eq!(case.usage.read().await.unwrap_err(), Failure::Expired);
+    assert_eq!(case.runs(), 0);
+    assert!(endpoint.seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_renewal_that_fails_says_so_and_one_that_changes_nothing_is_not_repeated_within_three_hours(
+) {
+    let endpoint = endpoint(200, ANSWER, &[]).await;
+    let failing = renewing(
+        30,
+        false,
+        Err(renew::RunFailure::Exited(Some(1))),
+        &endpoint.url,
+    );
+    match failing.usage.read().await.unwrap_err() {
+        Failure::NotRenewed(why) => assert!(why.contains("exited with status 1"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    let unchanged = renewing(30, false, Ok(()), &endpoint.url);
+    assert_eq!(unchanged.usage.read().await.unwrap_err(), Failure::Expired);
+    assert_eq!(unchanged.usage.read().await.unwrap_err(), Failure::Expired);
+    assert_eq!(
+        unchanged.runs(),
+        1,
+        "the second read within the gap runs nothing"
+    );
+    assert!(endpoint.seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_source_with_renew_off_has_no_renewer() {
+    let log: Log = Arc::new(|_| {});
+    let dir = Path::new("/data");
+    let login = Some(Path::new("/home/alice/.claude-a"));
+    assert!(renewer(false, None, login, dir, &log).is_none());
+    assert!(renewer(true, None, login, dir, &log).is_some());
+    assert!(renewer(true, Some(Path::new("/opt/bin/claude")), None, dir, &log).is_some());
+}
+
+#[tokio::test]
+async fn a_login_that_is_fresh_or_missing_is_never_renewed() {
+    let endpoint = endpoint(200, ANSWER, &[]).await;
+    let fresh = renewing(-60, true, Ok(()), &endpoint.url);
+    fresh.usage.read().await.unwrap();
+    assert_eq!(fresh.runs(), 0);
+    let missing = renewing(30, true, Ok(()), &endpoint.url);
+    missing.claude.logins.lock().unwrap().clear();
+    assert!(matches!(
+        missing.usage.read().await.unwrap_err(),
+        Failure::NoLogin(_)
+    ));
+    assert_eq!(missing.runs(), 0);
 }

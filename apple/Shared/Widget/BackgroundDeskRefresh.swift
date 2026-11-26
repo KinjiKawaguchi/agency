@@ -23,7 +23,9 @@ enum BackgroundDeskRefresh {
         // Nobody signed in is not a failed read: there is nothing to refresh, as with no home node.
         guard tokens.current() != nil else { return nil }
         defaults.set(now, forKey: lastRunKey)
-        let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
+        let client = NodeClient(
+            transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
+        )
         let preferences = WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host))
         let publisher = WidgetPublisher(host: homeNode.host, preferences: preferences, sink: WidgetAppGroupSink())
         let refresh = DeskBackgroundRefresh(source: client, publisher: publisher)
