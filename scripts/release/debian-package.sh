@@ -89,7 +89,6 @@ Maintainer: Agency Project <agency@agency.invalid>
 Section: utils
 Priority: optional
 Depends: $depends
-Description: Agency node
 Description: node of a self-hosted organization of AI agents and people
  It serves an account's clients and runs hosted teams.
 EOF
