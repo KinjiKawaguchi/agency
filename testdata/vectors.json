@@ -86,6 +86,21 @@
     "signature": "0Lwjsbg7e72EdiyH88rOIACT81XWZeiNs9Ggg2VZghXOZn06VOtiqTeHe0Jcf6ZFZmLt7CpVe3F0W9sCmznUDg==",
     "signer": "alice"
   },
+  "deviceChangeP256": {
+    "add": {
+      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"tablet\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
+      "signature": "jIvqZ1EHXEebl2p/+1L/fmM6LSyggKgyeQeffLkyBA6Mt/Qy8WCBC9j9BS8uEdteHTJDQg5QFpX8h5JQnxjoeQ==",
+      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"tablet\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
+      "signer": "d-a652124afda7"
+    },
+    "remove": {
+      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"tablet\",\"op\":\"remove\",\"org\":\"acme\"}",
+      "signature": "3qZcatBp7rmidMDEAjhJ6UGCbZ3chd1sjGl8IQVeO+RCx+NyFlyIDVu5bouFQHTQB11+NsszTPmckx6UwG02HQ==",
+      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"tablet\",\"op\":\"remove\",\"org\":\"acme\"}",
+      "signer": "d-a652124afda7"
+    },
+    "signerKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
+  },
   "envelope": {
     "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"id\":\"00112233445566778899aabbccddeeff\",\"kind\":\"answer\",\"org\":\"acme\",\"payload\":{\"choice\":\"ア\",\"text\":\"\"},\"target\":\"r-20260101-000000-abcd\",\"team\":\"app\"}",
     "signature": "TZ8RbVmH8OD+bG45WJG5OA/FGlCr7+Qtap6RoOh91J6mWS++gTkUq2Eov6Pt7BAIAARnuZ+6EpgxzMVtbAGNBA==",

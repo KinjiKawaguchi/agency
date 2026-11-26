@@ -25,7 +25,7 @@ private final class FakeOverviewSource: OverviewSource, @unchecked Sendable {
     func usage(org: String, team: String, days: Int) async throws -> TokenUsage {
         try lock.withLock {
             asked.append("\(org)/\(team)?days=\(days)")
-            return try (usages["\(org)/\(team)"] ?? .success(Fixture.decode(TokenUsage.self, "funding"))).get()
+            return try (usages["\(org)/\(team)"] ?? .success(Fixture.decode(TokenUsage.self, "usage"))).get()
         }
     }
 }
