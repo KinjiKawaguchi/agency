@@ -8,6 +8,8 @@ use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
 use agency_adapters::github::{CachedDelivery, GithubDelivery};
 use agency_adapters::handoff;
+#[cfg(target_os = "macos")]
+use agency_adapters::keychain_root_keys::KeychainRootKeys;
 use agency_adapters::launch::Launch;
 use agency_adapters::logging::Logger;
 use agency_adapters::memory::NoNotifier;
@@ -21,7 +23,7 @@ use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
-use agency_core::config::NodeConfig;
+use agency_core::config::{NodeConfig, RootKeyStore};
 use agency_core::logging_config::LogLevel;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
@@ -46,6 +48,19 @@ pub struct Overrides {
     pub launch: Option<Launch>,
     /// Where the org root keys this node holds are kept (default: files outside the data directory).
     pub root_keys: Option<Arc<dyn RootKeys>>,
+}
+
+/// The store of org root keys the configuration names.
+fn root_keys(store: RootKeyStore) -> anyhow::Result<Arc<dyn RootKeys>> {
+    match store {
+        RootKeyStore::Files => Ok(Arc::new(FileRootKeys::at_default_dir())),
+        #[cfg(target_os = "macos")]
+        RootKeyStore::Keychain => Ok(Arc::new(KeychainRootKeys::login())),
+        #[cfg(not(target_os = "macos"))]
+        RootKeyStore::Keychain => {
+            anyhow::bail!("rootKeys \"keychain\" is only for macOS; use \"files\"")
+        }
+    }
 }
 
 /// APNs when the node has a push setting whose key can be read; otherwise nothing is sent to tokens.
@@ -164,9 +179,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
             ))
         }),
         notifier,
-        root_keys: overrides
-            .root_keys
-            .unwrap_or_else(|| Arc::new(FileRootKeys::at_default_dir())),
+        root_keys: match overrides.root_keys {
+            Some(root_keys) => root_keys,
+            None => root_keys(config.root_keys)?,
+        },
     };
     let node = Arc::new(Node::open(ports, key)?);
     Ok(Opened {

@@ -125,7 +125,7 @@ impl Apns {
             iat: now.unix_timestamp(),
         };
         let token = jsonwebtoken::encode(&header, &claims, &self.key)
-            .map_err(|error| PushError::Failed(format!("cannot sign the APNs token: {error}")))?;
+            .map_err(|_| PushError::Failed("the APNs provider token could not be made".into()))?;
         *cached = Some((token.clone(), now));
         Ok(token)
     }
@@ -288,7 +288,8 @@ impl Apns {
             .json(body)
             .send()
             .await
-            .map_err(|error| PushError::Failed(format!("APNs is unreachable: {error}")))?;
+            // The error is not worded: its text carries the address of the request, which has the device token in it.
+            .map_err(|_| PushError::Failed("APNs could not be reached".into()))?;
         let status = response.status().as_u16();
         if status == 200 {
             return Ok(());
@@ -298,6 +299,7 @@ impl Apns {
             .await
             .ok()
             .and_then(|body| body["reason"].as_str().map(str::to_owned))
+            .filter(|reason| is_reason_code(reason))
             .unwrap_or_default();
         match (status, reason.as_str()) {
             (410, _) | (400, "BadDeviceToken") => Err(PushError::Gone),
@@ -307,11 +309,22 @@ impl Apns {
                     "APNs refused the provider token ({reason})"
                 )))
             }
-            _ => Err(PushError::Failed(format!(
-                "APNs answered {status} {reason}"
-            ))),
+            _ => Err(PushError::Failed(
+                format!("APNs answered {status} {reason}")
+                    .trim_end()
+                    .to_owned(),
+            )),
         }
     }
+}
+
+/// APNs names why it refused as a code of letters and digits (`BadTopic`, `TooManyRequests`). Anything else it says is
+/// not kept: the reason ends up in the node's record and its logs, and carries nothing but the code.
+fn is_reason_code(reason: &str) -> bool {
+    (1..=64).contains(&reason.len())
+        && reason
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
 }
 
 #[async_trait]

@@ -565,3 +565,17 @@ async fn a_failure_names_the_service_and_the_status_and_never_what_the_service_s
         Err(PushError::Failed(format!("{url} answered 503")))
     );
 }
+
+#[tokio::test]
+async fn an_unreachable_push_service_is_said_so_by_its_origin_without_the_path_that_names_the_browser(
+) {
+    let endpoint = "http://127.0.0.1:1/fcm/send/the-browsers-own-secret-path";
+    let Err(PushError::Failed(why)) = web_push()
+        .send(&Browser::new().subscription(endpoint), &request_notice())
+        .await
+    else {
+        panic!("a closed port answers nothing");
+    };
+    assert_eq!(why, "http://127.0.0.1:1 is unreachable");
+    assert!(!why.contains("secret") && !why.contains("/fcm"), "{why}");
+}

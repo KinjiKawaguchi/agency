@@ -118,6 +118,8 @@ fn person(account: &str, key: PublicKey) -> Person {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }
 }
 

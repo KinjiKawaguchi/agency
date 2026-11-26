@@ -427,6 +427,8 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let body = OrgDefinition::new(
         id("acme"),

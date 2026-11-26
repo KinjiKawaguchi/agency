@@ -154,6 +154,8 @@ fn planted() -> SignedOrg {
         department: None,
         role: agency_proto::Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let body = OrgDefinition::new(
         id("planted"),

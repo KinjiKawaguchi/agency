@@ -14,4 +14,14 @@ publicKey: PublicKey, department: Id | null, role: Role,
  * Keys held by the person's clients. Only these sign decisions. Left out of JSON when empty, so
  * versions signed before devices existed keep their signatures.
  */
-devices?: Array<Device>, };
+devices?: Array<Device>, 
+/**
+ * The ids of the seats this person took, so that what named a seat (a request addressed to it, the
+ * history) reaches them. Left out when empty, so a version signed before seats keeps its signature.
+ */
+formerly?: Array<Id>, 
+/**
+ * What to ask this person about, in the org's own words: what the seat they took said. Left out when
+ * empty, like `formerly`.
+ */
+askAbout?: Array<string>, };

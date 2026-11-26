@@ -48,6 +48,8 @@ async fn carol_with_a_recovery_key(keys: &Keys) -> Running {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }]);
     let doc = sign(body, &keys.root);
     carol.node.store().save_org(&doc).unwrap();
