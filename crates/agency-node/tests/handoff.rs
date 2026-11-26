@@ -192,8 +192,6 @@ async fn the_query_is_exactly_state_challenge_and_via_and_nothing_else() {
     let short_state = &STATE[..42];
     let short_challenge = &challenge[..42];
     let queries = [
-        // The old form: no challenge, so there is nothing to bind a code to.
-        format!("state={STATE}"),
         format!("state={STATE}&via=link"),
         format!("state={STATE}&challenge={challenge}"),
         format!("state={short_state}&challenge={challenge}&via=link"),
@@ -225,6 +223,94 @@ async fn the_query_is_exactly_state_challenge_and_via_and_nothing_else() {
         assert_eq!(response.status(), 400, "{query}");
         assert!(response.headers().get("location").is_none(), "{query}");
     }
+}
+
+/// The apps that exist before the code exchange send `state` alone and get the token in the fragment. That form is
+/// deprecated and stays until they are gone (docs/protocol.md); nothing new may be built on it.
+#[tokio::test]
+async fn the_deprecated_state_only_form_still_answers_as_before() {
+    let running = behind_access(Some(APP_ID)).await;
+    let token = access_token("alice@example.com", |_| {});
+    let response = handoff(&running, &format!("state={STATE}"), "alice@example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        header(response.headers(), "location"),
+        Some(format!("https://{PUBLIC_HOST}/app/callback#token={token}&state={STATE}").as_str())
+    );
+    assert_eq!(
+        header(response.headers(), "cache-control"),
+        Some("no-store")
+    );
+    assert_eq!(
+        header(response.headers(), "referrer-policy"),
+        Some("no-referrer")
+    );
+    let other = request(&running, &format!("/app/handoff?state={STATE}"))
+        .header("host", "evil.example.com")
+        .header("cf-ray", "1")
+        .header("cf-access-jwt-assertion", &token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        header(other.headers(), "location"),
+        Some(format!("https://{PUBLIC_HOST}/app/callback#token={token}&state={STATE}").as_str()),
+        "nothing from the request but state goes into the target"
+    );
+    assert_eq!(
+        status(handoff(
+            &running,
+            &format!("state={STATE}"),
+            "carol@example.com"
+        ))
+        .await,
+        403,
+        "still only the owner"
+    );
+}
+
+#[tokio::test]
+async fn the_deprecated_form_keeps_its_old_exactness_and_makes_no_code() {
+    let running = behind_access(Some(APP_ID)).await;
+    let short = &STATE[..42];
+    let queries = [
+        format!("state={short}"),
+        format!("state={STATE}A"),
+        format!("state={short}+"),
+        format!("state={short}/"),
+        format!("state={short}="),
+        format!("state={short}%41"),
+        format!("state={STATE}&state={STATE}"),
+        format!("state={STATE}&next=https://evil.example.com"),
+        format!("next=x&state={STATE}"),
+        format!("State={STATE}"),
+        "state=".into(),
+        String::new(),
+    ];
+    for query in queries {
+        let response = handoff(&running, &query, "alice@example.com")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400, "{query}");
+        assert!(response.headers().get("location").is_none(), "{query}");
+    }
+    // 64 sign-ins of the old form wait for nothing: they make no code, so the pool is not used up.
+    for _ in 0..70 {
+        assert_eq!(
+            status(handoff(
+                &running,
+                &format!("state={STATE}"),
+                "alice@example.com"
+            ))
+            .await,
+            303
+        );
+    }
+    code(&running, VERIFIER, "link").await;
 }
 
 #[tokio::test]

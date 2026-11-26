@@ -99,6 +99,13 @@ fn query_of(uri: &Uri) -> Option<(&str, &str, Via)> {
     is_exact.then_some((state, challenge, via))
 }
 
+/// The form of the handoff before the code exchange: the query is exactly `state=<43>`. It is answered as
+/// before, with the token in the fragment, until the apps in use speak the exchange (deprecated, docs/protocol.md).
+fn legacy_state_of(uri: &Uri) -> Option<&str> {
+    let state = uri.query()?.strip_prefix("state=")?;
+    is_secret(state).then_some(state)
+}
+
 struct Pending {
     token: String,
     challenge: String,
@@ -207,27 +214,46 @@ pub(crate) async fn handoff(
     if !is_owner(&api, &identity) {
         return refuse(StatusCode::FORBIDDEN, "only the node's owner may sign in");
     }
-    let Some((state, challenge, via)) = query_of(&uri) else {
+    let exchange = query_of(&uri);
+    // The two forms exclude each other: the old one is exactly `state=<43>`, which has no `&`.
+    let legacy = legacy_state_of(&uri);
+    if exchange.is_none() && legacy.is_none() {
         return refuse(
             StatusCode::BAD_REQUEST,
             "the query must be state, challenge (43 base64url characters each) and via (link or scheme)",
         );
-    };
+    }
     let Some(token) = header_text(&headers, ACCESS_HEADER) else {
         return refuse(StatusCode::FORBIDDEN, "no Access token");
     };
-    let Some(code) = api.handoff.mint(api.node.now(), token, challenge) else {
-        return refuse(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "too many sign-ins are waiting",
-        );
-    };
-    let location = match via {
-        Via::Link => format!(
-            "https://{}{CALLBACK_PATH}#code={code}&state={state}",
-            config.public_host
-        ),
-        Via::Scheme => format!("{CALLBACK_SCHEME}://callback#code={code}&state={state}"),
+    let location = match (exchange, legacy) {
+        (Some((state, challenge, via)), _) => {
+            let Some(code) = api.handoff.mint(api.node.now(), token, challenge) else {
+                return refuse(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "too many sign-ins are waiting",
+                );
+            };
+            match via {
+                Via::Link => format!(
+                    "https://{}{CALLBACK_PATH}#code={code}&state={state}",
+                    config.public_host
+                ),
+                Via::Scheme => format!("{CALLBACK_SCHEME}://callback#code={code}&state={state}"),
+            }
+        }
+        (None, Some(state)) => {
+            // Deprecated: the token travels in the fragment of the universal link. Logged so that it is known when
+            // no app uses it any more; the line holds no URL, no token and no state.
+            eprintln!(
+                "agency: the app handoff was used in its deprecated form (state only, no code exchange)"
+            );
+            format!(
+                "https://{}{CALLBACK_PATH}#token={token}&state={state}",
+                config.public_host
+            )
+        }
+        (None, None) => return refuse(StatusCode::BAD_REQUEST, "no handoff"),
     };
     let Ok(location) = HeaderValue::from_str(&location) else {
         return refuse(
