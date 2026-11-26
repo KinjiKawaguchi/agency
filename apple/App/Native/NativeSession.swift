@@ -47,14 +47,19 @@ final class NativeSession {
         keyProblem = problem
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
+        // The screens read the account and every team through one shared cache, so the app asks the node once
+        // for what several screens want, and a decision drops what was read before it.
+        let cache = SnapshotCache(source: client)
+        let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
-            source: client,
+            source: cached,
             sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
-            storage: DraftDefaultsStorage(host: homeNode.host)
+            storage: DraftDefaultsStorage(host: homeNode.host),
+            afterSend: { await cache.invalidate() }
         )
-        overview = OverviewStore(source: client)
-        people = PeopleStore(source: client)
-        costs = CostsStore(source: client)
+        overview = OverviewStore(source: cached)
+        people = PeopleStore(source: cache)
+        costs = CostsStore(source: cached)
     }
 
     /// The node's Access team host, from where the node sends a browser that is not signed in. It is the

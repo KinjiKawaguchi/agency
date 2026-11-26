@@ -73,6 +73,12 @@ private final class MemoryStorage: DraftStorage, @unchecked Sendable {
     func save(_ drafts: [String: DeskDraft]) { lock.withLock { stored = drafts; _saves += 1 } }
 }
 
+private actor Told {
+    private(set) var count = 0
+    private(set) var readsAtThatTime = 0
+    func mark(readsSoFar: Int) { count += 1; readsAtThatTime = readsSoFar }
+}
+
 @MainActor
 @Suite("DeskStore")
 struct DeskStoreTests {
@@ -116,6 +122,57 @@ struct DeskStoreTests {
         #expect(store.loading == .loaded)
         #expect(store.items.count == 2)
         #expect(store.teamFailures == ["acme/web": "no replica yet"])
+    }
+
+    @Test("a team that was read keeps its last answer when a later read of it fails, and the failure is reported")
+    func keepsLastAnswer() async {
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.items.count == 2)
+        source.set { _, _ in throw NodeError.http(status: 503, message: "not ready") }
+        await store.refresh()
+        #expect(store.items.count == 2, "the desk keeps what it showed")
+        #expect(store.teamFailures == ["acme/app": "not ready"])
+        source.set { _, _ in Fixture.decode(TeamSnapshot.self, "team-snapshot-local") }
+        await store.refresh()
+        #expect(store.teamFailures.isEmpty)
+    }
+
+    @Test("a team the account no longer lists is dropped, not kept")
+    func dropsTeamsThatLeft() async throws {
+        let store = makeStore()
+        await store.refresh()
+        let empty = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(empty.utf8))))
+        await store.refresh()
+        #expect(store.items.isEmpty)
+        #expect(store.teams.isEmpty)
+    }
+
+    @Test("a team that left and comes back with a failing read does not bring its old answer back")
+    func leftTeamIsForgotten() async throws {
+        let store = makeStore()
+        await store.refresh()
+        let none = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(none.utf8))))
+        await store.refresh()
+        source.set(me: .success(Fixture.decode(Me.self, "me")))
+        source.set { _, _ in throw NodeError.http(status: 503, message: "not ready") }
+        await store.refresh()
+        #expect(store.items.isEmpty, "the old answer of a team that left must not come back")
+        #expect(store.teamFailures == ["acme/app": "not ready"])
+    }
+
+    @Test("after a decision is sent the cache is told, before the desk reads again")
+    func tellsTheCache() async {
+        let told = Told()
+        let store = DeskStore(source: source, sender: sender, storage: storage, afterSend: { await told.mark(readsSoFar: source.meCalls) })
+        await store.refresh()
+        let before = source.meCalls
+        await store.send(.answer("yes"), for: first)
+        #expect(await told.count == 1)
+        #expect(await told.readsAtThatTime == before, "told before the second read")
+        #expect(source.meCalls == before + 1)
     }
 
     @Test("an ended Access session asks for a new sign-in and keeps what was on the desk")
