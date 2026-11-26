@@ -84,16 +84,21 @@ public final class DeskStore {
         drafts = storage.load()
     }
 
-    /// Whether the node has answered at least once: a team's view was read, or the read finished. Before that the lists are
-    /// empty because nothing was read, not because nothing is there, and a screen shows that it is loading, not an empty desk.
-    public var hasAnswer: Bool { loading == .loaded || !teams.isEmpty }
+    /// Whether a read has finished at least once. Set once and never reset: a later read under way or a failed one does not
+    /// make the desk unread again.
+    public private(set) var hasAnswered = false
+
+    /// Whether the node has answered: a read finished, or a team's view was read. Before that the lists are empty because
+    /// nothing was read, not because nothing is there, and a screen shows that it is loading, not an empty desk.
+    public var hasAnswer: Bool { hasAnswered || !teams.isEmpty }
 
     /// The number for the tab and the app icon. `0` also before the node has answered: use `knownWaitingCount` where
     /// "not read yet" must not look like "nothing waits".
     public var waitingCount: Int { Desk.waitingCount(teams) }
 
-    /// How many requests wait for the owner, or `nil` while the node has not answered.
-    public var knownWaitingCount: Int? { hasAnswer ? waitingCount : nil }
+    /// How many requests wait for the owner, or `nil` until a read has finished (then it stays known: a refresh under way
+    /// or a failed one keeps the last number).
+    public var knownWaitingCount: Int? { hasAnswered ? waitingCount : nil }
     public var situation: Situation { Situation(teams: teams, items: items) }
 
     public func item(_ id: String) -> DeskItem? { items.first { $0.id == id } }
@@ -115,6 +120,7 @@ public final class DeskStore {
             apply(snapshots, keys: keys)
             await refreshRecent()
             needsSignIn = false
+            hasAnswered = true
             loading = .loaded
         } catch NodeError.sessionExpired {
             needsSignIn = true
