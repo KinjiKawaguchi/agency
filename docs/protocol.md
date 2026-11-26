@@ -185,11 +185,11 @@ ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
-                workType?: WorkType }
+                workType?: WorkType, doneAt?: Timestamp }
 WorkType      "newFeature" | "improvement" | "maintenance" | "debt" | "incident"
 BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
-                forecast?: { days, at: Timestamp }, basis }
+                forecast?: { days, at: Timestamp }, doneAt?: Timestamp, basis }
 ```
 
 Item references:
@@ -207,6 +207,7 @@ Participants (`people`, humans and agents):
 Work items:
 
 - `workType` is the board's "Work type" field of the item (see "Work type" in the glossary), as the team's runtime reads it. It is left out when the board has none; a runtime never guesses it, and whoever needs a type for an item without one (the node, when it splits effort by work type) works it out from the item's pull request itself. A value outside the five names fails the view's parse, like any other malformed field.
+- `doneAt` is when the item first reached `done`: the board's own time when the tracker has one, otherwise when the runtime first saw it (up to one refresh late). It is left out while the item is not done and when it is not known; an item that goes back and is done again keeps the first time. `EpicForecast.doneAt` is when the epic's last child reached `done`, present only once `done` equals `total`. The node passes both on unchanged.
 
 Requests:
 
