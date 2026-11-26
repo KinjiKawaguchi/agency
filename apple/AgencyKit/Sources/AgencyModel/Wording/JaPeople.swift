@@ -25,7 +25,7 @@ extension Ja {
 
         public static func team(_ label: String) -> String { "\(label) チーム" }
         public static func summary(working: Int, of total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
-        public static func waitingOnYou(_ count: Int) -> String { "\(count) 人の参加者があなたの返事を待っています。" }
+        public static func waitingOnYou(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
         public static func since(_ when: String) -> String { "\(when) から" }
         public static func moreHeld(_ count: Int) -> String { "ほか \(count) 件" }
         public static func moreWork(_ count: Int) -> String { "あと \(count) 件を表示" }

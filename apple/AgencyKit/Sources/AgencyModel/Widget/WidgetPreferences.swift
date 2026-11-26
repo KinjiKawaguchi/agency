@@ -30,11 +30,10 @@ public final class WidgetPreferencesStore {
 
     @ObservationIgnored private let storage: any WidgetPreferencesStorage
     /// Called after the choice or the node's word changes, so the widgets are written again.
-    @ObservationIgnored private let onChange: @MainActor () -> Void
+    @ObservationIgnored public var onChange: @MainActor () -> Void = {}
 
-    public init(storage: any WidgetPreferencesStorage, onChange: @escaping @MainActor () -> Void = {}) {
+    public init(storage: any WidgetPreferencesStorage) {
         self.storage = storage
-        self.onChange = onChange
         preferences = storage.load()
     }
 

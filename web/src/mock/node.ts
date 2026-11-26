@@ -1,6 +1,6 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
@@ -23,6 +23,8 @@ export interface MockNode {
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
+  /** Starts the node again: its write token changes, as it does each time the real node starts, and a page that holds the old one is refused. */
+  restart: () => void
   /** Makes the node answer every call as Cloudflare Access does once the session has expired: a redirect to its login on another origin. */
   setSignInExpired: (isExpired: boolean) => void
   /** Decisions received so far, oldest first. They also appear in the decision log. */
@@ -117,6 +119,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let views = new Map<string, TeamView>([app, siteTeamView(app), ...more].map((view) => [teamKey(view.org, view.team), view]))
   let received: readonly DecisionAnswer[] = []
   let isSignInExpired = false
+  let writeToken = MOCK_TOKEN
   let accepted: readonly Signed<Envelope>[] = []
   let pushTokens: ReadonlyArray<{ token: string; environment: string; label: string }> = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false ? [] : earlierDecisions(now)
@@ -151,7 +154,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
 
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
-    if (request.headers.get('x-agency-token') !== MOCK_TOKEN) return failure(403, 'The request token is missing or wrong.')
+    if (request.headers.get('x-agency-token') !== writeToken) return failure(403, 'missing or wrong write token')
     if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
     return { body: await request.json().catch(() => null) }
   }
@@ -268,6 +271,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (request.method === 'GET' && url.pathname === '/api/me') return json(me)
+    if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
@@ -289,6 +293,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
 
   return {
     handle,
+    restart: () => {
+      writeToken = `${MOCK_TOKEN}-restarted`
+    },
     setSignInExpired: (isExpired) => {
       isSignInExpired = isExpired
     },

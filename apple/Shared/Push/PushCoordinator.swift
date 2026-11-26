@@ -1,7 +1,6 @@
 import AgencyKit
 import Observation
 import os
-import UIKit
 import UserNotifications
 
 /// Asks for notification permission at the right moment, registers with Apple, and keeps what the
@@ -19,11 +18,13 @@ final class PushCoordinator {
     /// Whether the one-line explanation is on screen.
     var isShowingPrompt = false
 
+    @ObservationIgnored private let platform: any PushPlatform
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let center: UNUserNotificationCenter
     @ObservationIgnored private var isSignedIn = false
 
-    init(defaults: UserDefaults = .standard, center: UNUserNotificationCenter = .current()) {
+    init(platform: any PushPlatform, defaults: UserDefaults = .standard, center: UNUserNotificationCenter = .current()) {
+        self.platform = platform
         self.defaults = defaults
         self.center = center
     }
@@ -52,7 +53,7 @@ final class PushCoordinator {
     func acceptPrompt() {
         Task {
             let isGranted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-            if isGranted { UIApplication.shared.registerForRemoteNotifications() }
+            if isGranted { platform.registerForRemoteNotifications() }
         }
     }
 
@@ -71,7 +72,7 @@ final class PushCoordinator {
             Self.logger.error("Cannot build a push registration: empty token or unknown environment")
             return
         }
-        registration = PushRegistration(token: token, environment: environment, label: UIDevice.current.model)
+        registration = PushRegistration(token: token, environment: environment, label: platform.deviceLabel)
     }
 
     func didFailToRegister(_ error: Error) {
@@ -87,7 +88,7 @@ final class PushCoordinator {
             now: Date()
         )
         switch step {
-        case .register: UIApplication.shared.registerForRemoteNotifications()
+        case .register: platform.registerForRemoteNotifications()
         case .askForPermission: isShowingPrompt = true
         case .nothing: break
         }

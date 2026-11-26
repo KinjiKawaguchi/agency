@@ -13,5 +13,10 @@ export default defineConfig({
     // Several agents share this machine and its load can be far above its cores; a test that is only slow
     // should not fail. A test that is wrong still fails, only later.
     testTimeout: 20_000,
+    // On CI a failing test is run twice more, and one that then passes is written down (see
+    // src/test/flakyReporter.ts) and shown in the summary of the run, so a flake does not stop a merge
+    // but does not go unseen either.
+    retry: process.env.CI ? 2 : 0,
+    reporters: process.env.CI ? ['default', './src/test/flakyReporter.ts'] : ['default'],
   },
 })

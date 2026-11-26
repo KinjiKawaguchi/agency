@@ -6,6 +6,12 @@
     <meta name="color-scheme" content="light dark" />
     <!-- The home node replaces the placeholder with this page's token; every write sends it as x-agency-token. -->
     <meta name="agency-token" content="__AGENCY_TOKEN__" />
+    <!-- The node asks for the Access sign-in on every request, so the manifest is fetched with the viewer's credentials. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <link rel="icon" type="image/svg+xml" href="/icons/seal.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eceef1" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c0d10" />
     <title>Agency</title>
   </head>
   <body>

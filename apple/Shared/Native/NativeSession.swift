@@ -39,10 +39,12 @@ final class NativeSession {
     let news: NewsStore
     /// What the widgets show, written after the desk is read.
     let widgets: WidgetPublisher
+    private let cache: SnapshotCache
     /// What the owner wants to be told, for this home node.
     let notifications: NotificationPreferencesStore
 
-    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
+    /// - Parameter deviceLabel: what this device is called in the list of devices (`iPhone`, `Mac`).
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String) {
         self.signIn = signIn
         let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
         self.client = client
@@ -55,12 +57,13 @@ final class NativeSession {
             problem = "\(error)"
         }
         keyProblem = problem
-        pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
+        pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
         // The screens read the account and every team through one shared cache, so the app asks the node once
         // for what several screens want, and a decision drops what was read before it.
         let sent = SentDecisions()
         let cache = SnapshotCache(source: client)
+        self.cache = cache
         let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
             source: cached,
@@ -81,7 +84,7 @@ final class NativeSession {
         notifications = NotificationPreferencesStore(storage: NotificationDefaultsStorage(host: homeNode.host)) { news.enabledKinds = $0.bannerKinds }
         news.enabledKinds = notifications.preferences.bannerKinds
         self.news = news
-        widgets = WidgetPublisher(host: homeNode.host)
+        widgets = WidgetPublisher(host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)))
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
@@ -101,6 +104,14 @@ final class NativeSession {
         case .unavailable:
             signInProblem = Ja.Desk.signInUnavailable
         }
+    }
+
+    /// Writes the desk for the widgets, once the node has said whether it keeps titles off devices. When the node cannot be
+    /// asked nothing is written, so no title leaves the app on a guess.
+    func publishWidgets() async {
+        guard let me = try? await cache.me() else { return }
+        widgets.preferences.nodeSays(hidesTitles: me.hidesTitles)
+        widgets.publish(items: desk.items)
     }
 
     /// Tells the node this phone's push token and the kinds of notification the owner wants, once the desk can be

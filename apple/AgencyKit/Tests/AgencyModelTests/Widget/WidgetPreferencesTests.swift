@@ -44,7 +44,8 @@ struct WidgetPreferencesTests {
     func writesAgain() {
         var changes = 0
         let storage = MemoryStorage()
-        let store = WidgetPreferencesStore(storage: storage) { changes += 1 }
+        let store = WidgetPreferencesStore(storage: storage)
+        store.onChange = { changes += 1 }
         store.setShowsTitles(true)
         #expect(changes == 0)
         #expect(storage.saves == 0)

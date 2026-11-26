@@ -88,7 +88,7 @@ struct DeskStoreTests {
     private let first = "acme:app:r-1"
 
     private func makeStore(storage: MemoryStorage? = nil) -> DeskStore {
-        DeskStore(source: source, sender: sender, storage: storage ?? self.storage)
+        DeskStore(source: source, sender: sender, storage: storage ?? self.storage, retry: .never)
     }
 
     // MARK: Reading
@@ -163,10 +163,75 @@ struct DeskStoreTests {
         #expect(store.teamFailures == ["acme/app": "not ready"])
     }
 
+    @Test("a team whose view is not ready is asked again, and shown once it answers, with nothing reported")
+    func asksAgain() async {
+        let tries = Counter()
+        source.set { _, _ in
+            if tries.next() <= 2 { throw NodeError.http(status: 503, message: "the board has not been read yet") }
+            return Fixture.decode(TeamSnapshot.self, "team-snapshot-local")
+        }
+        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        await store.refresh()
+        #expect(tries.count == 3)
+        #expect(store.items.count == 2)
+        #expect(store.teamFailures.isEmpty)
+        #expect(store.loading == .loaded)
+    }
+
+    @Test("a team that keeps failing is reported after the waits are used up, and keeps its last answer")
+    func givesUp() async {
+        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        await store.refresh()
+        let tries = Counter()
+        source.set { _, _ in tries.next(); throw NodeError.http(status: 503, message: "not ready") }
+        await store.refresh()
+        #expect(tries.count == 3)
+        #expect(store.teamFailures == ["acme/app": "not ready"])
+        #expect(store.items.count == 2)
+    }
+
+    @Test("a team that answers is shown while another is still being asked again")
+    func showsWhileWaiting() async throws {
+        let two = """
+        {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[
+        {"id":"app","label":"app","location":"local","viewer":"owner"},{"id":"web","label":"web","location":"remote","viewer":"owner"}]}]}
+        """
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(two.utf8))))
+        let webTries = Counter()
+        source.set { _, team in
+            if team == "web", webTries.next() == 1 { throw NodeError.http(status: 503, message: "not ready") }
+            return Fixture.decode(TeamSnapshot.self, "team-snapshot-local")
+        }
+        let holder = StoreHolder()
+        let shownAtTheWait = Counter()
+        // The wait before web is asked again: it looks at the desk, giving app time to answer first.
+        let policy = RetryPolicy(delays: [1], wait: { _ in
+            for _ in 0..<1000 {
+                if await MainActor.run(body: { holder.store?.teams.count ?? 0 }) == 1 { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            shownAtTheWait.set(await MainActor.run { holder.store?.teams.count ?? -1 })
+        })
+        let store = DeskStore(source: source, sender: sender, storage: storage, retry: policy)
+        holder.store = store
+        await store.refresh()
+        #expect(shownAtTheWait.count == 1, "app was on the desk while web was waited for")
+        #expect(store.teams.count == 2)
+    }
+
+    @Test("an answer that is final is not asked again")
+    func finalAnswer() async {
+        let tries = Counter()
+        source.set { _, _ in tries.next(); throw NodeError.http(status: 403, message: "no") }
+        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        await store.refresh()
+        #expect(tries.count == 1)
+    }
+
     @Test("after a decision is sent the cache is told, before the desk reads again")
     func tellsTheCache() async {
         let told = Told()
-        let store = DeskStore(source: source, sender: sender, storage: storage, afterSend: { await told.mark(readsSoFar: source.meCalls) })
+        let store = DeskStore(source: source, sender: sender, storage: storage, afterSend: { await told.mark(readsSoFar: source.meCalls) }, retry: .never)
         await store.refresh()
         let before = source.meCalls
         await store.send(.answer("yes"), for: first)
@@ -355,4 +420,18 @@ struct DeskStoreTests {
         await store.send(.answer("two"), for: first)
         #expect(sender.sent.count == 1)
     }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    @discardableResult
+    func next() -> Int { lock.withLock { value += 1; return value } }
+    func set(_ new: Int) { lock.withLock { value = new } }
+    var count: Int { lock.withLock { value } }
+}
+
+private final class StoreHolder: @unchecked Sendable {
+    @MainActor var store: DeskStore?
 }
