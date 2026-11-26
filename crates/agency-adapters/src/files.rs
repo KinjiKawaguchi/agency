@@ -329,4 +329,12 @@ impl PushStore for DataDir {
     fn save_notified(&self, keys: &[String]) -> Result<()> {
         write_json(&self.0.join("notified.json"), keys)
     }
+
+    fn desk_refresh(&self) -> Option<agency_core::push::DeskRefresh> {
+        read_json(&self.0.join("desk-refresh.json"))
+    }
+
+    fn save_desk_refresh(&self, state: &agency_core::push::DeskRefresh) -> Result<()> {
+        write_json(&self.0.join("desk-refresh.json"), state)
+    }
 }

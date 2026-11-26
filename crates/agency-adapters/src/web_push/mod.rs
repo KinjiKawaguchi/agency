@@ -236,6 +236,10 @@ impl Notifier for WithWebPush {
         self.tokens.send(token, notice).await
     }
 
+    async fn send_desk_changed(&self, token: &PushToken) -> Result<(), PushError> {
+        self.tokens.send_desk_changed(token).await
+    }
+
     fn web_push_key(&self) -> Option<VapidKey> {
         Some(self.web.key())
     }

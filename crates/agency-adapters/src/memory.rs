@@ -276,6 +276,8 @@ impl Notifier for NoNotifier {
 #[derive(Default, Debug)]
 pub struct MemoryNotifierState {
     pub sent: Vec<(String, Notice)>,
+    /// The tokens that were asked to read the desk (a push with no alert).
+    pub desk_changed: Vec<String>,
     pub gone: Vec<String>,
     pub failing: bool,
     /// The VAPID key of a node with Web Push; none for a node without it.
@@ -301,6 +303,21 @@ impl Notifier for MemoryNotifier {
             return Err(PushError::Gone);
         }
         state.sent.push((token.token.clone(), notice.clone()));
+        Ok(())
+    }
+
+    async fn send_desk_changed(&self, token: &PushToken) -> Result<(), PushError> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
+        if state.failing {
+            return Err(PushError::Failed("APNs did not answer".into()));
+        }
+        if state.gone.contains(&token.token) {
+            return Err(PushError::Gone);
+        }
+        state.desk_changed.push(token.token.clone());
         Ok(())
     }
 
