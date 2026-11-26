@@ -47,9 +47,26 @@ Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` whe
 
 ### A release build
 
-Instead of building from source, you can use a release build: for each release, the Releases page of the repository has a tarball for macOS on Apple silicon (`arm64`) and on Intel (`x86_64`), and for Linux on `x86_64` and on `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with glibc 2.35 or later. [releasing.md](releasing.md) says how releases are made.
+Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with the glibc version its package declares. [releasing.md](releasing.md) says how releases are made.
 
-1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`. A build that is not of a release is a workflow artifact of the **release** workflow in the **Actions** tab (named `agency-<version>-<commit>-linux-<arch>`).
+#### Debian package (Linux)
+
+On Debian and its derivatives, install the package for your architecture first. It installs `agency` at `/usr/bin/agency` and these guides and licenses at `/usr/share/doc/agency/`; it does not install a system service or create a user.
+
+1. Download the `.deb` and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency_*_<arch>.deb*'`, where `<arch>` is `amd64` or `arm64`.
+2. Check and install it:
+
+```sh
+sha256sum -c agency_*.deb.sha256
+sudo apt install ./agency_*.deb
+agency --version
+```
+
+Then create the systemd user unit in [Run it with systemd](#run-it-with-systemd-linux), using `/usr/share/doc/agency/systemd-unit.sh` and `--agency /usr/bin/agency`.
+
+#### Tarball (macOS or Linux)
+
+1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`.
 2. Check and unpack it, and install the binary the way the previous section does:
 
 ```sh
@@ -117,11 +134,12 @@ If your `PATH` changes (for example, the harness moves), run the script again, t
 
 ### Run it with systemd (Linux)
 
-`scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
+`scripts/systemd-unit.sh` writes the unit's file (the Debian package installs it at `/usr/share/doc/agency/systemd-unit.sh`, and the release tarball holds it as `systemd-unit.sh`).
 The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
 Run it from a terminal where `scrum` and the harness's tools work.
 
 ```sh
+# Use /usr/share/doc/agency/systemd-unit.sh and /usr/bin/agency after a Debian package install.
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/.config/systemd/user/agency-node.service
 systemctl --user daemon-reload

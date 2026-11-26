@@ -51,9 +51,26 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 
 ### リリースビルド
 
-ソースからビルドする代わりに、リリースビルドも使えます。リポジトリの Releases ページには、リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）の tarball があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドは、glibc 2.35 以降のシステムで動きます。リリースの作り方は [releasing.md](releasing.md) にあります。
+ソースからビルドする代わりに、リリースビルドを使えます。リリースごとに、macOS 用（Apple シリコンの `arm64` と Intel の `x86_64`）と Linux 用（`x86_64` と `arm64`）があります（`uname -m` は、`x86_64` か、Linux の arm64 では `aarch64` を表示します）。Linux のビルドは、パッケージが指定するバージョンの glibc があるシステムで動きます。リリースの作り方は [releasing.md](releasing.md) にあります。
 
-1. お使いのマシンに合った tarball とその `.sha256` を、リリースからダウンロードします。GitHub CLI なら `gh release download <タグ> --repo <このリポジトリ> --pattern 'agency-*-<os>-<arch>.tar.gz*'` です。`<os>` は `macos` か `linux` です。リリースのものではないビルドは、**Actions** タブの **release** ワークフローのアーティファクトです（名前は `agency-<バージョン>-<コミット>-linux-<arch>`）。
+#### Debian パッケージ（Linux）
+
+Debian とその派生ディストリビューションでは、まず使っているアーキテクチャ向けのパッケージを入れます。`agency` は `/usr/bin/agency` に、この文書とライセンスは `/usr/share/doc/agency/` に入ります。システムサービスは入らず、ユーザーも作りません。
+
+1. リリースから `.deb` とその `.sha256` をダウンロードします。GitHub CLI なら `gh release download <タグ> --repo <このリポジトリ> --pattern 'agency_*_<arch>.deb*'` です。`<arch>` は `amd64` か `arm64` です。
+2. 確かめてインストールします。
+
+```sh
+sha256sum -c agency_*.deb.sha256
+sudo apt install ./agency_*.deb
+agency --version
+```
+
+次に、[systemd で動かす](#systemd-で動かすlinux)の手順で systemd のユーザーユニットを作ります。そのときは `/usr/share/doc/agency/systemd-unit.sh` を使い、`--agency /usr/bin/agency` を指定してください。
+
+#### tarball（macOS または Linux）
+
+1. お使いのマシンに合った tarball とその `.sha256` を、リリースからダウンロードします。GitHub CLI なら `gh release download <タグ> --repo <このリポジトリ> --pattern 'agency-*-<os>-<arch>.tar.gz*'` です。`<os>` は `macos` か `linux` です。
 2. 確かめて展開し、前の節と同じ方法でバイナリを置きます。
 
 ```sh
@@ -122,11 +139,12 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 
 ### systemd で動かす（Linux）
 
-ユニットの定義ファイルは `scripts/systemd-unit.sh` で作ります（リリースの tarball では `systemd-unit.sh` という名前で入っています）。
+ユニットの定義ファイルは `scripts/systemd-unit.sh` で作ります（Debian パッケージでは `/usr/share/doc/agency/systemd-unit.sh`、リリースの tarball では `systemd-unit.sh` という名前で入っています）。
 ユニットにはスクリプトを実行したシェルの `PATH` が渡るので、チームランタイムはターミナルと同じツールを見つけられます。systemd の `--user` のサービスには、そのままでは短い既定の `PATH` しか渡らないためです。
 `scrum` とハーネスのツールが動くターミナルで実行してください。
 
 ```sh
+# Debian パッケージで入れたときは /usr/share/doc/agency/systemd-unit.sh と /usr/bin/agency を使います。
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/.config/systemd/user/agency-node.service
 systemctl --user daemon-reload

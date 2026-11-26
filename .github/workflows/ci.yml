@@ -87,15 +87,59 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check the scripts
-        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
+        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/debian-package.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
       - name: Test the systemd unit script
         run: scripts/test/systemd-unit.sh
+      - name: Test the Debian package script
+        run: scripts/test/debian-package.sh
       - name: Test the deploy script, against stand-ins for launchctl and curl
         run: scripts/test/deploy-macos.sh
       - name: Test the macOS release script and the packaging, against stand-ins for gh, cargo, and npm
         run: scripts/test/release-macos.sh
       - name: Test the scripts that show the tests that passed only on a retry
         run: scripts/test/ci-scripts.sh
+
+  # Build and exercise the Debian package on both Linux architectures before it reaches a release.
+  debian-package:
+    if: github.event_name == 'pull_request'
+    name: debian-package-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-22.04 }
+          - { arch: arm64, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Build the web client
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build the node
+        run: cargo build --release --locked -p agency-node
+      - name: Build and check the Debian package
+        run: |
+          scripts/release/debian-package.sh target/release/agency "${{ matrix.arch }}" dist
+          package=$(find dist -name '*.deb' -print -quit)
+          dpkg-deb --info "$package"
+          dpkg-deb --contents "$package"
+          sudo dpkg -i "$package"
+          agency --version
+          sudo dpkg -r agency
+      - name: Lint the Debian package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lintian
+          lintian --fail-on error dist/*.deb
 
   web:
     runs-on: ubuntu-latest

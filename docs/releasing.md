@@ -19,7 +19,7 @@ A `refactor` is listed in the changelog, but it does not call for a release by i
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
 2. release-please keeps one open pull request, **chore: release X.Y.Z**, that raises the version in `Cargo.toml`, and in the web client's `package.json` and `package-lock.json`, and adds the new section of `CHANGELOG.md`. A second job of the same workflow adds a commit that brings the workspace crates' versions in `Cargo.lock` up to date (release-please cannot do that itself). The pull request updates itself after each merge to `main`.
 3. To release, merge that pull request. release-please then tags `vX.Y.Z` and makes the GitHub Release with the changelog section as its notes.
-4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and its `.sha256` to the release.
+4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and Debian package, with their `.sha256` files, to the release.
 5. The macOS builds are made on a Mac, never on a GitHub runner. After step 4, on a Mac with the repository, Rust, and Node installed:
 
 ```sh
@@ -34,7 +34,7 @@ The macOS binaries are not signed and not notarized. A browser download is quara
 
 ## What a release holds
 
-For each of macOS (arm64, x86_64) and Linux (x86_64, arm64): `agency-<version>-<os>-<arch>.tar.gz` and `agency-<version>-<os>-<arch>.tar.gz.sha256`. The tarball holds the `agency` binary (with the web client inside), the script that runs it as a service (`systemd-unit.sh` or `launchd-plist.sh` and `deploy-macos.sh`), the install guides, and the licenses. [install.md](install.md) says how to install it.
+For each of macOS (arm64, x86_64) and Linux (x86_64, arm64): `agency-<version>-<os>-<arch>.tar.gz` and `agency-<version>-<os>-<arch>.tar.gz.sha256`. Each Linux build also has `agency_<version>_<amd64|arm64>.deb` and its `.sha256`. The tarball holds the `agency` binary (with the web client inside), the script that runs it as a service (`systemd-unit.sh` or `launchd-plist.sh` and `deploy-macos.sh`), the install guides, and the licenses. The Debian package installs the binary, the guides, licenses, and its user-unit script, but not a system service. [install.md](install.md) says how to install it.
 
 Builds that are not of a release (a manual run of the `release` workflow, or a pull request that changes it) are workflow artifacts, named with the short commit.
 
