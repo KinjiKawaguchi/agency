@@ -496,6 +496,72 @@ fn what_an_org_measures_and_aims_at_is_checked_by_every_node() {
     );
 }
 
+/// A change to a version's JSON, to make it as a sender with another idea of the shape would.
+type Change = fn(&mut serde_json::Value);
+
+/// What a receiving node does with a version the root signed: it reads the JSON, and checks the signature
+/// over the canonical JSON of what it read (`Signed::verify`), not over the bytes it was sent.
+fn received(
+    org: &SignedOrg,
+    root: &AccountKey,
+    change: impl FnOnce(&mut serde_json::Value),
+) -> Result<(), String> {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    body.kpis = vec![kpi("revenue", "Revenue", KpiUnit::Percent)];
+    let mut value = serde_json::to_value(&body).unwrap();
+    change(&mut value);
+    // The root signs the bytes it holds, the unknown field included.
+    let text = agency_proto::canonical::canonical(&value);
+    let signature = root.sign(&Kind::Org.message(&text));
+    let sent = serde_json::json!({ "body": value, "signer": "alice", "signature": signature });
+    let next: SignedOrg = serde_json::from_value(sent).map_err(|error| error.to_string())?;
+    verify_successor(org, &next)
+}
+
+#[test]
+fn a_kpi_with_a_field_this_node_does_not_know_is_refused_by_the_signature() {
+    let key = AccountKey::from_seed([7u8; 32]);
+    let org = genesis(&key);
+    assert_eq!(
+        received(&org, &key, |_| {}),
+        Ok(()),
+        "the same version without the extra field"
+    );
+
+    // `Kpi` cannot refuse unknown fields while parsing (its unit is flattened), so the parse drops them. The
+    // signature is checked over what was parsed, which no longer holds the field the root signed.
+    let changes: [(&str, Change); 2] = [
+        ("an extra field on a KPI", |v| {
+            v["kpis"][0]["target"] = serde_json::json!(5)
+        }),
+        ("a currency on a unit that has none", |v| {
+            v["kpis"][0]["currency"] = serde_json::json!("JPY")
+        }),
+    ];
+    for (what, change) in changes {
+        let refused = received(&org, &key, change);
+        assert_eq!(
+            refused,
+            Err("not signed by the current root key".to_owned()),
+            "{what} is refused by the signature, not accepted"
+        );
+    }
+
+    // The other definition structs refuse unknown fields while parsing.
+    let aimed = |v: &mut serde_json::Value| {
+        v["teams"][0]["plan"] = serde_json::json!({
+            "allocation": { "newFeature": 100, "improvement": 0, "maintenance": 0, "debt": 0, "incident": 0 },
+            "weeklyBudgetUsd": 0,
+            "aims": [{ "epic": "app#1", "kpi": "revenue", "target": 5 }]
+        });
+    };
+    let refused = received(&org, &key, aimed);
+    assert!(
+        refused.is_err(),
+        "an extra field on an aim is refused: {refused:?}"
+    );
+}
+
 #[test]
 fn a_plan_allocation_adds_up_to_100() {
     let key = AccountKey::from_seed([7u8; 32]);
