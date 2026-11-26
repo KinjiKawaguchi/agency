@@ -27,7 +27,7 @@ struct ShellScreen: View {
         case .results:
             ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: signInAgain)
         case .devices:
-            DevicesScreen(store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Device.noKey })
+            DevicesScreen(store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Key.noKey(.platform) })
         }
     }
 

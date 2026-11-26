@@ -132,5 +132,5 @@ private struct NoKeySender: DeskSender {
 }
 
 private struct NoKeyError: Error, LocalizedError {
-    var errorDescription: String? { Ja.Device.noKey }
+    var errorDescription: String? { Ja.Key.noKey(.platform) }
 }

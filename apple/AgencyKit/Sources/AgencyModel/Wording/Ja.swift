@@ -72,7 +72,6 @@ public enum Ja {
         public static let needChoiceOrComment = "選択肢を選ぶか、コメントを書いてください。"
         public static let needAnswer = "答えを書いてください。"
         public static let needDecision = "判断を書いてください。"
-        public static let faceIDNote = "送るときに Face ID で確認します。"
         public static let queued = "保存しました。チームのノードが休止中なので、起動したときに届きます。"
 
         public static func type(_ kind: Request.Kind) -> String {
@@ -127,8 +126,6 @@ public enum Ja {
         public static let label = "iPhone"
         public static let reset = "この端末の鍵を作り直す"
         public static let resetConfirm = "作り直す"
-        public static let resetExplain = "Face ID の登録を変えたあとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
-        public static let noKey = "この端末では、決定に署名する鍵を作れません。Face ID を設定してから、アプリを開き直してください。"
 
         public static func notAdded(org: String) -> String { "この端末は \(org) に追加されていません。先に端末を追加してください。" }
         public static func failed(_ reason: String) -> String { "端末の状態を調べられませんでした: \(reason)" }

@@ -18,6 +18,7 @@ private struct ShellChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .environment(\.keyProtection, .platform)
             .overlay(alignment: .top) {
                 if let session = model.session {
                     NewsBannerStack(

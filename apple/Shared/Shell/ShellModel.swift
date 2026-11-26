@@ -32,7 +32,7 @@ final class ShellModel {
     /// What the desk says is wrong with this device's key or with the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Device.noKey }, session.signInProblem].compactMap { $0 }.first
+        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
     }
 
     // MARK: Start
