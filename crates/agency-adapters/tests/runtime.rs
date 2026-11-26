@@ -220,3 +220,46 @@ async fn reads_token_usage_only_from_a_runtime_that_lists_it() {
         serde_json::from_str(&fake.read("last-tokenUsage.json")).unwrap();
     assert_eq!(request["days"], 14);
 }
+
+#[tokio::test]
+async fn readers_share_one_run_of_the_command_and_a_decision_reruns_it() {
+    let fake = Fake::new();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","tokenUsage"],"label":"App"}}"#,
+        0,
+    );
+    fake.answer("tokenUsage", &format!(r#"{{"result":{USAGE}}}"#), 0);
+    let runtimes = std::sync::Arc::new(CommandRuntime::default());
+    let team = fake.team("app");
+    let readers = (0..20).map(|_| {
+        let (runtimes, team) = (runtimes.clone(), team.clone());
+        tokio::spawn(async move { runtimes.view(&team).await.map(|view| view.requests.len()) })
+    });
+    for reader in readers {
+        assert_eq!(reader.await.unwrap().unwrap(), 3);
+    }
+    assert_eq!(
+        fake.read("calls"),
+        "describe\nview\n",
+        "20 readers, one run"
+    );
+
+    runtimes.decide(&team, decision("")).await.unwrap();
+    runtimes.view(&team).await.unwrap();
+    assert_eq!(
+        fake.read("calls"),
+        "describe\nview\ndecide\nview\n",
+        "a decision changes the view, so the next read runs the command"
+    );
+
+    for _ in 0..3 {
+        runtimes.token_usage(&team, 7).await.unwrap();
+    }
+    runtimes.token_usage(&team, 14).await.unwrap();
+    assert_eq!(
+        fake.read("calls").matches("tokenUsage").count(),
+        2,
+        "usage is kept per range"
+    );
+}

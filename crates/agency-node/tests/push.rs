@@ -208,6 +208,9 @@ async fn a_member_is_notified_of_requests_on_another_node_addressed_to_them() {
     notify_waiting(&bob.node).await.unwrap();
 
     add_request(&memory, "r-2", "Ship it?");
+    // A signed read is accepted once, so a later read is signed at a later time.
+    bob.clock
+        .advance(agency_proto::clock::Duration::milliseconds(1));
     refresh(&bob.node).await.unwrap();
     assert_eq!(
         notify_waiting(&bob.node).await.unwrap().sent,
@@ -223,6 +226,8 @@ async fn a_member_is_notified_of_requests_on_another_node_addressed_to_them() {
         })
         .unwrap();
     add_request(&memory, "r-3", "Ship this too?");
+    bob.clock
+        .advance(agency_proto::clock::Duration::milliseconds(1));
     refresh(&bob.node).await.unwrap();
     let pass = notify_waiting(&bob.node).await.unwrap();
     assert_eq!(

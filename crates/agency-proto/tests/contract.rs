@@ -155,3 +155,31 @@ fn describe_tells_whether_a_runtime_speaks_a_version() {
     assert!(described.speaks(agency_proto::RUNTIME_VERSION));
     assert!(!described.speaks("agency-runtime/2"));
 }
+
+#[test]
+fn a_team_view_beyond_its_limits_is_refused() {
+    use agency_proto::view::limits;
+    let sample: agency_proto::TeamView =
+        serde_json::from_str(include_str!("../../../testdata/teamview.sample.json")).unwrap();
+    assert_eq!(sample.check_limits(), Ok(()), "the shared sample fits");
+
+    let mut long_title = sample.clone();
+    long_title.requests[0].title = "x".repeat(limits::TITLE + 1);
+    assert!(long_title.check_limits().unwrap_err().contains("title"));
+    let mut at_limit = sample.clone();
+    at_limit.requests[0].title = "あ".repeat(limits::TITLE);
+    assert_eq!(at_limit.check_limits(), Ok(()), "characters, not bytes");
+
+    let mut long_document = sample.clone();
+    long_document.requests[0].document = Some("x".repeat(limits::DOCUMENT + 1));
+    assert!(long_document.check_limits().is_err());
+
+    let mut many = sample.clone();
+    let request = many.requests[0].clone();
+    many.requests = vec![request; limits::REQUESTS + 1];
+    assert!(many.check_limits().unwrap_err().contains("requests"));
+
+    let mut long_status = sample;
+    long_status.people[0].status = "x".repeat(limits::LINE + 1);
+    assert!(long_status.check_limits().is_err());
+}

@@ -5,7 +5,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
-use crate::read_auth::{verify_read, ReadAuth};
+use crate::read_auth::{verify_read_once, ReadAuth};
 use crate::unseen;
 use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace};
 use agency_proto::{Id, Kind, OrgDefinition, Person, Role, Signed};
@@ -186,13 +186,7 @@ pub fn read_definition(
     let doc = node.store().load_org(org);
     let has_invite = code.is_some_and(|code| open_invite(node, org, code).is_some());
     if !has_invite {
-        verify_read(
-            doc.as_ref().map(|doc| &doc.body),
-            auth,
-            "GET",
-            path,
-            node.now(),
-        )?;
+        verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
     }
     doc.ok_or_else(unseen::not_found)
 }
