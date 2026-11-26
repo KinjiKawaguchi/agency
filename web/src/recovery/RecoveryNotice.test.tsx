@@ -4,7 +4,7 @@ import { createMockNode } from '../mock/node'
 import { createFormatters } from '../i18n/format'
 import { heldNode } from '../test/heldNode'
 import { refreshQueries, renderApp } from '../test/render'
-import { recoveriesOf } from './provisional'
+import { isId, recoveriesOf } from './provisional'
 
 const AT = '2026-12-01T09:30:00Z'
 const STARTED = { takesEffectAt: AT, newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true }
@@ -96,6 +96,49 @@ describe('a recovery of an org that waits', () => {
     expect(one).toHaveTextContent('新しいルート鍵: b7c8d9e0f1a2')
     expect(one).toHaveTextContent('回復用の鍵も取り替えます。')
     expect(one).toHaveTextContent('心当たりがないときは、ルート鍵のノードで取り消してください: agency root-cancel-recovery --org acme')
+  })
+})
+
+describe('the command that cancels it', () => {
+  const withId = (id: string) => {
+    const node = createMockNode({ recoveries: { acme: STARTED } })
+    return createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/me') return reply
+      const me = (await reply.json()) as { orgs: Array<{ id: string }> }
+      return new Response(JSON.stringify({ ...me, orgs: me.orgs.map((org) => ({ ...org, id })) }), { headers: { 'content-type': 'application/json' } })
+    })
+  }
+  const odd = ['acme; rm -rf ~', '$(id)', 'Acme', 'a b', '-acme', 'acme_x', '', 'a'.repeat(41), 'acme\n']
+  const rendered = (id: string, locale: 'en' | 'ja' = 'en') => renderApp({ node: createMockNode({ recoveries: { acme: STARTED } }), client: withId(id), path: '/desk', enrolled: true, locale })
+
+  it('is not made of an id the node would not have made: only its name is shown, and where to run it', async () => {
+    for (const id of odd.filter((one) => one !== '')) {
+      const view = rendered(id)
+      const one = await notice()
+      expect(one.textContent, JSON.stringify(id)).not.toContain('--org')
+      if (id !== 'Acme') expect(one.textContent, JSON.stringify(id)).not.toContain(id)
+      expect(one).toHaveTextContent('cancel it on the root key’s node by running agency root-cancel-recovery for this org.')
+      expect(within(one).getByText('agency root-cancel-recovery').tagName).toBe('CODE')
+      view.unmount()
+    }
+  })
+
+  it('says the same in Japanese, with the command’s name and no id', async () => {
+    rendered('$(id)', 'ja')
+    const one = await notice()
+    expect(one).toHaveTextContent('心当たりがないときは、ルート鍵のノードで、この組織を指定して agency root-cancel-recovery を実行し、取り消してください。')
+    expect(one.textContent).not.toContain('$(id)')
+  })
+
+  it('is made of an id that is one, with its hyphens and digits', async () => {
+    rendered('acme-2')
+    expect(await notice()).toHaveTextContent('agency root-cancel-recovery --org acme-2')
+  })
+
+  it('follows the node’s rule for an id', () => {
+    expect(['a', 'acme', 'acme-2', '0-a', 'a'.repeat(40)].map(isId)).toEqual([true, true, true, true, true])
+    expect(odd.map(isId)).toEqual(Array(odd.length).fill(false))
   })
 })
 

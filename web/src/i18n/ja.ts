@@ -347,6 +347,7 @@ export const ja: Messages = {
       started: (org) => `${org} のルート鍵の回復が始まりました。`,
       startedTakingEffect: (org, time) => `${org} のルート鍵の回復が始まりました。${time} に有効になります。`,
       ifNotYou: '心当たりがないときは、ルート鍵のノードで取り消してください:',
+      cancelByName: ['心当たりがないときは、ルート鍵のノードで、この組織を指定して ', ' を実行し、取り消してください。'],
       underway: (org) => `${org} のルート鍵の回復が進んでいます。`,
       underwayTakingEffect: (org, time) => `${org} のルート鍵の回復が進んでいます。${time} に有効になります。`,
       ownerCanCancel: '取り消せるのは、そのルート鍵の持ち主です。',

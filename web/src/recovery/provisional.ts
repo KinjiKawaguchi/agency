@@ -38,3 +38,6 @@ export function recoveriesOf(me: Me): Recovery[] {
     return [{ org: { id: org.id, label: org.label }, isRoot: org.isRoot === true, ...(at === undefined ? {} : { takesEffectAt: at }), ...(key === undefined ? {} : { newRootKey: key }), replacesRecoveryKey: replacesRecoveryKey === true }]
   })
 }
+
+/** The node's rule for an id (`Id::parse`): lowercase letters, digits, and hyphens, not starting with a hyphen, at most 40 characters. */
+export const isId = (value: string): boolean => /^[a-z0-9][a-z0-9-]{0,39}$/.test(value)

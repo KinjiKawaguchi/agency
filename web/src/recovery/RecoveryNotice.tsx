@@ -1,10 +1,11 @@
 import type { Me } from '../api/clientApi'
 import { useI18n } from '../i18n'
-import { recoveriesOf, type Recovery } from './provisional'
+import { isId, recoveriesOf, type Recovery } from './provisional'
 import './recovery.css'
 
 /** What the owner takes from `agency root-cancel-recovery`: the org's id, since the command asks for the id and not the label. */
 const cancelCommand = (orgId: string): string => `agency root-cancel-recovery --org ${orgId}`
+const COMMAND_NAME = 'agency root-cancel-recovery'
 
 /**
  * A started recovery of an org that waits, at the top of the desk. The root's owner is told to cancel it, with the command; a
@@ -33,7 +34,18 @@ export function RecoveryNotice({ me }: { me: Me }) {
             {one.replacesRecoveryKey ? <p>{recovery.replacesRecoveryKey}</p> : null}
             {one.isRoot ? (
               <p>
-                {recovery.ifNotYou} <code>{cancelCommand(one.org.id)}</code>
+                {isId(one.org.id) ? (
+                  <>
+                    {recovery.ifNotYou} <code>{cancelCommand(one.org.id)}</code>
+                  </>
+                ) : (
+                  // An id the node would not have made is never put into a command to paste into a terminal: only the command's name is shown.
+                  <>
+                    {recovery.cancelByName[0]}
+                    <code>{COMMAND_NAME}</code>
+                    {recovery.cancelByName[1]}
+                  </>
+                )}
               </p>
             ) : (
               <p>{recovery.ownerCanCancel}</p>

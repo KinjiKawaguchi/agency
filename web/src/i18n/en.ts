@@ -351,6 +351,7 @@ export const en = {
       started: (org: string) => `A recovery of ${org} was started.`,
       startedTakingEffect: (org: string, time: string) => `A recovery of ${org} was started. It takes effect at ${time}.`,
       ifNotYou: 'If this wasn’t you, cancel it on the root key’s node:',
+      cancelByName: ['If this wasn’t you, cancel it on the root key’s node by running ', ' for this org.'] satisfies Around,
       underway: (org: string) => `${org}’s root key is being recovered.`,
       underwayTakingEffect: (org: string, time: string) => `${org}’s root key is being recovered; it takes effect at ${time}.`,
       ownerCanCancel: 'Its owner can cancel it.',
