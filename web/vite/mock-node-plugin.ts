@@ -28,6 +28,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
+  const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
@@ -36,6 +37,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    outcomes: outcomes === '1',
     webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
