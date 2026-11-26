@@ -67,7 +67,7 @@ struct OrgChartPage: View {
             .card()
         } else if case .failed(let reason) = store.loading {
             FailedRegion(what: Ja.OrgChart.title, why: reason) { Task { await store.refresh() } }.card()
-        } else if store.loading == .loading && store.orgs.isEmpty {
+        } else if (store.loading == .loading || store.loading == .idle) && store.orgs.isEmpty {
             ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
         }
     }

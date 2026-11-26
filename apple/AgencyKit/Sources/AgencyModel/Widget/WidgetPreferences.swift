@@ -25,8 +25,9 @@ public protocol WidgetPreferencesStorage: Sendable {
 @Observable
 public final class WidgetPreferencesStore {
     public private(set) var preferences: WidgetPreferences
-    /// The node hides titles (`Me.hidesTitles`); the owner's switch cannot show what it hides.
-    public private(set) var nodeHidesTitles = false
+    /// Whether the node hides titles (`Me.hidesTitles`), or `nil` until it has said: the owner's switch cannot show what the
+    /// node hides, and nothing is shown on a guess.
+    public private(set) var nodeHidesTitles: Bool?
 
     @ObservationIgnored private let storage: any WidgetPreferencesStorage
     /// Called after the choice or the node's word changes, so the widgets are written again.
@@ -37,8 +38,12 @@ public final class WidgetPreferencesStore {
         preferences = storage.load()
     }
 
-    /// Whether the widgets show titles now: the owner wants them and the node does not hide them.
-    public var showsTitles: Bool { preferences.showsTitles && !nodeHidesTitles }
+    /// Whether the widgets show titles now: the owner wants them and the node has said it does not hide them. Until the node
+    /// has answered, none are shown.
+    public var showsTitles: Bool { preferences.showsTitles && nodeHidesTitles == false }
+
+    /// How the switch in the settings reads: off when the node hides titles, the owner's choice otherwise.
+    public var isSwitchOn: Bool { nodeHidesTitles == true ? false : preferences.showsTitles }
 
     public func setShowsTitles(_ shows: Bool) {
         guard shows != preferences.showsTitles else { return }

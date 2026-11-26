@@ -94,15 +94,21 @@ new_repository() { # name -> prints the repository root
   cp -R "$SCRIPTS/lib" "$root/apple/scripts/lib"
   cp "$SCRIPTS/register-bundle-id.sh" "$SCRIPTS/testflight.sh" "$root/apple/scripts/"
   : > "$root/apple/ExportOptions.plist"
+  printf 'name: Agency\nsettings:\n  base:\n    MARKETING_VERSION: "0.1.0"\n' > "$root/apple/project.yml"
   printf '// local values\nDEVELOPMENT_TEAM = ABCDE12345 // my team\nPRODUCT_BUNDLE_IDENTIFIER = com.acme.agency\n' > "$root/apple/Local.xcconfig"
   cp "$KEY" "$base/keys/AuthKey.p8"
   printf '%s' '{"data":[]}' > "$base/fake/bundle_ids.json"
   printf '%s' '{"data":[]}' > "$base/fake/capabilities.json"
+  printf '%s' '{"data":[]}' > "$base/fake/bundle_ids_mac.json"
+  printf '%s' '{"data":[]}' > "$base/fake/apps.json"
+  printf '%s' '{"data":[]}' > "$base/fake/app_store_versions.json"
   : > "$base/fake/log"
   printf '%s' "$root"
 }
 
 # run_script ROOT SCRIPT [ENV=value ...] -> output in $OUTPUT, status in $STATUS
+# Arguments for the script itself (not environment settings) go in SCRIPT_ARGS before the call; it is emptied after.
+SCRIPT_ARGS=()
 run_script() {
   local root="$1" script="$2" base
   base=$(dirname "$root")
@@ -110,8 +116,9 @@ run_script() {
   OUTPUT=$(env -i HOME="$WORK/home" PATH="$HERE/fakes:$PATH" \
     FAKE_DIR="$base/fake" FAKE_LOG="$base/fake/log" DERIVED_DATA_ROOT="$root/derived" \
     ASC_API_ROOT=https://asc.invalid \
-    "$@" "$root/apple/scripts/$script" 2>&1)
+    "$@" "$root/apple/scripts/$script" ${SCRIPT_ARGS[@]+"${SCRIPT_ARGS[@]}"} 2>&1)
   STATUS=$?
+  SCRIPT_ARGS=()
 }
 VALID_ENV=(ASC_KEY_ID=ABCDE12345 ASC_ISSUER_ID=11111111-2222-3333-4444-555555555555)
 requests() { grep -c '' "$1/../fake/log"; }
@@ -245,6 +252,76 @@ check "it stopped after the first request" [ "$(requests "$ROOT")" -eq 1 ]
 
 # ---------------------------------------------------------------- testflight.sh
 
+echo "register-bundle-id.sh: the Mac"
+APP_RECORD='{"data":[{"id":"APP1","attributes":{"bundleId":"com.acme.agency"}},{"id":"APP2","attributes":{"bundleId":"com.acme.agency.other"}}]}'
+ROOT=$(new_repository reg-mac-none)
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "no app record: it succeeds" [ "$STATUS" -eq 0 ]
+check "no app record: it says so" contains "$OUTPUT" "There is no app record for com.acme.agency"
+check "no app record: it asks for macOS bundle IDs" contains "$(cat "$ROOT/../fake/log")" "filter%5Bplatform%5D=MAC_OS"
+check "no macOS bundle ID: it says only the iOS one exists and makes none" contains "$OUTPUT" "lists no macOS bundle ID com.acme.agency, only the iOS one"
+check "it never makes a second bundle ID for the Mac" [ "$(grep -c '"platform":"MAC_OS"' "$ROOT/../fake/log")" -eq 0 ]
+
+ROOT=$(new_repository reg-mac-listed)
+printf '%s' '{"data":[{"id":"M1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids_mac.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a macOS bundle ID listed: it says so" contains "$OUTPUT" "lists com.acme.agency as a macOS bundle ID too"
+ROOT=$(new_repository reg-mac-other-id)
+printf '%s' '{"data":[{"id":"M1","attributes":{"identifier":"com.acme.agency.longer"}}]}' > "$ROOT/../fake/bundle_ids_mac.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a longer macOS identifier is not ours" contains "$OUTPUT" "lists no macOS bundle ID com.acme.agency, only the iOS one"
+
+ROOT=$(new_repository reg-mac-no-platform)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an app without macOS: it asks about that app's macOS versions" contains "$(cat "$ROOT/../fake/log")" "/v1/apps/APP1/appStoreVersions?filter%5Bplatform%5D=MAC_OS"
+check "an app without macOS: it says it is one-way and how to add it" contains "$OUTPUT" "Adding it cannot be undone"
+check "an app without macOS: it names the flag" contains "$OUTPUT" "ADD_MACOS_PLATFORM=1"
+check "an app without macOS: it adds nothing by itself" [ -z "$(grep -F '/v1/appStoreVersions' "$ROOT/../fake/log" | grep '^POST')" ]
+
+ROOT=$(new_repository reg-mac-second)
+printf '%s' '{"data":[{"id":"APP2","attributes":{"bundleId":"com.acme.agency.other"}},{"id":"APP1","attributes":{"bundleId":"com.acme.agency"}}]}' > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "the app record is the one with exactly our bundle ID, not the first the filter returns" contains "$(cat "$ROOT/../fake/log")" "/v1/apps/APP1/appStoreVersions"
+
+ROOT=$(new_repository reg-mac-add)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+POST_LINE=$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")
+check "with the flag it adds the macOS platform" contains "$POST_LINE" '"platform":"MAC_OS"'
+check "with the flag it names the app" contains "$POST_LINE" '"id":"APP1"'
+check "with the flag the version is the app's own (MARKETING_VERSION), not 1.0" contains "$POST_LINE" '"versionString":"0.1.0"'
+check "with the flag it says it added it" contains "$OUTPUT" "Added the macOS platform"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1 ASC_MACOS_VERSION=2.1
+check "a version can be named" contains "$(tail -n 3 "$ROOT/../fake/log" | grep '^POST .*/v1/appStoreVersions')" '"versionString":"2.1"'
+
+ROOT=$(new_repository reg-mac-have)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '%s' '{"data":[{"id":"V1","attributes":{"platform":"MAC_OS"}}]}' > "$ROOT/../fake/app_store_versions.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+check "an app that has macOS says so" contains "$OUTPUT" "already has a macOS platform"
+check "an app that has macOS gets nothing added even with the flag" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+
+ROOT=$(new_repository reg-mac-forbidden)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '403' > "$ROOT/../fake/status_report"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a report that may not be read: the script still succeeds" [ "$STATUS" -eq 0 ]
+check "a report that may not be read: it says so" contains "$OUTPUT" "could not be read with this key"
+check "a report that may not be read: the rest of the script still runs" contains "$OUTPUT" "the app group group.com.acme.agency must exist"
+check "a report that may not be read: nothing is added" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+ROOT=$(new_repository reg-mac-forbidden-flag)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '403' > "$ROOT/../fake/status_report"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+check "the flag does not add what could not be looked at" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+
+ROOT=$(new_repository reg-mac-other-platform)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '%s' '{"data":[{"id":"V1","attributes":{"platform":"IOS"}}]}' > "$ROOT/../fake/app_store_versions.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a version of another platform is not a macOS platform" contains "$OUTPUT" "The app record has no macOS platform"
+
 echo "testflight.sh: checks before it builds"
 ROOT=$(new_repository tf-checks)
 run_script "$ROOT" testflight.sh
@@ -270,6 +347,7 @@ REAL_KEY="$(cd "$ROOT/../keys" && pwd -P)/AuthKey.p8"
 ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
 EXPORT=$(grep 'xcodebuild -exportArchive' "$ROOT/../fake/log")
 check "it archives the Release configuration for a device" contains "$ARCHIVE" "-configuration Release -destination generic/platform=iOS"
+check "it archives the iPhone's scheme" contains "$ARCHIVE" "-scheme Agency "
 check "it sets the build number" contains "$ARCHIVE" "CURRENT_PROJECT_VERSION=202611251830"
 check "the archive step has the key flags" contains "$ARCHIVE" "-allowProvisioningUpdates -authenticationKeyPath $REAL_KEY -authenticationKeyID ABCDE12345 -authenticationKeyIssuerID 11111111-2222-3333-4444-555555555555"
 check "the export step has the key flags" contains "$EXPORT" "-allowProvisioningUpdates -authenticationKeyPath $REAL_KEY -authenticationKeyID ABCDE12345"
@@ -280,10 +358,10 @@ check "it deletes this project's DerivedData" [ ! -e "$ROOT/derived/Agency-abcde
 check "it leaves another project's DerivedData" [ -d "$ROOT/derived/Other-abcdefghijklmnopqrstuvwxyzab" ]
 check "it leaves a folder that only looks similar" [ -d "$ROOT/derived/Agency-short" ]
 check "it prints no key setting" [ -z "$(printf '%s' "$OUTPUT" | grep -E 'AuthKey|ABCDE12345|11111111-2222')" ]
-check "it says the build is uploaded" contains "$OUTPUT" "build 202611251830 is uploaded"
+check "it says the build is uploaded" contains "$OUTPUT" "build 202611251830 (ios) is uploaded"
 check "outside a git checkout the build says its source is unknown" contains "$ARCHIVE" "AGENCY_BUILD_COMMIT=unknown AGENCY_BUILD_DESCRIBE=unknown"
 UPLOAD_RECORD=$(cat "$ROOT/apple/uploads.log")
-check "it records the upload" contains "$UPLOAD_RECORD" "build 202611251830"$'\t'"version unknown"$'\t'"commit unknown"$'\t'"unknown"
+check "it records the upload" contains "$UPLOAD_RECORD" "build 202611251830"$'\t'"platform ios"$'\t'"version 0.1.0"$'\t'"commit unknown"$'\t'"unknown"
 check "the record is one line" [ "$(printf '%s\n' "$UPLOAD_RECORD" | wc -l | tr -d ' ')" -eq 1 ]
 
 echo "testflight.sh: the source of a build"
@@ -304,7 +382,7 @@ ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
 check "the build carries the commit it was made from" contains "$ARCHIVE" "AGENCY_BUILD_COMMIT=$COMMIT"
 check "and how far it is from the last apple tag (a tag of another artifact is not one)" contains "$ARCHIVE" "AGENCY_BUILD_DESCRIBE=apple-v0.4.2-1-g$COMMIT "
 check "it records the commit, the describe, and the version" \
-  contains "$(cat "$ROOT/apple/uploads.log")" "build 202611260900"$'\t'"version 0.4.2"$'\t'"commit $COMMIT"$'\t'"apple-v0.4.2-1-g$COMMIT"
+  contains "$(cat "$ROOT/apple/uploads.log")" "build 202611260900"$'\t'"platform ios"$'\t'"version 0.4.2"$'\t'"commit $COMMIT"$'\t'"apple-v0.4.2-1-g$COMMIT"
 check "a clean tree gives no warning" [ -z "$(printf '%s' "$OUTPUT" | grep -F 'uncommitted changes')" ]
 echo changed >> "$ROOT/apple/project.yml"
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" BUILD_NUMBER=202611260901
@@ -318,6 +396,29 @@ ROOT=$(new_repository tf-default-number)
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
 check "without BUILD_NUMBER it uses the UTC time, to the minute" \
   grep -Eq 'CURRENT_PROJECT_VERSION=[0-9]{12} ' "$ROOT/../fake/log"
+
+echo "testflight.sh: for the Mac"
+ROOT=$(new_repository tf-mac)
+SCRIPT_ARGS=(--platform macos)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" BUILD_NUMBER=202611251830
+ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
+check "the Mac build succeeds" [ "$STATUS" -eq 0 ]
+check "it archives the Mac scheme for macOS" contains "$ARCHIVE" "-scheme AgencyMac -configuration Release -destination generic/platform=macOS"
+check "it sets the build number for the Mac too" contains "$ARCHIVE" "CURRENT_PROJECT_VERSION=202611251830"
+check "it exports with ExportOptions.plist for the Mac too" contains "$(grep 'xcodebuild -exportArchive' "$ROOT/../fake/log")" "-exportOptionsPlist ExportOptions.plist"
+check "it says the Mac build is uploaded" contains "$OUTPUT" "build 202611251830 (macos) is uploaded"
+check "and records the platform of the build" contains "$(cat "$ROOT/apple/uploads.log")" "build 202611251830"$'\t'"platform macos"$'\t'"version"
+ROOT=$(new_repository tf-platform)
+SCRIPT_ARGS=(--platform tvos)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an unknown platform is refused" contains "$OUTPUT" "--platform must be ios or macos"
+check "an unknown platform runs no tool" [ "$(requests "$ROOT")" -eq 0 ]
+SCRIPT_ARGS=(--platform)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a platform without a value is refused" contains "$OUTPUT" "--platform needs ios or macos"
+SCRIPT_ARGS=(--bogus)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an unknown argument is refused" contains "$OUTPUT" "unknown argument: --bogus"
 
 echo "testflight.sh: when a step fails"
 ROOT=$(new_repository tf-archive-fails)

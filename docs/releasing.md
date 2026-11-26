@@ -60,7 +60,7 @@ git checkout apple-vX.Y.Z
 apple/scripts/testflight.sh
 ```
 
-Each build says which source it was made from, in its `Info.plist`: `AgencyBuildCommit` (the commit) and `AgencyBuildDescribe` (`git describe` against the `apple-v` tags, such as `apple-v0.2.0-0-g1a2b3c4d5e6f` for the tag itself, or `apple-v0.2.0-3-g…` for a build three commits after it; `-dirty` when the working tree had uncommitted changes). The script also appends a line to `apple/uploads.log` (not committed) for every upload that succeeded: the time, the build number, the version, the commit, and the describe. A build run from Xcode says `unknown`.
+Each build says which source it was made from, in its `Info.plist`: `AgencyBuildCommit` (the commit) and `AgencyBuildDescribe` (`git describe` against the `apple-v` tags, such as `apple-v0.2.0-0-g1a2b3c4d5e6f` for the tag itself, or `apple-v0.2.0-3-g…` for a build three commits after it; `-dirty` when the working tree had uncommitted changes). The script also appends a line to `apple/uploads.log` (not committed) for every upload that succeeded: the time, the build number, the platform (`ios` or `macos`: the two apps have the same version, so this tells their builds apart), the version, the commit, and the describe. A build run from Xcode says `unknown`.
 
 ## What a release holds
 

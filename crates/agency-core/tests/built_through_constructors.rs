@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 /// The types built through `Type::new` and its `with_*` methods.
-const CONSTRUCTED: [&str; 2] = ["HostedTeam", "TeamPlace"];
+const CONSTRUCTED: [&str; 3] = ["HostedTeam", "NodeConfig", "TeamPlace"];
 
 fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap().flatten() {

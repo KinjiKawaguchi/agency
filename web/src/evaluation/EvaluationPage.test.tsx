@@ -181,4 +181,21 @@ describe('evaluation: where effort goes', () => {
     expect(await section('App team')).toBeDefined()
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('has one tab stop for each chart of days, and the arrow keys walk its days', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/evaluation', evaluation: true })
+    const app = await section('App team')
+    for (const name of ['Merged pull requests per day', 'Lead time', 'Cost per merged pull request', 'Main CI red, per day', 'Reverts per day']) {
+      const chart = app.getByRole('group', { name })
+      expect(chart.querySelectorAll('.ev-col[tabindex="0"], .ev-cell[tabindex="0"]')).toHaveLength(1)
+    }
+    const merged = app.getByRole('group', { name: 'Merged pull requests per day' })
+    const days = Array.from(merged.querySelectorAll<HTMLElement>('.ev-col'))
+    days.at(-1)?.focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(days.at(-2)).toHaveFocus()
+    await user.keyboard('{Home}')
+    expect(days[0]).toHaveFocus()
+  })
 })
