@@ -86,6 +86,7 @@ export function useClaim(): { view: ClaimView; retry: () => void } {
   const settledKey = useSettledDeviceKey()
   const { t } = useI18n()
   const [view, setView] = useState<ClaimView>({ step: 'loading' })
+  // stand-in-ok(device): how many times this page has been asked to try again, a counter of the page itself and no value of the node
   const [attempt, setAttempt] = useState(0)
   // What the claim needs, as the page has it now: the page is drawn again while the claim is on its way (the key's state, the
   // language), and none of that may start a second claim, which the node would refuse as a link already used.
