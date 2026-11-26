@@ -48,6 +48,7 @@ fn alice() -> Fixture {
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
     let place = TeamPlace {
+        plan: None,
         id: id("app"),
         label: "app".into(),
         department: None,
@@ -446,6 +447,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         devices: vec![],
     };
     let body = OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,

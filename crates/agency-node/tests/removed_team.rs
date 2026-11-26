@@ -13,6 +13,7 @@ use reqwest::StatusCode;
 
 fn place(team: &str, node: &str) -> TeamPlace {
     TeamPlace {
+        plan: None,
         id: id(team),
         label: team.into(),
         department: None,

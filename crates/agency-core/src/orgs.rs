@@ -115,6 +115,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         public_key: public_key.clone(),
     };
     let body = OrgDefinition {
+        kpis: vec![],
         org: org.clone(),
         label,
         version: 1,

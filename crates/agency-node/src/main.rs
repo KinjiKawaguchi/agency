@@ -2,6 +2,7 @@
 mod dept_cli;
 mod device_cli;
 mod funding_cli;
+mod kpi_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -86,6 +87,11 @@ enum Command {
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
     TeamPlan(dept_cli::TeamPlanArgs),
+    KpiAdd(kpi_cli::KpiAdd),
+    KpiSet(kpi_cli::KpiSet),
+    KpiRemove(kpi_cli::KpiRemove),
+    PlanAim(kpi_cli::PlanAim),
+    PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
@@ -254,7 +260,12 @@ fn status(node: &Node) {
                 .join(", ")
         );
         let lines = dept_cli::department_lines(&doc.body);
-        for line in lines.into_iter().chain(dept_cli::plan_lines(&doc.body)) {
+        let plans = dept_cli::plan_lines(&doc.body);
+        for line in lines
+            .into_iter()
+            .chain(plans)
+            .chain(kpi_cli::kpi_lines(&doc.body))
+        {
             println!("{line}");
         }
     }
@@ -450,6 +461,11 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
+        Command::KpiAdd(args) => kpi_cli::kpi_add(&node, args)?,
+        Command::KpiSet(args) => kpi_cli::kpi_set(&node, args)?,
+        Command::KpiRemove(args) => kpi_cli::kpi_remove(&node, args)?,
+        Command::PlanAim(args) => kpi_cli::plan_aim(&node, args)?,
+        Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
         Command::TeamMove {
