@@ -23,7 +23,7 @@ struct WordingTests {
 
     @Test("the desk's group names and the three request kinds")
     func names() {
-        #expect(DeskGroup.allCases.map(Ja.Desk.group) == ["決裁する稟議", "あなたへの質問", "ボードで判断待ちのもの", "ほかの人の返事待ち"])
+        #expect(DeskGroup.allCases.map(Ja.Desk.group) == ["決裁する稟議", "あなたへの質問", "ボードで判断待ちのもの", "このアプリが知らない種類の依頼", "ほかの人の返事待ち"])
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verb) == ["決裁する", "答える", "判断を送る"])
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verbDone) == ["決裁しました", "答えました", "判断を送りました"])
         #expect(Ja.Paper.sendWith("決裁する", choice: "承認") == "「承認」で決裁する")

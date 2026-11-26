@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// `GET /api/me`: the node's account and everything it can reach.
@@ -74,7 +75,7 @@ public struct StartedRecovery: Decodable, Equatable, Sendable {
 }
 
 public struct TeamRef: Decodable, Equatable, Sendable {
-    public enum Location: String, Decodable, Sendable { case local, remote }
+    public enum Location: String, OpenWireEnum { case local, remote, unknown }
 
     public let id: String
     public let label: String
@@ -85,7 +86,7 @@ public struct TeamRef: Decodable, Equatable, Sendable {
 
 /// A source that pays for the account's agents, such as a subscription, with the usage windows that could be read.
 public struct Funding: Decodable, Equatable, Sendable {
-    public enum Kind: String, Decodable, Sendable { case subscription, apiKey }
+    public enum Kind: String, OpenWireEnum { case subscription, apiKey, unknown }
 
     public let id: String
     public let label: String
@@ -95,7 +96,7 @@ public struct Funding: Decodable, Equatable, Sendable {
 }
 
 public struct UsageWindow: Decodable, Equatable, Sendable {
-    public enum Name: String, Decodable, Sendable { case fiveHour, sevenDay }
+    public enum Name: String, OpenWireEnum { case fiveHour, sevenDay, unknown }
 
     public let name: Name
     public let lengthHours: Int

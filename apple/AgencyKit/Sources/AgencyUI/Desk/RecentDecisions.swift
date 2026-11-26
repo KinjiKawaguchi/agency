@@ -46,7 +46,7 @@ struct RecentDecisions: View {
             return [Ja.Recent.queuedDetail(attempts: attempts, retry: retry), lastError.map(Ja.Recent.lastError)].compactMap { $0 }.joined(separator: " ")
         case .refused(let message):
             return Ja.Recent.refusedDetail(message)
-        case .applied, .delivered:
+        case .applied, .delivered, .unknown:
             return nil
         }
     }
@@ -56,6 +56,8 @@ struct RecentDecisions: View {
         case .applied, .delivered: .green
         case .queued: Theme.warning
         case .refused: Theme.danger
+        // Not green: the app does not know that it went well.
+        case .unknown: .secondary
         }
     }
 }

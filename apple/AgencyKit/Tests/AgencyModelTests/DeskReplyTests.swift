@@ -214,3 +214,43 @@ struct DeskReplyTests {
         #expect(try JSONDecoder().decode(DeskDraft.self, from: stored) == draft)
     }
 }
+
+@Suite("Requests of a kind the app does not know")
+struct UnknownKindRequestTests {
+    private func request(kind: String, answerKind: String) -> [String: Any] {
+        [
+            "id": "r-future", "kind": kind, "title": "Vote on the logo", "context": "c", "from": "backend", "createdAt": "2026-11-24T12:00:00Z",
+            "blocks": [], "options": [], "answerWith": ["kind": answerKind, "target": "r-future"],
+        ]
+    }
+
+    private func item(kind: String = "vote", answerKind: String = "answer") throws -> DeskItem {
+        let team = Teams.team(addRequests: [request(kind: kind, answerKind: answerKind)])
+        return try #require(Desk.openItems([team]).first { $0.request.id == "r-future" })
+    }
+
+    @Test("it is on the desk, counted, in a group of its own, and named by a plain word")
+    func shown() throws {
+        let item = try item()
+        #expect(item.request.kind == .unknown && item.isMine && item.group == .unrecognized)
+        #expect(Ja.Desk.kind(.unknown) == "依頼" && Ja.Desk.group(.unrecognized) == "このアプリが知らない種類の依頼")
+    }
+
+    @Test("when the node says how to answer it in a way the app knows, it is answered as any request is")
+    func answerable() throws {
+        let item = try item()
+        #expect(item.isAnswerableHere)
+        let decision = try item.prepare(.answer("The blue one"))
+        #expect(decision.answerWith == AnswerWith(kind: .answer, target: "r-future") && decision.text == "The blue one")
+    }
+
+    @Test("when the way to answer it is one the app cannot make, nothing is offered and nothing is sent")
+    func notAnswerable() throws {
+        let item = try item(answerKind: "tally")
+        #expect(!item.isAnswerableHere)
+        #expect(throws: DeskReplyError.cannotAnswerHere) { try item.prepare(.answer("x")) }
+        let controls = ReplyControls(item: item, draft: DeskDraft(text: "x", optionKey: nil), isSending: false, isSent: false, isDeviceReady: true)
+        #expect(!controls.canDecide && !controls.canPick)
+    }
+}
+
