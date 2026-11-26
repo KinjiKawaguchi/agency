@@ -1,11 +1,13 @@
-import { useTeams } from '../api/queries'
+import { useSuspenseTeamStates } from '../api/queries'
 import { teamKey, type Team } from '../api/teams'
-import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { EpicList } from './EpicList'
 import { PersonCard } from './PersonCard'
 import { presenceOf } from './state'
+import { MateSkeletons, PeopleSkeleton } from './PeopleSkeleton'
+import { Region } from '../shared/Region'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
+import { TeamFailed } from '../shared/TeamFailed'
 import { WorkList } from './WorkList'
 import './people.css'
 
@@ -37,13 +39,43 @@ function TeamSection({ team }: { team: Team }) {
 
 export function PeoplePage() {
   const { t } = useI18n()
-  const { teams, isLoading, error } = useTeams()
-  if (error !== null && teams.length === 0) return <p className="empty" role="alert">{failureText(t, error)}</p>
-  if (isLoading && teams.length === 0) return <p className="muted">{t.app.loading}</p>
   return (
     <>
       <h1 className="page-title">{t.people.title}</h1>
-      {teams.length === 0 ? <p className="empty">{t.people.noTeams}</p> : teams.map((team) => <TeamSection key={teamKey(team)} team={team} />)}
+      <Region what={t.loading.what.people} skeleton={<PeopleSkeleton />}>
+        <People />
+      </Region>
+    </>
+  )
+}
+
+/** Every team's participants and work. It suspends until the teams have been read; a team that keeps failing is a section that says so. */
+function People() {
+  const { t } = useI18n()
+  const { orgs } = useSuspenseTeamStates()
+  const entries = orgs.flatMap(({ org, teams }) => teams.map((entry) => ({ org: org.id, ...entry })))
+  if (entries.length === 0) return <p className="empty">{t.people.noTeams}</p>
+  return (
+    <>
+      {entries.map(({ org, ref, state }) =>
+        state.status === 'ready' ? (
+          <TeamSection key={teamKey(state.team)} team={state.team} />
+        ) : state.status === 'failed' ? (
+          <section key={`${org}/${ref.id}`} className="crew">
+            <header className="crew-head">
+              <h2>{t.people.team(ref.label)}</h2>
+            </header>
+            <TeamFailed org={org} team={ref.id} failure={state} />
+          </section>
+        ) : (
+          <section key={`${org}/${ref.id}`} className="crew">
+            <header className="crew-head">
+              <h2>{t.people.team(ref.label)}</h2>
+            </header>
+            <MateSkeletons />
+          </section>
+        ),
+      )}
     </>
   )
 }
