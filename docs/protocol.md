@@ -242,12 +242,14 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `view` | none | TeamView |
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
+| `activity` (optional) | `"since": <Timestamp>`, `"limit": <1 to 500>` | `Activity` (see "Activity") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses it for 5 seconds (a view) or 60 seconds (usage for the same range). A decision makes the next view run the command again.
 - The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay, and that the decider is the request's addressee). `by` is the org member who decided, and `byParticipant` the same decider as a participant of the team: their runtime name, in the same name space as a request's `to` (their key in the hosted team's `people`, otherwise `owner`). The node sends `byParticipant` with every decision; a runtime should refuse (404) a decision on a request whose `to` names another runtime name. The node maps a `to` it does not know to the owner, and the runtime does not know the map, so for such a request only a decision with `byParticipant` `owner` is the addressee's.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
+- `activity` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. It runs at most one `activity` call at a time.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## Token usage
@@ -297,6 +299,28 @@ TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWri
 - Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
 - The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.
 
+## Activity
+
+What moved in a team lately, for a page that shows the work going forward: board events, pull requests, and which participant messaged which. Board events and message edges only; a message is told by its sender, its recipient, and the short summary its sender gave, and its body never leaves the team's runtime.
+
+```
+Activity      { org: Id, team: Id, generatedAt: Timestamp, events: ActivityEvent[], truncated: boolean }
+ActivityEvent { id, at: Timestamp, kind, ...the fields of its kind }
+itemAdded     { ref, title, assignee?, epic? }
+statusChanged { ref, title, from: WorkStatus, to: WorkStatus, epic? }
+prOpened      { ref, title, by?, issue?, epic? }
+prMerged      { ref, title, by?, issue?, epic?, leadSeconds?: integer }
+message       { from, to, summary }
+```
+
+- The events after `since`, at most `limit`, oldest first: every `at` is strictly after `since`, `at` never decreases, and events with the same `at` keep the runtime's order (by `id`). `truncated` is true when `limit` cut the list: there are events after the last one, and a read with `since` set to its `at` returns them (an event can share that time with the last one returned, so a client drops what it has by `id`).
+- `id` is 1 to 64 characters of `a-z`, `0-9`, and `-` (the runtime uses a prefix and hex digits), unique in an answer and stable across answers. `ref`, `epic`, and `issue` are item references; `by`, `from`, and `to` are names of the team's runtime (`to` need not be a participant of the team); titles and names are at most 200 characters, a `summary` at most 120 (empty when the sender gave none, never taken from the message). `epic` is the parent epic of the item. `leadSeconds` is the time from a pull request's opening to its merge, when both are known. `assignee` is given only when the runtime knows it at the time.
+- The times of `itemAdded`, `prOpened`, and `prMerged` are the times they happened; a `statusChanged` is the time the runtime first saw the change, up to one refresh interval late. The runtime keeps its log for a limited time (24 hours for the scrum harness); an older `since` answers what the log has.
+- A reader accepts an event of a kind it does not know as left out, so the feed keeps working when a runtime learns a new kind.
+- Before passing an answer on, the node checks that `org` and `team` are the ones it asked for, that there are at most `limit` events, their order and times as above, their ids, and the text limits. An answer that fails is 503.
+- An answerer reads none of it (403). The route for a team on this node is in "Client API"; for a team on another node it is not answered yet (404).
+- The shared sample is `testdata/activity.sample.json`.
+
 ## Client API
 
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
@@ -310,6 +334,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org |
+| GET | `/api/orgs/<org>/teams/<team>/activity?since=<time>&limit=<n>` | `Activity` for a team on this node (see "Activity"): the events after `since` (an RFC 3339 UTC time, default an hour ago), at most `limit` (1 to 500, default 200); anything else is 400. 404 when the team's runtime does not report activity or the team runs on another node, 403 for an answerer, 503 for an answer that is not valid |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through, and so does the 403 for a request on this node that is not the account's to decide; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`), and, for the node's owner only, `node` (below) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |

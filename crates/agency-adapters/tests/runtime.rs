@@ -343,3 +343,40 @@ async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answer
     assert!(runtimes.view(&team).await.is_err());
     assert_eq!(logged().len(), 2, "each team has its own state");
 }
+
+const ACTIVITY: &str = include_str!("../../../testdata/activity.sample.json");
+
+#[tokio::test]
+async fn reads_activity_only_from_a_runtime_that_lists_it() {
+    let since = agency_proto::Timestamp::parse("2026-11-24T11:00:00Z").unwrap();
+    let fake = Fake::new();
+    let error = CommandRuntime::default()
+        .activity(&fake.team("app"), &since, 200)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, 404);
+    assert_eq!(
+        fake.read("calls"),
+        "describe\n",
+        "no activity call to a runtime that does not list it"
+    );
+
+    let fake = Fake::new();
+    fake.answer(
+        "describe",
+        r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide","activity"],"label":"App"}}"#,
+        0,
+    );
+    fake.answer("activity", &format!(r#"{{"result":{ACTIVITY}}}"#), 0);
+    let activity = CommandRuntime::default()
+        .activity(&fake.team("app"), &since, 200)
+        .await
+        .unwrap();
+    assert_eq!(activity.events.len(), 6);
+    assert_eq!(fake.read("calls"), "describe\nactivity\n");
+    let request: serde_json::Value =
+        serde_json::from_str(&fake.read("last-activity.json")).unwrap();
+    assert_eq!(request["op"], "activity");
+    assert_eq!(request["since"], "2026-11-24T11:00:00Z");
+    assert_eq!(request["limit"], 200);
+}

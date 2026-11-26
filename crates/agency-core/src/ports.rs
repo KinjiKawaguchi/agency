@@ -8,6 +8,7 @@ use crate::outbox::Parcel;
 use crate::push::{Notice, PushError};
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
+use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow};
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::org::{SignedOrg, Versions};
@@ -223,6 +224,14 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
+    /// report activity answers 404.
+    async fn activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError>;
 }
 
 /// Reads how much of a funding source has been used.

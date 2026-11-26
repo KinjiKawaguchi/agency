@@ -2,6 +2,7 @@
 use agency_core::config::HostedTeam;
 use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
 use agency_core::push::{Notice, PushError};
+use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::PushToken;
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
@@ -79,6 +80,11 @@ pub struct MemoryRuntimeState {
     pub usage: Option<TokenUsage>,
     /// The ranges `token_usage` was asked for.
     pub usage_days: Vec<u32>,
+    /// The events it reports, oldest first; `None` answers 404 like a runtime without `activity`. A read
+    /// gets the events after its `since`, cut at its `limit`.
+    pub activity: Option<Vec<ActivityEvent>>,
+    /// What `activity` was asked for: `since` and `limit`.
+    pub activity_asked: Vec<(Timestamp, u32)>,
 }
 
 #[derive(Clone, Default)]
@@ -183,6 +189,39 @@ impl TeamRuntime for MemoryRuntime {
         usage.ok_or_else(|| RuntimeError {
             status: 404,
             message: "the memory runtime does not report token usage".into(),
+        })
+    }
+
+    async fn activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError> {
+        let mut state = self.0.lock().map_err(|_| poisoned())?;
+        state.activity_asked.push((since.clone(), limit));
+        let Some(all) = state.activity.as_ref() else {
+            return Err(RuntimeError {
+                status: 404,
+                message: "the memory runtime does not report activity".into(),
+            });
+        };
+        let after: Vec<&ActivityEvent> = all
+            .iter()
+            .filter(|event| clock::parse(event.at.as_str()) > clock::parse(since.as_str()))
+            .collect();
+        let limit = limit as usize;
+        let truncated = after.len() > limit;
+        let events: Vec<ActivityEvent> = after.into_iter().take(limit).cloned().collect();
+        let generated_at = events
+            .last()
+            .map_or_else(|| since.clone(), |last| last.at.clone());
+        Ok(Activity {
+            org: team.org.clone(),
+            team: team.team.clone(),
+            generated_at,
+            truncated,
+            events,
         })
     }
 }
