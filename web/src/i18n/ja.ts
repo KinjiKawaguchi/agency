@@ -120,6 +120,16 @@ export const ja: Messages = {
     yourTurn: 'あなたの返事待ち',
     emptyDepartment: 'この部署にはまだ誰もいません。',
     teamUnavailable: 'このチームを読み込めませんでした',
+    view: {
+      toolbar: '図の表示',
+      zoom: '拡大縮小',
+      fit: '幅に合わせる',
+      zoomIn: '拡大',
+      zoomOut: '縮小',
+      actualSize: '実寸',
+      download: '画像としてダウンロード',
+      downloadFailed: (reason) => `画像を作れませんでした: ${reason}`,
+    },
   },
   costs: {
     title: '費用',

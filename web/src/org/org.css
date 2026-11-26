@@ -292,3 +292,37 @@ a.oc-node:hover {
     min-width: 0;
   }
 }
+
+/* ── Full width, zoom, and download ── */
+/* The chart takes the whole window, not the text column: the page behind it drops its width limit. */
+.page:has(.oc-wide) {
+  max-width: none;
+}
+
+.oc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.oc-zoom,
+.oc-download {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oc-percent {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A phone draws the chart as a list at its own size, so there is nothing to zoom. */
+@media (max-width: 720px) {
+  .oc-zoom {
+    display: none;
+  }
+}

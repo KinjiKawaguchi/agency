@@ -125,6 +125,16 @@ export const en = {
     yourTurn: 'Waiting for your answer',
     emptyDepartment: 'Nobody is in this department yet.',
     teamUnavailable: 'Could not read this team',
+    view: {
+      toolbar: 'Chart view',
+      zoom: 'Zoom',
+      fit: 'Fit to width',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      actualSize: 'Actual size',
+      download: 'Download as image',
+      downloadFailed: (reason: string) => `Could not make the image: ${reason}`,
+    },
   },
   costs: {
     title: 'Costs',
