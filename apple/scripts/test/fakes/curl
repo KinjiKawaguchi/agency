@@ -24,6 +24,15 @@ fi
 printf '%s %s %s\n' "$method" "$url" "$body" >> "$FAKE_LOG"
 
 status=200
+# The reads of the report on the Mac answer with this status when the file is there (a key that may not read them).
+if [ -f "$FAKE_DIR/status_report" ]; then
+  case "$method $url" in
+    "GET "*"/v1/bundleIds?"*"MAC_OS"* | "GET "*"/v1/apps?"* | "GET "*"/appStoreVersions"*)
+      printf '%s' '{"errors":[{"title":"Forbidden","detail":"This key may not read that."}]}' > "$output"
+      printf '%s' "$(cat "$FAKE_DIR/status_report")"
+      exit 0 ;;
+  esac
+fi
 case "$method $url" in
   "GET "*"/v1/bundleIds?"*"MAC_OS"*) response=$(cat "$FAKE_DIR/bundle_ids_mac.json") ;;
   "GET "*"/v1/bundleIds?"*) response=$(cat "$FAKE_DIR/bundle_ids.json") ;;

@@ -38,8 +38,9 @@ TOKEN=$(asc_jwt "$ASC_KEY_PATH" "$ASC_KEY_ID" "$ASC_ISSUER_ID") ||
   die "cannot sign the API token: is ASC_KEY_PATH an App Store Connect API key (.p8)?"
 
 # asc_api METHOD PATH [JSON_BODY]
-# Leaves the answer in $RESPONSE and stops on any status other than 2xx. The token goes to curl on
-# its standard input, so it is not in the process list.
+# Leaves the answer in $RESPONSE and stops on any status other than 2xx; with SOFT=1 it only returns 1
+# then (the report on the Mac must not stop the script when a read is not allowed). The token goes to
+# curl on its standard input, so it is not in the process list.
 asc_api() {
   local method="$1" path="$2" body="${3:-}" status
   local arguments=(-sS -o "$RESPONSE" -w '%{http_code}' -X "$method" -H 'Content-Type: application/json')
@@ -53,6 +54,9 @@ asc_api() {
   esac
   printf 'error: the App Store Connect API answered HTTP %s to %s %s\n' "$status" "$method" "${path%%\?*}" >&2
   jq -r '.errors[]? | "  \(.title): \(.detail)"' "$RESPONSE" >&2 2> /dev/null || true
+  if [ "${SOFT:-}" = 1 ]; then
+    return 1
+  fi
   exit 1
 }
 
@@ -116,34 +120,53 @@ register_bundle_id "$BUNDLE_ID" "$APP_NAME" \
   "PUSH_NOTIFICATIONS:Push Notifications" "ASSOCIATED_DOMAINS:Associated Domains" "APP_GROUPS:App Groups"
 register_bundle_id "$BUNDLE_ID.widgets" "$WIDGET_NAME" "APP_GROUPS:App Groups"
 
+# The version the app is built as (MARKETING_VERSION in project.yml): the macOS version the record is given is
+# that one, so no other, empty version stays on the record.
+marketing_version() {
+  local version
+  version=$(awk -F: '/MARKETING_VERSION:/ { gsub(/[ "]/, "", $2); print $2; exit }' "$APPLE_DIR/project.yml" 2> /dev/null)
+  [ -n "$version" ] || die "cannot read MARKETING_VERSION from apple/project.yml"
+  printf '%s' "$version"
+}
+
 # What the Mac needs besides the bundle ID, checked here and only changed when asked: the app record may have
 # no macOS platform yet. Adding it is one-way (an app with two platforms is a universal purchase for good),
 # so it happens only with ADD_MACOS_PLATFORM=1; the web interface does the same ("Add Platform", macOS).
 check_macos() {
-  local app_id count
-  asc_api GET "/v1/bundleIds?filter%5Bidentifier%5D=$BUNDLE_ID&filter%5Bplatform%5D=MAC_OS&limit=200"
-  if jq -e --arg identifier "$BUNDLE_ID" '[.data[]? | select(.attributes.identifier == $identifier)] | length > 0' "$RESPONSE" > /dev/null; then
-    printf 'The API lists %s as a macOS bundle ID too.\n' "$BUNDLE_ID"
+  local app_id count version body
+  version=$(marketing_version)
+  if SOFT=1 asc_api GET "/v1/bundleIds?filter%5Bidentifier%5D=$BUNDLE_ID&filter%5Bplatform%5D=MAC_OS&limit=200"; then
+    if jq -e --arg identifier "$BUNDLE_ID" '[.data[]? | select(.attributes.identifier == $identifier)] | length > 0' "$RESPONSE" > /dev/null; then
+      printf 'The API lists %s as a macOS bundle ID too.\n' "$BUNDLE_ID"
+    else
+      printf 'The API lists no macOS bundle ID %s, only the iOS one. Whether the Mac build can sign with it is what its first archive tells; this script does not create a second record.\n' "$BUNDLE_ID"
+    fi
   else
-    printf 'The API lists no macOS bundle ID %s, only the iOS one. Whether the Mac build can sign with it is what its first archive tells; this script does not create a second record.\n' "$BUNDLE_ID"
+    printf 'The macOS bundle IDs could not be read with this key; skipped.\n'
   fi
-  asc_api GET "/v1/apps?filter%5BbundleId%5D=$BUNDLE_ID&limit=200"
+  if ! SOFT=1 asc_api GET "/v1/apps?filter%5BbundleId%5D=$BUNDLE_ID&limit=200"; then
+    printf 'The app record could not be read with this key, so nothing is said of its macOS platform and nothing is added.\n'
+    return
+  fi
   app_id=$(jq -r --arg identifier "$BUNDLE_ID" '[.data[]? | select(.attributes.bundleId == $identifier)][0].id // empty' "$RESPONSE")
   if [ -z "$app_id" ]; then
     printf 'There is no app record for %s in App Store Connect yet, so nothing can be said of its macOS platform.\n' "$BUNDLE_ID"
     return
   fi
-  asc_api GET "/v1/apps/$app_id/appStoreVersions?filter%5Bplatform%5D=MAC_OS&limit=1"
-  count=$(jq '[.data[]?] | length' "$RESPONSE")
+  if ! SOFT=1 asc_api GET "/v1/apps/$app_id/appStoreVersions?filter%5Bplatform%5D=MAC_OS&limit=50"; then
+    printf 'The versions of the app record could not be read with this key, so nothing is said of its macOS platform and nothing is added.\n'
+    return
+  fi
+  # Only a version whose platform is macOS counts: the answer to the filter is not trusted to be only that.
+  count=$(jq '[.data[]? | select(.attributes.platform == "MAC_OS")] | length' "$RESPONSE")
   if [ "$count" -gt 0 ]; then
     printf 'The app record already has a macOS platform.\n'
   elif [ "${ADD_MACOS_PLATFORM:-}" = 1 ]; then
-    local body
-    body=$(jq -cn --arg id "$app_id" --arg version "${ASC_MACOS_VERSION:-1.0}" \
+    body=$(jq -cn --arg id "$app_id" --arg version "${ASC_MACOS_VERSION:-$version}" \
       '{data: {type: "appStoreVersions", attributes: {platform: "MAC_OS", versionString: $version},
       relationships: {app: {data: {type: "apps", id: $id}}}}}')
     asc_api POST /v1/appStoreVersions "$body"
-    printf 'Added the macOS platform to the app record.\n'
+    printf 'Added the macOS platform to the app record, version %s.\n' "${ASC_MACOS_VERSION:-$version}"
   else
     printf 'The app record has no macOS platform. Adding it cannot be undone: add it in App Store Connect (the app, Add Platform, macOS) or run this again with ADD_MACOS_PLATFORM=1.\n'
   fi

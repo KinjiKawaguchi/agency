@@ -94,6 +94,7 @@ new_repository() { # name -> prints the repository root
   cp -R "$SCRIPTS/lib" "$root/apple/scripts/lib"
   cp "$SCRIPTS/register-bundle-id.sh" "$SCRIPTS/testflight.sh" "$root/apple/scripts/"
   : > "$root/apple/ExportOptions.plist"
+  printf 'name: Agency\nsettings:\n  base:\n    MARKETING_VERSION: "0.1.0"\n' > "$root/apple/project.yml"
   printf '// local values\nDEVELOPMENT_TEAM = ABCDE12345 // my team\nPRODUCT_BUNDLE_IDENTIFIER = com.acme.agency\n' > "$root/apple/Local.xcconfig"
   cp "$KEY" "$base/keys/AuthKey.p8"
   printf '%s' '{"data":[]}' > "$base/fake/bundle_ids.json"
@@ -289,7 +290,7 @@ run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8"
 POST_LINE=$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")
 check "with the flag it adds the macOS platform" contains "$POST_LINE" '"platform":"MAC_OS"'
 check "with the flag it names the app" contains "$POST_LINE" '"id":"APP1"'
-check "with the flag the version is 1.0" contains "$POST_LINE" '"versionString":"1.0"'
+check "with the flag the version is the app's own (MARKETING_VERSION), not 1.0" contains "$POST_LINE" '"versionString":"0.1.0"'
 check "with the flag it says it added it" contains "$OUTPUT" "Added the macOS platform"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1 ASC_MACOS_VERSION=2.1
 check "a version can be named" contains "$(tail -n 3 "$ROOT/../fake/log" | grep '^POST .*/v1/appStoreVersions')" '"versionString":"2.1"'
@@ -300,6 +301,26 @@ printf '%s' '{"data":[{"id":"V1","attributes":{"platform":"MAC_OS"}}]}' > "$ROOT
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
 check "an app that has macOS says so" contains "$OUTPUT" "already has a macOS platform"
 check "an app that has macOS gets nothing added even with the flag" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+
+ROOT=$(new_repository reg-mac-forbidden)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '403' > "$ROOT/../fake/status_report"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a report that may not be read: the script still succeeds" [ "$STATUS" -eq 0 ]
+check "a report that may not be read: it says so" contains "$OUTPUT" "could not be read with this key"
+check "a report that may not be read: the rest of the script still runs" contains "$OUTPUT" "the app group group.com.acme.agency must exist"
+check "a report that may not be read: nothing is added" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+ROOT=$(new_repository reg-mac-forbidden-flag)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '403' > "$ROOT/../fake/status_report"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+check "the flag does not add what could not be looked at" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
+
+ROOT=$(new_repository reg-mac-other-platform)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '%s' '{"data":[{"id":"V1","attributes":{"platform":"IOS"}}]}' > "$ROOT/../fake/app_store_versions.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a version of another platform is not a macOS platform" contains "$OUTPUT" "The app record has no macOS platform"
 
 echo "testflight.sh: checks before it builds"
 ROOT=$(new_repository tf-checks)
