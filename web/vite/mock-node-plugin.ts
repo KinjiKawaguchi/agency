@@ -33,6 +33,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
+  const guest = query?.get('guest') ?? ''
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
@@ -47,6 +48,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
+    // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
+    ...(guest === '' ? {} : { guest: { member: guest, label: `${guest.charAt(0).toUpperCase()}${guest.slice(1)}` } }),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
     ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),

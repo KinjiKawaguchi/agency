@@ -1,6 +1,6 @@
 import { OutcomesPage } from '../outcomes/OutcomesPage'
 import { OUTCOMES_PERIODS } from '../outcomes/useOutcomesAccess'
-import { Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
+import { Navigate, Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
 import { LivePage } from '../live/LivePage'
@@ -11,8 +11,10 @@ import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
 import { ClaimPage } from '../claim/ClaimPage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
+import { isGuestPage, useStanding } from '../guest/useStanding'
 import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { AppBar } from './AppBar'
 
 /** The claim page is a person's first page, before there is anything of the app for them: it has none of the app's bar and notices. */
@@ -20,13 +22,23 @@ const isClaimPath = (path: string): boolean => path === '/claim' || path.startsW
 
 function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
-  if (isClaimPath(path)) {
-    return (
-      <main className="page">
-        <Outlet />
-      </main>
-    )
-  }
+  return isClaimPath(path) ? (
+    <main className="page">
+      <Outlet />
+    </main>
+  ) : (
+    <AppShell path={path} />
+  )
+}
+
+function AppShell({ path }: { path: string }) {
+  const standing = useStanding()
+  // The page on screen can still be the one left while the location is already the new one, so it is asked for itself.
+  const shown = useRouterState({ select: (state) => state.matches.at(-1)?.pathname ?? state.location.pathname })
+  // A page of the owner's would be refused to a guest, so it is not opened: they have the desk and their devices.
+  if (standing.status === 'guest' && !isGuestPage(path)) return <Navigate to="/desk" replace />
+  // The desk and the devices are the guest's own, so they open at once; the owner's pages wait to learn who is asking.
+  const isWaiting = (standing.status === 'loading' || standing.status === 'guest') && !isGuestPage(shown)
   return (
     <>
       <AppBar />
@@ -34,7 +46,14 @@ function Shell() {
       <main className="page">
         <SignInExpiredBanner />
         <AddDeviceNotice />
-        <Outlet />
+        {isWaiting ? (
+          <Loading>
+            <Skeleton kind="title" />
+            <Skeleton />
+          </Loading>
+        ) : (
+          <Outlet />
+        )}
       </main>
     </>
   )
