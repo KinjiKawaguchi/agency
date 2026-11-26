@@ -41,7 +41,10 @@ pub struct DirectoryMember {
     pub department: Option<Id>,
     /// `member` or `answerer`.
     pub role: String,
-    /// The teams of this node that address them. Empty when none does.
+    /// What to ask them about, in the org's own words: what the seat they took said, when they took one.
+    pub ask_about: Vec<String>,
+    /// The teams of this node that address them, by their own names and by those of the seats they took.
+    /// Empty when none does.
     pub runtime_names: Vec<RuntimeNames>,
 }
 

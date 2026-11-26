@@ -51,13 +51,21 @@ pub enum Reader<'a> {
 }
 
 /// The members who answer a request that is addressed to `addressee` on the team `hosted`: the member
-/// itself; for a seat, the members in its `relays`, or the team's owner when it has none; for an external
-/// party, the members in its `relays`. A seat and an external party answer nothing themselves.
+/// itself; for a seat someone took, that member; for a seat, the members in its `relays`, or the team's owner
+/// when it has none; for an external party, the members in its `relays`. A seat and an external party answer
+/// nothing themselves.
 pub fn answerers<'a>(
     definition: &'a OrgDefinition,
     hosted: &'a HostedTeam,
     addressee: &'a Id,
 ) -> Vec<&'a Id> {
+    if let Some(taker) = definition
+        .people
+        .iter()
+        .find(|one| one.formerly.contains(addressee))
+    {
+        return vec![&taker.id];
+    }
     if let Some(seat) = definition.seats.iter().find(|one| &one.id == addressee) {
         return if seat.relays.is_empty() {
             vec![&hosted.owner]
@@ -506,6 +514,8 @@ mod tests {
                 department: None,
                 role: Role::Member,
                 devices: vec![],
+                formerly: vec![],
+                ask_about: vec![],
             })
             .collect();
         OrgDefinition::new(
