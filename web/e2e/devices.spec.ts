@@ -98,7 +98,7 @@ test('confirms a second device from the first, by comparing codes', async ({ pag
 
     await page.reload()
     await expect(page.getByLabel('Pairing code of Phone')).toHaveText(phoneCode)
-    await page.getByRole('button', { name: 'The codes match: add it' }).click()
+    await page.getByRole('button', { name: 'The codes match: approve it' }).click()
     await expect(page.getByText('Phone is added.')).toBeVisible()
     await expect(page.getByLabel('Pairing code of Phone')).toHaveCount(0)
 
@@ -138,7 +138,7 @@ for (const view of VIEWS) {
     try {
       await askToBeAdded(await phoneContext.newPage(), 'Phone')
       await page.reload()
-      await expect(page.getByRole('button', { name: 'The codes match: add it' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'The codes match: approve it' })).toBeVisible()
       await shoot('confirm', page)
     } finally {
       await phoneContext.close()
