@@ -84,13 +84,15 @@ agency status
 - `--url` is where other nodes would reach this node. On a local-only node it is its own loopback address, with the same port as `--listen`.
 - `--scrum` is the harness's command. Give its full path (as above), or a bare name that the node looks up on its `PATH`.
 - `--state-dir` is the team's state directory for the harness. A relative path is stored as an absolute one.
-- `org-create` makes this node's account the org's root key. `team-add` without `--node` runs the team on this node, owned by this node's account.
+- `org-create` makes a root key for the new org and makes this node its root's node. `team-add` without `--node` runs the team on this node, owned by this node's account.
 
 `agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`.
 
-The data directory now holds `account.key`, the org's root key.
-Anyone who can read that file can act as the org's root.
-Keep it on this machine, and out of anything that syncs or shares files.
+The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
+The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
+Keep both on this machine, and out of anything that syncs or shares files.
+A backup of the data directory does not hold the root key. Back the root key up on its own, because without it nobody can change the org again: copy `~/.config/agency/root-keys/` to storage that is offline and encrypted (for example an encrypted disk image kept off this Mac), and copy it again after `agency root-rotate`, which makes a new key and removes the old one.
+An org made before root keys were kept apart uses `account.key` as its root until you move it to its own key with `agency root-rotate --org acme`.
 
 ### Run it with launchd
 

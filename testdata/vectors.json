@@ -131,5 +131,19 @@
     "publicKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
   },
   "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
+  "rootRotation": {
+    "namingTheNewRoot": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"kaKKC3Q4FZOk2UaVeSCJJq/IrYLIg5t2RDWbnrqaSzo=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":2}",
+      "digest": "e3f006cd8c879024eb1193c10e4459c6787508d0fb79011f41e07252b074b910",
+      "signature": "13+efix0Bh4zW5aqnSmJtsaxX2ojsI/95rxFLn6jJV3wO7rySqyFBXZH4EcW4By67puRw4QaiR5PIwNvQBfDCA=="
+    },
+    "newPublicKey": "kaKKC3Q4FZOk2UaVeSCJJq/IrYLIg5t2RDWbnrqaSzo=",
+    "newSeed": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+    "signedByTheNewRoot": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme Inc\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"e3f006cd8c879024eb1193c10e4459c6787508d0fb79011f41e07252b074b910\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"kaKKC3Q4FZOk2UaVeSCJJq/IrYLIg5t2RDWbnrqaSzo=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+      "digest": "ab7169e567d6ec95b2c893fe0950b818bd80a36775b418c74ed9b5b1eadcbf0e",
+      "signature": "qStTZPfAETn7ZXgMZFFDs6qzfaWX32PqFB4eO59esLGzHPDgRnaDt1mazn5cu00bXUo8DJ1lZqgwWTjnDnX4BA=="
+    }
+  },
   "seed": "0707070707070707070707070707070707070707070707070707070707070707"
 }
