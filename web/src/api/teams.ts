@@ -21,7 +21,8 @@ export const toTeam = (snapshot: TeamSnapshot): Team => ({
   source: snapshot.source,
   mine: new Set(snapshot.mine),
   waitingOnViewer: new Set(snapshot.waitingOnViewer ?? [] /* stand-in-ok(optional): the node leaves the list out when it is empty, in an answer that has come */),
-  relayedFor: new Map(Object.entries(snapshot.relayedFor ?? {} /* stand-in-ok(optional): the node leaves it out when no request is for a seat the viewer answers for, in an answer that has come */)),
+  // A label with nothing in it is no one to say a request is for.
+  relayedFor: new Map(Object.entries(snapshot.relayedFor ?? {} /* stand-in-ok(optional): the node leaves it out when no request is for a seat the viewer answers for, in an answer that has come */).filter(([, label]) => label.trim() !== '')),
 })
 
 export const teamKey = (team: Team): string => `${team.view.org}/${team.view.team}`

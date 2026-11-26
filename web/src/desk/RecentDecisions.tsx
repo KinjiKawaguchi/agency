@@ -52,7 +52,7 @@ function DecidedRow({ entry, teamLabel }: { entry: DecisionEntry; teamLabel: str
       <StateDetail state={entry.state} />
       <p className="decided-meta">
         <span>{teamLabel}</span>
-        {entry.relayedFor === undefined ? null : <span>{t.desk.recent.answeredFor(entry.relayedFor.label)}</span>}
+        {entry.relayedFor === undefined || entry.relayedFor.label.trim() === '' ? null : <span>{t.desk.recent.answeredFor(entry.relayedFor.label)}</span>}
         <time dateTime={entry.decidedAt}>{fmt.relative(entry.decidedAt, t.time.justNow)}</time>
       </p>
     </li>

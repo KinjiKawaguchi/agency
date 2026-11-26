@@ -55,6 +55,19 @@ describe('a request addressed to a seat or an external party the viewer answers 
     expect(await screen.findByText('Answered for Erin (outside counsel).')).toBeInTheDocument()
   })
 
+  it('says nothing in the log for a label with nothing in it', async () => {
+    const user = userEvent.setup()
+    const node = nodeFor('  ')
+    renderApp({ node, path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    await user.click(await screen.findByRole('radio', { name: /Include them/ }))
+    await user.click(screen.getByRole('button', { name: /Include them/ }))
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    expect((await createApiClient((request) => node.handle(request)).decisions(10)).entries[0]).toMatchObject({ relayedFor: { label: '  ' } })
+    await screen.findByRole('region', { name: /Recently decided/ })
+    expect(screen.queryByText(/^Answered for /)).not.toBeInTheDocument()
+    expect(screen.queryAllByText(/^Answer for /)).toHaveLength(0)
+  })
+
   it('has no one in the log for a decision that is the viewer’s own', async () => {
     const user = userEvent.setup()
     const node = nodeFor('Erin')
@@ -69,6 +82,11 @@ describe('a request addressed to a seat or an external party the viewer answers 
 })
 
 describe('how the snapshot says whom a request is for', () => {
+  it('says nothing for a label with nothing in it', () => {
+    const base = { view: withRequestFor('finance'), viewer: 'owner', mine: [REQUEST], waitingOnViewer: [], source: { kind: 'local' as const } }
+    for (const label of ['', '   ']) expect(openItems([toTeam({ ...base, relayedFor: { [REQUEST]: label } })]).find((one) => one.request.id === REQUEST)?.relayedFor, JSON.stringify(label)).toBeUndefined()
+  })
+
   it('is kept as the label for each request id, and is nothing when the node leaves it out', () => {
     const base = { view: withRequestFor('finance'), viewer: 'owner', mine: [REQUEST], waitingOnViewer: [], source: { kind: 'local' as const } }
     const [item] = openItems([toTeam({ ...base, relayedFor: { [REQUEST]: 'Erin' } })]).filter((one) => one.request.id === REQUEST)
