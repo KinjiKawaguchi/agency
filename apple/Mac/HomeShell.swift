@@ -1,14 +1,9 @@
-import AgencyKit
 import AgencyModel
 import SwiftUI
 
 /// The app for one home node on the Mac: a sidebar with the screens, and the open screen beside it.
 struct HomeShell: View {
-    @State private var model: ShellModel
-
-    init(homeNode: HomeNodeURL, push: PushCoordinator, onChangeHomeNode: @escaping () -> Void) {
-        _model = State(initialValue: ShellModel(homeNode: homeNode, push: push, deviceLabel: Ja.Device.macLabel, onChangeHomeNode: onChangeHomeNode))
-    }
+    let model: ShellModel
 
     var body: some View {
         NavigationSplitView {
@@ -29,5 +24,6 @@ struct HomeShell: View {
             }
         }
         .shellChrome(model)
+        .focusedSceneValue(\.shellModel, model)
     }
 }

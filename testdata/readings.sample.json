@@ -1,0 +1,28 @@
+{
+  "org": "acme",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "readings": [
+    {
+      "team": "app", "epic": "app#10", "epicTitle": "Persistent sessions", "kpi": "activation",
+      "shippedOn": "2026-10-20", "state": "ready",
+      "before": { "kpi": "activation", "date": "2026-10-15", "value": 40.0, "source": { "kind": "manual" }, "enteredAt": "2026-10-16T09:00:00Z", "enteredBy": "owner" },
+      "after": { "kpi": "activation", "date": "2026-11-10", "value": 44.0, "source": { "kind": "manual" }, "enteredAt": "2026-11-11T09:00:00Z", "enteredBy": "owner" },
+      "change": 4.0, "changeRatio": 0.1,
+      "overlapping": ["app#12"], "basis": "correlation"
+    },
+    {
+      "team": "app", "epic": "app#12", "kpi": "activation",
+      "shippedOn": "2026-10-25", "state": "ready",
+      "before": { "kpi": "activation", "date": "2026-10-15", "value": 40.0, "source": { "kind": "manual" }, "enteredAt": "2026-10-16T09:00:00Z", "enteredBy": "owner" },
+      "after": { "kpi": "activation", "date": "2026-11-10", "value": 44.0, "source": { "kind": "manual" }, "enteredAt": "2026-11-11T09:00:00Z", "enteredBy": "owner" },
+      "change": 4.0, "changeRatio": 0.1,
+      "overlapping": ["app#10"], "basis": "correlation"
+    },
+    { "team": "app", "epic": "app#20", "epicTitle": "Mobile layout", "kpi": "revenue", "state": "notShipped", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#21", "kpi": "revenue", "state": "shipDateUnknown", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#14", "kpi": "lead-time", "shippedOn": "2026-11-01", "state": "noBaseline", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#13", "kpi": "lead-time", "shippedOn": "2026-05-02", "state": "noFollowUp", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#15", "kpi": "activation", "shippedOn": "2026-11-20", "state": "tooEarly", "readableFrom": "2026-12-04", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#16", "kpi": "revenue", "shippedOn": "2026-10-30", "state": "tooFew", "points": 2, "needs": 3, "overlapping": [], "basis": "correlation" }
+  ]
+}

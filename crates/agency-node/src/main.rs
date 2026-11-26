@@ -208,22 +208,11 @@ fn init(
         bail!("--url must be http(s)://host[:port]");
     }
     let key = data.create_key()?;
-    data.save_config(&NodeConfig {
-        url: url.to_owned(),
-        listen: listen.to_owned(),
-        account: Account {
-            id: id(account)?,
-            label: label.to_owned(),
-        },
-        scrum,
-        teams: vec![],
-        trusted: vec![],
-        funding: vec![],
-        access: None,
-        push: None,
-        web_push: None,
-        hide_titles: false,
-    })?;
+    let owner = Account {
+        id: id(account)?,
+        label: label.to_owned(),
+    };
+    data.save_config(&NodeConfig::new(url, listen, owner, scrum))?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),

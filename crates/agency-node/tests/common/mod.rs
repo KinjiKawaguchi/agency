@@ -159,22 +159,16 @@ async fn node_from(
         std::fs::write(data.root().join("account.key"), key.encoded() + "\n").unwrap();
     }
     let url = format!("http://127.0.0.1:{port}");
-    data.save_config(&NodeConfig {
+    let account = Account {
+        id: id(account),
+        label: account.to_uppercase(),
+    };
+    data.save_config(&NodeConfig::new(
         url,
-        listen: format!("127.0.0.1:{port}"),
-        account: Account {
-            id: id(account),
-            label: account.to_uppercase(),
-        },
-        scrum: "scrum".into(),
-        teams: vec![],
-        trusted: vec![],
-        funding: vec![],
-        access: None,
-        push: None,
-        web_push: None,
-        hide_titles: false,
-    })
+        format!("127.0.0.1:{port}"),
+        account,
+        "scrum",
+    ))
     .unwrap();
     let clock = ManualClock::at(T0);
     let notifier = MemoryNotifier::default();

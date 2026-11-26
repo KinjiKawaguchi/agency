@@ -17,6 +17,7 @@ pub mod observation;
 pub mod org;
 pub mod outcome;
 pub mod participant_metrics;
+pub mod reading;
 pub mod runtime;
 pub mod signed;
 pub mod timestamp;

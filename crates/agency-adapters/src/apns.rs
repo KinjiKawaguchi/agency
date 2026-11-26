@@ -184,32 +184,61 @@ pub fn payload(notice: &Notice) -> Value {
             json!({ "type": "decision", "org": org, "team": team, "id": id }),
         ),
     };
-    json!({
-        "aps": {
-            "alert": alert,
-            "sound": "default",
-            "thread-id": notice.thread(),
-            "badge": notice.badge,
-        },
-        "agency": agency,
-    })
+    let mut aps = json!({
+        "alert": alert,
+        "sound": "default",
+        "thread-id": notice.thread(),
+        "badge": notice.badge,
+    });
+    if matches!(notice.kind, NoticeKind::Request { .. }) {
+        // A request starting to wait changes the desk the widgets show: this wakes the app to read it, when
+        // the system allows, so that no push of its own is needed for the same change.
+        aps["content-available"] = json!(1);
+    }
+    json!({ "aps": aps, "agency": agency })
 }
 
-#[async_trait]
-impl Notifier for Apns {
-    async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError> {
+/// The push that only wakes the app to read the desk: no alert, no sound, no badge, and nothing of the
+/// desk, not a title, a label or a count.
+pub fn desk_payload() -> Value {
+    json!({ "aps": { "content-available": 1 }, "agency": { "type": "desk" } })
+}
+
+/// A background push that no one has seen is worth nothing an hour later.
+const DESK_EXPIRES_MINUTES: i64 = 60;
+/// What replaces an earlier desk push the device has not received yet.
+const DESK_COLLAPSE_ID: &str = "desk";
+
+/// How one push is sent: its type, priority, what it replaces, and when it stops being worth sending.
+struct Delivery<'a> {
+    push_type: &'a str,
+    priority: &'a str,
+    collapse: String,
+    expiration: Option<i64>,
+}
+
+impl Apns {
+    async fn deliver(
+        &self,
+        token: &PushToken,
+        delivery: Delivery<'_>,
+        body: &Value,
+    ) -> Result<(), PushError> {
         let provider = self.provider_token()?;
         let url = format!("{}/3/device/{}", self.host(token.environment), token.token);
-        let collapse: String = notice.collapse_id().chars().take(64).collect();
-        let response = self
+        let mut request = self
             .http
             .post(url)
             .header("authorization", format!("bearer {provider}"))
             .header("apns-topic", &self.config.bundle_id)
-            .header("apns-push-type", "alert")
-            .header("apns-priority", "10")
-            .header("apns-collapse-id", collapse)
-            .json(&payload(notice))
+            .header("apns-push-type", delivery.push_type)
+            .header("apns-priority", delivery.priority)
+            .header("apns-collapse-id", delivery.collapse);
+        if let Some(expiration) = delivery.expiration {
+            request = request.header("apns-expiration", expiration.to_string());
+        }
+        let response = request
+            .json(body)
             .send()
             .await
             .map_err(|error| PushError::Failed(format!("APNs is unreachable: {error}")))?;
@@ -235,5 +264,30 @@ impl Notifier for Apns {
                 "APNs answered {status} {reason}"
             ))),
         }
+    }
+}
+
+#[async_trait]
+impl Notifier for Apns {
+    async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError> {
+        let delivery = Delivery {
+            push_type: "alert",
+            priority: "10",
+            collapse: notice.collapse_id().chars().take(64).collect(),
+            expiration: None,
+        };
+        self.deliver(token, delivery, &payload(notice)).await
+    }
+
+    /// Apple requires priority 5 for a push that only has `content-available`: 10 is refused.
+    async fn send_desk_changed(&self, token: &PushToken) -> Result<(), PushError> {
+        let expires = self.clock.now() + Duration::minutes(DESK_EXPIRES_MINUTES);
+        let delivery = Delivery {
+            push_type: "background",
+            priority: "5",
+            collapse: DESK_COLLAPSE_ID.to_owned(),
+            expiration: Some(expires.unix_timestamp()),
+        };
+        self.deliver(token, delivery, &desk_payload()).await
     }
 }
