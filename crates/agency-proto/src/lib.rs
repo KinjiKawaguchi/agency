@@ -15,6 +15,7 @@ pub mod evaluation;
 pub mod ids;
 pub mod invite;
 pub mod keys;
+pub mod metrics;
 pub mod observation;
 pub mod org;
 pub mod outcome;
