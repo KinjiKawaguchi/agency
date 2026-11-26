@@ -62,6 +62,9 @@ struct HomeShell: View {
                 }
                 .task(id: scenePhase) { await watchNews(session) }
                 .task(id: session.news.banners) { await dismissBannersSoon(session) }
+                .onChange(of: session.notifications.preferences.pushKinds) {
+                    if let registration = push.registration { Task { await session.registerPush(registration) } }
+                }
                 .onChange(of: tab) { _, tab in
                     // The devices screen shows a device that asks to be added by itself.
                     session.news.suppressedKinds = tab == .devices ? [.device] : []
@@ -69,6 +72,8 @@ struct HomeShell: View {
                 .sheet(isPresented: $showsSettings) {
                     SettingsSheet(
                         host: homeNode.host,
+                        notifications: session.notifications,
+                        nodeSendsPushKinds: session.nodeSendsPushKinds,
                         onChangeHomeNode: {
                             showsSettings = false
                             Task { await leave() }
@@ -169,11 +174,18 @@ struct HomeShell: View {
         }
     }
 
-    /// A notification was tapped: open the request on the desk.
+    /// A notification was tapped: go where it leads.
     private func takeLink() {
         guard session != nil, let link = push.takePendingLink() else { return }
-        tab = .desk
-        openItemID = DeskItem.key(org: link.org, team: link.team, request: link.request)
+        switch link {
+        case .request(let request):
+            tab = .desk
+            openItemID = DeskItem.key(org: request.org, team: request.team, request: request.request)
+        case .devices:
+            tab = .devices
+        case .decision:
+            tab = .desk
+        }
     }
 
     private func loaded(_ loading: DeskStore.Loading, _ session: NativeSession) {
