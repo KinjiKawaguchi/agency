@@ -94,6 +94,8 @@ pub trait PushStore {
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
+    /// Removes a team's replica. A replica that is not there is not an error.
+    fn delete_replica(&self, org: &Id, team: &Id) -> Result<()>;
 }
 
 pub trait Store:

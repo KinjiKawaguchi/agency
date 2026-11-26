@@ -114,7 +114,7 @@ pub async fn hosted_view(
     auth: &ReadAuth,
     path: &str,
 ) -> Result<FederatedView> {
-    let hosted = node.config().hosted(org, team).cloned();
+    let hosted = node.hosted(org, team);
     let doc = node.store().load_org(org);
     let definition = doc.as_ref().map(|doc| &doc.body);
     let reader = verify_read_once(node, definition, hosted.is_some(), auth, "GET", path)?;

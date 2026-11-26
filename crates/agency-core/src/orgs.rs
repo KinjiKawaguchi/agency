@@ -32,7 +32,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
 pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
     node.store().save_org(doc)?;
     let me = node.url();
-    let mut targets: Vec<String> = doc
+    let targets = doc
         .body
         .teams
         .iter()
@@ -40,6 +40,11 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
         .map(|team| team.node.clone())
         .filter(|url| url != &me)
         .collect();
+    queue_for(node, doc, targets)
+}
+
+/// Queues `doc` for each of the nodes, once each.
+fn queue_for(node: &Node, doc: &SignedOrg, mut targets: Vec<String>) -> Result<()> {
     targets.sort();
     targets.dedup();
     let now = node.now_text();
@@ -48,6 +53,37 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
             node,
             &Parcel::new(to, ParcelBody::Org(Box::new(doc.clone())), &now),
         )?;
+    }
+    Ok(())
+}
+
+/// The teams `previous` lists and `next` does not.
+fn removed_teams<'a>(previous: &'a OrgDefinition, next: &OrgDefinition) -> Vec<&'a TeamPlace> {
+    let is_listed = |team: &&TeamPlace| next.team(&team.id).is_some();
+    previous
+        .teams
+        .iter()
+        .filter(|team| !is_listed(team))
+        .collect()
+}
+
+/// Queues the version that removes a team for that team's own node as well. Versions go to the nodes of
+/// the teams still listed, so without this the node of a removed team would not hear it was removed.
+fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Result<()> {
+    let me = node.url();
+    let kept: Vec<&String> = doc.body.teams.iter().map(|team| &team.node).collect();
+    let targets = removed_teams(previous, &doc.body)
+        .into_iter()
+        .map(|team| team.node.clone())
+        .filter(|url| url != &me && !kept.contains(&url))
+        .collect();
+    queue_for(node, doc, targets)
+}
+
+/// A team the org removed has no view to keep: this node's replica of it is deleted.
+fn forget_removed(node: &Node, previous: &OrgDefinition, next: &OrgDefinition) -> Result<()> {
+    for team in removed_teams(previous, next) {
+        node.store().delete_replica(&next.org, &team.id)?;
     }
     Ok(())
 }
@@ -112,6 +148,8 @@ pub fn amend(
     edit(&mut body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
+    tell_removed(node, &current.body, &doc)?;
+    forget_removed(node, &current.body, &doc.body)?;
     Ok(doc)
 }
 
@@ -230,7 +268,8 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
         };
     }
     verify_successor(&current, &doc).map_err(Error::bad_request)?;
-    node.store().save_org(&doc)
+    node.store().save_org(&doc)?;
+    forget_removed(node, &current.body, &doc.body)
 }
 
 fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
