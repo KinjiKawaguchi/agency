@@ -86,6 +86,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Test the script that posts the week's flaky tests
+        run: |
+          shellcheck -x scripts/ci/flaky-weekly.sh scripts/test/flaky-weekly.sh scripts/test/flaky-fakes/*
+          scripts/test/flaky-weekly.sh
       - name: Check the scripts
         run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
       - name: Test the systemd unit script

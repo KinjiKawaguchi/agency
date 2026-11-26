@@ -48,10 +48,18 @@ targets:
         product: AgencyModel
       - package: AgencyKit
         product: AgencyUI
+      - package: AgencyKit
+        product: AgencyWidget
+      # The widgets, embedded in the app.
+      - target: AgencyWidgets
     entitlements:
       path: App/Agency.entitlements
       properties:
         aps-environment: $(APS_ENVIRONMENT)
+        # The file the app writes for the widgets, which the widget extension reads. Both carry the same group:
+        # the app's bundle ID with `group.` in front.
+        com.apple.security.application-groups:
+          - group.$(PRODUCT_BUNDLE_IDENTIFIER)
         # The node's host, for the universal link the Access sign-in returns through.
         com.apple.developer.associated-domains:
           - applinks:$(AGENCY_ASSOCIATED_HOST)
@@ -69,6 +77,8 @@ targets:
         # The host the app is built to return to after an Access sign-in; the app uses that sign-in
         # only for a home node on this host.
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
+        # The app group the widgets' file lives in.
+        AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER)
         NSFaceIDUsageDescription: 決裁やコメントを送るとき、本人かどうかを Face ID で確認します。
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -83,3 +93,38 @@ targets:
         # Lets a node on this device or the local network be opened over plain http.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+
+  AgencyWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widgets
+    dependencies:
+      # Only the widget's own code: a widget extension has a small memory limit, so it does not link the API
+      # client or the signing code.
+      - package: AgencyKit
+        product: AgencyKit
+      - package: AgencyKit
+        product: AgencyWidget
+    settings:
+      base:
+        # The app's bundle ID, with `.widgets`: an extension's must start with its app's.
+        PRODUCT_BUNDLE_IDENTIFIER: $(inherited).widgets
+        # An extension has no icon of its own, and runs on the phones the app does.
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: "YES"
+    entitlements:
+      path: Widgets/AgencyWidgets.entitlements
+      properties:
+        # The app's group again: the extension's bundle ID without its `.widgets` suffix, with `group.` in front.
+        com.apple.security.application-groups:
+          - group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: 決めること
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension

@@ -1,0 +1,18 @@
+#!/bin/bash
+# A stand-in for gh, for scripts/test/flaky-weekly.sh: answers the three reads the script makes with
+# the JSON of GitHub's API (as `gh api --paginate` prints it), and notes a comment that is posted.
+args="$*"
+case "$args" in
+  "api repos/acme/app/actions/workflows/ci.yml/runs"*)
+    echo "$args" >> "${FAKE_STATE:?}/runs-asked"
+    cat "$FAKE_STATE/runs.json" ;;
+  "api repos/acme/app/actions/runs/"*"/jobs"*)
+    id="${args#api repos/acme/app/actions/runs/}"; id="${id%%/*}"
+    cat "$FAKE_STATE/jobs-$id.json" ;;
+  "api repos/acme/app/check-runs/"*"/annotations"*)
+    job="${args#api repos/acme/app/check-runs/}"; job="${job%%/*}"
+    cat "$FAKE_STATE/annotations-$job.json" 2>/dev/null || echo '[]' ;;
+  "issue comment 265 --repo acme/app --body-file "*)
+    cp "${args##* }" "$FAKE_STATE/posted.md" ;;
+  *) echo "gh stand-in: unexpected $args" >&2; exit 64 ;;
+esac

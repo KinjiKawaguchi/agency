@@ -12,13 +12,7 @@ use common::{alice, body, get, id, joined_bob, Running};
 use reqwest::StatusCode;
 
 fn place(team: &str, node: &str) -> TeamPlace {
-    TeamPlace {
-        plan: None,
-        id: id(team),
-        label: team.into(),
-        department: None,
-        node: node.into(),
-    }
+    TeamPlace::new(id(team), team, node)
 }
 
 fn host(running: &Running, team: &str) {
