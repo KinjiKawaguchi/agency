@@ -3,7 +3,15 @@ import type { TaggedEvent } from './stream'
 export const BIN_MS = 5 * 60_000
 export const BINS = 12
 
-const mergedAt = (events: readonly TaggedEvent[]): number[] => events.filter(({ event }) => event.kind === 'prMerged').map(({ event }) => Date.parse(event.at))
+/** When each pull request was merged, once: teams that read the same repository may each report the same pull request, and it is one merge. */
+function mergedAt(events: readonly TaggedEvent[]): number[] {
+  const seen = new Set<string>()
+  return events.flatMap(({ org, event }) => {
+    if (event.kind !== 'prMerged' || seen.has(`${org}/${event.ref}`)) return []
+    seen.add(`${org}/${event.ref}`)
+    return [Date.parse(event.at)]
+  })
+}
 
 /** The pull requests merged in each 5 minutes of the last hour: the last bin ends at `now`, the first is the oldest. */
 export function binsOf(events: readonly TaggedEvent[], now: number): number[] {

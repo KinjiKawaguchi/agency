@@ -212,7 +212,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const since = Date.parse(url.searchParams.get('since') ?? '')
       if (Number.isNaN(since)) return failure(400, 'since must be a time.')
       const limit = Math.min(MAX_EVENTS, Math.max(1, Number(url.searchParams.get('limit') ?? MAX_EVENTS)))
-      return json(activityFor(view, since, (options.activityClock ?? Date.now)(), limit))
+      // Agents of the org's other teams may write to this team's, and the other way round.
+      const outsiders = [...views.values()].filter((other) => other.org === view.org && other.team !== view.team).flatMap((other) => other.people.filter((person) => person.kind === 'agent').map((person) => person.id))
+      return json(activityFor(view, since, (options.activityClock ?? Date.now)(), limit, outsiders))
     }
     return request.method === 'POST' && action === 'envelopes' ? decideSigned(request, view) : failure(404, 'No such route.')
   }

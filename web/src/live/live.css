@@ -19,7 +19,7 @@
   grid-template-areas:
     'tiles tiles'
     'graph feed'
-    'board feed';
+    'board board';
   gap: 16px;
   align-items: start;
 }
@@ -282,6 +282,12 @@
 }
 
 /* ── What each agent is on ── */
+.lv-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px 28px;
+}
+
 .lv-board ul {
   display: grid;
   gap: 10px;
