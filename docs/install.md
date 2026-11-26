@@ -357,7 +357,15 @@ prints one JSON object. `source` is the source to use, `env` is what to set for 
 | `overThreshold` | Every readable source is past its threshold; this one has the most room before 100%. Sessions go on, and the overview should say so. |
 | `none` | Every source has reached a limit (a window at 100). There is no `source`, and the command exits with 3. |
 
-`agency funding list` prints the same sources in order, with their `env` and threshold, for a program that needs to know every configuration directory. Neither command needs a running node or the account key, and neither prints a secret: `env` holds paths.
+`agency funding list` prints the same sources in order, with their `env`, threshold, and where each stands now, for a program that needs to know every configuration directory and which logins are past their threshold. Each source has three flags, always present:
+
+| Flag | True when |
+|---|---|
+| `overThreshold` | its 7-day window is at or past its threshold (also at 100) |
+| `blocked` | a limit of the plan itself is reached: the 7-day window at 100, or the 5-hour window at 100 and not yet reset |
+| `unknown` | its usage cannot be read now (no file, a file older than 30 minutes, or a window that has since reset); the other two flags are false then, since unknown is not past |
+
+A program that moves running sessions off a login should do so only when that login is `overThreshold`, and not move them onto one that is `blocked` or `overThreshold`. `pick` carries the same flags for the source it chose. Neither command needs a running node or the account key, and neither prints a secret: `env` holds paths.
 
 A session that is running keeps the source it started on; only new sessions move. The usage can be 5 minutes old, so a source can pass its threshold by what 5 minutes of work uses: leave room under 100.
 
