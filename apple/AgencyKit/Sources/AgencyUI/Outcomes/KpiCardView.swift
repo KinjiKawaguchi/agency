@@ -38,6 +38,8 @@ struct KpiCardView: View {
     let card: KpiCard
     let from: String
     let until: String
+    /// What the org's work cost on the days drawn: `nil` while it is being read.
+    var cost: OrgCost?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -46,6 +48,8 @@ struct KpiCardView: View {
             if let movement = card.movement { MovementLine(movement: movement) }
             if !card.points.isEmpty {
                 TrendView(layout: TrendLayout(points: card.points, from: from, until: until))
+                // Only a KPI that has numbers in the period is read against what its days cost.
+                CostColumns(cost: cost)
             }
         }
         .card()

@@ -52,6 +52,36 @@ struct OutcomesSnapshotTests {
         }
     }
 
+    private func cost(_ states: [(String, OrgCost?)]) -> [String: OrgCost] {
+        Dictionary(uniqueKeysWithValues: states.compactMap { state in state.1.map { (state.0, $0) } })
+    }
+
+    @Test("the cost under the KPIs: columns with days that no team reported, none reported, a team missing, the cost on its way, and one that failed")
+    func costUnderTheKpis() {
+        let outcomes = sample(Outcomes.self, "outcomes")
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { url.deleteLastPathComponent() }
+        let raw = try! Data(contentsOf: url.appendingPathComponent("testdata/client/evaluation.json"))
+        let evaluation = try! JSONDecoder().decode(Evaluation.self, from: raw)
+        var withTeamMissing = try! JSONSerialization.jsonObject(with: raw) as! [String: Any]
+        withTeamMissing["unavailable"] = [["team": "ops", "reason": "busy"]]
+        let dates = (11...24).map { "2026-11-\($0)" }
+        let teamMissing = try! JSONDecoder().decode(Evaluation.self, from: JSONSerialization.data(withJSONObject: withTeamMissing))
+        let states: [(String, OrgCost?)] = [
+            ("ready", .ready(CostOnDays(evaluation: evaluation, dates: dates))),
+            ("partial", .ready(CostOnDays(evaluation: teamMissing, dates: dates))),
+            ("none", .ready(CostOnDays(evaluation: evaluation, dates: ["2026-10-01", "2026-10-02"]))),
+            ("loading", nil), ("failed", .unavailable),
+        ]
+        for (name, state) in states {
+            for scheme in [ColorScheme.light, .dark] {
+                let content = OutcomesContent(orgs: orgs(), days: 30, costs: cost([("acme", state)]))
+                expectFits(Snapshot.capture("outcomes-cost-\(name)", content, scheme: scheme), "cost \(name), \(scheme)")
+            }
+        }
+        #expect(outcomes.from == "2026-11-11")
+    }
+
     @Test("a long label, a long epic title, a worse movement, an unknown direction, and a number older than the period")
     func stress() {
         let long = UIFixtures.longJapaneseTitle
