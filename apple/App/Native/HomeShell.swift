@@ -102,6 +102,7 @@ struct HomeShell: View {
             onSettings: { showsSettings = true }
         )
         .onChange(of: session.desk.waitingCount) { _, count in push.setBadge(count) }
+        .onChange(of: session.desk.items) { _, items in session.widgets.publish(items: items) }
         .onChange(of: session.desk.loading) { _, loading in loaded(loading, session) }
     }
 
@@ -192,6 +193,7 @@ struct HomeShell: View {
     private func loaded(_ loading: DeskStore.Loading, _ session: NativeSession) {
         switch loading {
         case .loaded:
+            session.widgets.publish(items: session.desk.items)
             push.noteSignedIn()
             if let registration = push.registration { Task { await session.registerPush(registration) } }
         case .failed:
@@ -216,6 +218,7 @@ struct HomeShell: View {
     /// The number on the icon and the sign-in belong to the node that is being left.
     private func leave() async {
         push.setBadge(0)
+        session?.widgets.clear()
         flow?.forget()
         onChangeHomeNode()
     }

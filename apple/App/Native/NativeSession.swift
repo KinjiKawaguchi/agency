@@ -37,6 +37,8 @@ final class NativeSession {
     let orgChart: OrgChartStore
     /// What is new since the last read, as banners.
     let news: NewsStore
+    /// What the widgets show, written after the desk is read.
+    let widgets: WidgetPublisher
     /// What the owner wants to be told, for this home node.
     let notifications: NotificationPreferencesStore
 
@@ -79,6 +81,7 @@ final class NativeSession {
         notifications = NotificationPreferencesStore(storage: NotificationDefaultsStorage(host: homeNode.host)) { news.enabledKinds = $0.bannerKinds }
         news.enabledKinds = notifications.preferences.bannerKinds
         self.news = news
+        widgets = WidgetPublisher(host: homeNode.host)
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.

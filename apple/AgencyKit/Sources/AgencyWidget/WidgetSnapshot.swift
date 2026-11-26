@@ -61,6 +61,12 @@ public struct WidgetSnapshot: Codable, Equatable, Sendable {
         self.requests = Array(requests.prefix(Self.requestLimit))
     }
 
+    /// Whether `other` says the same to a person: the same node, count and requests, whenever it was written.
+    /// The app writes only when this is false (or the file has aged), so a widget is not reloaded for nothing.
+    public func hasSameContent(as other: WidgetSnapshot) -> Bool {
+        host == other.host && waitingCount == other.waitingCount && requests == other.requests
+    }
+
     /// How out of date the snapshot is: the app writes after each read, so an old one means the app has not run.
     public enum Staleness: Equatable, Sendable {
         case fresh

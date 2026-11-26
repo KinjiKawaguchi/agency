@@ -46,6 +46,16 @@ struct WidgetSnapshotTests {
         #expect(snapshot.staleness(now: written.addingTimeInterval(-60)) == .fresh)
     }
 
+    @Test("two snapshots say the same when the node, the count and the requests are the same, whenever they were written")
+    func sameContent() {
+        let first = WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 2, requests: [request("r-1")])
+        #expect(first.hasSameContent(as: WidgetSnapshot(host: "h", writtenAt: written.addingTimeInterval(600), waitingCount: 2, requests: [request("r-1")])))
+        #expect(!first.hasSameContent(as: WidgetSnapshot(host: "other", writtenAt: written, waitingCount: 2, requests: [request("r-1")])))
+        #expect(!first.hasSameContent(as: WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 3, requests: [request("r-1")])))
+        #expect(!first.hasSameContent(as: WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 2, requests: [request("r-2")])))
+        #expect(!first.hasSameContent(as: WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 2, requests: [request("r-1", title: "Changed")])))
+    }
+
     @Test("the words of the widgets follow the glossary")
     func wording() {
         #expect(WidgetWording.inline(3) == "決めること 3 件")

@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Registers the app's bundle ID in the developer account and enables the capabilities the app uses
-# (Push Notifications, Associated Domains) for it, through the App Store Connect API. Safe to run
-# again: it only creates what is missing.
+# Registers the app's bundle ID and the widget extension's (`<bundle id>.widgets`) in the developer account
+# and enables the capabilities they use (the app: Push Notifications, Associated Domains, App Groups; the
+# widget extension: App Groups) through the App Store Connect API. Safe to run again: it only creates what
+# is missing.
+#
+# The API cannot create the app group itself (`group.<bundle id>`): make it once in the developer portal
+# (Identifiers, App Groups), or let Xcode's automatic signing create it during the TestFlight build.
 #
 #   ASC_KEY_PATH=...  ASC_KEY_ID=...  ASC_ISSUER_ID=...  apple/scripts/register-bundle-id.sh
 #
@@ -14,6 +18,7 @@ APPLE_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 REPOSITORY_ROOT=$(cd "$APPLE_DIR/.." && pwd)
 API_ROOT="${ASC_API_ROOT:-https://api.appstoreconnect.apple.com}"
 APP_NAME="${ASC_APP_NAME:-Agency}"
+WIDGET_NAME="${ASC_WIDGET_NAME:-$APP_NAME Widgets}"
 
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
@@ -51,16 +56,18 @@ asc_api() {
   exit 1
 }
 
+# find_bundle_id IDENTIFIER
 find_bundle_id() {
-  asc_api GET "/v1/bundleIds?filter%5Bidentifier%5D=$BUNDLE_ID&filter%5Bplatform%5D=IOS&limit=200"
+  asc_api GET "/v1/bundleIds?filter%5Bidentifier%5D=$1&filter%5Bplatform%5D=IOS&limit=200"
   # The filter also matches longer identifiers, so compare exactly.
-  jq -r --arg identifier "$BUNDLE_ID" \
+  jq -r --arg identifier "$1" \
     '[.data[]? | select(.attributes.identifier == $identifier)][0].id // empty' "$RESPONSE"
 }
 
+# create_bundle_id IDENTIFIER NAME
 create_bundle_id() {
   local body
-  body=$(jq -cn --arg identifier "$BUNDLE_ID" --arg name "$APP_NAME" \
+  body=$(jq -cn --arg identifier "$1" --arg name "$2" \
     '{data: {type: "bundleIds", attributes: {identifier: $identifier, name: $name, platform: "IOS"}}}')
   asc_api POST /v1/bundleIds "$body"
   jq -r '.data.id // empty' "$RESPONSE"
@@ -86,15 +93,27 @@ ensure_capability() {
   printf 'Enabled %s.\n' "$4"
 }
 
-resource_id=$(find_bundle_id)
-if [ -n "$resource_id" ]; then
-  printf 'Bundle ID %s is already registered.\n' "$BUNDLE_ID"
-else
-  resource_id=$(create_bundle_id)
-  [ -n "$resource_id" ] || die "the API created the bundle ID but did not say which one"
-  printf 'Registered bundle ID %s.\n' "$BUNDLE_ID"
-fi
+# register_bundle_id IDENTIFIER NAME CAPABILITY_TYPE:LABEL...
+# Registers the identifier when it is missing and turns on the capabilities it lacks.
+register_bundle_id() {
+  local identifier="$1" name="$2" resource_id capability_types entry
+  shift 2
+  resource_id=$(find_bundle_id "$identifier")
+  if [ -n "$resource_id" ]; then
+    printf 'Bundle ID %s is already registered.\n' "$identifier"
+  else
+    resource_id=$(create_bundle_id "$identifier" "$name")
+    [ -n "$resource_id" ] || die "the API created the bundle ID but did not say which one"
+    printf 'Registered bundle ID %s.\n' "$identifier"
+  fi
+  capability_types=$(list_capability_types "$resource_id")
+  for entry in "$@"; do
+    ensure_capability "$resource_id" "$capability_types" "${entry%%:*}" "${entry#*:}"
+  done
+}
 
-capability_types=$(list_capability_types "$resource_id")
-ensure_capability "$resource_id" "$capability_types" PUSH_NOTIFICATIONS "Push Notifications"
-ensure_capability "$resource_id" "$capability_types" ASSOCIATED_DOMAINS "Associated Domains"
+register_bundle_id "$BUNDLE_ID" "$APP_NAME" \
+  "PUSH_NOTIFICATIONS:Push Notifications" "ASSOCIATED_DOMAINS:Associated Domains" "APP_GROUPS:App Groups"
+register_bundle_id "$BUNDLE_ID.widgets" "$WIDGET_NAME" "APP_GROUPS:App Groups"
+
+printf 'Next: the app group group.%s must exist and be ticked for both bundle IDs. The API cannot create it.\n' "$BUNDLE_ID"

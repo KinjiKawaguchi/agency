@@ -120,15 +120,19 @@ export ASC_KEY_ID=XXXXXXXXXX                           # its 10 character key ID
 export ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000
 ```
 
-**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications and Associated Domains capabilities on it. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
+**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications, Associated Domains and App Groups capabilities on it; it does the same for the widget extension's bundle ID (the app's with `.widgets`), with App Groups. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
 
 ```
 Registered bundle ID com.acme.agency.
 Enabled Push Notifications.
 Enabled Associated Domains.
+Enabled App Groups.
+Registered bundle ID com.acme.agency.widgets.
+Enabled App Groups.
+Next: the app group group.com.acme.agency must exist and be ticked for both bundle IDs. The API cannot create it.
 ```
 
-The name of a new bundle ID is `Agency`; set `ASC_APP_NAME` to use another.
+The name of a new bundle ID is `Agency`, and of the widget extension's `Agency Widgets`; set `ASC_APP_NAME` and `ASC_WIDGET_NAME` to use others. The API cannot create the app group (`group.<bundle ID>`): make it once in the developer portal (Identifiers, App Groups), or let Xcode's automatic signing create it during the TestFlight build, which runs with the App Store Connect key.
 
 **`apple/scripts/testflight.sh`** does everything for one build:
 
@@ -204,6 +208,7 @@ A widget shows what waits on the owner: the number of requests that are the view
 - **`AgencyWidget`** is a package target that depends only on `AgencyKit`: the snapshot, its file store, the link, the words and the SwiftUI views. A widget extension has a small memory limit, so it must not link `AgencyAPI`, `AgencyProtocol` or swift-crypto. `AgencyModel` depends on it and holds the builder that works the snapshot out of the desk (`WidgetSnapshotBuilder`). The views are plain SwiftUI (no WidgetKit names), so they are drawn offscreen at the widgets' real sizes in the tests, and the tests fail when a widget would need more height than it has.
 - **The tap.** The widget's URL is `agency://request?org=..&team=..&request=..` (`WidgetLink`). It only says where to go, and the app accepts it only when all three values look like identifiers (`RequestLink`). No URL scheme is registered in `Info.plist`: Apple's documentation says the system activates the containing app and passes a widget's URL to `onOpenURL`, and says nothing of registering it, so no other app or web page can open the app with it. This could not be tried on a device from here: if a tap only opens the app, the fallback is one `CFBundleURLTypes` entry for `agency`.
 - **Refresh.** The widget shows the file as it is and says how old it is once it is older than three hours; the app asks the system to reload the widgets after it writes. The system budgets reloads, so the widget can be later than the app. A silent push from the node, with the remote-notification background mode, would refresh it while the app is closed; that is not built (agency#207).
+- **The targets.** `project.yml` has the extension `AgencyWidgets` (`apple/Widgets`: the widget bundle, the timeline provider that reads the file, the entitlements and an `Info.plist` that is generated). Its bundle ID is the app's with `.widgets` (`$(inherited).widgets`, so it follows `PRODUCT_BUNDLE_IDENTIFIER` in `Local.xcconfig`), and it is embedded in the app. Both carry the app group `group.<the app's bundle ID>` in their entitlements (the extension's is `group.$(PRODUCT_BUNDLE_IDENTIFIER:base)`, the build setting with its last suffix removed), and the same name in `Info.plist` as `AgencyAppGroup`, which the code reads: the extension links only `AgencyKit` and `AgencyWidget`. The app writes the file (`WidgetPublisher`, from the desk read in `HomeShell`; a write that would say the same as the last is skipped, because the system budgets reloads) and removes it when the home node is left; a tap's URL goes to `onOpenURL` in `AgencyApp`, which opens the request like a tapped notification.
 - **The Mac.** The same extension can be built for macOS 14 (WidgetKit runs there), reading the same snapshot from the Mac app's group container; `AgencyWidget` has no iOS-only code except the file protection class of the written file.
 
 ## What is new
