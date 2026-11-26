@@ -40,7 +40,8 @@ final class NativeSession {
     /// What the owner wants to be told, for this home node.
     let notifications: NotificationPreferencesStore
 
-    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
+    /// - Parameter deviceLabel: what this device is called in the list of devices (`iPhone`, `Mac`).
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String) {
         self.signIn = signIn
         let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
         self.client = client
@@ -53,7 +54,7 @@ final class NativeSession {
             problem = "\(error)"
         }
         keyProblem = problem
-        pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: Ja.Device.label) }
+        pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
         // The screens read the account and every team through one shared cache, so the app asks the node once
         // for what several screens want, and a decision drops what was read before it.
