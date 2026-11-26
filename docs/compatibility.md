@@ -10,8 +10,8 @@ Two kinds of things are versioned, separately.
 
 | Artifact | Version and tag | What it includes |
 |---|---|---|
-| The node | `vX.Y.Z` in this repository | The node, the web client it embeds, and the CLI. They always ship together, so they always match. |
-| The iPhone app | `ios-vX.Y.Z` in this repository: its marketing version, with a build number (the UTC time) for each build | The native app. Android (`android-`) and desktop (`macos-`) follow the same pattern. |
+| The node | `vX.Y.Z` in this repository | The node, the web client it embeds (also installed as an app on Windows and Linux, which therefore has no version of its own), and the CLI. They always ship together, so they always match. |
+| The Apple apps | `apple-vX.Y.Z` in this repository: one marketing version for the iPhone and Mac apps, with a build number per platform | The native apps. An Android app would be `android-vX.Y.Z`. |
 | scrum-harness | `vX.Y.Z` in its own repository | The harness and its runtime command. |
 
 The crates (`agency-proto`, `agency-core`, …) have no versions of their own. They get one only if they are ever published for others to use.
@@ -132,7 +132,7 @@ Each node says what it is and what it speaks, in two places.
   - `node`: the node's version;
   - `contracts`: the versions spoken of `federation`, `signedText`, and `runtime`, and `clientApi` as `{ current, oldest }`;
   - `capabilities`: the names of optional features, such as `orgPlan`, `p256Devices`, `webPush`, and `activity`;
-  - `oldestApp`: per platform, the oldest app version it serves.
+  - `oldestApp`: per platform (`ios`, `macos`, and later `android`), the oldest app version it serves.
 - **For nodes:** `GET /fed/v1/about`, the same answer without `oldestApp`. It is a member's signed read like every other federation read, so a stranger cannot learn a node's version and match it against known flaws. A node reads it from each peer when it reads that peer's definition and keeps it with the replica. It reads it again daily, and at once when a call answers 404 for a route the peer should have.
 
 ## Checks in CI
