@@ -21,16 +21,36 @@ private final class FakeSource: DeskSource, @unchecked Sendable {
     private var _snapshot: @Sendable (String, String) throws -> TeamSnapshot = { _, _ in Fixture.decode(TeamSnapshot.self, "team-snapshot-local") }
     private var _decisions: Result<DecisionLog, Error> = .success(Fixture.decode(DecisionLog.self, "decision-log"))
     private var _meCalls = 0
+    private var gate: CheckedContinuation<Void, Never>?
+    private var holdsNextMe = false
+    private var teamGate: CheckedContinuation<Void, Never>?
+    private var heldTeam: String?
 
     var meCalls: Int { lock.withLock { _meCalls } }
     func set(me: Result<Me, Error>) { lock.withLock { _me = me } }
     func set(snapshot: @escaping @Sendable (String, String) throws -> TeamSnapshot) { lock.withLock { _snapshot = snapshot } }
     func set(decisions: Result<DecisionLog, Error>) { lock.withLock { _decisions = decisions } }
 
+    /// The next `me()` waits until `release()`, so a refresh can be looked at while it is under way.
+    func holdNextMe() { lock.withLock { holdsNextMe = true } }
+    func release() { lock.withLock { let waiting = gate; gate = nil; return waiting }?.resume() }
+    var isHolding: Bool { lock.withLock { gate != nil } }
+
     func me() async throws -> Me {
-        try lock.withLock { _meCalls += 1; return try _me.get() }
+        if lock.withLock({ let held = holdsNextMe; holdsNextMe = false; return held }) {
+            await withCheckedContinuation { continuation in lock.withLock { gate = continuation } }
+        }
+        return try lock.withLock { _meCalls += 1; return try _me.get() }
     }
+    /// The next read of this team waits until `releaseTeam()`, so the desk can be looked at while it is the last to answer.
+    func hold(team: String) { lock.withLock { heldTeam = team } }
+    func releaseTeam() { lock.withLock { let waiting = teamGate; teamGate = nil; return waiting }?.resume() }
+    var isHoldingTeam: Bool { lock.withLock { teamGate != nil } }
+
     func teamSnapshot(org: String, team: String) async throws -> TeamSnapshot {
+        if lock.withLock({ let held = heldTeam == team; if held { heldTeam = nil }; return held }) {
+            await withCheckedContinuation { continuation in lock.withLock { teamGate = continuation } }
+        }
         let make = lock.withLock { _snapshot }
         return try make(org, team)
     }
@@ -104,6 +124,88 @@ struct DeskStoreTests {
         #expect(store.recent.count == 3)
         #expect(store.teams.count == 1)
         #expect(!store.needsSignIn)
+    }
+
+    @Test("before the node has answered there is no answer: nothing waits is not claimed, and the count is unknown")
+    func beforeAnswer() async {
+        let store = makeStore()
+        #expect(!store.hasAnswer)
+        #expect(store.knownWaitingCount == nil)
+        await store.refresh()
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 2)
+    }
+
+    @Test("a read that fails before any answer is no answer, and one that fails after an answer keeps it")
+    func failedRead() async {
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        let store = makeStore()
+        await store.refresh()
+        #expect(!store.hasAnswer)
+        #expect(store.knownWaitingCount == nil)
+        source.set(me: .success(Fixture.decode(Me.self, "me")))
+        await store.refresh()
+        #expect(store.knownWaitingCount == 2)
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.loading != .loaded)
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 2)
+    }
+
+    @Test("a node that answers with nothing to read has answered: the count is 0, not unknown")
+    func answeredWithNothing() async throws {
+        let none = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(none.utf8))))
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 0)
+    }
+
+    @Test("once a read has finished the desk stays answered: an empty desk keeps its 0 while a refresh is under way and after a failed one")
+    func answeredStays() async throws {
+        let none = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(none.utf8))))
+        let store = makeStore()
+        #expect(store.knownWaitingCount == nil)
+        await store.refresh()
+        #expect(store.knownWaitingCount == 0)
+        #expect(store.hasAnswer)
+
+        source.holdNextMe()
+        let refreshing = Task { await store.refresh() }
+        while !source.isHolding { await Task.yield() }
+        #expect(store.loading == .loading)
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 0)
+        source.release()
+        await refreshing.value
+
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.loading != .loaded)
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 0)
+    }
+
+    @Test("during the first read a team that has answered is shown, and the number is still unknown until the read has finished")
+    func firstReadPartial() async throws {
+        let two = """
+        {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[
+        {"id":"app","label":"app","location":"local","viewer":"owner"},{"id":"web","label":"web","location":"local","viewer":"owner"}]}]}
+        """
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(two.utf8))))
+        source.hold(team: "web")
+        let store = makeStore()
+        let reading = Task { await store.refresh() }
+        // Both teams are read at once: wait until `web` is held and `app` has been shown.
+        while !(source.isHoldingTeam && !store.teams.isEmpty) { await Task.yield() }
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == nil)
+        source.releaseTeam()
+        await reading.value
+        #expect(store.knownWaitingCount != nil)
     }
 
     @Test("a team that cannot be read does not hide the others")

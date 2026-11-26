@@ -144,7 +144,7 @@ struct DevicesContent: View {
             if isAdded {
                 if !rows.isEmpty { YourDevicesCard(rows: rows, now: now) }
                 Text(Ja.Devices.requests).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8).wrapping()
-                if requests.isEmpty {
+                if isLoaded && requests.isEmpty {
                     Text(Ja.Devices.noRequests).font(.footnote).foregroundStyle(.secondary).wrapping()
                 }
                 ForEach(requests, id: \.publicKey) { request in
