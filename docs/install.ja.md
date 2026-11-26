@@ -102,6 +102,8 @@ agency status
 エージェントにはスクリプトを実行したシェルの `PATH` が渡るので、チームランタイムはターミナルと同じツールを見つけられます。
 `scrum` とハーネスのツールが動くターミナルで実行してください。
 
+この `PATH` は、スクリプトを実行した時点のシェルの値の写しです。チームランタイムが実行するコマンドは、すべてその `PATH` のどれかのディレクトリになければなりません。scrum のハーネスなら、`scrum` のほかに `node` と `gh` も必要です（そのターミナルで `command -v scrum node gh` を実行して確かめます）。あとから入れたり動かしたりしたツールや、スクリプトを実行したシェルが読み込まなかったファイルでターミナルの `PATH` を設定している場合、そのコマンドはエージェントにありません。するとランタイムは `spawnSync gh ENOENT`（`ENOENT` は「見つからない」の意味）で失敗し、ノードは `a command the team runtime runs was not found` とログに書きます。そのときは、すべてが動くターミナルから、スクリプトを実行し直してください。
+
 ```sh
 scripts/launchd-plist.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/Library/LaunchAgents/local.agency.node.plist
@@ -125,6 +127,8 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 ユニットの定義ファイルは `scripts/systemd-unit.sh` で作ります（リリースの tarball では `systemd-unit.sh` という名前で入っています）。
 ユニットにはスクリプトを実行したシェルの `PATH` が渡るので、チームランタイムはターミナルと同じツールを見つけられます。systemd の `--user` のサービスには、そのままでは短い既定の `PATH` しか渡らないためです。
 `scrum` とハーネスのツールが動くターミナルで実行してください。
+
+`node` や `gh` のように、チームランタイムが実行するコマンドがすべてこの `PATH` にあることも、上の launchd の節と同じく必要です。
 
 ```sh
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
@@ -450,6 +454,7 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 | `agency: a push notification was not sent: …` | APNs が通知を受け付けませんでした。30 秒後にもう一度送ります。 |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | その資金源の収集に失敗しました。理由が続きます（ログインが見つからない、トークンの期限切れ、トークンの拒否、サービスの不調）。最後の使用量ファイルは残ります。その資金源の設定ディレクトリでログインし直すか、そのログインで Claude Code を使うと、次の読み取りは成功します。続いて `agency: usage of "<id>" is read again` が出ます。 |
 | `agency: re-reading the replicas failed: …`、`agency: checking for new requests failed: …`、`agency: retrying the outbox failed: …` | ノードがデータディレクトリに書き込めませんでした（ディスクがいっぱいなど）。ほかのノードに届かないことはログに出ません。送信待ちのものは `agency status` に、ほかのノードにあるチームの写しをいつ読んだかは Web クライアントに表示されます。 |
+| `agency: team acme/app: a command the team runtime runs was not found: …` | チームランタイムが実行するコマンド（`gh` や `node` など）が、launchd のエージェントや systemd のユニットの `PATH` にないため、ランタイムが失敗しました。ターミナルで `command -v` を使って確かめ、それらが動くターミナルから「launchd で動かす」または「systemd で動かす」のスクリプトを実行し直して、再起動します。この行は `the team runtime fails: … ENOENT` の行に続いて出ます。 |
 | `agency: <メッセージ>` のあとノードが止まる | `config.json` を読めないなどの理由で起動できませんでした。launchd と systemd は 10 秒ごとに起動し直します。 |
 
 ### ノードの応答
@@ -476,7 +481,7 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 
 - agency-runtime/1 の `describe`、`view`、`decide` に答えるコマンド。費用の画面を使うなら `tokenUsage` にも答えます。どの呼び出しにも 20 秒以内に答える必要があります。
 - `team-add --state-dir` に渡したものと同じ、チームの状態ディレクトリ。
-- チームランタイムが呼ぶすべてのツールが、launchd のエージェントや systemd のユニットに書かれた `PATH` から見つかること。
+- チームランタイムが呼ぶすべてのツール（scrum のハーネスなら `node` と `gh`）が、launchd のエージェントや systemd のユニットに書かれた `PATH` から見つかること。見つからないコマンドがあるとランタイムが止まり、ノードのログがそう伝えます。
 - 自分あての依頼は、`to` を省くか `owner` にすること。自分のほかにメンバーがいない組織では、すべての依頼が自分あてになります。自分を待っている参加者は、`waitingOn` が `{ "kind": "person", "person": "owner" }` になります。
 
 ノードは動いているあいだ、30 秒ごとと、ページがチームを読むたびに、チームランタイムにビューを問い合わせます。
