@@ -1,0 +1,26 @@
+name: flaky-weekly
+
+# Every Monday, the week's tests that passed only on a retry are posted as a comment on the standing issue
+# (#265), so that CI's retries do not hide flakes for good. The list is read from the warnings CI puts on its
+# runs (scripts/ci/flaky-summary.sh). Run it by hand from the Actions tab to post it at any time.
+on:
+  schedule:
+    # Monday 00:00 UTC, which is 09:00 in Tokyo.
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  issues: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Post the week's list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/flaky-weekly.sh "${{ github.repository }}" 265

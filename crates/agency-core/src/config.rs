@@ -27,6 +27,9 @@ pub struct HostedTeam {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub people: BTreeMap<String, Id>,
     pub runtime: RuntimeCommand,
+    /// Where the team's delivery numbers come from. Without it, the team has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<DeliveryConfig>,
 }
 
 impl HostedTeam {
@@ -38,12 +41,21 @@ impl HostedTeam {
             owner,
             people: BTreeMap::new(),
             runtime,
+            delivery: None,
         }
     }
 
     /// The same team with these addressees: runtime names mapped to org person ids.
     pub fn with_people(self, people: BTreeMap<String, Id>) -> Self {
         Self { people, ..self }
+    }
+
+    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`).
+    pub fn with_delivery(self, repos: Vec<String>) -> Self {
+        Self {
+            delivery: Some(DeliveryConfig { repos }),
+            ..self
+        }
     }
 
     /// The same team run by another command.
@@ -123,9 +135,6 @@ pub struct NodeConfig {
     /// The account's sources of funding, shown to clients with their usage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub funding: Vec<FundingConfig>,
-    /// Where each hosted team's delivery numbers come from. A team that is not listed has none.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub delivery: Vec<DeliveryConfig>,
     /// Cloudflare Access in front of the Client API. Without it, the Client API answers only direct
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -141,8 +150,6 @@ pub struct NodeConfig {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
-    pub org: Id,
-    pub team: Id,
     pub repos: Vec<String>,
 }
 
@@ -316,6 +323,36 @@ mod tests {
     }
 
     #[test]
+    fn a_team_may_name_the_repositories_its_delivery_numbers_come_from() {
+        let old = r#"{"org":"acme","team":"app","owner":"owner","runtime":{"command":["scrum","runtime"]}}"#;
+        let without: HostedTeam = serde_json::from_str(old).unwrap();
+        assert_eq!(
+            without.delivery, None,
+            "a configuration from before still loads"
+        );
+        assert!(
+            !serde_json::to_string(&without)
+                .unwrap()
+                .contains("delivery"),
+            "and is written without it"
+        );
+
+        let with = without.with_delivery(vec!["acme/app".into(), "acme/web".into()]);
+        let text = serde_json::to_string(&with).unwrap();
+        assert!(
+            text.contains(r#""delivery":{"repos":["acme/app","acme/web"]}"#),
+            "{text}"
+        );
+        let again: HostedTeam = serde_json::from_str(&text).unwrap();
+        assert_eq!(again.delivery, with.delivery);
+        let unknown = text.replace(r#""repos""#, r#""token":"x","repos""#);
+        assert!(
+            serde_json::from_str::<HostedTeam>(&unknown).is_err(),
+            "no other key, a token least of all"
+        );
+    }
+
+    #[test]
     fn trusting_never_replaces_another_roots_fingerprint() {
         let mut config = NodeConfig {
             url: "http://127.0.0.1:4400".into(),
@@ -328,7 +365,6 @@ mod tests {
             teams: vec![],
             trusted: vec![],
             funding: vec![],
-            delivery: vec![],
             access: None,
             push: None,
         };

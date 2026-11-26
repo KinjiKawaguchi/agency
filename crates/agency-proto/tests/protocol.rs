@@ -1,7 +1,9 @@
 //! Tests of the protocol's deciding rules: the chain of org definition versions (one writer, the root key), envelope shape and expiry, and the test vectors.
 //! The non-ASCII sample values ("開発", "ア") are on purpose: the test vectors pin UTF-8 in canonical JSON.
 use agency_proto::canonical::canonical_of;
-use agency_proto::org::{verify_genesis, verify_successor, Department, Root, SignedOrg, TeamPlace};
+use agency_proto::org::{
+    verify_genesis, verify_successor, Allocation, Department, Root, SignedOrg, TeamPlace, TeamPlan,
+};
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
     Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
@@ -38,12 +40,8 @@ fn genesis(root: &AccountKey) -> SignedOrg {
             role: Role::Member,
             devices: vec![],
         }],
-        teams: vec![TeamPlace {
-            id: id("app"),
-            label: "app".into(),
-            department: Some(id("dev")),
-            node: "https://alice.example".into(),
-        }],
+        teams: vec![TeamPlace::new(id("app"), "app", "https://alice.example")
+            .with_department(Some(id("dev")))],
         revoked: vec![],
         at: AT.into(),
     };
@@ -328,6 +326,54 @@ fn comment_envelope() -> Envelope {
 /// the org definition and the first device change, the device key (seed 9) signs the envelope and a comment, and a
 /// P-256 device key signs the same comment and two device changes. Another implementation
 /// must produce the same values.
+/// The next version of `org`, with a plan for its team: how a plan is signed.
+fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    body.teams[0].plan = Some(TeamPlan {
+        allocation: Allocation {
+            new_feature: 40,
+            improvement: 20,
+            maintenance: 20,
+            debt: 15,
+            incident: 5,
+        },
+        weekly_budget_usd: 500,
+    });
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
+#[test]
+fn a_plan_allocation_adds_up_to_100() {
+    let key = AccountKey::from_seed([7u8; 32]);
+    let mut body = genesis(&key).body;
+    let mut allocation = Allocation {
+        new_feature: 40,
+        improvement: 20,
+        maintenance: 20,
+        debt: 15,
+        incident: 5,
+    };
+    body.teams[0].plan = Some(TeamPlan {
+        allocation: allocation.clone(),
+        weekly_budget_usd: 0,
+    });
+    assert_eq!(body.validate(), Ok(()));
+    allocation.incident = 4;
+    body.teams[0].plan = Some(TeamPlan {
+        allocation: allocation.clone(),
+        weekly_budget_usd: 0,
+    });
+    assert!(body.validate().is_err(), "99");
+    allocation.incident = u32::MAX;
+    body.teams[0].plan = Some(TeamPlan {
+        allocation,
+        weekly_budget_usd: 0,
+    });
+    assert!(body.validate().is_err(), "no overflow to 100");
+}
+
 #[test]
 fn vectors_match_testdata() {
     let key = AccountKey::from_seed([7u8; 32]);
@@ -368,6 +414,7 @@ fn vectors_match_testdata() {
         "commentEnvelope": { "canonical": canonical_of(&comment).unwrap(), "signer": "laptop", "signature": signed_comment.signature },
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
+        "orgWithPlan": org_with_plan(&key, &org),
         "deviceChangeP256": device_change_p256(),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");

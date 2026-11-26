@@ -192,12 +192,7 @@ async fn lying_node() -> String {
 async fn refuses_a_report_from_a_team_node_of_another_team_or_range() {
     let (alice, _) = alice().await;
     let bob = joined_bob(&alice).await;
-    let place = TeamPlace {
-        id: id("ext"),
-        label: "ext".into(),
-        department: None,
-        node: lying_node().await,
-    };
+    let place = TeamPlace::new(id("ext"), "ext", lying_node().await);
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     let latest = alice.node.store().load_org(&id("acme")).unwrap();
     bob.node.store().save_org(&latest).unwrap();

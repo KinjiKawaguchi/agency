@@ -165,7 +165,6 @@ async fn node_from(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
     })
@@ -221,12 +220,7 @@ pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Ru
     orgs::add_team(
         node,
         &id("acme"),
-        TeamPlace {
-            id: id("app"),
-            label: "app".into(),
-            department: None,
-            node: running.url(),
-        },
+        TeamPlace::new(id("app"), "app", running.url()),
     )
     .unwrap();
     node.update_config(|config| {

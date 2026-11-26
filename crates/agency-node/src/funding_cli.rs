@@ -46,7 +46,10 @@ pub fn run(data: &DataDir, command: &FundingCommand) -> Result<bool> {
     let config = data.load_config().context("cannot read config.json")?;
     match command {
         FundingCommand::List { tool } => {
-            let listed = list(&config.funding, tool.map(Tool::from)).map_err(anyhow::Error::msg)?;
+            let usage = UsageFiles::new(data.root().to_owned());
+            let now = OffsetDateTime::now_utc();
+            let listed = list(&config.funding, &usage, tool.map(Tool::from), now)
+                .map_err(anyhow::Error::msg)?;
             println!("{}", serde_json::to_string_pretty(&listed)?);
             Ok(false)
         }

@@ -4,7 +4,6 @@
 mod common;
 
 use agency_adapters::peers::read_headers;
-use agency_core::config::DeliveryConfig;
 use agency_core::delivery::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 use agency_core::read_auth::sign_read;
 use agency_proto::clock;
@@ -43,17 +42,15 @@ fn configure(alice: &Running) {
     alice
         .node
         .update_config(|config| {
-            // Another team's repositories come first: only the team's own are read.
-            config.delivery.push(DeliveryConfig {
-                org: id("acme"),
-                team: id("other"),
-                repos: vec!["acme/other".into()],
-            });
-            config.delivery.push(DeliveryConfig {
-                org: id("acme"),
-                team: id("app"),
-                repos: vec!["acme/app".into()],
-            })
+            let at = config
+                .teams
+                .iter()
+                .position(|team| team.team == id("app"))
+                .expect("alice hosts acme/app");
+            let team = config.teams.remove(at);
+            config
+                .teams
+                .insert(at, team.with_delivery(vec!["acme/app".into()]));
         })
         .unwrap();
 }

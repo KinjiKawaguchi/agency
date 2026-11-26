@@ -18,6 +18,8 @@ pub mod peers;
 pub mod refusal_log;
 pub mod runtime;
 pub mod server;
+mod swr;
+pub use swr::ReadCounts;
 pub mod system;
 pub mod usage_collector;
 

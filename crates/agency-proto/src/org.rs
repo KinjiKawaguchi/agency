@@ -68,16 +68,85 @@ pub struct Device {
     pub added_at: Timestamp,
 }
 
-/// A team and the node it runs on.
+/// A team and the node it runs on. Made with `TeamPlace::new`, so a new field gets its default in one place
+/// and not in every place that builds one (other crates cannot build it by hand; a test keeps this crate
+/// from doing it either).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+#[non_exhaustive]
 pub struct TeamPlace {
     pub id: Id,
     pub label: String,
     pub department: Option<Id>,
     /// The node's origin (http or https, no path).
     pub node: String,
+    /// What the org intends for the team. Absent when it states nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub plan: Option<TeamPlan>,
+}
+
+impl TeamPlace {
+    /// A team in no department, with no plan, that runs at the node `node`.
+    pub fn new(id: Id, label: impl Into<String>, node: impl Into<String>) -> Self {
+        Self {
+            id,
+            label: label.into(),
+            department: None,
+            node: node.into(),
+            plan: None,
+        }
+    }
+
+    /// The same team in this department (or in none).
+    pub fn with_department(self, department: Option<Id>) -> Self {
+        Self { department, ..self }
+    }
+
+    /// The same team with this plan (or none).
+    pub fn with_plan(self, plan: Option<TeamPlan>) -> Self {
+        Self { plan, ..self }
+    }
+}
+
+/// What an org intends for a team: the share of its effort for each kind of work, and how much it
+/// means to spend a week.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct TeamPlan {
+    pub allocation: Allocation,
+    /// The weekly spend the org intends, in whole US dollars, estimated at API prices like
+    /// `TokenUsage.costUsd` (an integer, since the definition is signed as canonical JSON).
+    pub weekly_budget_usd: u32,
+}
+
+/// Percent of a team's effort for each kind of work. The five add up to 100.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct Allocation {
+    pub new_feature: u32,
+    pub improvement: u32,
+    pub maintenance: u32,
+    pub debt: u32,
+    pub incident: u32,
+}
+
+impl Allocation {
+    pub fn total(&self) -> u64 {
+        [
+            self.new_feature,
+            self.improvement,
+            self.maintenance,
+            self.debt,
+            self.incident,
+        ]
+        .into_iter()
+        .map(u64::from)
+        .sum()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -230,6 +299,10 @@ impl OrgDefinition {
             label_ok(&t.label) && is_known_department(&t.department) && is_node_origin(&t.node)
         }) {
             return Err("malformed team label, department, or node URL".into());
+        }
+        let plans = self.teams.iter().filter_map(|t| t.plan.as_ref());
+        if !plans.into_iter().all(|plan| plan.allocation.total() == 100) {
+            return Err("a team's plan allocation does not add up to 100".into());
         }
         self.validate_devices()
     }
