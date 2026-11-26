@@ -11,7 +11,8 @@ import type { Timestamp } from "./Timestamp.js";
  */
 export type Evaluation = { org: Id, days: number, 
 /**
- * The period's first and last calendar day in the node's time zone, written like `byDay[].date`.
+ * The period's first and last calendar day in the time zone of the node that answers, written like
+ * `byDay[].date`. A team on a node in another time zone has its own `from` and `until`.
  */
 from: Date, until: Date, generatedAt: Timestamp, teams: Array<TeamEvaluation>, 
 /**

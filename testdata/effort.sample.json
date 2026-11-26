@@ -7,6 +7,8 @@
   "teams": [
     {
       "team": "app",
+      "from": "2026-11-11",
+      "until": "2026-11-24",
       "byType": {
         "newFeature": { "costUsd": 8.1, "tokens": { "input": 90000, "output": 30000, "cacheRead": 1800000, "cacheWrite": 120000 } },
         "improvement": { "costUsd": 0.0, "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } },

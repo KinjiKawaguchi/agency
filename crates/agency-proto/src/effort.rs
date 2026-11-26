@@ -1,10 +1,10 @@
 //! Where a team's tokens went, by the kind of work (docs/protocol.md, "Evaluation"): the cost and token
 //! counts of each team split by work type. The intended allocation is not here; it is the org
 //! definition's team plan. Costs are estimates at API prices in US dollars, as in `usage`.
-use crate::evaluation::{check_period, TeamUnavailable};
+use crate::evaluation::{check_answer, check_days, Answer, TeamUnavailable};
 use crate::ids::Id;
 use crate::timestamp::{Date, Timestamp};
-use crate::usage::{valid_days, TokenCounts};
+use crate::usage::TokenCounts;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -58,6 +58,10 @@ pub struct DayEffort {
 #[ts(export)]
 pub struct TeamEffort {
     pub team: Id,
+    /// The period's first and last calendar day in the time zone of the team's node, as on
+    /// `TeamEvaluation`.
+    pub from: Date,
+    pub until: Date,
     pub by_type: ByWorkType<TypeUsage>,
     /// Oldest day first; days with nothing in them may be left out.
     pub by_day: Vec<DayEffort>,
@@ -70,7 +74,8 @@ pub struct TeamEffort {
 pub struct Effort {
     pub org: Id,
     pub days: u32,
-    /// The period's first and last calendar day in the node's time zone, written like `byDay[].date`.
+    /// The period's first and last calendar day in the time zone of the node that answers, written like
+    /// `byDay[].date`. A team on a node in another time zone has its own `from` and `until`.
     pub from: Date,
     pub until: Date,
     pub generated_at: Timestamp,
@@ -81,12 +86,15 @@ pub struct Effort {
 impl Effort {
     /// Checks that this is a well-formed report of the org and range that were asked for.
     pub fn check(&self, org: &Id, days: u32) -> Result<(), String> {
-        if &self.org != org || self.days != days || !valid_days(days) {
-            return Err(format!(
-                "reported {} over {} days instead of {org} over {days} days",
-                self.org, self.days
-            ));
-        }
+        let answer = Answer {
+            org: &self.org,
+            days: self.days,
+            from: &self.from,
+            until: &self.until,
+            teams: self.teams.iter().map(|team| &team.team).collect(),
+            unavailable: &self.unavailable,
+        };
+        check_answer(org, days, &answer)?;
         for team in &self.teams {
             let dates: Vec<&Date> = team.by_day.iter().map(|day| &day.date).collect();
             let costs: Vec<f64> = team
@@ -100,7 +108,7 @@ impl Effort {
                         .flat_map(|day| day.cost_usd.all().into_iter().copied()),
                 )
                 .collect();
-            check_period(&dates, &self.from, &self.until, &costs, days)?;
+            check_days(&dates, &team.from, &team.until, &costs, days)?;
         }
         Ok(())
     }
@@ -140,5 +148,32 @@ mod tests {
         days.teams[0].by_day[0].cost_usd.debt = f64::NAN;
         assert!(days.check(&acme, 14).is_err());
         assert!(sample().check(&acme, 30).is_err());
+    }
+
+    #[test]
+    fn refuses_what_the_evaluation_check_refuses() {
+        let acme = Id::parse("acme").unwrap();
+        let mut backwards = sample();
+        std::mem::swap(&mut backwards.from, &mut backwards.until);
+        assert!(backwards
+            .check(&acme, 14)
+            .unwrap_err()
+            .contains("ends before"));
+        let mut twice = sample();
+        twice.unavailable.push(TeamUnavailable {
+            team: twice.teams[0].team.clone(),
+            reason: "x".into(),
+        });
+        assert!(twice.check(&acme, 14).unwrap_err().contains("twice"));
+        let mut long = sample();
+        long.until = Date::parse("2030-01-01").unwrap();
+        assert!(long
+            .check(&acme, 14)
+            .unwrap_err()
+            .contains("not 14 days long"));
+        let mut team = sample();
+        let own = &mut team.teams[0];
+        std::mem::swap(&mut own.from, &mut own.until);
+        assert!(team.check(&acme, 14).unwrap_err().contains("ends before"));
     }
 }

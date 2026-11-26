@@ -250,14 +250,22 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 How fast a team's work ships, and where its tokens go. The team's node works the numbers out (nothing is stored: each read asks GitHub and the team's runtime, and the node reuses an answer for 10 minutes), so a screen and an agent that cites them agree.
 
 ```
-Evaluation { org, days, from: Date, until: Date, generatedAt, teams: TeamEvaluation[], unavailable: { team, reason }[] }
-TeamEvaluation { team, summary: EvaluationSummary, byDay: DayEvaluation[] }
-DayEvaluation { date, merged: MergedCounts, reverts, mainRedSeconds, costUsd, prLeadSeconds: int[], issueLeadSeconds: int[] }
-Effort { org, days, from, until, generatedAt, teams: TeamEffort[], unavailable }
-TeamEffort { team, byType: { newFeature, improvement, maintenance, debt, incident, unclassified: { costUsd, tokens } }, byDay: { date, costUsd: { <the six types> } }[] }
+Evaluation       { org, days, from: Date, until: Date, generatedAt, teams: TeamEvaluation[], unavailable: TeamUnavailable[] }
+TeamUnavailable  { team: Id, reason: string }
+TeamEvaluation   { team, from: Date, until: Date, summary: EvaluationSummary, byDay: DayEvaluation[] }
+EvaluationSummary{ merged: MergedCounts, prLeadMedianSeconds?, prLeadP90Seconds?, issueLeadMedianSeconds?, issueLeadP90Seconds?,
+                   mainRedSeconds, longestRedSeconds, reverts, costPerMergedPrUsd? }     // ? = left out when there is no value
+MergedCounts     { feat, fix, refactor, docs, test, chore, other }
+DayEvaluation    { date, merged: MergedCounts, reverts, mainRedSeconds, costUsd, prLeadSeconds: int[], issueLeadSeconds: int[] }
+
+Effort           { org, days, from, until, generatedAt, teams: TeamEffort[], unavailable: TeamUnavailable[] }
+TeamEffort       { team, from, until, byType: ByWorkType<TypeUsage>, byDay: DayEffort[] }
+DayEffort        { date, costUsd: ByWorkType<number> }
+ByWorkType<T>    { newFeature: T, improvement: T, maintenance: T, debt: T, incident: T, unclassified: T }
+TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
 ```
 
-- The period is the last `days` calendar days (1 to 90), today included, in the node's time zone; `from` and `until` are its first and last day, written like `byDay[].date`. `byDay` is oldest first, and days with nothing in them may be left out. A team on another node reports days in that node's time zone.
+- The period is the last `days` calendar days (1 to 90), today included. `from` and `until` are its first and last day, written like `byDay[].date`, in the time zone of the node that computed them: each team has its own (the time zone of the team's node), and every day of its `byDay` lies inside them, so a client draws a team against its own period. The answer's own `from` and `until` are the answering node's. `byDay` is oldest first, and days with nothing in them may be left out.
 - Counts and seconds are integers. Costs are estimates at API prices, as in "Token usage". An optional field is left out, never null.
 - A pull request counts on the day it merged. Its type is the Conventional Commits type of its title (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`); anything else, including `ci`, `build`, `perf`, `style`, is `other`.
 - A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body says "This reverts commit". It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
@@ -267,7 +275,7 @@ TeamEffort { team, byType: { newFeature, improvement, maintenance, debt, inciden
 - `costPerMergedPrUsd` is the period's cost divided by the pull requests merged in it (`merged` and `reverts`). Token usage is per day, so there is no per-pull-request attribution. It is left out when nothing merged.
 - **Work type** (`Effort`): the board's "Work type" field when the item has one; otherwise the pull request's type: `feat` is `newFeature`, `refactor` is `debt`, `fix` is `maintenance` (`incident` when its issue carries the label `incident`), and `docs`, `test`, `chore` are `maintenance`. Work with neither is `unclassified`. `improvement` comes only from the board field. The intended allocation and budget are the org definition's team plan; `Effort` does not copy them.
 - A team whose answer cannot be had (not configured, its node unreachable, GitHub unavailable) is listed in `unavailable` with a reason in plain text, without a secret or an address, and the other teams are answered. A malformed answer from another node is such a failure.
-- Before passing a report on, the node checks that `org` and `days` are the ones it asked for, that the days are in order and inside the period, and that every cost is a number that is not negative.
+- Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
 - The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.
 
 ## Client API
