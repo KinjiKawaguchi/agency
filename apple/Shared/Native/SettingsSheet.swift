@@ -1,14 +1,17 @@
+import AgencyKit
 import AgencyModel
 import AgencyUI
 import AgencyWidget
 import SwiftUI
 
-/// The home node, what the app tells the owner, and the way to change the home node.
+/// The home nodes (switch, add, forget), what the app tells the owner, and the way to leave this one.
 struct SettingsSheet: View {
     let host: String
+    let nodes: any HomeNodeSwitching
     let notifications: NotificationPreferencesStore
     let widgets: WidgetPreferencesStore
     let nodeSendsPushKinds: Bool?
+    let onSwitchHomeNode: (HomeNodeURL) -> Void
     let onChangeHomeNode: () -> Void
     let onResetKey: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -17,9 +20,7 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(Ja.Desk.homeNode) {
-                    Text(host).textSelection(.enabled).lineLimit(2).truncationMode(.middle)
-                }
+                HomeNodeSwitcherSections(host: host, nodes: nodes, onSwitch: onSwitchHomeNode)
                 NotificationSettingsSections(store: notifications, nodeSendsKinds: nodeSendsPushKinds)
                 widgetSection
                 Section(footer: Text(Ja.Key.resetExplain(.platform))) {

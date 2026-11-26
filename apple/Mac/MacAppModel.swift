@@ -1,3 +1,4 @@
+import AgencyAPI
 import AgencyKit
 import AgencyModel
 import Foundation
@@ -8,7 +9,7 @@ import Observation
 /// the desk is still read every 30 seconds and the menu-bar item keeps its number.
 @MainActor
 @Observable
-final class MacAppModel {
+final class MacAppModel: HomeNodeSwitching {
     let store: HomeNodeStore
     let push: PushCoordinator
     private(set) var shell: ShellModel?
@@ -37,11 +38,25 @@ final class MacAppModel {
         return MenuBarState(hasHomeNode: store.homeNode != nil, known: desk?.knownWaitingCount, isFailed: desk?.isReadFailing == true)
     }
 
+    // MARK: The owner's other home nodes (the shell asks)
+
+    var others: [HomeNodeEntry] { store.others }
+
+    func switchTo(_ node: HomeNodeURL) {
+        store.switchTo(node)
+        open(node)
+    }
+
+    func add(_ node: HomeNodeURL, label: String) { store.add(node, label: label) }
+    func note(configured: [HomeNodeRef]) { store.note(configured: configured) }
+
+    func forget(_ node: HomeNodeURL) { store.forget(node) }
+
     private func open(_ homeNode: HomeNodeURL) {
         reading?.cancel()
         let shell = ShellModel(
             homeNode: homeNode, push: push, deviceLabel: Ja.Device.macLabel,
-            onChangeHomeNode: { [weak self] in self?.leave() }
+            nodes: self
         )
         self.shell = shell
         shell.start()
@@ -49,7 +64,7 @@ final class MacAppModel {
     }
 
     /// The home node is left: the shell and its session go, and the setup comes back.
-    private func leave() {
+    func leave() {
         reading?.cancel()
         shell = nil
         store.clear()

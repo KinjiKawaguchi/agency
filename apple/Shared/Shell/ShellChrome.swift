@@ -46,9 +46,11 @@ private struct ShellChrome: ViewModifier {
                 if let session = model.session {
                     SettingsSheet(
                         host: model.homeNode.host,
+                        nodes: model.nodes,
                         notifications: session.notifications,
                         widgets: session.widgets.preferences,
                         nodeSendsPushKinds: session.nodeSendsPushKinds,
+                        onSwitchHomeNode: model.switchHomeNode(to:),
                         onChangeHomeNode: model.leave,
                         onResetKey: model.resetKey
                     )
