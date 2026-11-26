@@ -1,6 +1,7 @@
 import { buildEnvelope, newEnvelopeId, signEnvelope } from '../device/envelope'
 import { createTestNode, TEST_DEVICE, TEST_DEVICE_ID } from '../test/testDevice'
-import { createApiClient } from './client'
+import { ApiError, createApiClient } from './client'
+import { createMockNode } from '../mock/node'
 
 const ANSWER_WITH = { kind: 'answer', target: 'r-20261124-113000-c3d4' } as const
 
@@ -52,5 +53,61 @@ describe('decideSigned', () => {
 
   it('sends no label that is empty once trimmed', async () => {
     expect(await sent({ choiceLabel: '   ' }, 'approve')).not.toHaveProperty('choiceLabel')
+  })
+})
+
+describe('the write token, which changes each time the node starts', () => {
+  const PUSH = { token: 'a'.repeat(64), environment: 'sandbox', label: 'Phone' } as const
+
+  /** A client whose calls are counted by method and path, against the given node. */
+  function counted(node: ReturnType<typeof createMockNode>) {
+    const calls: string[] = []
+    const api = createApiClient((request) => {
+      calls.push(`${request.method} ${new URL(request.url, 'http://mock.local').pathname}`)
+      return node.handle(request)
+    })
+    return { api, calls }
+  }
+
+  it('asks the node for the token once when a write is refused for it, and sends the write again', async () => {
+    const node = createMockNode()
+    const { api, calls } = counted(node)
+    node.restart()
+    await api.registerPushToken(PUSH)
+    expect(node.pushTokens()).toHaveLength(1)
+    expect(calls).toEqual(['POST /api/push/tokens', 'GET /api/session', 'POST /api/push/tokens'])
+  })
+
+  it('keeps the new token for the writes that follow, without asking again', async () => {
+    const node = createMockNode()
+    const { api, calls } = counted(node)
+    node.restart()
+    await api.registerPushToken(PUSH)
+    await api.registerPushToken({ ...PUSH, token: 'b'.repeat(64) })
+    expect(calls.filter((call) => call === 'GET /api/session')).toHaveLength(1)
+    expect(calls.filter((call) => call === 'POST /api/push/tokens')).toHaveLength(3)
+  })
+
+  it('sends a write again only once: a second refusal is the answer', async () => {
+    const calls: string[] = []
+    const refusing = createApiClient((request) => {
+      const path = new URL(request.url, 'http://mock.local').pathname
+      calls.push(`${request.method} ${path}`)
+      return Promise.resolve(path === '/api/session' ? new Response(JSON.stringify({ writeToken: 'next', now: '2026-11-24T12:00:00Z' }), { status: 200 }) : new Response(JSON.stringify({ error: 'missing or wrong write token' }), { status: 403 }))
+    })
+    await expect(refusing.registerPushToken(PUSH)).rejects.toMatchObject({ status: 403 })
+    expect(calls).toEqual(['POST /api/push/tokens', 'GET /api/session', 'POST /api/push/tokens'])
+  })
+
+  it('does not ask again for a refusal that is not about the token, or an answer that is not a 403', async () => {
+    for (const [status, message] of [[403, 'this account is not the owner'], [409, 'missing or wrong write token'], [400, 'bad body']] as const) {
+      const calls: string[] = []
+      const api = createApiClient((request) => {
+        calls.push(`${request.method} ${new URL(request.url, 'http://mock.local').pathname}`)
+        return Promise.resolve(new Response(JSON.stringify({ error: message }), { status }))
+      })
+      await expect(api.registerPushToken(PUSH)).rejects.toBeInstanceOf(ApiError)
+      expect(calls, `${status} ${message}`).toEqual(['POST /api/push/tokens'])
+    }
   })
 })

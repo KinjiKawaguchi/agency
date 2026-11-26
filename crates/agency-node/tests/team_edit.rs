@@ -12,12 +12,7 @@ fn body(running: &Running) -> agency_proto::OrgDefinition {
 
 /// A team in the org's definition that is not in alice's own configuration.
 fn add_unhosted_team(alice: &Running, team: &str) {
-    let place = TeamPlace {
-        id: id(team),
-        label: team.into(),
-        department: None,
-        node: "http://127.0.0.1:9".into(),
-    };
+    let place = TeamPlace::new(id(team), team, "http://127.0.0.1:9");
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
 }
 

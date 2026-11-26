@@ -2,6 +2,8 @@
 mod dept_cli;
 mod device_cli;
 mod funding_cli;
+mod kpi_cli;
+mod outcome_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -85,6 +87,14 @@ enum Command {
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
+    TeamPlan(dept_cli::TeamPlanArgs),
+    OutcomeAdd(outcome_cli::OutcomeAdd),
+    OutcomeList(outcome_cli::OutcomeList),
+    KpiAdd(kpi_cli::KpiAdd),
+    KpiSet(kpi_cli::KpiSet),
+    KpiRemove(kpi_cli::KpiRemove),
+    PlanAim(kpi_cli::PlanAim),
+    PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
@@ -209,9 +219,10 @@ fn init(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
+        web_push: None,
+        hide_titles: false,
     })?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
@@ -252,7 +263,13 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        for line in dept_cli::department_lines(&doc.body) {
+        let lines = dept_cli::department_lines(&doc.body);
+        let plans = dept_cli::plan_lines(&doc.body);
+        for line in lines
+            .into_iter()
+            .chain(plans)
+            .chain(kpi_cli::kpi_lines(&doc.body))
+        {
             println!("{line}");
         }
     }
@@ -417,12 +434,8 @@ async fn run(cli: Cli) -> Result<()> {
             let doc = orgs::add_team(
                 &node,
                 &org,
-                TeamPlace {
-                    id: team.clone(),
-                    label,
-                    department: department.as_deref().map(id).transpose()?,
-                    node: place_url,
-                },
+                TeamPlace::new(team.clone(), label, place_url)
+                    .with_department(department.as_deref().map(id).transpose()?),
             )?;
             if let (true, Some(state_dir)) = (is_here, state_dir) {
                 let owner = owner
@@ -432,13 +445,9 @@ async fn run(cli: Cli) -> Result<()> {
                     .unwrap_or_else(|| node.account());
                 let runtime = RuntimeCommand::scrum(&node.config().scrum, &absolute(&state_dir)?);
                 node.update_config(|config| {
-                    config.teams.push(HostedTeam {
-                        org: org.clone(),
-                        team: team.clone(),
-                        owner,
-                        people: Default::default(),
-                        runtime,
-                    })
+                    config
+                        .teams
+                        .push(HostedTeam::new(org.clone(), team.clone(), owner, runtime))
                 })?;
             }
             println!(
@@ -450,6 +459,14 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
+        Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
+        Command::OutcomeAdd(args) => outcome_cli::outcome_add(&node, args).await?,
+        Command::OutcomeList(args) => outcome_cli::outcome_list(&node, args)?,
+        Command::KpiAdd(args) => kpi_cli::kpi_add(&node, args)?,
+        Command::KpiSet(args) => kpi_cli::kpi_set(&node, args)?,
+        Command::KpiRemove(args) => kpi_cli::kpi_remove(&node, args)?,
+        Command::PlanAim(args) => kpi_cli::plan_aim(&node, args)?,
+        Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
         Command::TeamMove {

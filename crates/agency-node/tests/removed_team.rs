@@ -12,28 +12,17 @@ use common::{alice, body, get, id, joined_bob, Running};
 use reqwest::StatusCode;
 
 fn place(team: &str, node: &str) -> TeamPlace {
-    TeamPlace {
-        id: id(team),
-        label: team.into(),
-        department: None,
-        node: node.into(),
-    }
+    TeamPlace::new(id(team), team, node)
 }
 
 fn host(running: &Running, team: &str) {
     running
         .node
         .update_config(|config| {
-            config.teams.push(HostedTeam {
-                org: id("acme"),
-                team: id(team),
-                owner: id("alice"),
-                people: Default::default(),
-                runtime: RuntimeCommand {
-                    command: vec!["/nonexistent".into()],
-                    env: Default::default(),
-                },
-            })
+            let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
+            config
+                .teams
+                .push(HostedTeam::new(id("acme"), id(team), id("alice"), runtime))
         })
         .unwrap();
 }

@@ -7,7 +7,7 @@ extension Ja {
         public static func requests(_ count: Int) -> String { "\(count) 件の依頼があなたを待っています" }
 
         public static func participant(label: String) -> String { "\(label) があなたの返事を待っています" }
-        public static func participants(_ count: Int) -> String { "\(count) 人があなたの返事を待っています" }
+        public static func participants(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています" }
 
         public static func blocked(team: String, title: String, reason: String) -> String { "\(team): 「\(title)」が止まりました (\(reason))" }
         public static func blockedMany(_ count: Int) -> String { "\(count) 件の仕事が止まりました" }
@@ -15,13 +15,16 @@ extension Ja {
         public static func device(label: String) -> String { "端末「\(label)」が追加を待っています" }
         public static func devices(_ count: Int) -> String { "\(count) 台の端末が追加を待っています" }
 
-        public static func decision(title: String, state: String) -> String {
+        /// One decision's news. `title` is the decision's title when the log has one; `reason` is the node's
+        /// reason for refusing it.
+        public static func decision(title: String?, state: String, reason: String?) -> String {
+            let named = title.map { "「\($0)」の決定" } ?? "決定"
             switch state {
-            case "applied": "「\(title)」の決定が反映されました"
-            case "delivered": "「\(title)」の決定が届きました"
-            case "queued": "「\(title)」の決定は送信待ちです"
-            case "refused": "「\(title)」の決定は断られました"
-            default: "「\(title)」の決定に動きがありました"
+            case "applied": return "\(named)が反映されました"
+            case "delivered": return "\(named)が届きました"
+            case "queued": return "\(named)は送信待ちです"
+            case "refused": return "\(named)は断られました" + (reason.map { ": \($0)" } ?? "")
+            default: return "\(named)に動きがありました"
             }
         }
 

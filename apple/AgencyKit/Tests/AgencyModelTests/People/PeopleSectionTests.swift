@@ -14,7 +14,7 @@ struct PeopleSectionTests {
         #expect(section.working == 2)
         #expect(section.waitingOnViewer == 1)
         #expect(section.title == "App チーム")
-        #expect(section.summary == "参加者 4 人のうち 2 人が作業中です。 1 人の参加者があなたの返事を待っています。")
+        #expect(section.summary == "参加者 4 人のうち 2 人が作業中です。 参加者 1 人があなたの返事を待っています。")
     }
 
     @Test("the summary says nothing of waiting when nobody waits on the viewer")
@@ -86,6 +86,22 @@ struct PeopleSectionTests {
         #expect(second.meta == "No recent throughput to forecast from")
         #expect(second.blockedBy == nil)
         #expect(second.segments.isEmpty)
+    }
+
+    @Test("a finished epic says when it finished and gives no forecast; one whose time is not known just says it is done")
+    func finishedRow() throws {
+        func row(_ extra: String) throws -> EpicRow {
+            let json = #"{"ref":"app#9","title":"Old","total":3,"done":3,"doing":0,"remainingPoints":0,"blocked":[],"basis":"No throughput"\#(extra)}"#
+            return EpicRow(epic: try JSONDecoder().decode(EpicForecast.self, from: Data(json.utf8)))
+        }
+        let dated = try row(#","doneAt":"2026-11-20T10:00:00Z""#)
+        #expect(dated.isFinished)
+        #expect(dated.meta.hasSuffix("に完了しました"))
+        #expect(dated.blockedBy == nil)
+        let undated = try row("")
+        #expect(undated.isFinished)
+        #expect(undated.meta == "完了しました")
+        #expect(section.epics.allSatisfy { !$0.isFinished })
     }
 
     @Test("a long list shows its first rows and says how many are folded away")

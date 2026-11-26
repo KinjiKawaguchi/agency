@@ -33,7 +33,7 @@ cd ..
 cargo build --release -p agency-node
 ```
 
-Install the binary at a path that a rebuild or `cargo clean` does not touch.
+Install the binary at a path that a rebuild or `cargo clean` does not touch. Cargo builds it in `target/release/` of the repository, or in `$CARGO_TARGET_DIR/release/` when that is set.
 Copy it under a new name and then rename it, so that a running node never has its binary rewritten in place:
 
 ```sh
@@ -97,6 +97,8 @@ Keep it on this machine, and out of anything that syncs or shares files.
 `scripts/launchd-plist.sh` writes the agent's file.
 The agent gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does. Run it from a terminal where `scrum` and the harness's tools work.
 
+The `PATH` is a copy, taken when you run the script, of that shell's. Every command the team runtime runs must be in a directory on it: for the scrum harness, `node` and `gh` as well as `scrum` (check with `command -v scrum node gh` in that terminal). A tool installed or moved afterwards, or a `PATH` that your terminal sets in a file the script's shell did not read, is missing from the agent, and the runtime then fails with `spawnSync gh ENOENT` (`ENOENT` is "not found"); the node logs `a command the team runtime runs was not found` when it does. Run the script again from a terminal where they all work.
+
 ```sh
 scripts/launchd-plist.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/Library/LaunchAgents/local.agency.node.plist
@@ -119,7 +121,7 @@ If your `PATH` changes (for example, the harness moves), run the script again, t
 
 `scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
 The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
-Run it from a terminal where `scrum` and the harness's tools work.
+Run it from a terminal where `scrum` and the harness's tools work. As for the launchd agent above, every command the team runtime runs (for the scrum harness, `node` and `gh`) must be in a directory on that `PATH`.
 
 ```sh
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
@@ -243,6 +245,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
+- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
@@ -259,6 +262,21 @@ Each browser and phone that decides for you has its own key, which it makes and 
 
 A request waits for an hour, and the node keeps at most 10.
 A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`); elsewhere the page says it cannot.
+
+## Installing the web client as an app
+
+The web client can be installed as an app, so that Android, Windows, and Linux have one without a native build: it opens in a window of its own, with its own icon, and keeps the sign-in of the browser it was installed from. On the **Devices** screen, **Install Agency** appears where the browser offers it (Chrome and Edge, on Android, Windows, Linux, and Mac); in Safari on a Mac, choose File, then Add to Dock. The iPhone has its own app ([apple.md](apple.md)).
+
+The installed app keeps the built files of the web client (`/assets/` and `/icons/`) so that it opens fast, and nothing else: no page, since a page carries the node's write token, and no answer of the API, which holds your org's data. When the node cannot be reached it shows a page that says so. When the sign-in expires it deletes what it kept.
+
+Behind Cloudflare Access the node asks for the sign-in on every request, the manifest and the icons included, so the page fetches the manifest with the browser's credentials. No path needs to bypass Access for this. To check an install once the node is deployed:
+
+1. Open `https://agency.example.com/` in Chrome (on Android and on a desktop), sign in, and open **Devices**: **Install Agency** appears.
+2. Install it. The app opens in its own window on the desk, with the seal icon (not a blank one), already signed in.
+3. Close the app, and sign out of Access (or wait for the session to end). Open the app again: it shows the Access sign-in, not an old page.
+4. Turn the network off and open the app: it says the node cannot be reached.
+
+If the icon is blank in step 2, the browser did not send the sign-in with the icon request; tell the team, and the icons will be inlined in the manifest.
 
 ## AI subscriptions and their usage
 
@@ -342,11 +360,57 @@ prints one JSON object. `source` is the source to use, `env` is what to set for 
 | `overThreshold` | Every readable source is past its threshold; this one has the most room before 100%. Sessions go on, and the overview should say so. |
 | `none` | Every source has reached a limit (a window at 100). There is no `source`, and the command exits with 3. |
 
-`agency funding list` prints the same sources in order, with their `env` and threshold, for a program that needs to know every configuration directory. Neither command needs a running node or the account key, and neither prints a secret: `env` holds paths.
+`agency funding list` prints the same sources in order, with their `env`, threshold, and where each stands now, for a program that needs to know every configuration directory and which logins are past their threshold. Each source has three flags, always present:
+
+| Flag | True when |
+|---|---|
+| `overThreshold` | its 7-day window is at or past its threshold (also at 100) |
+| `blocked` | a limit of the plan itself is reached: the 7-day window at 100, or the 5-hour window at 100 and not yet reset |
+| `unknown` | its usage cannot be read now (no file, a file older than 30 minutes, or a window that has since reset); the other two flags are false then, since unknown is not past |
+
+A program that moves running sessions off a login should do so only when that login is `overThreshold`, and not move them onto one that is `blocked` or `overThreshold`. `pick` carries the same flags for the source it chose. Neither command needs a running node or the account key, and neither prints a secret: `env` holds paths.
 
 A session that is running keeps the source it started on; only new sessions move. The usage can be 5 minutes old, so a source can pass its threshold by what 5 minutes of work uses: leave room under 100.
 
 Each source is one person's own subscription, and a node serves one account, so switching stays within one person's subscriptions. Never share a login with another person or pool logins across people: Claude's consumer terms forbid sharing an account. Switching is also not a way around a limit: a source at its limit is not picked until its window resets.
+
+## Delivery metrics
+
+The evaluation screen shows how fast each team ships: the pull requests it merged by type, how long they took from open to merge, how long its default branch's CI was red, reverts, and what its tokens cost for each merged pull request ([protocol.md](protocol.md#evaluation) defines every number). The node a team runs on works the numbers out from the team's repositories on GitHub, and other nodes read them from it.
+
+To turn it on for a team, name its repositories (`owner/name`) in `teams[].delivery` of `~/.agency/config.json`, and restart the node:
+
+```json
+"teams": [
+  { "org": "acme", "team": "app", "owner": "owner",
+    "runtime": { "command": ["scrum", "runtime"] },
+    "delivery": { "repos": ["acme/app", "acme/web"] } }
+]
+```
+
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
+- What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
+
+| Reason on the screen | What to do |
+|---|---|
+| no repositories are configured for this team | Add `delivery` to the team on the node it runs on. |
+| the GitHub CLI (gh) is not installed on the team's node | Install it, and put its directory on the `PATH` of the agent or the unit. |
+| the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
+| GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
+| GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the team's node does not give delivery numbers | That node is older than this feature: update it. |
+| the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
+| a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
+| the team's node did not answer | That node is down or unreachable. |
+
+## The org's numbers
+
+The org states what it measures (its KPIs) in its definition, with no number. The numbers themselves (revenue, retention, a lead time) are business data, and the node keeps them in `outcomes/<org>.jsonl` of its data directory, one line for each number, with the directory readable by its owner only (`0700`, the file `0600`). Nothing else the node serves holds them, and only the node's owner reads or enters them: `agency outcome-add --org acme --kpi revenue --date 2026-11-24 --value 1350000` enters one, and `agency outcome-list --org acme --kpi revenue` lists a KPI's numbers.
+
+- **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
+- The numbers are for reading how a measure moves, not for accounting.
 
 ## Updating a node
 
@@ -403,6 +467,7 @@ The node writes these to `~/.agency/logs/serve.log`:
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
+| `agency: team acme/app: a command the team runtime runs was not found: …` | The team runtime failed because a command it runs (such as `gh` or `node`) is not on the `PATH` of the launchd agent or the systemd unit. Check with `command -v` in your terminal, run the script of "Run it with launchd" or "Run it with systemd" again from a terminal where they work, and restart. It follows the line `the team runtime fails: … ENOENT`. |
 | `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd or systemd tries again every 10 seconds. |
 
 ### Answers from the node
@@ -426,7 +491,7 @@ Set up the harness by its own instructions. What the node needs from it:
 
 - A command that answers agency-runtime/1: `describe`, `view`, and `decide`, and `tokenUsage` for the costs screen. Each call must answer within 20 seconds.
 - The team's state directory, the same one as `team-add --state-dir`.
-- Every tool the runtime calls, on the `PATH` written into the launchd agent or the systemd unit.
+- Every tool the runtime calls (for the scrum harness `node` and `gh`), on the `PATH` written into the launchd agent or the systemd unit. A command that is not there stops the runtime, and the node's log says so.
 - Requests for you leave `to` out or set it to `owner`. In an org where you are the only member, every request is yours. A participant waiting on you has `waitingOn` set to `{ "kind": "person", "person": "owner" }`.
 
 While it runs, the node asks the runtime for the team's view every 30 seconds and each time a page reads the team, so `view` should be cheap.

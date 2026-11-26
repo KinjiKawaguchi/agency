@@ -3,7 +3,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
-import { memoryKeyStore, renderApp } from '../test/render'
+import { DEVICES_KEY, DEVICES_LIVE_MS, POLL_MS } from '../api/queries'
+import { currentQueryClient, memoryKeyStore, refreshQueries, renderApp } from '../test/render'
+import { slowDeviceListAfterRequest } from '../test/slowNode'
 import { createTestNode } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair, type DeviceKey } from './deviceKey'
 import { settledDeviceKey } from './useDeviceKey'
@@ -78,7 +80,7 @@ describe('devices screen', () => {
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
     await screen.findByText(/Waiting for you to approve this device/)
     expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
-    window.dispatchEvent(new Event('visibilitychange'))
+    await refreshQueries()
     expect(await screen.findByText(/This device is added\./)).toBeInTheDocument()
     const list = within(screen.getByRole('list', { name: '' }))
     expect(list.getByText('Browser')).toBeInTheDocument()
@@ -91,13 +93,15 @@ describe('devices screen', () => {
     const keyStore = memoryKeyStore()
     renderApp({ path: '/devices', node, keyStore })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
-    window.dispatchEvent(new Event('visibilitychange'))
+    // The request is made once the click has been answered; the node can add the device only after it has it.
+    await screen.findByText(/Waiting for you to approve this device/)
+    expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
+    await refreshQueries()
     await screen.findByText(/This device is added\./)
     expect(screen.getByText('No device is waiting to be added.')).toBeInTheDocument()
 
     const phone = await otherDeviceAsks(node, 'Phone')
-    window.dispatchEvent(new Event('visibilitychange'))
+    await refreshQueries()
     expect(await screen.findByLabelText('Pairing code of Phone')).toHaveTextContent(phone.pairingCode)
     expect(screen.getByText(/If they differ in any character, do not add it/)).toBeInTheDocument()
     // Nothing is added until the person confirms.
@@ -108,6 +112,26 @@ describe('devices screen', () => {
     const added = (await createApiClient((request) => node.handle(request)).devices()).orgs[0]?.devices.map((one) => one.label)
     expect(added).toEqual(['Browser', 'Phone'])
     await waitFor(() => expect(screen.queryByLabelText('Pairing code of Phone')).not.toBeInTheDocument())
+  })
+
+  it('does not offer to approve a device until the account is known, since the change is signed for it', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const slowMe = createApiClient(async (request) => {
+      if (new URL(request.url, 'http://mock.local').pathname === '/api/me') await gate
+      return node.handle(request)
+    })
+    renderApp({ path: '/devices', node, enrolled: true, client: slowMe })
+    await otherDeviceAsks(node, 'Tablet')
+    // Only the device list: the account's own read is held back on purpose, and waiting for it would wait for the release.
+    await refreshQueries(DEVICES_KEY)
+    expect(await screen.findByRole('button', { name: 'The codes match: approve it' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'The codes match: approve it' }))
+    expect((await createApiClient((request) => node.handle(request)).devices()).requests).toHaveLength(1)
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeEnabled())
   })
 
   it('says why when the node refuses to add the device', async () => {
@@ -122,7 +146,7 @@ describe('devices screen', () => {
     renderApp({ path: '/devices', node, enrolled: true, client: refusing })
     expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     await otherDeviceAsks(node, 'Tablet')
-    window.dispatchEvent(new Event('visibilitychange'))
+    await refreshQueries()
     await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText('Could not add the device: The device is already added.')).toBeInTheDocument()
   })
@@ -209,8 +233,11 @@ describe('devices screen', () => {
     const user = userEvent.setup()
     const node = createMockNode()
     const keyStore = memoryKeyStore()
-    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    renderApp({ path: '/devices', node, enrolled: false, keyStore, client: slowDeviceListAfterRequest(node) })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    // The code is on the screen before the click as well, and is large only once the node lists the request
+    // as waiting: wait for that, or the code found is the small one of a moment ago.
+    await screen.findByText(/Waiting for you to approve this device/)
     const code = await screen.findByLabelText('Pairing code of this device')
     expect(code).toHaveClass('large')
     node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
@@ -232,10 +259,12 @@ describe('a device list that stays current while the screen is open', () => {
 
   it('shows a request that arrives after the screen has loaded, with its button, without a reload', async () => {
     const node = createTestNode()
-    renderApp({ path: '/devices', node, enrolled: true })
+    // The poll is made fast, so that the test waits for its own, not for a 4-second one.
+    renderApp({ path: '/devices', node, enrolled: true, devicesPollMs: 50 })
     expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     const other = await otherDeviceAsks(node, 'Phone')
-    expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 9000 })).toHaveTextContent(other.pairingCode)
+    // Within less than the real poll (4 seconds): it is the injected one that is waited for.
+    expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 3000 })).toHaveTextContent(other.pairingCode)
     expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeInTheDocument()
   })
 
@@ -246,26 +275,60 @@ describe('a device list that stays current while the screen is open', () => {
       if (request.method === 'GET' && new URL(request.url, 'http://mock.local').pathname === '/api/devices') reads += 1
       return node.handle(request)
     })
-    renderApp({ path: '/devices', node, enrolled: true, client: counted })
+    renderApp({ path: '/devices', node, enrolled: true, client: counted, devicesPollMs: 50 })
     expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     focusManager.setFocused(false)
     const whileHidden = reads
-    await new Promise((resolve) => setTimeout(resolve, 5000))
+    // Twenty polls would have come in this time.
+    await new Promise((resolve) => setTimeout(resolve, 1000))
     expect(reads).toBe(whileHidden)
     const other = await otherDeviceAsks(node, 'Tablet')
     focusManager.setFocused(true)
     expect(await screen.findByLabelText('Pairing code of Tablet')).toHaveTextContent(other.pairingCode)
-  }, 20_000)
+  })
 
   it('takes the notice on the other screens away by itself once the device is approved', async () => {
     const node = createMockNode()
     const keyStore = memoryKeyStore()
-    renderApp({ path: '/overview', node, enrolled: false, keyStore })
+    renderApp({ path: '/overview', node, enrolled: false, keyStore, devicesPollMs: 50 })
     const key = await browserKey(keyStore)
     await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Browser', publicKey: key.publicKey })
-    expect(await screen.findByText('This device is waiting to be added. Open it to see the code to confirm.', undefined, { timeout: 9000 })).toBeInTheDocument()
+    expect(await screen.findByText('This device is waiting to be added. Open it to see the code to confirm.')).toBeInTheDocument()
     node.addDeviceFromTerminal(key.pairingCode)
-    await waitFor(() => expect(screen.queryByText('This device is waiting to be added. Open it to see the code to confirm.')).not.toBeInTheDocument(), { timeout: 9000 })
+    await waitFor(() => expect(screen.queryByText('This device is waiting to be added. Open it to see the code to confirm.')).not.toBeInTheDocument())
+  })
+
+  describe('how often the real app reads it', () => {
+    /** The shortest interval any part of the page asks the device list to be read at. */
+    const shortestPoll = (): number | false => {
+      const query = currentQueryClient().getQueryCache().find({ queryKey: DEVICES_KEY })
+      const intervals = (query?.observers ?? []).map((observer) => {
+        const interval = observer.options.refetchInterval
+        return typeof interval === 'function' ? interval(query as never) : interval
+      })
+      return Math.min(...intervals.filter((one): one is number => typeof one === 'number'))
+    }
+
+    it('reads it every 4 seconds while the devices screen is open', async () => {
+      renderApp({ path: '/devices', node: createTestNode(), enrolled: true })
+      await screen.findByText('No device is waiting to be added.')
+      expect(shortestPoll()).toBe(DEVICES_LIVE_MS)
+      expect(DEVICES_LIVE_MS).toBe(4_000)
+    })
+
+    it('reads it every 4 seconds on the other screens only while this device is not added, and every 30 seconds once it is', async () => {
+      renderApp({ path: '/overview', node: createMockNode(), enrolled: false })
+      await screen.findByRole('heading', { level: 1, name: 'Overview' })
+      await screen.findByText('This device is not added yet. To decide or comment, it has to be added.')
+      expect(shortestPoll()).toBe(DEVICES_LIVE_MS)
+    })
+
+    it('reads it every 30 seconds on the other screens once this device is added', async () => {
+      renderApp({ path: '/overview', node: createTestNode(), enrolled: true })
+      await screen.findByRole('heading', { level: 1, name: 'Overview' })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(shortestPoll()).toBe(POLL_MS)
+    })
   })
 })
 
@@ -312,5 +375,96 @@ describe('an empty desk', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Nothing needs your decision right now.')
     expect(screen.queryByRole('article')).not.toBeInTheDocument()
     expect(screen.queryByText(/Pick a document/)).not.toBeInTheDocument()
+  })
+})
+
+describe('whether this browser keeps its key', () => {
+  const storage = (value: unknown): void => void Object.defineProperty(navigator, 'storage', { value, configurable: true })
+  afterEach(() => Reflect.deleteProperty(navigator, 'storage'))
+
+  it('says the browser keeps the key when it has promised to', async () => {
+    storage({ persisted: () => Promise.resolve(true), persist: () => Promise.resolve(true) })
+    renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/keeps this device’s key until you clear its site data/)).toBeInTheDocument()
+    expect(screen.queryByText(/may remove this device’s key/)).not.toBeInTheDocument()
+  })
+
+  it('says the browser may remove it, and that this browser would have to be added again, when it has not promised or cannot say', async () => {
+    storage({ persisted: () => Promise.resolve(false), persist: () => Promise.resolve(false) })
+    const first = renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/may remove this device’s key if you clear its site data/)).toBeInTheDocument()
+    first.unmount()
+    storage(undefined)
+    renderApp({ path: '/devices', enrolled: true })
+    expect(await screen.findByText(/may remove this device’s key if you clear its site data/)).toBeInTheDocument()
+  })
+
+  it('asks the browser to keep the key when the person asks to add this device, not before', async () => {
+    const persist = vi.fn(() => Promise.resolve(true))
+    storage({ persisted: () => Promise.resolve(false), persist })
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore() })
+    const ask = await screen.findByRole('button', { name: 'Add this device' })
+    expect(persist).not.toHaveBeenCalled()
+    await user.click(ask)
+    await waitFor(() => expect(persist).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/keeps this device’s key until you clear its site data/)).toBeInTheDocument()
+  })
+
+  it('does not say a key is lost on a first visit, nor when the key is found again on the next one', async () => {
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    const first = renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    await screen.findByRole('button', { name: 'Add this device' })
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    first.unmount()
+    // The same key is held now: it is found, not made, and the note of the first visit is there. (Another store object
+    // over it, as a reload makes one: a store is read once, so the first would answer from memory.)
+    renderApp({ path: '/devices', node, enrolled: false, keyStore: { load: keyStore.load, save: keyStore.save } })
+    await screen.findByRole('button', { name: 'Add this device' })
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
+  })
+
+  it('says an earlier key is gone, in both languages, when a new one had to be made after one was noted', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    const first = renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore() })
+    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent('earlier key is gone')
+    first.unmount()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore: memoryKeyStore(), locale: 'ja' })
+    expect(await screen.findByText(/このブラウザの前の鍵が消えています/)).toBeInTheDocument()
+  })
+
+  it('stops saying it once the new key is added, and does not say it again after a reload', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    expect(await screen.findByText(/earlier key is gone/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add this device' }))
+    await screen.findByText(/Waiting for you to approve this device/)
+    expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
+    await refreshQueries()
+    await screen.findByText(/This device is added\./)
+    await waitFor(() => expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument())
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
+  })
+
+  it('says the key could not be read, and neither makes another nor says the earlier one is gone, when reading it fails', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    let saves = 0
+    const keyStore = {
+      load: () => Promise.reject(new Error('The database is blocked.')),
+      save: () => {
+        saves += 1
+        return Promise.resolve()
+      },
+    }
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore })
+    expect(await screen.findByRole('alert')).toHaveTextContent('The database is blocked.')
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    expect(saves).toBe(0)
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
   })
 })

@@ -10,7 +10,15 @@ const AWAY = { hostname: () => 'agency.example.test', isOnline: () => true }
 function clientWithSignIn(page = AWAY) {
   const node = createTestNode()
   const state = { isExpired: false }
-  const client = createApiClient((request) => (state.isExpired ? Promise.reject(new TypeError('Failed to fetch')) : node.handle(request)), page)
+  // A call that follows the redirect to another origin fails as a network error; the one that asks without following it gets the redirect.
+  const client = createApiClient(
+    (request) => {
+      if (!state.isExpired) return node.handle(request)
+      return request.redirect === 'manual' ? Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://login.example.test/' } })) : Promise.reject(new TypeError('Failed to fetch'))
+    },
+    page,
+    { confirmAfterMs: 0 },
+  )
   return { client, state, node }
 }
 
@@ -24,6 +32,21 @@ describe('an expired sign-in', () => {
     const reload = await screen.findByRole('button', { name: 'Reload' })
     expect(reload.closest('[role="alert"]')).toHaveTextContent(EXPIRED)
     expect(screen.queryByText(/Could not reach the node/)).not.toBeInTheDocument()
+  })
+
+  it('tells the installed app’s worker to forget the files it kept', async () => {
+    const posted: unknown[] = []
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { controller: { postMessage: (message: unknown) => posted.push(message) } } })
+    try {
+      const { client, state } = clientWithSignIn()
+      state.isExpired = true
+      renderApp({ client })
+      await screen.findByRole('button', { name: 'Reload' })
+      expect(posted.length).toBeGreaterThan(0)
+      expect(posted.every((message) => JSON.stringify(message) === JSON.stringify({ type: 'signed-out' }))).toBe(true)
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker')
+    }
   })
 
   it('keeps what was written, and tells the viewer when sending fails for it', async () => {
@@ -56,5 +79,20 @@ describe('an expired sign-in', () => {
     renderApp({ client })
     expect(await screen.findByText(/Could not reach/)).toHaveTextContent('Could not reach the node: Failed to fetch')
     expect(screen.queryByText(EXPIRED)).not.toBeInTheDocument()
+  })
+
+  it('never shows the notice when the connection drops for a moment and comes back, though the page reads on through it', async () => {
+    const node = createTestNode()
+    let isUp = false
+    const client = createApiClient((request) => (isUp ? node.handle(request) : Promise.reject(new TypeError('Failed to fetch'))), AWAY, { confirmAfterMs: 100 })
+    const told: string[] = []
+    client.onSession((state) => told.push(state))
+    renderApp({ client })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    isUp = true
+    expect(await screen.findByRole('option', { name: /Add a second frontend agent/ })).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(told).not.toContain('expired')
+    expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   })
 })

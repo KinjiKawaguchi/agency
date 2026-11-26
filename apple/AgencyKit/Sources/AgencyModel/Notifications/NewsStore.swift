@@ -146,13 +146,14 @@ public final class NewsStore {
         case .device: text = events.count == 1 ? deviceText(first) : Ja.News.devices(events.count)
         case .decision: text = events.count == 1 ? decisionText(first) : Ja.News.decisions(events.count)
         }
-        return NewsBanner(kind: kind, text: text, count: events.count, destination: destination(kind, first))
+        return NewsBanner(kind: kind, text: text, count: events.count, destination: destination(kind, first, count: events.count))
     }
 
-    private func destination(_ kind: EventKind, _ event: NotificationEvent) -> NewsDestination {
+    /// Where a banner leads: one new request opens that request; several open the desk, where they are.
+    private func destination(_ kind: EventKind, _ event: NotificationEvent, count: Int) -> NewsDestination {
         switch kind {
         case .request:
-            guard let parts = Self.parts(of: event) else { return .desk(itemID: nil) }
+            guard count == 1, let parts = Self.parts(of: event) else { return .desk(itemID: nil) }
             return .desk(itemID: DeskItem.key(org: parts.org, team: parts.team, request: parts.rest))
         case .participant, .blocked: return .people
         case .device: return .devices
@@ -194,6 +195,8 @@ public final class NewsStore {
         let pieces = event.key.dropFirst("decision:".count).split(separator: ":", omittingEmptySubsequences: false).map(String.init)
         guard pieces.count == 2 else { return Ja.News.decisions(1) }
         let entry = decisions?.entries.first { $0.id == pieces[0] }
-        return Ja.News.decision(title: entry?.title ?? Ja.News.unknownTitle, state: pieces[1])
+        let title = entry?.title.flatMap { $0.isEmpty ? nil : $0 }
+        let reason: String? = if case .refused(let message)? = entry?.state { message } else { nil }
+        return Ja.News.decision(title: title, state: pieces[1], reason: reason)
     }
 }

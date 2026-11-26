@@ -4,7 +4,7 @@ import UserNotifications
 
 /// Receives what SwiftUI's lifecycle does not: the device token, and taps on notifications.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    let push = PushCoordinator()
+    let push = PushCoordinator(platform: UIKitPushPlatform())
 
     func application(
         _ application: UIApplication,

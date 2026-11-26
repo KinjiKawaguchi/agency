@@ -37,12 +37,7 @@ async fn the_root_builds_departments_and_places_teams_in_them() {
     )
     .unwrap();
     departments::place_team(&alice.node, &org, &id("app"), Some(id("dev"))).unwrap();
-    let web = TeamPlace {
-        id: id("web"),
-        label: "Web".into(),
-        department: Some(id("clients")),
-        node: alice.url(),
-    };
+    let web = TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("clients")));
     orgs::add_team(&alice.node, &org, web).unwrap();
 
     let now = body(&alice);
@@ -151,12 +146,7 @@ async fn departments_stay_a_tree_with_real_links() {
             orgs::add_team(
                 &alice.node,
                 &org,
-                TeamPlace {
-                    id: id("web"),
-                    label: "Web".into(),
-                    department: Some(id("nope")),
-                    node: alice.url(),
-                },
+                TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("nope"))),
             ),
             ErrorKind::NotFound,
         ),
@@ -182,4 +172,46 @@ async fn only_the_roots_node_changes_departments() {
     )
     .unwrap_err();
     assert_eq!(refused.kind, ErrorKind::Forbidden);
+}
+
+fn plan(shares: [u32; 5], weekly_budget_usd: u32) -> agency_proto::org::TeamPlan {
+    let [new_feature, improvement, maintenance, debt, incident] = shares;
+    agency_proto::org::TeamPlan {
+        aims: vec![],
+        allocation: agency_proto::org::Allocation {
+            new_feature,
+            improvement,
+            maintenance,
+            debt,
+            incident,
+        },
+        weekly_budget_usd,
+    }
+}
+
+#[tokio::test]
+async fn the_root_states_a_plan_for_a_team() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let (org, app) = (id("acme"), id("app"));
+    let intended = plan([40, 20, 20, 15, 5], 500);
+    departments::plan_team(&alice.node, &org, &app, Some(intended.clone())).unwrap();
+    assert_eq!(
+        body(&alice).team(&app).unwrap().plan,
+        Some(intended.clone())
+    );
+
+    let version = body(&alice).version;
+    for (case, shares) in [("99", [40, 20, 20, 15, 4]), ("101", [40, 20, 20, 15, 6])] {
+        let refused = departments::plan_team(&alice.node, &org, &app, Some(plan(shares, 500)));
+        assert_eq!(refused.unwrap_err().kind, ErrorKind::BadRequest, "{case}");
+    }
+    let unknown = departments::plan_team(&alice.node, &org, &id("nope"), Some(intended.clone()));
+    assert_eq!(unknown.unwrap_err().kind, ErrorKind::NotFound);
+    let by_member = departments::plan_team(&bob.node, &org, &app, Some(intended));
+    assert_eq!(by_member.unwrap_err().kind, ErrorKind::Forbidden);
+    assert_eq!(body(&alice).version, version, "nothing was signed");
+
+    departments::plan_team(&alice.node, &org, &app, None).unwrap();
+    assert_eq!(body(&alice).team(&app).unwrap().plan, None);
 }

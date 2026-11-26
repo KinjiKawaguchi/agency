@@ -72,7 +72,7 @@ export const en = {
   notices: {
     request: (count: number, title: string, team: string) => (count === 1 ? `A request waits for you: ${title} (${team}).` : `${count} requests now wait for you.`),
     participant: (count: number, label: string) => (count === 1 ? `${label} is waiting for you.` : `${count} participants are waiting for you.`),
-    blocked: (count: number, title: string, team: string) => (count === 1 ? `Blocked: ${title} (${team}).` : `${count} work items are newly blocked.`),
+    blocked: (count: number, title: string, team: string, reason: string | undefined) => (count === 1 ? `Blocked: ${title} (${team})${reason === undefined ? '' : `: ${reason}`}.` : `${count} work items are newly blocked.`),
     aDevice: 'A device',
     device: (count: number, label: string) => (count === 1 ? `${label} asks to be added as a device.` : `${count} devices ask to be added.`),
     decision: (state: string, count: number, title: string, reason: string | undefined) => {
@@ -83,6 +83,15 @@ export const en = {
     },
     more: (count: number) => `${count} more things are new.`,
     devicesMark: (count: number) => `${count} waiting to be approved`,
+    os: {
+      title: 'Notifications in this browser',
+      lead: 'Show what is new as a notification of the operating system while this page is hidden. It says what the page says, and stays in this browser.',
+      turnOn: 'Turn on notifications',
+      turnOff: 'Turn off notifications',
+      isOn: 'On. A notification appears when something is new while this page is hidden. The page keeps reading in the background to see it, as far as the browser lets it, and not while the browser is closed.',
+      isBlocked: 'This browser does not allow notifications for this page. Allow them in its site settings, then turn them on here.',
+      isUnsupported: 'This browser cannot show notifications from a page.',
+    },
   },
   people: {
     title: 'Participants and work',
@@ -202,6 +211,11 @@ export const en = {
     title: 'Devices',
     intro: 'Each browser, phone, or command line that decides for you has its own key. The key stays on the device and cannot be copied out of it. Decisions are signed with it.',
     thisDevice: 'This device',
+    keyKeeping: {
+      kept: 'This browser keeps this device’s key until you clear its site data.',
+      atRisk: 'This browser may remove this device’s key if you clear its site data, or when it runs short of space. The key cannot be copied, so this browser would then have to be added again.',
+      lost: 'This browser’s earlier key is gone: its site data was cleared, or the browser removed it. It made a new key, which has to be added again.',
+    },
     codeLabel: 'Pairing code of this device',
     loading: 'Making this device’s key…',
     loadingList: 'Asking the node about your devices…',
@@ -455,6 +469,8 @@ export const en = {
       hint: 'A line lights up when a message passes; busier links are thicker.',
       label: 'Messages between agents: agents as points, joined by lines',
       agent: (name: string, team: string) => `${name}, ${team} team`,
+      others: 'Others (not in a team here)',
+      othersMore: (shown: number, total: number) => `Others (not in a team here): ${shown} of ${total} shown`,
     },
     feed: {
       title: 'What is happening',
@@ -481,6 +497,12 @@ export const en = {
       bins: 'Merges in each 5 minutes of the last hour',
       landed: (ref: string) => `Landed: ${ref}`,
     },
+  },
+  install: {
+    title: 'Install the app',
+    lead: 'Add Agency to this device as an app: it opens in a window of its own and keeps the sign-in of this browser.',
+    button: 'Install Agency',
+    safari: 'In Safari on a Mac, choose File, then Add to Dock.',
   },
 } as const
 

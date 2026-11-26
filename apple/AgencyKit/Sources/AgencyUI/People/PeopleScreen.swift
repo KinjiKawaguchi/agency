@@ -20,19 +20,29 @@ public struct PeopleScreen: View {
 
     public var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.spacing) {
-                    banner
-                    if store.loading == .loaded || !store.sections.isEmpty {
-                        PeopleContent(sections: store.sections, failures: store.failures, now: Date(), onOpenDesk: onOpenDesk,
-                                      onTryAgain: { Task { await store.refresh() } })
-                    }
-                }
-                .padding(Theme.gutter)
-            }
-            .refreshable { await store.refresh() }
-            .navigationTitle(Ja.People.title)
+            PeoplePage(store: store, onOpenDesk: onOpenDesk, onSignInAgain: onSignInAgain).navigationTitle(Ja.People.title)
         }
+    }
+}
+
+/// The participants and work without a navigation stack around them, so that a screen with several pages can hold them.
+struct PeoplePage: View {
+    let store: PeopleStore
+    let onOpenDesk: () -> Void
+    let onSignInAgain: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.spacing) {
+                banner
+                if store.loading == .loaded || !store.sections.isEmpty {
+                    PeopleContent(sections: store.sections, failures: store.failures, now: Date(), onOpenDesk: onOpenDesk,
+                                  onTryAgain: { Task { await store.refresh() } })
+                }
+            }
+            .padding(Theme.gutter)
+        }
+        .refreshable { await store.refresh() }
         .polling { await store.refresh() }
     }
 

@@ -17,11 +17,14 @@ use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
+use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
+use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
 use agency_core::{Error, Node};
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushTokenInput, Session, SignedDecisionInput,
+    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
+    SignedDecisionInput,
 };
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
@@ -37,6 +40,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+mod outcomes;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -268,6 +273,21 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// The delivery evaluation of every team of an org over the last `days` days (default 14, at most 90).
+async fn get_evaluation(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_evaluation(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
 /// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
 /// (default 200, at most 500), oldest first.
 async fn get_activity(
@@ -379,12 +399,36 @@ async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Res
     }
 }
 
+/// The node's VAPID public key, which a browser subscribes with. 404 when the node has no Web Push.
+async fn get_vapid_key(State(api): Shared) -> Response {
+    respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
+}
+
+async fn get_push_subscriptions(State(api): Shared) -> Response {
+    respond(subscriptions(&api.node))
+}
+
+/// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
+async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
+    let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
+        .and_then(|input| register_subscription(&api.node, input));
+    respond(result)
+}
+
+async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
+    match remove_subscription(&api.node, &id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
+}
+
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "json" | "map" => "application/json",
+        "webmanifest" => "application/manifest+json",
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "ico" => "image/x-icon",
@@ -443,16 +487,27 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
+        .merge(outcomes::routes(api.clone()))
         .route(
             "/api/push/tokens",
             get(get_push_tokens).post(post_push_token),
         )
         .route("/api/push/tokens/{token}", delete(delete_push_token))
+        .route("/api/push/vapid", get(get_vapid_key))
+        .route(
+            "/api/push/subscriptions",
+            get(get_push_subscriptions).post(post_push_subscription),
+        )
+        .route(
+            "/api/push/subscriptions/{id}",
+            delete(delete_push_subscription),
+        )
         .route("/api/devices/requests", post(post_device_request))
         .route("/api/devices/changes", post(post_device_change))
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
+        .route("/api/orgs/{org}/evaluation", get(get_evaluation))
         .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",
@@ -466,4 +521,31 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         // Added after the guard, so it answers without an Access sign-in: Apple's servers fetch it.
         .route(ASSOCIATION_PATH, get(handoff::association))
         .with_state(api)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::content_type;
+
+    #[test]
+    fn serves_the_app_manifest_as_a_manifest() {
+        assert_eq!(
+            content_type("manifest.webmanifest"),
+            "application/manifest+json"
+        );
+    }
+
+    #[test]
+    fn keeps_the_types_of_the_other_built_files() {
+        assert_eq!(
+            content_type("assets/index-abc.js"),
+            "text/javascript; charset=utf-8"
+        );
+        assert_eq!(content_type("sw.js"), "text/javascript; charset=utf-8");
+        assert_eq!(content_type("offline.css"), "text/css; charset=utf-8");
+        assert_eq!(content_type("offline.html"), "text/html; charset=utf-8");
+        assert_eq!(content_type("icons/icon-192.png"), "image/png");
+        assert_eq!(content_type("icons/seal.svg"), "image/svg+xml");
+        assert_eq!(content_type("unknown.bin"), "application/octet-stream");
+    }
 }

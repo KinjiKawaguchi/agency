@@ -1,10 +1,11 @@
+import { useMemo } from 'react'
 import { useSuspenseTeamStates } from '../api/queries'
 import { useI18n } from '../i18n'
 import { Region } from '../shared/Region'
 import { Board } from './Board'
 import { Feed } from './Feed'
 import { GraphView } from './GraphView'
-import type { Agent } from './graph'
+import { guestsOf, resolverOf, type Agent } from './graph'
 import { LiveSkeleton } from './LiveSkeleton'
 import { Throughput } from './Throughput'
 import { useActivityStream } from './useActivityStream'
@@ -40,6 +41,8 @@ function Live() {
   const agents: Agent[] = teams.flatMap((team) =>
     team.view.people.filter((person) => person.kind === 'agent').map((person) => ({ id: person.id, label: person.label, team: team.view.team, org: team.view.org })),
   )
+  const resolve = useMemo(() => resolverOf(agents), [agents])
+  const { shown: guests, total: guestTotal } = guestsOf(stream.events, resolve, { now })
   const teamKeys = [...new Set(refs.map((ref) => `${ref.org}/${ref.team}`))].toSorted()
   const colors = new Map(teamKeys.map((key, index) => [key, `var(--series-${(index % 8) + 1})`]))
   const teamLabels = new Map<string, string>(orgs.flatMap(({ org, teams: inOrg }) => inOrg.map(({ ref }) => [`${org.id}/${ref.id}`, ref.label] as [string, string])))
@@ -54,7 +57,7 @@ function Live() {
           <h2>{t.live.graph.title}</h2>
           <span className="muted">{t.live.graph.hint}</span>
         </header>
-        {agents.length === 0 ? <p className="muted lv-empty">{t.live.noAgents}</p> : <GraphView agents={agents} events={stream.events} fresh={stream.fresh} isReduced={isReduced} colors={colors} />}
+        {agents.length === 0 ? <p className="muted lv-empty">{t.live.noAgents}</p> : <GraphView agents={[...agents, ...guests]} resolve={resolve} events={stream.events} fresh={stream.fresh} isReduced={isReduced} colors={colors} />}
         <ul className="lv-legend">
           {teamKeys.map((key) => (
             <li key={key}>
@@ -62,6 +65,12 @@ function Live() {
               {teamLabels.get(key) ?? key}
             </li>
           ))}
+          {guests.length === 0 ? null : (
+            <li>
+              <i style={{ background: 'var(--series-other)' }} />
+              {guestTotal > guests.length ? t.live.graph.othersMore(guests.length, guestTotal) : t.live.graph.others}
+            </li>
+          )}
         </ul>
       </section>
       <section className="lv-panel lv-feed-panel" aria-label={t.live.feed.title}>

@@ -51,9 +51,13 @@ export const teamQuery = (api: ApiClient, org: string, team: string) =>
 
 export const DEVICES_KEY = ['devices'] as const
 
+/** How often the device list is read: `pollMs`, unless the client was made with another (a test's). */
+export const devicesPoll = (query: { meta?: Record<string, unknown> | undefined }, pollMs: number | false): number | false =>
+  typeof query.meta?.devicesPollMs === 'number' ? query.meta.devicesPollMs : pollMs
+
 /** The account's devices. A device waiting to be added polls quickly, to notice when it is. */
 export const devicesQuery = (api: ApiClient, pollMs: number | false = POLL_MS) =>
-  queryOptions({ queryKey: DEVICES_KEY, queryFn: () => api.devices(), refetchInterval: pollMs })
+  queryOptions({ queryKey: DEVICES_KEY, queryFn: () => api.devices(), refetchInterval: (query) => devicesPoll(query, pollMs) })
 
 export const DECISIONS_KEY = ['decisions'] as const
 
@@ -123,11 +127,12 @@ function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult 
 /**
  * Every team of every org, each with its own outcome, so that a team that cannot be read is shown as that
  * in its place. It reads the same queries as `useTeams`, so the two share what the page has already loaded.
+ * `inBackground` keeps this reading's timer running while the tab is hidden (a hidden tab otherwise does not poll).
  */
-export function useTeamStates(): TeamStates {
+export function useTeamStates({ inBackground = false }: { inBackground?: boolean } = {}): TeamStates {
   const api = useApi()
   const me = useQuery(meQuery(api))
-  const results = useQueries({ queries: refsOf(me.data).map(({ org, team }) => teamQuery(api, org, team)) })
+  const results = useQueries({ queries: refsOf(me.data).map(({ org, team }) => ({ ...teamQuery(api, org, team), refetchIntervalInBackground: inBackground })) })
   return { me: me.data, orgs: statesOf(me.data, results), error: me.error }
 }
 

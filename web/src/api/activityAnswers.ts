@@ -24,7 +24,7 @@ function eventOf(raw: unknown): ActivityEvent | undefined {
     case 'itemAdded': {
       const ref = text(given.ref)
       const title = text(given.title)
-      return ref === undefined || title === undefined ? undefined : { ...base, kind: 'itemAdded', ref, title, ...maybe('epic', given.epic) }
+      return ref === undefined || title === undefined ? undefined : { ...base, kind: 'itemAdded', ref, title, ...maybe('assignee', given.assignee), ...maybe('epic', given.epic) }
     }
     case 'statusChanged': {
       const [ref, title, from, to] = [text(given.ref), text(given.title), status(given.from), status(given.to)]

@@ -108,6 +108,8 @@ public struct WorkItem: Decodable, Equatable, Sendable {
     public let epic: String?
     public let points: Int?
     public let eta: Eta?
+    /// When the item first reached done; left out while it is not done and when it is not known.
+    public let doneAt: Instant?
 }
 
 public enum BlockedReason: String, Decodable, Sendable {
@@ -136,7 +138,13 @@ public struct EpicForecast: Decodable, Equatable, Sendable {
     public let remainingPoints: Int
     public let blocked: [BlockedCount]
     public let forecast: Forecast?
+    /// When the epic's last child reached done: present only once `done` equals `total`.
+    public let doneAt: Instant?
     public let basis: String
+
+    /// A finished epic: a runtime may keep it for a while so that `doneAt` can be read. It has nothing doing,
+    /// nothing remaining and no forecast, and is shown as finished, after the open epics.
+    public var isFinished: Bool { doneAt != nil || (total > 0 && done >= total) }
 }
 
 public struct BlockedCount: Decodable, Equatable, Sendable {

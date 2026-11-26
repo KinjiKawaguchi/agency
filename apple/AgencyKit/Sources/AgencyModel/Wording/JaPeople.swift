@@ -17,6 +17,7 @@ extension Ja {
         public static let epicsTitle = "エピックの見込み"
         public static let noEpics = "エピックはまだありません。"
         public static let noTeams = "まだチームがありません。"
+        public static let epicFinished = "完了しました"
         public static let legendDone = "完了"
         public static let legendDoing = "進行中"
         public static let legendBlocked = "停止"
@@ -24,7 +25,7 @@ extension Ja {
 
         public static func team(_ label: String) -> String { "\(label) チーム" }
         public static func summary(working: Int, of total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
-        public static func waitingOnYou(_ count: Int) -> String { "\(count) 人の参加者があなたの返事を待っています。" }
+        public static func waitingOnYou(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
         public static func since(_ when: String) -> String { "\(when) から" }
         public static func moreHeld(_ count: Int) -> String { "ほか \(count) 件" }
         public static func moreWork(_ count: Int) -> String { "あと \(count) 件を表示" }
@@ -32,6 +33,7 @@ extension Ja {
         public static func etaOverBudget(_ basis: String) -> String { "見込みを過ぎています (\(basis))" }
         public static func etaAround(_ when: String) -> String { "\(when) ごろに終わる見込み" }
         public static func etaLatest(_ when: String) -> String { "遅くとも \(when)" }
+        public static func epicFinishedAt(_ when: String) -> String { "\(when) に完了しました" }
         public static func epicFinish(_ when: String) -> String { "\(when) ごろに終わる見込み" }
         public static func epicBlockedBy(_ list: String) -> String { "停止: \(list)" }
 

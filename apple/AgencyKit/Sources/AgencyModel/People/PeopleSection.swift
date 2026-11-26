@@ -75,6 +75,8 @@ public struct EpicRow: Equatable, Sendable, Identifiable {
     public let meta: String
     public let blockedBy: String?
     public let basis: String
+    /// The epic is done: it shows when, and no forecast.
+    public let isFinished: Bool
     public var id: String { ref }
 
     init(epic: EpicForecast) {
@@ -83,7 +85,12 @@ public struct EpicRow: Equatable, Sendable, Identifiable {
         count = "\(epic.done) / \(epic.total)"
         segments = Work.segments(of: epic)
         barLabel = Ja.People.epicBar(total: epic.total, done: epic.done, doing: epic.doing, blocked: Work.blockedTotal(epic))
-        meta = epic.forecast.map { Ja.People.epicFinish(JaFormat.dateTime($0.at.date)) } ?? epic.basis
+        isFinished = epic.isFinished
+        if epic.isFinished {
+            meta = epic.doneAt.map { Ja.People.epicFinishedAt(JaFormat.dateTime($0.date)) } ?? Ja.People.epicFinished
+        } else {
+            meta = epic.forecast.map { Ja.People.epicFinish(JaFormat.dateTime($0.at.date)) } ?? epic.basis
+        }
         let reasons = epic.blocked.map { "\(Ja.Work.blockedReason($0.reason)) \($0.count)" }.joined(separator: "、")
         blockedBy = reasons.isEmpty ? nil : Ja.People.epicBlockedBy(reasons)
         basis = epic.basis

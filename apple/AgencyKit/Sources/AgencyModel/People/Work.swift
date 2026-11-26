@@ -25,10 +25,12 @@ public enum Work {
         ].filter { $0.count > 0 }
     }
 
-    /// Epics with work going on first, then the ones furthest along; the team's own order breaks a tie.
+    /// Epics with work going on first, then the ones furthest along, and the finished ones after every open epic;
+    /// the team's own order breaks a tie.
     public static func sorted(_ epics: [EpicForecast]) -> [EpicForecast] {
         func progress(_ epic: EpicForecast) -> Double { epic.total == 0 ? 0 : Double(epic.done) / Double(epic.total) }
         return epics.enumerated().sorted { left, right in
+            if left.element.isFinished != right.element.isFinished { return !left.element.isFinished }
             if left.element.doing != right.element.doing { return left.element.doing > right.element.doing }
             if progress(left.element) != progress(right.element) { return progress(left.element) > progress(right.element) }
             return left.offset < right.offset

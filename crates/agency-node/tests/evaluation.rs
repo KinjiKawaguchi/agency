@@ -4,7 +4,6 @@
 mod common;
 
 use agency_adapters::peers::read_headers;
-use agency_core::config::DeliveryConfig;
 use agency_core::delivery::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 use agency_core::read_auth::sign_read;
 use agency_proto::clock;
@@ -43,17 +42,15 @@ fn configure(alice: &Running) {
     alice
         .node
         .update_config(|config| {
-            // Another team's repositories come first: only the team's own are read.
-            config.delivery.push(DeliveryConfig {
-                org: id("acme"),
-                team: id("other"),
-                repos: vec!["acme/other".into()],
-            });
-            config.delivery.push(DeliveryConfig {
-                org: id("acme"),
-                team: id("app"),
-                repos: vec!["acme/app".into()],
-            })
+            let at = config
+                .teams
+                .iter()
+                .position(|team| team.team == id("app"))
+                .expect("alice hosts acme/app");
+            let team = config.teams.remove(at);
+            config
+                .teams
+                .insert(at, team.with_delivery(vec!["acme/app".into()]));
         })
         .unwrap();
 }
@@ -209,4 +206,146 @@ async fn the_signature_names_the_range_and_only_a_member_reads() {
         alice.delivery.0.lock().unwrap().asked.is_empty(),
         "none of them reached GitHub"
     );
+}
+
+// ── The Client API: every team of an org ──
+
+async fn client_evaluation(running: &Running, query: &str) -> (StatusCode, Value) {
+    let response = Client::new()
+        .get(format!("{}/api/orgs/acme/evaluation{query}", running.url()))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+/// A node that answers every evaluation read with the report of the team `other`, whatever was asked.
+async fn lying_node() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let mut report: Evaluation =
+        serde_json::from_str(include_str!("../../../testdata/evaluation.sample.json")).unwrap();
+    report.teams.truncate(1);
+    report.teams[0].team = id("other");
+    report.unavailable.clear();
+    let app = axum::Router::new().route(
+        "/fed/v1/teams/{org}/{team}/evaluation",
+        axum::routing::get(move || {
+            let report = report.clone();
+            async move { axum::Json(report) }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    url
+}
+
+#[tokio::test]
+async fn the_org_route_works_out_the_teams_of_this_node_and_reads_the_others_from_theirs() {
+    let (mut alice, _) = alice().await;
+    configure(&alice);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    let bob = joined_bob(&alice).await;
+
+    let (status, answer) = client_evaluation(&alice, "").await;
+    assert_eq!(status, 200, "{answer}");
+    let evaluation: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!(evaluation.check(&id("acme"), 14), Ok(()));
+    assert_eq!(evaluation.teams.len(), 1);
+    assert_eq!(evaluation.teams[0].summary.merged.feat, 1);
+    assert!(evaluation.unavailable.is_empty());
+
+    let (status, answer) = client_evaluation(&bob, "?days=7").await;
+    assert_eq!(
+        status, 200,
+        "bob has no team of his own; alice's is read from her node: {answer}"
+    );
+    let remote: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!((remote.days, remote.teams.len()), (7, 1));
+    assert_eq!(remote.teams[0].team, id("app"));
+    assert_eq!(
+        remote.teams[0].summary.merged.feat, 1,
+        "the numbers are the team's own node's"
+    );
+    assert_eq!(
+        alice.delivery.0.lock().unwrap().asked.len(),
+        2,
+        "each read worked it out on alice's node"
+    );
+
+    alice.stop().await;
+    let (status, answer) = client_evaluation(&bob, "").await;
+    assert_eq!(
+        status, 200,
+        "a team's node that is down does not blank the answer"
+    );
+    assert_eq!(answer["teams"], serde_json::json!([]));
+    assert_eq!(answer["unavailable"][0]["team"], "app");
+    assert_eq!(
+        answer["unavailable"][0]["reason"],
+        "the team's node did not answer"
+    );
+}
+
+#[tokio::test]
+async fn a_range_that_is_not_allowed_and_an_org_that_is_not_the_accounts_are_refused() {
+    let (alice, _) = alice().await;
+    for bad in ["?days=0", "?days=91", "?days=two"] {
+        assert_eq!(client_evaluation(&alice, bad).await.0, 400, "{bad}");
+    }
+    assert!(
+        alice.delivery.0.lock().unwrap().asked.is_empty(),
+        "a bad range never reaches GitHub"
+    );
+    let carol = node_with("carol", memory_runtime().0, None).await;
+    let copy = alice.node.store().load_org(&id("acme")).unwrap();
+    carol.node.store().save_org(&copy).unwrap();
+    assert_eq!(
+        client_evaluation(&carol, "").await.0,
+        404,
+        "an account that is not a member does not learn the org"
+    );
+}
+
+#[tokio::test]
+async fn a_team_node_that_answers_for_another_team_is_unavailable_and_the_others_are_still_answered(
+) {
+    let (alice, _) = alice().await;
+    configure(&alice);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    let place = agency_proto::org::TeamPlace::new(id("ext"), "ext", lying_node().await);
+    agency_core::orgs::add_team(&alice.node, &id("acme"), place).unwrap();
+
+    let (status, answer) = client_evaluation(&alice, "?days=14").await;
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(
+        answer["teams"].as_array().unwrap().len(),
+        1,
+        "alice's own team is answered"
+    );
+    assert_eq!(answer["teams"][0]["team"], "app");
+    assert_eq!(answer["unavailable"][0]["team"], "ext");
+    assert_eq!(
+        answer["unavailable"][0]["reason"],
+        "the team's node sent an answer that is not what was asked for",
+        "another team's numbers are not passed on as ext's"
+    );
+    let text = answer.to_string();
+    assert!(
+        !text.contains("127.0.0.1"),
+        "no address in an answer: {text}"
+    );
+}
+
+#[tokio::test]
+async fn a_team_of_this_node_without_repositories_is_listed_as_unavailable_with_its_reason() {
+    let (alice, _) = alice().await;
+    let (status, answer) = client_evaluation(&alice, "").await;
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["teams"], serde_json::json!([]));
+    assert_eq!(answer["unavailable"][0]["team"], "app");
+    assert!(answer["unavailable"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("no repositories"));
 }

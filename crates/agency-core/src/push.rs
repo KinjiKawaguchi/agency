@@ -44,7 +44,7 @@ fn check_token(raw: &str) -> Result<String> {
 
 /// The kinds a token gets: `request` only when it names none (absent), none for an empty list, each kind
 /// once, in the order `request`, `device`, `decision`.
-fn normal_events(events: Option<Vec<PushEvent>>) -> Vec<PushEvent> {
+pub(crate) fn normal_events(events: Option<Vec<PushEvent>>) -> Vec<PushEvent> {
     let Some(mut events) = events else {
         return default_push_events();
     };
@@ -192,33 +192,73 @@ pub struct Pass {
     pub failures: Vec<String>,
 }
 
-/// Sends one notice to every token that wants its kind. It counts as delivered if any of them took it, or
-/// if none wants it (including when no token is registered); otherwise it is tried again on the next
-/// pass. Tokens APNs no longer accepts are removed.
-async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<bool> {
+/// What sending one notice to one kind of destination came to.
+#[derive(Default)]
+struct Outcome {
+    wanting: usize,
+    accepted: bool,
+    gone: Vec<String>,
+}
+
+impl Outcome {
+    fn record(&mut self, id: &str, answer: Result<(), PushError>, pass: &mut Pass) {
+        match answer {
+            Ok(()) => self.accepted = true,
+            Err(PushError::Gone) => self.gone.push(id.to_owned()),
+            Err(PushError::Failed(why)) => pass.failures.push(why),
+        }
+    }
+}
+
+async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Outcome> {
     let all = node.store().push_tokens();
     let wanting: Vec<&PushToken> = all
         .iter()
         .filter(|token| token.events.contains(&notice.event()))
         .collect();
-    let mut delivered = wanting.is_empty();
-    let mut gone = vec![];
-    for token in &wanting {
-        match node.notifier().send(token, notice).await {
-            Ok(()) => delivered = true,
-            Err(PushError::Gone) => gone.push(token.token.clone()),
-            Err(PushError::Failed(why)) => pass.failures.push(why),
-        }
+    let mut outcome = Outcome {
+        wanting: wanting.len(),
+        ..Outcome::default()
+    };
+    for token in wanting {
+        let answer = node.notifier().send(token, notice).await;
+        outcome.record(&token.token, answer, pass);
     }
-    if !gone.is_empty() {
-        remove_tokens(node, &gone)?;
-        delivered |= gone.len() == wanting.len();
-    }
-    Ok(delivered)
+    remove_tokens(node, &outcome.gone)?;
+    Ok(outcome)
 }
 
-fn is_hiding_titles(node: &Node) -> bool {
-    node.config().push.is_some_and(|push| push.hide_titles)
+async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Outcome> {
+    let wanting = crate::web_push::wanting(node, notice);
+    let mut outcome = Outcome {
+        wanting: wanting.len(),
+        ..Outcome::default()
+    };
+    for subscription in &wanting {
+        let answer = node.notifier().send_web(subscription, notice).await;
+        outcome.record(&subscription.id, answer, pass);
+    }
+    crate::web_push::remove_subscriptions(node, &outcome.gone)?;
+    Ok(outcome)
+}
+
+/// Sends one notice to every token and browser subscription that wants its kind. It counts as delivered
+/// if any of them took it, or if none wants it (including when none is registered), or if the ones that
+/// wanted it are gone; otherwise it is tried again on the next pass. Tokens APNs no longer accepts, and
+/// subscriptions a push service says are gone, are removed.
+async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<bool> {
+    let tokens = send_to_tokens(node, notice, pass).await?;
+    let browsers = send_to_browsers(node, notice, pass).await?;
+    let wanting = tokens.wanting + browsers.wanting;
+    let gone = tokens.gone.len() + browsers.gone.len();
+    Ok(wanting == 0 || tokens.accepted || browsers.accepted || gone == wanting)
+}
+
+/// Whether the node leaves titles and labels out of every notification: one meaning for APNs and Web
+/// Push alike, since both go through a service that is not the node's own.
+pub(crate) fn is_hiding_titles(node: &Node) -> bool {
+    let config = node.config();
+    config.hide_titles || config.push.is_some_and(|push| push.hide_titles)
 }
 
 /// The kind a notified key belongs to, which decides how many of them are kept.

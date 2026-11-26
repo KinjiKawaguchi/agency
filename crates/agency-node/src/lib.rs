@@ -15,6 +15,7 @@ use agency_adapters::runtime::CommandRuntime;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
+use agency_adapters::web_push::{WebPush, WithWebPush};
 use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, TeamRuntime};
@@ -39,8 +40,8 @@ pub struct Overrides {
     pub launch: Option<Launch>,
 }
 
-/// APNs when the node has a push setting whose key can be read; otherwise nothing is sent.
-fn notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
+/// APNs when the node has a push setting whose key can be read; otherwise nothing is sent to tokens.
+fn token_notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
     let Some(push) = config.push.clone() else {
         return Arc::new(NoNotifier);
     };
@@ -49,6 +50,56 @@ fn notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
         Err(error) => {
             eprintln!("agency: push notifications are off: {error}");
             Arc::new(NoNotifier)
+        }
+    }
+}
+
+/// The contact a push service may reach this node's operator at, when the configuration names none: the
+/// node's public host name, else its origin.
+fn web_push_subject(config: &NodeConfig) -> String {
+    match &config.access {
+        Some(access) => format!("https://{}", access.public_host),
+        None => config.url.clone(),
+    }
+}
+
+/// What to tell the operator when the contact sent to push services is not one they accept: without
+/// `webPush.subject` and without `access`, it is the node's own origin, which on a machine's own address is
+/// `http://127.0.0.1:...`, and Apple's push service refuses a contact that is not `https` or `mailto:`.
+pub fn web_push_subject_warning(config: &NodeConfig) -> Option<String> {
+    let has_own = config
+        .web_push
+        .as_ref()
+        .is_some_and(|web| web.subject.is_some());
+    (!has_own && !web_push_subject(config).starts_with("https://")).then(|| {
+        "web push has no contact for push services that is https; set webPush.subject to a mailto: address (Apple refuses the node's http address)".to_owned()
+    })
+}
+
+/// The node's notifier: APNs for tokens, and, with a `webPush` setting, browsers' push services for
+/// subscriptions (the VAPID key is made in the data directory on first use).
+fn notifier(
+    config: &NodeConfig,
+    data_dir: &std::path::Path,
+    clock: Arc<dyn Clock>,
+) -> Arc<dyn Notifier> {
+    let tokens = token_notifier(config, clock.clone());
+    let Some(web_config) = &config.web_push else {
+        return tokens;
+    };
+    let key_path = data_dir.join("web-push-vapid.key");
+    if let Err(error) = web_config.check() {
+        eprintln!("agency: web push is off: {error}");
+        return tokens;
+    }
+    if let Some(warning) = web_push_subject_warning(config) {
+        eprintln!("agency: {warning}");
+    }
+    match WebPush::new(web_config, web_push_subject(config), &key_path, clock) {
+        Ok(web) => Arc::new(WithWebPush { tokens, web }),
+        Err(error) => {
+            eprintln!("agency: web push is off: {error}");
+            tokens
         }
     }
 }
@@ -72,7 +123,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let notifier = match overrides.notifier {
         Some(notifier) => notifier,
-        None => notifier(&data.load_config()?, clock.clone()),
+        None => notifier(&data.load_config()?, &data_dir, clock.clone()),
     };
     let ports = Ports {
         store: Arc::new(data),

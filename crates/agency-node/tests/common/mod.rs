@@ -67,6 +67,9 @@ pub struct Running {
     pub delivery: MemoryDelivery,
     opened: Opened,
     pub port: u16,
+    /// The socket the node will serve on, held from the moment its port was chosen until `start`: a port
+    /// that is chosen and then closed can be handed to another test before this node opens it again.
+    listener: Option<TcpListener>,
     server: Option<JoinHandle<()>>,
     _dir: TempDir,
 }
@@ -74,6 +77,11 @@ pub struct Running {
 impl Running {
     pub fn url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// The node's data directory.
+    pub fn data_dir(&self) -> std::path::PathBuf {
+        self._dir.path().join("node")
     }
 
     /// The node's HTTP app, to call without a socket (with a chosen peer address).
@@ -84,7 +92,10 @@ impl Running {
     }
 
     pub async fn start(&mut self) {
-        let listener = TcpListener::bind(("127.0.0.1", self.port)).await.unwrap();
+        let listener = match self.listener.take() {
+            Some(listener) => listener,
+            None => TcpListener::bind(("127.0.0.1", self.port)).await.unwrap(),
+        };
         let app = self
             .opened
             .app_with(self.port, TOKEN.into(), Arc::new(TestWeb))
@@ -135,15 +146,11 @@ async fn node_from(
     fixed: Option<(u8, u16)>,
 ) -> Running {
     let dir = TempDir::new().unwrap();
-    let port = match fixed {
-        Some((_, port)) => port,
-        None => TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port(),
+    let listener = match fixed {
+        Some((_, port)) => TcpListener::bind(("127.0.0.1", port)).await.unwrap(),
+        None => TcpListener::bind("127.0.0.1:0").await.unwrap(),
     };
+    let port = listener.local_addr().unwrap().port();
     let seed = fixed.map(|(seed, _)| seed);
     let data = DataDir::new(dir.path().join("node"));
     data.create_key().unwrap();
@@ -163,9 +170,10 @@ async fn node_from(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
+        web_push: None,
+        hide_titles: false,
     })
     .unwrap();
     let clock = ManualClock::at(T0);
@@ -192,6 +200,7 @@ async fn node_from(
         delivery,
         opened,
         port,
+        listener: Some(listener),
         server: None,
         _dir: dir,
     };
@@ -218,25 +227,14 @@ pub fn alice_on(running: Running, memory: &Arc<Mutex<MemoryRuntimeState>>) -> Ru
     orgs::add_team(
         node,
         &id("acme"),
-        TeamPlace {
-            id: id("app"),
-            label: "app".into(),
-            department: None,
-            node: running.url(),
-        },
+        TeamPlace::new(id("app"), "app", running.url()),
     )
     .unwrap();
     node.update_config(|config| {
-        config.teams.push(HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: Default::default(),
-            runtime: RuntimeCommand {
-                command: vec!["/nonexistent".into()],
-                env: Default::default(),
-            },
-        })
+        let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
+        config
+            .teams
+            .push(HostedTeam::new(id("acme"), id("app"), id("alice"), runtime))
     })
     .unwrap();
     running

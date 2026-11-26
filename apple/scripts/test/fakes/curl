@@ -2,7 +2,8 @@
 # Stand-in for curl in the tests: records the request and answers from files in $FAKE_DIR.
 #   $FAKE_LOG          one line per request: METHOD URL BODY
 #   $FAKE_LOG.auth     the Authorization header curl was given on its standard input
-#   $FAKE_DIR/bundle_ids.json, capabilities.json   what the two GET requests answer
+#   $FAKE_DIR/bundle_ids.json, capabilities.json   what the two GET requests answer; a bundle ID with its own
+#                      capabilities-<resource id>.json answers from that file instead
 #   $FAKE_DIR/status   when present, the HTTP status to answer instead of 200/201
 method=GET output="" body="" url="" read_config=""
 while [ $# -gt 0 ]; do
@@ -27,8 +28,17 @@ case "$method $url" in
   # The real API refuses `limit` on this relationship.
   "GET "*"/bundleIdCapabilities"*limit*)
     status=400 response='{"errors":[{"title":"A given parameter is not allowed for this request","detail":"The parameter '"'"'limit'"'"' can not be used with this request : This relationship does not support this parameter."}]}' ;;
-  "GET "*"/bundleIdCapabilities"*) response=$(cat "$FAKE_DIR/capabilities.json") ;;
-  "POST "*"/v1/bundleIds") status=201 response='{"data":{"id":"NEW-BUNDLE"}}' ;;
+  "GET "*"/bundleIdCapabilities"*)
+    resource=${url#*/v1/bundleIds/}
+    resource=${resource%%/*}
+    if [ -f "$FAKE_DIR/capabilities-$resource.json" ]; then
+      response=$(cat "$FAKE_DIR/capabilities-$resource.json")
+    else
+      response=$(cat "$FAKE_DIR/capabilities.json")
+    fi ;;
+  "POST "*"/v1/bundleIds")
+    status=201 response='{"data":{"id":"NEW-BUNDLE"}}'
+    case "$body" in *.widgets*) response='{"data":{"id":"NEW-WIDGET"}}' ;; esac ;;
   "POST "*"/v1/bundleIdCapabilities") status=201 response='{"data":{"id":"NEW-CAPABILITY"}}' ;;
   *) status=404 response='{"errors":[{"title":"Not found","detail":"no such route"}]}' ;;
 esac

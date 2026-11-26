@@ -86,8 +86,13 @@ describe('the app icon’s badge', () => {
     const node = createTestNode()
     let isExpired = false
     const client = createApiClient(
-      (request) => (isExpired ? Promise.reject(new TypeError('Failed to fetch')) : node.handle(request)),
+      // A call that follows Access's redirect fails as a network error; the one that asks without following it gets the redirect.
+      (request) => {
+        if (!isExpired) return node.handle(request)
+        return request.redirect === 'manual' ? Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://login.example.test/' } })) : Promise.reject(new TypeError('Failed to fetch'))
+      },
       { hostname: () => 'agency.example.test', isOnline: () => true },
+      { confirmAfterMs: 0 },
     )
     renderApp({ node, client, enrolled: true })
     await waitFor(() => expect(counts(native)).toContain(3))

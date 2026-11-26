@@ -53,6 +53,19 @@ describe('deciding with the device key', () => {
     expect(node.decisions()[0]).not.toHaveProperty('choiceLabel')
   })
 
+  it('sends the decision of a page that was open when the node started again, after asking it for the new write token', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    await enrol(node, keyStore)
+    renderApp({ node, keyStore })
+    await screen.findByRole('radio', { name: /Approve/ })
+    node.restart()
+    await approve(user)
+    await screen.findByText(/Alice approved this/)
+    expect(node.envelopes()).toHaveLength(1)
+  })
+
   it('shows the signed decision in the log with the title and the label of its choice', async () => {
     const user = userEvent.setup()
     const node = createMockNode({ earlierDecisions: false })

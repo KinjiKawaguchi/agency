@@ -23,7 +23,11 @@ private func deviceList(requests: [(label: String, key: String)]) -> DeviceList 
 
 private func log(_ entries: [(id: String, state: String, title: String?)]) -> DecisionLog {
     let items = entries.map { entry -> String in
-        let state = entry.state == "refused" ? #"{"kind":"refused","message":"no"}"# : #"{"kind":"\#(entry.state)"}"#
+        let state = switch entry.state {
+        case "refused": #"{"kind":"refused","message":"no"}"#
+        case "queued": #"{"kind":"queued","attempts":1,"nextAt":"2026-11-24T12:00:00Z"}"#
+        default: #"{"kind":"\#(entry.state)"}"#
+        }
         let title = entry.title.map { #","title":"\#($0)""# } ?? ""
         return #"{"id":"\#(entry.id)","org":"acme","team":"app","kind":"answer","target":"r-1","text":"","decidedAt":"2026-11-24T12:00:00Z","state":\#(state)\#(title)}"#
     }
@@ -77,6 +81,7 @@ struct NewsStoreTests {
         await news.poll()
         #expect(news.banners.map(\.text) == ["3 件の依頼があなたを待っています"])
         #expect(news.banners[0].count == 3)
+        #expect(news.banners[0].destination == .desk(itemID: nil), "several are on the desk; none of them is opened for the person")
     }
 
     @Test("the same reading twice makes no banner")
@@ -165,7 +170,7 @@ struct NewsStoreTests {
         sent.record("mine1")
         source.decisions = .success(log([("mine1", "applied", "Ship it?"), ("other1", "refused", "Drop it?")]))
         await news.poll()
-        #expect(news.banners.map(\.text) == ["「Drop it?」の決定は断られました"])
+        #expect(news.banners.map(\.text) == ["「Drop it?」の決定は断られました: no"])
         #expect(news.banners[0].destination == .desk(itemID: nil))
     }
 
@@ -176,7 +181,22 @@ struct NewsStoreTests {
         await news.poll()
         source.decisions = .success(log([("c1", "refused", nil)]))
         await news.poll()
-        #expect(news.banners.map(\.text) == ["「(題名なし)」の決定は断られました"])
+        #expect(news.banners.map(\.text) == ["決定は断られました: no"])
+        source.decisions = .success(log([("c1", "refused", nil), ("c2", "refused", "")]))
+        await news.poll()
+        #expect(news.banners.map(\.text) == ["決定は断られました: no"], "an empty title is no title")
+    }
+
+    @Test("another state of a decision is worded as the web words it: reflected, arrived, waiting to be sent")
+    func otherStates() async {
+        for (state, text) in [("applied", "「Ship it?」の決定が反映されました"), ("delivered", "「Ship it?」の決定が届きました"), ("queued", "「Ship it?」の決定は送信待ちです")] {
+            source.decisions = .success(log([]))
+            let news = store()
+            await news.poll()
+            source.decisions = .success(log([("n1", state, "Ship it?")]))
+            await news.poll()
+            #expect(news.banners.map(\.text) == [text], "\(state)")
+        }
     }
 
     @Test("a participant who now waits on the viewer makes a banner with their name, which opens the people screen")
@@ -188,6 +208,15 @@ struct NewsStoreTests {
         #expect(news.banners.map(\.kind) == [.participant])
         #expect(news.banners[0].text == "Frontend があなたの返事を待っています")
         #expect(news.banners[0].destination == .people)
+    }
+
+    @Test("several participants are counted as participants, in the words of the glossary")
+    func severalParticipants() async {
+        let news = store()
+        await news.poll()
+        source.snapshot = .success(Teams.snapshot(waitingOnViewer: ["backend", "frontend", "devops"]))
+        await news.poll()
+        #expect(news.banners.map(\.text) == ["参加者 2 人があなたの返事を待っています"])
     }
 
     @Test("a work item newly blocked makes a banner with its title and the reason; several say how many")

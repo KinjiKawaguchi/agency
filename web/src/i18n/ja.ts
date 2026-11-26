@@ -65,25 +65,36 @@ export const ja: Messages = {
     funding: '利用上限',
   },
   notices: {
-    request: (count, title, team) => (count === 1 ? `あなたを待っている依頼があります: ${title} (${team})。` : `あなたを待つ依頼が ${count} 件、新しく届きました。`),
-    participant: (count, label) => (count === 1 ? `${label} があなたを待っています。` : `参加者 ${count} 人があなたを待っています。`),
-    blocked: (count, title, team) => (count === 1 ? `止まりました: ${title} (${team})。` : `仕事の項目 ${count} 件が新しく止まりました。`),
+    // The words of the iPhone app's banner (apple/AgencyKit/Sources/AgencyModel/Wording/JaNews.swift), so both clients say the same.
+    request: (count, title, team) => (count === 1 ? `${team}: 「${title}」があなたを待っています` : `${count} 件の依頼があなたを待っています`),
+    participant: (count, label) => (count === 1 ? `${label} があなたの返事を待っています` : `参加者 ${count} 人があなたの返事を待っています`),
+    blocked: (count, title, team, reason) => (count === 1 ? `${team}: 「${title}」が止まりました${reason === undefined ? '' : ` (${reason})`}` : `${count} 件の仕事が止まりました`),
     aDevice: '端末',
-    device: (count, label) => (count === 1 ? `${label} が、端末として追加されるのを待っています。` : `${count} 台の端末が、追加されるのを待っています。`),
+    device: (count, label) => (count === 1 ? `端末「${label}」が追加を待っています` : `${count} 台の端末が追加を待っています`),
     decision: (state, count, title, reason) => {
-      const named = count === 1 && title !== '' ? `「${title}」` : ''
-      const label = state === 'refused' ? '受け付けられませんでした' : state === 'queued' ? '送信待ちです' : state === 'applied' ? '反映されました' : '届きました'
-      if (count > 1) return `決定 ${count} 件が${label}。`
-      return `決定${named}が${label}${state === 'refused' && reason !== undefined ? `: ${reason}` : '。'}`
+      if (count > 1) return `${count} 件の決定に動きがありました`
+      const named = title === '' ? '決定' : `「${title}」の決定`
+      if (state === 'refused') return `${named}は断られました${reason === undefined ? '' : `: ${reason}`}`
+      if (state === 'queued') return `${named}は送信待ちです`
+      return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
     devicesMark: (count) => `承認待ち ${count} 件`,
+    os: {
+      title: 'このブラウザの通知',
+      lead: 'このページが隠れているあいだ、新しいことをオペレーティングシステムの通知で知らせます。言葉はページの通知と同じで、このブラウザの外には出ません。',
+      turnOn: '通知を有効にする',
+      turnOff: '通知を無効にする',
+      isOn: '有効です。このページが隠れているときに新しいことがあると、通知が出ます。気づくために、ブラウザが許す限りページは背面でも読み込みを続けますが、ブラウザを閉じているあいだは読み込めません。',
+      isBlocked: 'このブラウザは、このページの通知を許可していません。サイトの設定で許可してから、ここで有効にしてください。',
+      isUnsupported: 'このブラウザは、ページからの通知を出せません。',
+    },
   },
   people: {
     title: '参加者と仕事',
     team: (label) => `${label} チーム`,
     summary: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中です。`,
-    waitingOnYou: (count) => `${count} 人の参加者があなたの返事を待っています。`,
+    waitingOnYou: (count) => `参加者 ${count} 人があなたの返事を待っています。`,
     roles: { lead: 'リード' },
     stateTags: { 'needs-you': 'あなたの番', working: '作業中', waiting: '待ち', idle: '待機中', away: '離席' },
     since: (when) => `${when} から`,
@@ -197,6 +208,11 @@ export const ja: Messages = {
     title: '端末',
     intro: '決定を下すブラウザ、スマートフォン、コマンドラインは、それぞれ自分の鍵を持ちます。鍵は端末の中に残り、外へ取り出せません。決定にはこの鍵で署名します。',
     thisDevice: 'この端末',
+    keyKeeping: {
+      kept: 'このブラウザは、サイトのデータを消さない限り、この端末の鍵を保ちます。',
+      atRisk: 'このブラウザは、サイトのデータを消したときや、空き容量が足りなくなったときに、この端末の鍵を消すことがあります。鍵は複製できないので、消えたときは、このブラウザをもう一度追加する必要があります。',
+      lost: 'このブラウザの前の鍵が消えています（サイトのデータが消されたか、ブラウザが消しました）。新しい鍵を作ったので、もう一度追加する必要があります。',
+    },
     codeLabel: 'この端末の照合コード',
     loading: 'この端末の鍵を作っています…',
     loadingList: 'ノードに端末の一覧を問い合わせています…',
@@ -266,7 +282,7 @@ export const ja: Messages = {
   desk: {
     briefing: {
       greeting: (name, when) => `${name} さん宛て · ${when}`,
-      someoneWaiting: (count) => `${count} 人の参加者があなたの返事を待っています。`,
+      someoneWaiting: (count) => `参加者 ${count} 人があなたの返事を待っています。`,
       itemsOnDesk: (count) => `机の上に ${count} 件あります。`,
       nothingToDecide: '今、決めることはありません。',
       nextProposal: ['まず ', ' を決裁してください。'],
@@ -450,6 +466,8 @@ export const ja: Messages = {
       hint: 'メッセージが通ると線が光ります。やり取りの多い線ほど太くなります。',
       label: 'エージェント間のメッセージ: エージェントを点、やり取りを線で表した図',
       agent: (name, team) => `${name} (${team}チーム)`,
+      others: 'ほか (ここのチームにいない)',
+      othersMore: (shown, total) => `ほか (ここのチームにいない): ${total} 人のうち ${shown} 人を表示`,
     },
     feed: {
       title: '今起きていること',
@@ -476,5 +494,11 @@ export const ja: Messages = {
       bins: '直近 1 時間の 5 分ごとのマージ数',
       landed: (ref) => `入りました: ${ref}`,
     },
+  },
+  install: {
+    title: 'アプリとして入れる',
+    lead: 'Agency をこの端末にアプリとして追加します。専用の窓で開き、このブラウザのサインインをそのまま使います。',
+    button: 'Agency を入れる',
+    safari: 'Mac の Safari では、ファイルメニューから「Dock に追加」を選びます。',
   },
 }

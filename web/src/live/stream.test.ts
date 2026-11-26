@@ -1,6 +1,6 @@
 import type { Activity, ActivityEvent } from '../api/activityApi'
 import { ApiError } from '../api/client'
-import { ActivityStream, type StreamSnapshot } from './stream'
+import { ActivityStream, FRESH_MS, type StreamSnapshot } from './stream'
 
 const T0 = Date.parse('2026-11-26T10:00:00Z')
 const message = (id: string, seconds: number): ActivityEvent => ({ id, at: new Date(T0 + seconds * 1000).toISOString(), kind: 'message', from: 'lead', to: 'backend', summary: '' })
@@ -34,17 +34,40 @@ describe('an activity stream', () => {
 
   it('then reads from a second before the last event, shows each event once, and calls the new ones fresh', async () => {
     const node = nodeWith([message('m-1', -10)])
-    const stream = streamOf(node)
+    let clock = T0
+    const stream = streamOf(node, () => clock)
     await stream.poll()
     node.add(message('m-2', -10)) // the same time as the last one: a read strictly after it would miss it without the overlap
     node.add(message('m-3', 5))
+    clock += 10_000
     await stream.poll()
     expect(node.asked[1]).toBe(new Date(T0 - 11_000).toISOString())
     expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1', 'm-2', 'm-3'])
     expect(stream.current.fresh.map((one) => one.event.id)).toEqual(['m-2', 'm-3'])
+    // A few seconds on, nothing is news any more, and nothing is shown twice.
+    clock += FRESH_MS + 1
     await stream.poll()
     expect(stream.current.events).toHaveLength(3)
     expect(stream.current.fresh).toEqual([])
+  })
+
+  it('keeps what two teams that answered together have just sent, so that a screen that draws once for both sees both', async () => {
+    const [first, second] = [nodeWith([]), nodeWith([])]
+    let clock = T0
+    const stream = new ActivityStream({
+      read: (org, team, since) => (team === 'app' ? first : second).read(org, team, since),
+      teams: [{ org: 'acme', team: 'app' }, { org: 'acme', team: 'site' }],
+      now: () => clock,
+    })
+    await stream.poll()
+    first.add(message('m-a', 70))
+    second.add(message('m-b', 71))
+    clock += 10_000
+    const heard: StreamSnapshot[] = []
+    stream.subscribe((snapshot) => heard.push(snapshot))
+    await stream.poll()
+    // Whatever the screen saw of the two notifications, the last one has both.
+    expect(heard.at(-1)?.fresh.map((one) => one.event.id).toSorted()).toEqual(['m-a', 'm-b'])
   })
 
   it('asks again from where it stopped when the node cut the answer', async () => {
@@ -182,5 +205,38 @@ describe('an activity stream', () => {
     node.add(message('m-12', 5))
     await stream.poll()
     expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-10', 'm-11', 'm-12'])
+  })
+
+  it('reads each team on its own, so that one that is slow to answer holds back no other', async () => {
+    vi.useFakeTimers()
+    try {
+      const fast = nodeWith([message('m-1', -10)])
+      let release: (() => void) | undefined
+      const stream = new ActivityStream({
+        read: (org, team, since, signal) =>
+          team === 'slow'
+            ? new Promise((_, reject) => {
+                release = () => reject(new Error('late'))
+                signal.addEventListener('abort', () => reject(signal.reason))
+              })
+            : fast.read(org, team, since),
+        teams: [{ org: 'acme', team: 'quick' }, { org: 'acme', team: 'slow' }],
+        now: () => T0,
+        intervalMs: 10_000,
+        timeoutMs: 30_000,
+      })
+      stream.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1'])
+      fast.add(message('m-2', 5))
+      await vi.advanceTimersByTimeAsync(10_000)
+      // The slow team has not answered in 10 seconds, and the quick one has gone on regardless.
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1', 'm-2'])
+      expect(stream.current.fresh.map((one) => one.event.id)).toEqual(['m-2'])
+      release?.()
+      stream.stop()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -80,6 +80,7 @@ struct RequestCard: View {
     let failure: String?
     let now: Date
     let onConfirm: () -> Void
+    @Environment(\.keyProtection) private var protection
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
@@ -99,7 +100,7 @@ struct RequestCard: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(isConfirming)
-                Label(Ja.Devices.faceID, systemImage: "faceid").font(.caption).foregroundStyle(.secondary).wrapping()
+                Label(Ja.Key.confirmAdd(protection), systemImage: Ja.Key.symbol(protection)).font(.caption).foregroundStyle(.secondary).wrapping()
             }
             if let failure {
                 Label(Ja.Devices.confirmFailed(failure), systemImage: "exclamationmark.triangle.fill")

@@ -27,6 +27,11 @@ const SAMPLE_ACTIVITY: &str = include_str!("../../../testdata/activity.sample.js
 const ALICE_PORT: u16 = 7701;
 const BOB_PORT: u16 = 7702;
 /// A comment with characters a client's JSON must carry unchanged.
+/// The application server key and a browser's key from RFC 8291, appendix A.
+const SAMPLE_VAPID_KEY: &str =
+    "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8";
+const SAMPLE_BROWSER_KEY: &str =
+    "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4";
 const COMMENT: &str = "リリースは来週にしてください 🚀 \"quoted\" \\ /";
 
 type Answers = Vec<(&'static str, Value)>;
@@ -119,6 +124,20 @@ async fn me_with_funding(alice: &Running) -> Value {
     me
 }
 
+/// alice's `/api/me` when her node keeps titles off notifications: `hidesTitles` is there, `true`.
+async fn me_hiding_titles(alice: &Running) -> Value {
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    let me = read(alice, "/api/me").await;
+    alice
+        .node
+        .update_config(|config| config.hide_titles = false)
+        .unwrap();
+    me
+}
+
 /// Bob's node reads alice's newest org definition. It takes only the next version of the one it has, so
 /// this runs after each change of alice's, and a second after the clock moved on: a node accepts a
 /// signed read once, and a manual clock repeats the time of the last one.
@@ -200,11 +219,29 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     let token =
         json!({ "token": "ab12".repeat(16), "environment": "production", "label": "iPhone" });
     let registered = write(alice, "/api/push/tokens", &token).await;
+    alice.notifier.0.lock().unwrap().web_key = Some(agency_proto::client::VapidKey {
+        public_key: SAMPLE_VAPID_KEY.into(),
+        key_id: "a1b2c3d4e5f6".into(),
+    });
+    let subscription = json!({
+        "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABk-example",
+        "p256dh": SAMPLE_BROWSER_KEY,
+        "auth": "BTBZMqHH6r4Tts7J_aSIgg",
+        "label": "Firefox on a laptop",
+    });
+    let subscribed = write(alice, "/api/push/subscriptions", &subscription).await;
     let (status, error) = body(get(alice, "/api/orgs/other").send().await.unwrap()).await;
     assert_eq!(status, 404);
     let mut answers = vec![
         ("me", read(alice, "/api/me").await),
+        ("push-vapid", read(alice, "/api/push/vapid").await),
+        ("push-subscription", subscribed),
+        (
+            "push-subscription-list",
+            read(alice, "/api/push/subscriptions").await,
+        ),
         ("me-funding", me_with_funding(alice).await),
+        ("me-hides-titles", me_hiding_titles(alice).await),
         ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),
         (
@@ -232,7 +269,74 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         ("error", error),
     ];
     answers.extend(alice_device_changes(alice, bob, &key).await);
+    answers.push(("evaluation", evaluation_answer(alice).await));
     answers
+}
+
+/// alice's `/api/orgs/acme/evaluation` for a team that reads two repositories: three pull requests
+/// (a feature that closes an issue, a fix, and a revert) merged on the last two days of a week, and a
+/// default branch that was red for an hour. The node's time is 2026-11-24T12:00Z and its time zone UTC.
+async fn evaluation_answer(alice: &Running) -> Value {
+    use agency_core::delivery::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
+    let at = |raw: &str| agency_proto::clock::parse(raw).unwrap();
+    let pull_request =
+        |title: &str, opened: &str, merged: &str, started: Option<&str>| MergedPullRequest {
+            title: title.into(),
+            body: String::new(),
+            opened_at: at(opened),
+            merged_at: at(merged),
+            first_commit_at: Some(at(opened)),
+            has_issue: started.is_some(),
+            issue_started_at: started.map(at),
+        };
+    let run = |commit: &str, finished: &str, verdict| MainRun {
+        repo: "acme/app".into(),
+        commit: commit.into(),
+        finished_at: at(finished),
+        verdict,
+    };
+    let facts = DeliveryFacts {
+        pull_requests: vec![
+            pull_request(
+                "feat(web): add a screen",
+                "2026-11-23T08:00:00Z",
+                "2026-11-23T10:00:00Z",
+                Some("2026-11-23T06:00:00Z"),
+            ),
+            pull_request(
+                "fix(core): refuse it",
+                "2026-11-24T08:30:00Z",
+                "2026-11-24T09:00:00Z",
+                None,
+            ),
+            pull_request(
+                "Revert \"fix(core): refuse it\"",
+                "2026-11-24T10:00:00Z",
+                "2026-11-24T10:10:00Z",
+                None,
+            ),
+        ],
+        runs: vec![
+            run("a1", "2026-11-23T15:00:00Z", Verdict::Failed),
+            run("a2", "2026-11-23T16:00:00Z", Verdict::Passed),
+        ],
+    };
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts));
+    alice
+        .node
+        .update_config(|config| {
+            let at = config
+                .teams
+                .iter()
+                .position(|team| team.team == id("app"))
+                .unwrap();
+            let team = config.teams.remove(at);
+            config
+                .teams
+                .insert(at, team.with_delivery(vec!["acme/app".into()]));
+        })
+        .unwrap();
+    read(alice, "/api/orgs/acme/evaluation?days=7").await
 }
 
 /// What bob's node answers: its replica of acme/app, and a decision queued while alice's node is down.

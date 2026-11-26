@@ -112,6 +112,16 @@
     "digest": "4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4",
     "signature": "H/brmJtPumtrLHcvjdB26ERB+v3wceMYcSGQ8QEGLqdlAlZ+68nJuZPWMe/a3/prmxFt6xJMeMapmbG9vOe3DA=="
   },
+  "orgWithOutcomes": {
+    "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"kpis\":[{\"currency\":\"JPY\",\"goodWhen\":\"higher\",\"id\":\"revenue\",\"kind\":\"business\",\"label\":\"Revenue\",\"unit\":\"money\"},{\"goodWhen\":\"higher\",\"id\":\"activation\",\"kind\":\"product\",\"label\":\"Activation\",\"unit\":\"percent\"},{\"goodWhen\":\"lower\",\"id\":\"lead-time\",\"kind\":\"product\",\"label\":\"Lead time of a feature\",\"unit\":\"seconds\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\",\"plan\":{\"aims\":[{\"epic\":\"app#10\",\"kpi\":\"activation\"}],\"allocation\":{\"debt\":15,\"improvement\":20,\"incident\":5,\"maintenance\":20,\"newFeature\":40},\"weeklyBudgetUsd\":500}}],\"version\":2}",
+    "digest": "b4e06b4f24b2c626725d09b0b2a598338faadb158be0da62d7fd8590f4429514",
+    "signature": "oeU+4WC4ZQI8iOVhJyWntECdOyvX2BGSYphqVy6bIiN8rVtebrqkLS96eD7LIxYsUfzmTCCD8jWmZk4h5inyBQ=="
+  },
+  "orgWithPlan": {
+    "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\",\"plan\":{\"allocation\":{\"debt\":15,\"improvement\":20,\"incident\":5,\"maintenance\":20,\"newFeature\":40},\"weeklyBudgetUsd\":500}}],\"version\":2}",
+    "digest": "b9f1bde23ba785c4912172cf7077aba6ae8878e764230748f31d3d84c5fa02d6",
+    "signature": "tY/tk6Vl/Y083clHeDHzYH+rEvzRWLfBIRPA8owRVOo6lOEBxvZn6zqrOF1jCwrlWFN9iMgVP3nUX9UEbqtfDQ=="
+  },
   "p256Device": {
     "commentSignature": "SMoU0WHlWHXyP/vft+7CVpvBD1y9qj2dU8ygGkvrrie/DEQc4k4+XpevDimTxs4Itj9qt8RDHaluV0WBPO/6Gw==",
     "deviceId": "d-a652124afda7",

@@ -86,12 +86,7 @@ async fn an_answer_too_long_or_beyond_the_view_limits_is_not_kept() {
     let (alice, _) = alice().await;
     let answer = Arc::new(Mutex::new(Answer::Json(view_of_far(|_| {}))));
     let far = fake_node(answer.clone()).await;
-    let place = TeamPlace {
-        id: id("far"),
-        label: "Far".into(),
-        department: None,
-        node: far,
-    };
+    let place = TeamPlace::new(id("far"), "Far", far);
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
 
     refresh(&alice.node).await.unwrap();

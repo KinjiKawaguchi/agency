@@ -39,9 +39,9 @@ public enum Ja {
         }
 
         public static func itemsOnDesk(_ count: Int) -> String { "机の上に \(count) 件あります。" }
-        public static func someoneWaiting(_ count: Int) -> String { "\(count) 人があなたの返事を待っています。" }
-        public static func peopleWorking(working: Int, total: Int) -> String { "\(total) 人のうち \(working) 人が作業中です。" }
-        public static func blocking(_ count: Int) -> String { "\(count) 人が待機" }
+        public static func someoneWaiting(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
+        public static func peopleWorking(working: Int, total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
+        public static func blocking(_ count: Int) -> String { "参加者 \(count) 人が待機" }
         public static func drafter(_ name: String) -> String { "起案: \(name)" }
         public static func unreadableTeam(_ team: String, reason: String) -> String { "\(team) を読み込めませんでした: \(reason)" }
         public static func loadFailed(_ reason: String) -> String { "ノードに接続できません: \(reason)" }
@@ -72,7 +72,6 @@ public enum Ja {
         public static let needChoiceOrComment = "選択肢を選ぶか、コメントを書いてください。"
         public static let needAnswer = "答えを書いてください。"
         public static let needDecision = "判断を書いてください。"
-        public static let faceIDNote = "送るときに Face ID で確認します。"
         public static let queued = "保存しました。チームのノードが休止中なので、起動したときに届きます。"
 
         public static func type(_ kind: Request.Kind) -> String {
@@ -125,10 +124,9 @@ public enum Ja {
         public static let adding = "申し込み中…"
         public static let ready = "この端末は追加されています。"
         public static let label = "iPhone"
+        public static let macLabel = "Mac"
         public static let reset = "この端末の鍵を作り直す"
         public static let resetConfirm = "作り直す"
-        public static let resetExplain = "Face ID の登録を変えたあとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
-        public static let noKey = "この端末では、決定に署名する鍵を作れません。Face ID を設定してから、アプリを開き直してください。"
 
         public static func notAdded(org: String) -> String { "この端末は \(org) に追加されていません。先に端末を追加してください。" }
         public static func failed(_ reason: String) -> String { "端末の状態を調べられませんでした: \(reason)" }

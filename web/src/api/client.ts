@@ -1,5 +1,5 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Session, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
@@ -84,6 +84,9 @@ export function forLog(text: string): string {
   return `${characters.slice(0, MAX_LOGGED_TEXT - 1).join('').trimEnd()}…`
 }
 
+/** What the node says when a write's token is not the one it holds. */
+const STALE_TOKEN = 'write token'
+
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
   return document.querySelector('meta[name="agency-token"]')?.getAttribute('content') ?? ''
@@ -98,19 +101,56 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T
 }
 
+/** How long after a call failed without an answer the node is asked whether the sign-in is really gone. */
+const CONFIRM_AFTER_MS = 1000
+
+export interface ClientOptions {
+  /** For tests: the wait before the node is asked whether the sign-in is gone. */
+  confirmAfterMs?: number
+}
+
+/** A redirect that was not followed: what a browser answers for one with `redirect: 'manual'`, or, from a stand-in for the browser, a 3xx. */
+const isRedirected = (answer: Response): boolean => answer.type === 'opaqueredirect' || (answer.status >= 300 && answer.status < 400)
+
+/** A call the page cancelled itself (a screen closed, a read replaced by another): it says nothing about the sign-in. */
+const wasCancelled = (cause: unknown, request: Request): boolean => request.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')
+
 /** Talks to the home node. `send` is injectable so tests can route calls to the mock node. */
-export function createApiClient(send: FetchLike = (request) => fetch(request), page: PageEnvironment = browserPage): ApiClient {
+export function createApiClient(send: FetchLike = (request) => fetch(request), page: PageEnvironment = browserPage, { confirmAfterMs = CONFIRM_AFTER_MS }: ClientOptions = {}): ApiClient {
   const url = (path: string): URL => new URL(path, window.location.origin)
   const listeners = new Set<(state: SessionState) => void>()
   const tell = (state: SessionState): void => listeners.forEach((listener) => listener(state))
 
-  /** Sends a call. One that fails without an answer, away from this machine, is taken for an expired sign-in. */
+  /**
+   * Whether the sign-in is really gone: asked a moment after a call failed without an answer, with one call to
+   * the node that takes no part in anything else, and that does not follow a redirect. Access's redirect to its
+   * login then comes back as what it is (an `opaqueredirect`), which is the one sign of an expired sign-in; a
+   * failure of the connection stays a network error, and any other answer means the sign-in holds. Calls that
+   * failed at the same moment share the one asking.
+   */
+  let confirming: Promise<boolean> | undefined
+  const isSignInGone = (): Promise<boolean> => {
+    confirming ??= (async () => {
+      await new Promise((resolve) => setTimeout(resolve, confirmAfterMs))
+      if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) return false
+      return send(new Request(url('/api/session'), { headers: { accept: 'application/json' }, redirect: 'manual' })).then(isRedirected, () => false)
+    })().finally(() => {
+      confirming = undefined
+    })
+    return confirming
+  }
+
+  /**
+   * Sends a call. One that fails without an answer, away from this machine, may be the redirect Access makes once the
+   * sign-in expired, but a lost connection fails the same way, as does a call the page cancelled. It is taken for an
+   * expired sign-in only when the node, asked a moment later, answers nothing either; otherwise it fails as it did.
+   */
   const dispatch = async (request: Request): Promise<Response> => {
     let response: Response
     try {
       response = await send(request)
     } catch (cause) {
-      if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) throw cause
+      if (wasCancelled(cause, request) || !looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline()) || !(await isSignInGone())) throw cause
       tell('expired')
       throw new SignInExpiredError()
     }
@@ -119,9 +159,26 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
   }
   const get = <T>(path: string, signal?: AbortSignal): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' }, ...(signal === undefined ? {} : { signal }) })).then(readJson<T>)
 
-  /** A write: JSON with the page's token, which the node demands of every write. */
-  const post = <T>(path: string, body: unknown): Promise<T> =>
-    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': readToken() }, body: JSON.stringify(body) })).then(readJson<T>)
+  /** The page's token goes stale when the node starts again: a token read from `/api/session` after that is kept for the writes that follow. */
+  let renewedToken: string | undefined
+
+  const write = <T>(path: string, body: unknown, token: string): Promise<T> =>
+    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': token }, body: JSON.stringify(body) })).then(readJson<T>)
+
+  /**
+   * A write: JSON with the page's token, which the node demands of every write. The token changes each time the node
+   * starts, so a page that was open across a start gets 403 "missing or wrong write token": it asks the node for the
+   * token once, and sends the write again once (docs/protocol.md, `/api/session`). A second refusal, or any other, is the answer.
+   */
+  const post = async <T>(path: string, body: unknown): Promise<T> => {
+    try {
+      return await write<T>(path, body, renewedToken ?? readToken())
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403 || !error.message.includes(STALE_TOKEN)) throw error
+      renewedToken = (await get<Session>('/api/session')).writeToken
+      return write<T>(path, body, renewedToken)
+    }
+  }
 
   return {
     onSession: (listener) => {

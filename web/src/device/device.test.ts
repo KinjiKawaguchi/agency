@@ -22,6 +22,7 @@ const parse = (canonical: string): Json => JSON.parse(canonical) as Json
 describe('canonical JSON', () => {
   it.each([
     ['org', vectors.org.canonical],
+    ['org with a team plan', vectors.orgWithPlan.canonical],
     ['device change', vectors.deviceChange.canonical],
     ['P-256 device add', vectors.deviceChangeP256.add.canonical],
     ['P-256 device remove', vectors.deviceChangeP256.remove.canonical],
@@ -172,6 +173,19 @@ describe('loadOrCreateDeviceKey', () => {
     const second = await loadOrCreateDeviceKey(store)
     expect(second.publicKey).toBe(first.publicKey)
     expect(store.saved()).toBe(1)
+  })
+
+  it('makes no key when reading the one it has fails, and says it failed', async () => {
+    let saves = 0
+    const store: KeyStore = {
+      load: () => Promise.reject(new Error('The database is blocked.')),
+      save: () => {
+        saves += 1
+        return Promise.resolve()
+      },
+    }
+    await expect(loadOrCreateDeviceKey(store)).rejects.toThrow('The database is blocked.')
+    expect(saves).toBe(0)
   })
 
   it('is unaffected by base64 helpers: round trip', () => {
