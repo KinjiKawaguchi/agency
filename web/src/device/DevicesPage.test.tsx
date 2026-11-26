@@ -238,7 +238,7 @@ describe('a device list that stays current while the screen is open', () => {
     expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     const other = await otherDeviceAsks(node, 'Phone')
     expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 9000 })).toHaveTextContent(other.pairingCode)
-    expect(screen.getByRole('button', { name: 'The codes match: add it' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeInTheDocument()
   })
 
   it('does not read the list while the tab is hidden, and reads it again when the tab is back', async () => {
