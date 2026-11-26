@@ -32,8 +32,12 @@ extension Ja {
         public static func confirmAdd(_ protection: KeyProtection) -> String { "追加するときに \(by(protection))確認します。" }
 
         public static func resetExplain(_ protection: KeyProtection) -> String {
-            let change = protection == .faceID ? "Face ID の登録を変えた" : "Touch ID の登録を変えた"
-            return "\(change)あとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
+            switch protection {
+            case .faceID:
+                "Face ID の登録を変えたあとで署名できなくなったときに使います。作り直すと、この端末をもう一度追加する必要があります。"
+            case .touchIDOrPassword:
+                "鍵を使えなくなったときに使います。作り直すと、この Mac をもう一度追加する必要があります。"
+            }
         }
 
         public static func noKey(_ protection: KeyProtection) -> String {

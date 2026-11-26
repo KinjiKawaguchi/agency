@@ -8,6 +8,10 @@ public enum WidgetWording {
     public static let nothingWaits = "待っている依頼はありません。"
     public static let notSynced = "アプリを開くと表示されます。"
     public static let waitingLabel = "あなたを待っている依頼"
+    /// The settings row that decides whether widgets show titles.
+    public static let showTitles = "ウィジェットにタイトルを表示"
+    public static let showTitlesFooter = "オフにすると、ウィジェットには依頼の種類と件数だけが出ます。タイトルもチーム名も、端末に保存されません。"
+    public static let nodeHidesTitles = "このノードは、タイトルを端末に出さない設定です。ウィジェットにも出しません。"
 
     public static func count(_ count: Int) -> String { "\(count) 件" }
     public static func inline(_ count: Int) -> String { "決めること \(count) 件" }

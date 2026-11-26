@@ -46,6 +46,18 @@ struct WidgetSnapshotBuilderTests {
         #expect(snapshot.requests.count == 3)
     }
 
+    @Test("without titles the snapshot keeps the count and the kinds, and no title or team label")
+    func hiddenTitles() throws {
+        let items = Desk.openItems([Teams.team()])
+        let snapshot = WidgetSnapshotBuilder.snapshot(host: "h", items: items, now: now, showsTitles: false)
+        #expect(snapshot.waitingCount == items.filter(\.isMine).count)
+        #expect(!snapshot.requests.isEmpty)
+        #expect(snapshot.requests.allSatisfy { $0.title == nil && $0.teamLabel == nil })
+        let shown = WidgetSnapshotBuilder.snapshot(host: "h", items: items, now: now)
+        #expect(zip(snapshot.requests, shown.requests).allSatisfy { $0.request == $1.request && $0.kind == $1.kind })
+        #expect(shown.requests.allSatisfy { $0.title != nil && $0.teamLabel != nil })
+    }
+
     @Test("an empty desk gives a snapshot that says nothing waits")
     func empty() {
         let snapshot = WidgetSnapshotBuilder.snapshot(host: "h", items: [], now: now)

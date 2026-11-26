@@ -14,6 +14,7 @@ pub mod ids;
 pub mod invite;
 pub mod keys;
 pub mod org;
+pub mod outcome;
 pub mod runtime;
 pub mod signed;
 pub mod timestamp;

@@ -7,6 +7,8 @@ App/Info.plist
 App/Agency.entitlements
 Mac/Info.plist
 Mac/Agency.entitlements
+Widgets/Info.plist
+Widgets/AgencyWidgets.entitlements
 
 # Build output.
 build/

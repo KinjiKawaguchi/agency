@@ -52,13 +52,12 @@ async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, 
         .collect()
 }
 
-/// The repositories of a hosted team, if the node's configuration names any.
-fn repositories(node: &Node, hosted: &HostedTeam) -> Option<Vec<String>> {
-    node.config()
+/// The repositories of a hosted team, if its configuration names any.
+fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
+    hosted
         .delivery
-        .into_iter()
-        .find(|config| config.org == hosted.org && config.team == hosted.team)
-        .map(|config| config.repos)
+        .as_ref()
+        .map(|delivery| delivery.repos.clone())
         .filter(|repos| !repos.is_empty())
 }
 
@@ -68,7 +67,7 @@ fn repositories(node: &Node, hosted: &HostedTeam) -> Option<Vec<String>> {
 pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
-    let Some(repos) = repositories(node, hosted) else {
+    let Some(repos) = repositories(hosted) else {
         let reason = "no repositories are configured for this team".to_owned();
         return unavailable(node, hosted, &period, days, reason);
     };
