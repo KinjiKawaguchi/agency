@@ -9,6 +9,9 @@ public struct TeamSnapshot: Decodable, Equatable, Sendable {
     public let mine: [String]
     /// The ids of the people whose `waitingOn` is the viewer.
     public let waitingOnViewer: [String]
+    /// For each of the viewer's requests that is addressed to a seat or an external party the viewer answers for: the request id and
+    /// the label of whom it is for, as the org's definition has it. Absent when there is none. Clients show it and never work it out.
+    public let relayedFor: [String: String]?
     public let source: Source
 
     public enum Source: Decodable, Equatable, Sendable {

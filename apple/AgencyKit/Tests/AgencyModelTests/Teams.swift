@@ -22,21 +22,26 @@ enum Teams {
     /// requests addressed to the viewer or to no one, and `waitingOnViewer` the people who wait on them.
     static func team(
         viewer: String? = "owner", mine: [String]? = nil, waitingOnViewer: [String]? = nil,
-        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = []
+        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = [], relayedFor: [String: String]? = nil
     ) -> Team {
-        Team(snapshot: snapshot(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests))
+        Team(snapshot: snapshot(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests, relayedFor: relayedFor))
     }
 
     /// The same, as the node's answer.
     static func snapshot(
         viewer: String? = "owner", mine: [String]? = nil, waitingOnViewer: [String]? = nil,
-        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = [], addWork: [[String: Any]] = []
+        source: [String: Any] = ["kind": "local"], addRequests: [[String: Any]] = [], addWork: [[String: Any]] = [],
+        relayedFor: [String: String]? = nil
     ) -> TeamSnapshot {
-        try! build(viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests, addWork: addWork)
+        try! build(
+            viewer: viewer, mine: mine, waitingOnViewer: waitingOnViewer, source: source, addRequests: addRequests, addWork: addWork,
+            relayedFor: relayedFor
+        )
     }
 
     private static func build(
-        viewer: String?, mine: [String]?, waitingOnViewer: [String]?, source: [String: Any], addRequests: [[String: Any]], addWork: [[String: Any]]
+        viewer: String?, mine: [String]?, waitingOnViewer: [String]?, source: [String: Any], addRequests: [[String: Any]], addWork: [[String: Any]],
+        relayedFor: [String: String]?
     ) throws -> TeamSnapshot {
         var view = try sample()
         var requests = view["requests"] as! [[String: Any]]
@@ -50,6 +55,7 @@ enum Teams {
             "view": view, "mine": mine ?? ownMine, "waitingOnViewer": waitingOnViewer ?? ownWaiting, "source": source,
         ]
         if let viewer { snapshot["viewer"] = viewer }
+        if let relayedFor { snapshot["relayedFor"] = relayedFor }
         let data = try JSONSerialization.data(withJSONObject: snapshot)
         return try JSONDecoder().decode(TeamSnapshot.self, from: data)
     }

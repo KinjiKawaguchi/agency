@@ -26,7 +26,7 @@ struct RequestRow: View {
                 .multilineTextAlignment(.leading)
                 .lineLimit(4)
                 .wrapping()
-            Text(meta)
+            Text(Self.meta(of: item, now: now))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -36,10 +36,12 @@ struct RequestRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var meta: String {
+    /// Who drafted it, the team, whom the viewer answers it for (when it is addressed to a seat or an external party), and when.
+    static func meta(of item: DeskItem, now: Date) -> String {
         let drafter = item.drafter?.label ?? item.request.from
         let when = Ago.text(from: item.request.createdAt.date, now: now)
-        return "\(Ja.Desk.drafter(drafter)) · \(item.teamLabel) · \(when)"
+        let answersFor = item.answersFor.map(Ja.Desk.answerFor)
+        return [Ja.Desk.drafter(drafter), item.teamLabel, answersFor, when].compactMap { $0 }.joined(separator: " · ")
     }
 }
 #endif
