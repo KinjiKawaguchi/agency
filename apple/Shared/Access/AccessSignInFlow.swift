@@ -24,8 +24,7 @@ final class AccessSignInFlow: NSObject {
     /// What the build has in its associated domains (`AGENCY_ASSOCIATED_HOST` and the second one, each a host or a
     /// `*.` wildcard), by the Info keys that `project.yml` fills.
     static var configuredAssociatedHosts: [String] {
-        let listed = Bundle.main.object(forInfoDictionaryKey: "AgencyAssociatedHosts") as? String
-            ?? Bundle.main.object(forInfoDictionaryKey: "AgencyAssociatedHost") as? String ?? ""
+        guard let listed = Bundle.main.object(forInfoDictionaryKey: "AgencyAssociatedHosts") as? String else { return [] }
         return listed.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "agency.invalid" }
     }
 

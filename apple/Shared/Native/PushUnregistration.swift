@@ -23,9 +23,12 @@ enum PushUnregistration {
                 try? await Task.sleep(for: patience)
                 return false
             }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
+            // The first of the two to finish: the node's answer, or the end of the patience.
+            for await result in group {
+                group.cancelAll()
+                return result
+            }
+            return false
         }
     }
 }
