@@ -282,6 +282,25 @@ struct DeskStoreTests {
         #expect(store.recoveries.isEmpty, "the node no longer says it waits: cancelled or taken")
     }
 
+    @Test("what waits for the root key is on the desk until the node stops naming it, a failed read leaves it, and nothing is there before the node answered")
+    func rootChanges() async throws {
+        func me(_ changes: String) throws -> Me {
+            let json = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[]}]\#(changes)}"#
+            return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+        }
+        let store = makeStore()
+        #expect(store.rootChanges == nil)
+        source.set(me: .success(try me(#","rootChanges":[{"id":"c1","org":"acme","what":"add member carol (Carol)","receivedAt":"2026-11-26T09:00:00Z"}]"#)))
+        await store.refresh()
+        #expect(store.rootChanges?.items.map(\.id) == ["c1"])
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.rootChanges?.items.map(\.id) == ["c1"], "a failed read says nothing of it: it stays")
+        source.set(me: .success(try me("")))
+        await store.refresh()
+        #expect(store.rootChanges == nil, "the node no longer says it waits: signed or dropped")
+    }
+
     @Test("a read that is cancelled after the account answered keeps the newer list of recoveries")
     func recoveriesKeptWhenCancelledAfterTheAccount() async throws {
         func me(_ recovery: String) throws -> Me {

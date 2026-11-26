@@ -226,9 +226,12 @@ async fn join_requests_must_be_signed_within_ten_minutes() {
         ErrorKind::BadRequest
     );
     alice.clock.set("2026-11-24T12:10:00Z");
-    let doc = accept_join(&alice.node, &id("acme"), request(T0))
+    let answer = accept_join(&alice.node, &id("acme"), request(T0))
         .await
         .unwrap();
+    let agency_proto::root_change::RootAnswer::Signed(doc) = answer else {
+        panic!("held: {answer:?}")
+    };
     assert!(doc.body.member(&id("bob")).is_some());
 }
 

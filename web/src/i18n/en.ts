@@ -136,6 +136,9 @@ export const en = {
         turnOn: 'Turn on for a closed app',
         turnOff: 'Turn off for a closed app',
         isOn: 'On. The node tells this browser when something is new, with the page closed.',
+        isFailing: (when: string, reason: string) => `The push service of this browser did not take the last notice (${when}): ${reason}. The node tries again for up to a day. If it keeps failing, turn this off and on again.`,
+        lastTaken: (when: string) => `The last notice it took was at ${when}.`,
+        neverTaken: 'It has taken none yet.',
         isStale: 'This browser was subscribed with a key the node no longer has, so it is not told. Subscribe again.',
         subscribeAgain: 'Subscribe again',
         failed: (message: string) => `Could not change it: ${message}`,
@@ -332,6 +335,7 @@ export const en = {
       },
     },
     confirmFailed: (reason: string) => `Could not add the device: ${reason}`,
+    pendingRoot: ['Approved here; it takes effect once the root key’s node signs it: run ', ' there.'] satisfies Around,
   },
   desk: {
     briefing: {
@@ -345,6 +349,16 @@ export const en = {
       peopleWorking: (working: number, total: number) => `${working} of ${total} participants are working.`,
       allOnDesk: (count: number) => `${count} items on your desk in all.`,
       seePeople: 'See participants and work',
+    },
+    rootChanges: {
+      label: 'Changes waiting for the root key',
+      title: (count: number) => (count === 1 ? '1 change waits for the root key’s signature.' : `${count} changes wait for the root key’s signature.`),
+      item: (what: string, org: string, when: string) => `${what} (${org}, asked ${when})`,
+      unknownChange: 'A change this page cannot describe',
+      addMember: (label: string, member: string) => `Add member ${label} (${member})`,
+      addDevice: (label: string, member: string) => `Add device ${label} for ${member}`,
+      removeDevice: (device: string, member: string) => `Remove device ${device} of ${member}`,
+      command: ['Sign them together on the root key’s node: run ', ' there.'] satisfies Around,
     },
     recovery: {
       label: 'Recovery of an org',

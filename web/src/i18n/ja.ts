@@ -132,6 +132,9 @@ export const ja: Messages = {
         turnOn: '閉じているときも通知する',
         turnOff: '閉じているときの通知をやめる',
         isOn: '有効です。ページを閉じていても、新しいことがあるとノードがこのブラウザに知らせます。',
+        isFailing: (when, reason) => `このブラウザのプッシュサービスは、最後の通知を受け付けませんでした（${when}）: ${reason}。ノードは最大 1 日のあいだ再送します。失敗が続くときは、いったんやめて、もう一度有効にしてください。`,
+        lastTaken: (when) => `最後に受け付けた通知は ${when} のものです。`,
+        neverTaken: 'まだ 1 件も受け付けていません。',
         isStale: 'このブラウザは、ノードがもう持っていない鍵で登録されているため、通知が届きません。登録し直してください。',
         subscribeAgain: '登録し直す',
         failed: (message) => `変更できませんでした: ${message}`,
@@ -328,6 +331,7 @@ export const ja: Messages = {
       },
     },
     confirmFailed: (reason) => `端末を追加できませんでした: ${reason}`,
+    pendingRoot: ['ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで ', ' を実行してください。'],
   },
   desk: {
     briefing: {
@@ -341,6 +345,16 @@ export const ja: Messages = {
       peopleWorking: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中です。`,
       allOnDesk: (count) => `机の上には全部で ${count} 件あります。`,
       seePeople: '参加者と仕事を見る',
+    },
+    rootChanges: {
+      label: 'ルート鍵の署名を待っている変更',
+      title: (count) => `ルート鍵の署名を待っている変更が ${count} 件あります。`,
+      item: (what, org, when) => `${what}（${org}、${when}に依頼）`,
+      unknownChange: 'この画面では説明できない変更',
+      addMember: (label, member) => `メンバー ${label}（${member}）の追加`,
+      addDevice: (label, member) => `${member} の端末「${label}」の追加`,
+      removeDevice: (device, member) => `${member} の端末 ${device} の削除`,
+      command: ['まとめて署名するには、ルート鍵のノードで ', ' を実行してください。'],
     },
     recovery: {
       label: '組織のルート鍵の回復',
