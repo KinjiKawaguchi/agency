@@ -149,7 +149,8 @@ fn is_same_secret(given: &str, expected: &str) -> bool {
             == 0
 }
 
-/// A write needs the page's token, a JSON body (a DELETE has none), and, through Access, the owner.
+/// A write needs the page's token, a JSON body (a DELETE has none), and the owner: on a node with an
+/// access setting, the owner signed in through Access, even on loopback.
 fn check_write(
     api: &ClientApi,
     admitted: &Admitted,
@@ -170,13 +171,17 @@ fn check_write(
             "the body must be application/json",
         ));
     }
-    let Admitted::Access(identity) = admitted else {
-        return Ok(());
-    };
-    if is_owner(api, identity) {
-        Ok(())
-    } else {
-        Err((StatusCode::FORBIDDEN, "only the node's owner may decide"))
+    match admitted {
+        // With an access setting the owner is who Access says it is, so a process of the same OS user
+        // on this machine cannot write as the owner. Checked against the setting itself, so a malformed
+        // one (which disables Access) does not make loopback the owner again.
+        Admitted::Local if api.node.config().access.is_some() => Err((
+            StatusCode::FORBIDDEN,
+            "this node is behind Access: writes come through its public host name, signed in as the owner",
+        )),
+        Admitted::Local => Ok(()),
+        Admitted::Access(identity) if is_owner(api, identity) => Ok(()),
+        Admitted::Access(_) => Err((StatusCode::FORBIDDEN, "only the node's owner may decide")),
     }
 }
 
