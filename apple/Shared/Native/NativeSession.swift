@@ -16,6 +16,8 @@ final class NativeSession {
     let keyProblem: String?
     /// The devices screen's state; `nil` when this phone has no key.
     let devices: DevicesStore?
+    /// Whether APNs takes the notices the node sends this phone, read from the node's list of the owner's tokens.
+    let pushDelivery: PushDeliveryStore
     private(set) var signInProblem: String?
 
     /// The client of the home node, for the screens that read from it.
@@ -23,6 +25,8 @@ final class NativeSession {
     @ObservationIgnored private let signIn: AccessSignInFlow
     /// What was last told to the node about the push token, so that a change of the token or of the kinds is told again.
     @ObservationIgnored private var registeredPush: RegisteredPush?
+    /// This phone's push token, once Apple has given it one: what `pushDelivery` looks for among the node's listed tokens.
+    @ObservationIgnored private let ownPushToken = PushTokenBox()
     /// Whether the home node took the kinds of push the owner chose; `false` for a node that sends requests only.
     /// Whether the home node sends the kinds the owner chose, or `nil` until it has answered the registration.
     private(set) var nodeSendsPushKinds: Bool?
@@ -64,6 +68,7 @@ final class NativeSession {
         keyProblem = problem
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
+        pushDelivery = PushDeliveryStore(source: client, ownToken: { ownPushToken.value })
         // The screens read the account and every team through one shared cache, so the app asks the node once
         // for what several screens want, and a decision drops what was read before it.
         let sent = SentDecisions()
@@ -129,6 +134,7 @@ final class NativeSession {
     /// Tells the node this phone's push token and the kinds of notification the owner wants, once the desk can be
     /// read. Registering a known token only updates it, so a change of the kinds is told the same way.
     func registerPush(_ registration: PushRegistration) async {
+        ownPushToken.value = registration.token
         let state = RegisteredPush(registration: registration, events: notifications.preferences.pushEventNames)
         guard state != registeredPush, desk.loading == .loaded else { return }
         do {
@@ -142,6 +148,12 @@ final class NativeSession {
             // Tried again at the next change or the next launch.
         }
     }
+}
+
+/// A place for this phone's push token, which `NativeSession` learns after it has built what asks for it.
+@MainActor
+private final class PushTokenBox {
+    var value: String?
 }
 
 private struct RegisteredPush: Equatable {

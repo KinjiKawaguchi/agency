@@ -170,14 +170,17 @@ public struct DevicesScreen: View {
     private let store: DevicesStore
     private let pairing: PairingStore?
     private let notice: String?
+    private let pushDelivery: PushDeliveryStore?
 
     /// - Parameters:
     ///   - pairing: this phone's state; `nil` when it has no key.
     ///   - notice: something the app has to say, such as why there is no key.
-    public init(store: DevicesStore?, pairing: PairingStore?, notice: String?) {
+    ///   - pushDelivery: whether APNs takes the notices the node sends this phone; `nil` for a build that has none to ask.
+    public init(store: DevicesStore?, pairing: PairingStore?, notice: String?, pushDelivery: PushDeliveryStore? = nil) {
         self.store = store ?? DevicesStore.empty
         self.pairing = pairing
         self.notice = notice
+        self.pushDelivery = pushDelivery
     }
 
     public var body: some View {
@@ -185,6 +188,7 @@ public struct DevicesScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     if let notice { Text(notice).font(.subheadline).foregroundStyle(Theme.danger).wrapping().card() }
+                    if let pushDelivery, let lines = pushDelivery.lines { PushDeliveryCard(lines: lines, isFailing: pushDelivery.isFailing) }
                     if let pairing {
                         DevicesContent(
                             code: pairing.pairingCode, pairing: pairing.status, isAsking: pairing.isAsking,
@@ -198,7 +202,10 @@ public struct DevicesScreen: View {
                 }
                 .padding(Theme.gutter)
             }
-            .refreshable { if let pairing { await refresh(pairing) } }
+            .refreshable {
+                if let pairing { await refresh(pairing) }
+                await pushDelivery?.refresh(force: true)
+            }
             .navigationTitle(Ja.Devices.title)
         }
         .task {
@@ -206,6 +213,8 @@ public struct DevicesScreen: View {
             // shows up without a reload.
             while !Task.isCancelled {
                 if let pairing { await refresh(pairing) }
+                // The read of the node's list is its own, kept for a while: this loop asks every few seconds.
+                await pushDelivery?.refresh()
                 try? await Task.sleep(for: .seconds(DevicesStore.pollSeconds))
             }
         }

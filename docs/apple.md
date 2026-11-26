@@ -135,6 +135,16 @@ The evaluation screen ends with 「このノードの応答時間」, for the ow
 - **Routes by route group** (the node's `group`; the app owns only the group names it says in Japanese, and says the node's word for another) and **the calls the node makes**, each group opening to its routes, with p50, p95, p99, requests and errors.
 - **Every percentile is "at most"** (「以下」): it is the upper bound of its bucket, and one beyond the last bucket (30 s) is 「30 秒 より遅い」. A group's percentile is read from its series' buckets **added together** (nearest rank, as the node reads it), never an average of percentiles; a test pins it against every series of the shared sample (`testdata/metrics.sample.json`). A series whose buckets deny its count, or that has more errors than calls, refuses the whole answer. A row with no duration shows no percentile cell, not a dash.
 
+## Whether APNs takes this phone's notices (agency#386, #409)
+
+The node keeps, for each push token, when APNs last took a notice (`lastSucceededAt`) and the last time it did not with the reason (`lastFailure`: the status and the reason code APNs answered, or that it could not be reached, never APNs' own words), in `GET /api/push/tokens`, where each token is shortened to its last 8 characters. The Devices screen finds this phone's own token by those 8 characters and says, with the web's words for a browser (`notices.os.push`, APNs in place of the browser's push service):
+
+- **failing**: the last refusal is later than the last taking (compared as times, an offset is not a later time), or there is a refusal and no taking: 「この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（日時）: 理由。ノードは最大 1 日のあいだ再送します。…」 with a warning symbol, then when the last notice was taken, or 「まだ 1 件も受け付けていません。」 ("never" is a missing value, not a date);
+- **nothing to say yet**: the node lists the token with neither fact: 「APNs は、この端末にまだ通知を受け付けていません。」, quietly, and not a trouble;
+- **nothing at all** when APNs takes them (a refusal older than a taking is not one), when this phone's token is not among the listed ones, before Apple has given this phone a token, and when the node cannot say (an older node; a failed read leaves what was known).
+
+The list is read when the screen opens, on a pull to reload, and again no sooner than 30 seconds later (the screen asks every few seconds for its devices). The reason is the node's own text and is shown as it is.
+
 ## Words of the node the app does not know
 
 A newer node may say a word an older app has never seen (`docs/compatibility.md`: "A new enum value in an answer"). Every enum the package decodes reads it as `unknown` and carries on: the rest of the answer still reads, and the new word is never one of the known ones, a success among them. `OpenWireEnum` does it for the enums of plain words; `DecisionState`, `WaitingOn`, `TeamSnapshot.Source` and `DeviceChangeResult.Outcome` decode themselves and keep the word. What the app does with an unknown word is the safe thing, and the screen says so where the owner could be misled:

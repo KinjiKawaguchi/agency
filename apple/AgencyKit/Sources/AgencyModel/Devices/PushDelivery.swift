@@ -22,11 +22,21 @@ public enum PushDelivery: Equatable, Sendable {
         }
     }
 
-    /// What the Devices screen says, in the web's words, when the notices are failing; nothing when they are taken or nothing is known.
+    /// Whether what the screen says is a trouble: only a notice that APNs did not take is.
+    public var isFailing: Bool {
+        if case .failing = self { true } else { false }
+    }
+
+    /// What the Devices screen says: in the web's words when the notices are failing, that APNs has taken none yet when the node lists the
+    /// token and has nothing more to say, and nothing when APNs takes them (a failure older than a taking is not one).
     public func lines(in timeZone: TimeZone = .current) -> [String]? {
-        guard case .failing(let at, let reason, let lastTakenAt) = self else { return nil }
-        let last = lastTakenAt.map { Ja.PushDelivery.lastTaken(JaFormat.dateTime($0, in: timeZone)) } ?? Ja.PushDelivery.neverTaken
-        return [Ja.PushDelivery.isFailing(JaFormat.dateTime(at, in: timeZone), reason), last]
+        switch self {
+        case .taken: return nil
+        case .unknown: return [Ja.PushDelivery.noneYet]
+        case .failing(let at, let reason, let lastTakenAt):
+            let last = lastTakenAt.map { Ja.PushDelivery.lastTaken(JaFormat.dateTime($0, in: timeZone)) } ?? Ja.PushDelivery.neverTaken
+            return [Ja.PushDelivery.isFailing(JaFormat.dateTime(at, in: timeZone), reason), last]
+        }
     }
 
     /// The token of this phone among those the node lists, which it shortens to their last 8 characters.

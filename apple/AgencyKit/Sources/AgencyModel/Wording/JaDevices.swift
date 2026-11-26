@@ -6,6 +6,8 @@ extension Ja {
         public static let title = "端末"
         public static let intro = "決定を下すブラウザ、スマートフォン、コマンドラインは、それぞれ自分の鍵を持ちます。鍵は端末の中に残り、外へ取り出せません。決定にはこの鍵で署名します。"
         public static let thisDevice = "この端末"
+        /// The heading of the card that says whether APNs takes this phone's notices.
+        public static let pushTitle = "プッシュ通知"
         public static let codeLabel = "この端末の照合コード"
         public static let loadingList = "ノードに端末の一覧を問い合わせています…"
         public static let added = "この端末は追加済みです。決定には、この端末の鍵で署名します。"
@@ -47,6 +49,8 @@ extension Ja {
 
         public static func lastTaken(_ when: String) -> String { "最後に受け付けた通知は \(when) のものです。" }
         public static let neverTaken = "まだ 1 件も受け付けていません。"
+        /// The node lists this phone's token and has sent it no notice yet, or has no word of it.
+        public static let noneYet = "APNs は、この端末にまだ通知を受け付けていません。"
     }
 }
 
