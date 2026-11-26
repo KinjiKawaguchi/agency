@@ -563,6 +563,26 @@ fn org_with_hosted_member(root: &AccountKey, org: &SignedOrg) -> serde_json::Val
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
 }
 
+/// The next version of `org`, in which dan has taken the seat carol: the seat is gone from `seats`, and dan has
+/// its id as `formerly` and what to ask about it as `askAbout`.
+fn org_with_a_claimed_seat(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    body.people.push(
+        Person::new(
+            id("dan"),
+            "Dan",
+            id("dan"),
+            AccountKey::from_seed([4; 32]).public(),
+        )
+        .with_department(Some(id("dev")))
+        .with_formerly(vec![id("carol")])
+        .with_ask_about(vec!["invoices".into(), "budget approval".into()]),
+    );
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
 fn allocation() -> Allocation {
     Allocation {
         new_feature: 40,
@@ -846,6 +866,7 @@ fn vectors_match_testdata() {
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
         "orgWithSeats": org_with_seats(&key, &org),
+        "orgWithClaimedSeat": org_with_a_claimed_seat(&key, &org),
         "orgWithHostedMember": org_with_hosted_member(&key, &org),
         "rootRotation": root_rotation(&key, &org),
         "rootRecovery": root_recovery(&key, &org),

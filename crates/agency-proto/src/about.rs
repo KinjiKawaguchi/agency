@@ -133,7 +133,8 @@ pub enum Capability {
     OrgKpis,
     /// `root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.
     OrgRecovery,
-    /// `seats` in the org definition: places in the org that no one has taken yet.
+    /// `seats` in the org definition: places in the org that no one has taken yet, and the seats a member
+    /// took (`people[].formerly`, `people[].askAbout`).
     OrgSeats,
     /// `externals` in the org definition: people the org works with who never take a seat.
     OrgExternals,
@@ -212,6 +213,11 @@ impl Capability {
         if definition.people.iter().any(|one| one.hosted_by.is_some()) {
             used.insert(Capability::HostedMembers);
         }
+        let took_a_seat =
+            |one: &crate::org::Person| !one.formerly.is_empty() || !one.ask_about.is_empty();
+        if definition.people.iter().any(took_a_seat) {
+            used.insert(Capability::OrgSeats);
+        }
         used
     }
 }
@@ -274,6 +280,8 @@ mod tests {
         ("externals[].id", Capability::OrgExternals),
         ("externals[].label", Capability::OrgExternals),
         ("externals[].relays", Capability::OrgExternals),
+        ("people[].askAbout", Capability::OrgSeats),
+        ("people[].formerly", Capability::OrgSeats),
         ("seats", Capability::OrgSeats),
         ("seats[].askAbout", Capability::OrgSeats),
         ("seats[].department", Capability::OrgSeats),
@@ -446,6 +454,15 @@ mod tests {
         );
         assert_eq!(used("rootRotation.namingTheNewRoot"), BTreeSet::new());
         assert_eq!(used("orgWithPlan"), BTreeSet::from([Capability::OrgPlan]));
+        assert_eq!(
+            used("orgWithSeats"),
+            BTreeSet::from([Capability::OrgSeats, Capability::OrgExternals])
+        );
+        assert_eq!(
+            used("orgWithClaimedSeat"),
+            BTreeSet::from([Capability::OrgSeats]),
+            "a member who took a seat needs the capability although `seats` is empty"
+        );
         assert_eq!(
             used("orgWithOutcomes"),
             BTreeSet::from([

@@ -11,6 +11,7 @@ use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
 use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::root_change::RootAnswer;
+use agency_proto::seat::Seat;
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
 
@@ -27,16 +28,40 @@ pub struct InviteRecord {
     pub role: Role,
     pub expires_at: String,
     pub used_by: Option<Id>,
+    /// The seat whoever joins with it takes (docs/glossary.md, "Claim link"); the department is the seat's.
+    #[serde(default)]
+    pub seat: Option<Id>,
 }
 
 /// On the root key's node: creates an invite and returns its link.
 pub fn invite(node: &Node, org: &Id, department: Option<Id>, role: Role) -> Result<String> {
+    create_invite(node, org, department, None, role)
+}
+
+/// On the root key's node: creates an invite for a seat (a claim link). Whoever joins with it takes the seat,
+/// and with it the seat's department. It names a seat of the org now; it is checked again when someone joins.
+pub fn invite_for_seat(node: &Node, org: &Id, seat: Id, role: Role) -> Result<String> {
+    create_invite(node, org, None, Some(seat), role)
+}
+
+fn create_invite(
+    node: &Node,
+    org: &Id,
+    department: Option<Id>,
+    seat: Option<Id>,
+    role: Role,
+) -> Result<String> {
     let current = load(node, org)?;
     if !is_root(node, &current) {
         return Err(Error::new(
             ErrorKind::Forbidden,
             format!("only the node with the root key of org {org} can invite"),
         ));
+    }
+    if let Some(seat) = &seat {
+        if !current.body.seats.iter().any(|one| &one.id == seat) {
+            return Err(Error::not_found(format!("no seat {seat} in org {org}")));
+        }
     }
     let code = code_from_bytes(node.random());
     let expires_at = clock::format(node.now() + Duration::days(INVITE_DAYS));
@@ -46,6 +71,7 @@ pub fn invite(node: &Node, org: &Id, department: Option<Id>, role: Role) -> Resu
         role,
         expires_at,
         used_by: None,
+        seat,
     };
     node.store().save_invite(&code_digest(&code), &record)?;
     Ok(Invite {
@@ -103,6 +129,8 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             "that account is already in the org",
         ));
     }
+    // Built before the invite is used, so that a seat that is gone leaves the invite as it was.
+    let body = joined_body(node, &current, request, &record)?;
     // The invite is used from here on, whether the root signs now or holds the join for the owner.
     node.store().save_invite(
         &code_digest(&request.code),
@@ -115,12 +143,15 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
         let request = Box::new(signed.clone());
         return hold(node, org, RootChange::Join { request });
     }
-    let doc = sign(node, joined_body(node, &current, request, &record)?)?;
+    let doc = sign(node, body)?;
     publish(node, &doc)?;
     Ok(RootAnswer::Signed(Box::new(doc)))
 }
 
 /// The next version with the joiner added, as the invite says; refused when the account is a member by now.
+/// For a seat, the seat is gone from `seats` and the joiner has its id in `formerly`, its department, and
+/// what to ask about it; refused when the seat is not in the org any more. The fields are `orgSeats`, which
+/// every node of the org lists already, since the org has the seat.
 pub(crate) fn joined_body(
     node: &Node,
     current: &SignedOrg,
@@ -138,7 +169,8 @@ pub(crate) fn joined_body(
             "that account is already in the org",
         ));
     }
-    let person = Person::new(
+    let mut body = OrgDefinition::successor_of(current, node.now_text());
+    let mut person = Person::new(
         request.account.clone(),
         request.label.clone(),
         request.account.clone(),
@@ -146,9 +178,33 @@ pub(crate) fn joined_body(
     )
     .with_department(record.department.clone())
     .with_role(record.role);
-    let mut body = OrgDefinition::successor_of(current, node.now_text());
+    if let Some(seat_id) = &record.seat {
+        let seat = take_seat(&mut body, seat_id)?;
+        person = person
+            .with_department(seat.department)
+            .with_ask_about(seat.ask_about)
+            .with_formerly(vec![seat.id]);
+    }
     body.people.push(person);
+    if record.seat.is_some() {
+        body.validate().map_err(Error::bad_request)?;
+    }
     Ok(body)
+}
+
+/// Takes the seat out of the definition and gives it back.
+pub(crate) fn take_seat(body: &mut OrgDefinition, id: &Id) -> Result<Seat> {
+    let at = body
+        .seats
+        .iter()
+        .position(|one| &one.id == id)
+        .ok_or_else(|| {
+            Error::new(
+                ErrorKind::Conflict,
+                format!("seat {id} is not in org {} any more", body.org),
+            )
+        })?;
+    Ok(body.seats.remove(at))
 }
 
 /// The invite a held join used, for signing it later: its record, still marked used by that joiner.

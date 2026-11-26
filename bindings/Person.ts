@@ -18,6 +18,16 @@ publicKey?: PublicKey, department: Id | null, role: Role,
  */
 devices?: Array<Device>, 
 /**
+ * The ids of the seats this person took, so that what named a seat (a request addressed to it, the
+ * history) reaches them. Left out when empty, so a version signed before seats keeps its signature.
+ */
+formerly?: Array<Id>, 
+/**
+ * What to ask this person about, in the org's own words: what the seat they took said. Left out when
+ * empty, like `formerly`.
+ */
+askAbout?: Array<string>, 
+/**
  * Set when the member has no node of its own: the root's node hosts it, and its clients use that node's
  * Client API (a hosted member, docs/glossary.md). Left out for every other member.
  */

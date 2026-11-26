@@ -18,11 +18,31 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     public let text: String
     public let choice: String?
     public let choiceLabel: String?
+    /// The seat or external party the decision answered for, when it did: the node worked it out when it applied the decision, and
+    /// no client says it. Present only for a team on the node that applied it.
+    public let relayedFor: RelayedFor?
     public let decidedAt: Instant
     public let state: DecisionState
 
     /// A comment: text and no choice. Nothing was decided.
     public var isComment: Bool { choice == nil }
+
+    /// Whom the decision answered for, when the node says and the label is not empty or only spaces.
+    public var answeredFor: String? {
+        let trimmed = relayedFor?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.flatMap { $0.isEmpty ? nil : $0 }
+    }
+}
+
+/// The seat or external party a decision answered for: its id, and its label as the org's definition had it when the decision was applied.
+public struct RelayedFor: Decodable, Equatable, Sendable {
+    public let id: String
+    public let label: String
+
+    public init(id: String, label: String) {
+        self.id = id
+        self.label = label
+    }
 }
 
 /// Where a decision went.

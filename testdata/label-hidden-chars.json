@@ -1,0 +1,236 @@
+{
+  "about": "The characters a label from the node may hold that reorder or hide how a line reads, as the node's `is_hidden_char` (crates/agency-proto/src/org.rs) has them: every one is printed as `mark`. Ranges are inclusive code points in hex. U+200C, U+200D and the emoji tag characters are not in it. Swift, the web client and the node read this one file.",
+  "mark": "?",
+  "hidden": [
+    [
+      "0000",
+      "001F"
+    ],
+    [
+      "007F",
+      "009F"
+    ],
+    [
+      "061C",
+      "061C"
+    ],
+    [
+      "200B",
+      "200B"
+    ],
+    [
+      "200E",
+      "200F"
+    ],
+    [
+      "202A",
+      "202E"
+    ],
+    [
+      "2060",
+      "2060"
+    ],
+    [
+      "2066",
+      "2069"
+    ],
+    [
+      "FEFF",
+      "FEFF"
+    ]
+  ],
+  "cases": [
+    {
+      "text": "Bob\u0000cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u001fcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob cat",
+      "printable": "Bob cat"
+    },
+    {
+      "text": "Bob\u007fcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u009fcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob~cat",
+      "printable": "Bob~cat"
+    },
+    {
+      "text": "Bob\u00a0cat",
+      "printable": "Bob\u00a0cat"
+    },
+    {
+      "text": "Bob\u061ccat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u061bcat",
+      "printable": "Bob\u061bcat"
+    },
+    {
+      "text": "Bob\u061dcat",
+      "printable": "Bob\u061dcat"
+    },
+    {
+      "text": "Bob\u200bcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u200acat",
+      "printable": "Bob\u200acat"
+    },
+    {
+      "text": "Bob\u200ccat",
+      "printable": "Bob\u200ccat"
+    },
+    {
+      "text": "Bob\u200ecat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u200fcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u200dcat",
+      "printable": "Bob\u200dcat"
+    },
+    {
+      "text": "Bob\u2010cat",
+      "printable": "Bob\u2010cat"
+    },
+    {
+      "text": "Bob\u202acat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u202ecat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u2029cat",
+      "printable": "Bob\u2029cat"
+    },
+    {
+      "text": "Bob\u202fcat",
+      "printable": "Bob\u202fcat"
+    },
+    {
+      "text": "Bob\u2060cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u205fcat",
+      "printable": "Bob\u205fcat"
+    },
+    {
+      "text": "Bob\u2061cat",
+      "printable": "Bob\u2061cat"
+    },
+    {
+      "text": "Bob\u2066cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u2069cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u2065cat",
+      "printable": "Bob\u2065cat"
+    },
+    {
+      "text": "Bob\u206acat",
+      "printable": "Bob\u206acat"
+    },
+    {
+      "text": "Bob\ufeffcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\ufefecat",
+      "printable": "Bob\ufefecat"
+    },
+    {
+      "text": "Bob\uff00cat",
+      "printable": "Bob\uff00cat"
+    },
+    {
+      "text": "Bob\ncat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u001bcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\tcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "a\u202eb\u202ac\u2066d",
+      "printable": "a?b?c?d"
+    },
+    {
+      "text": "Alice\u202eecil\u0430",
+      "printable": "Alice?ecil\u0430"
+    },
+    {
+      "text": "\u200b",
+      "printable": "?"
+    },
+    {
+      "text": "",
+      "printable": ""
+    },
+    {
+      "text": "Bob's iPhone 15 (\u4ed5\u4e8b)",
+      "printable": "Bob's iPhone 15 (\u4ed5\u4e8b)"
+    },
+    {
+      "text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+      "printable": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"
+    },
+    {
+      "text": "\u0915\u094d\u200d\u0937",
+      "printable": "\u0915\u094d\u200d\u0937"
+    },
+    {
+      "text": "\ud83d\udc69\u200d\ud83d\udcbb Dev",
+      "printable": "\ud83d\udc69\u200d\ud83d\udcbb Dev"
+    },
+    {
+      "text": "\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc73\udb40\udc63\udb40\udc74\udb40\udc7f Ops",
+      "printable": "\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc73\udb40\udc63\udb40\udc74\udb40\udc7f Ops"
+    },
+    {
+      "text": "a\u200cb",
+      "printable": "a\u200cb"
+    },
+    {
+      "text": "a\u200db",
+      "printable": "a\u200db"
+    },
+    {
+      "text": "a\u00a0b",
+      "printable": "a\u00a0b"
+    },
+    {
+      "text": "a\u2028b",
+      "printable": "a\u2028b"
+    },
+    {
+      "text": "a\u2029b",
+      "printable": "a\u2029b"
+    }
+  ]
+}

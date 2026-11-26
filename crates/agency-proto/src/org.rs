@@ -105,6 +105,16 @@ pub struct Person {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Device>>", optional)]
     pub devices: Vec<Device>,
+    /// The ids of the seats this person took, so that what named a seat (a request addressed to it, the
+    /// history) reaches them. Left out when empty, so a version signed before seats keeps its signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Id>>", optional)]
+    pub formerly: Vec<Id>,
+    /// What to ask this person about, in the org's own words: what the seat they took said. Left out when
+    /// empty, like `formerly`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub ask_about: Vec<String>,
     /// Set when the member has no node of its own: the root's node hosts it, and its clients use that node's
     /// Client API (a hosted member, docs/glossary.md). Left out for every other member.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -133,6 +143,8 @@ impl Person {
             department: None,
             role: Role::Member,
             devices: vec![],
+            formerly: vec![],
+            ask_about: vec![],
             hosted_by: None,
         }
     }
@@ -148,6 +160,8 @@ impl Person {
             department: None,
             role: Role::Member,
             devices,
+            formerly: vec![],
+            ask_about: vec![],
             hosted_by: Some(HostedBy::Root),
         }
     }
@@ -162,6 +176,14 @@ impl Person {
 
     pub fn with_devices(self, devices: Vec<Device>) -> Self {
         Self { devices, ..self }
+    }
+
+    pub fn with_formerly(self, formerly: Vec<Id>) -> Self {
+        Self { formerly, ..self }
+    }
+
+    pub fn with_ask_about(self, ask_about: Vec<String>) -> Self {
+        Self { ask_about, ..self }
     }
 
     /// Whether the root's node hosts this member, which then has no account key and no node.

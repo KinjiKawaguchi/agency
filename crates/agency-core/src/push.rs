@@ -10,7 +10,7 @@ use crate::push_events::{
 };
 use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader};
-use crate::web_push::{record_sends, Sent};
+use crate::web_push::{failure_at, record_sends, Sent};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
@@ -80,12 +80,20 @@ pub fn register_push_token(node: &Node, input: PushTokenInput) -> Result<PushTok
     }
     let registered_at =
         Timestamp::parse(&node.now_text()).map_err(|error| Error::internal(error.to_string()))?;
+    let known = node
+        .store()
+        .push_tokens()
+        .into_iter()
+        .find(|one| one.token == token);
     let entry = PushToken {
         token,
         environment: input.environment,
         label,
         registered_at,
         events: normal_events(input.events),
+        // What APNs last did with this token is kept when the app registers it again.
+        last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
+        last_failure: known.and_then(|one| one.last_failure),
     };
     let mut tokens: Vec<PushToken> = node
         .store()
@@ -247,10 +255,13 @@ async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result
         wanting: wanting.len(),
         ..Outcome::default()
     };
+    let mut results: Vec<(String, Result<(), PushError>)> = vec![];
     for token in wanting {
         let answer = node.notifier().send(token, notice).await;
+        results.push((token.token.clone(), answer.clone()));
         outcome.record(&token.token, answer, pass);
     }
+    record_token_sends(node, &results)?;
     remove_tokens(node, &outcome.gone)?;
     Ok(outcome)
 }
@@ -282,6 +293,38 @@ pub(crate) fn sent_of(answer: &std::result::Result<(), PushError>) -> Option<Sen
         Err(PushError::Failed(why)) => Some(Sent::NotTaken(why)),
         Err(PushError::Gone) => None,
     }
+}
+
+/// Keeps, for each token, when APNs last took a notice and when it last did not (and why), as the browsers' record
+/// does; a token APNs calls gone is removed and not recorded. One write for all the results of a pass.
+pub(crate) fn record_token_sends(
+    node: &Node,
+    results: &[(String, Result<(), PushError>)],
+) -> Result<()> {
+    if results.is_empty() {
+        return Ok(());
+    }
+    let at =
+        Timestamp::parse(&node.now_text()).map_err(|error| Error::internal(error.to_string()))?;
+    let mut all = node.store().push_tokens();
+    let mut changed = false;
+    for (token, answer) in results {
+        let (Some(one), Some(sent)) = (
+            all.iter_mut().find(|one| &one.token == token),
+            sent_of(answer),
+        ) else {
+            continue;
+        };
+        match sent {
+            Sent::Taken => one.last_succeeded_at = Some(at.clone()),
+            Sent::NotTaken(reason) => one.last_failure = Some(failure_at(&at, reason)),
+        }
+        changed = true;
+    }
+    if changed {
+        node.store().save_push_tokens(&all)?;
+    }
+    Ok(())
 }
 
 /// Sends one notice to every token and browser subscription that wants its kind. It counts as delivered
@@ -325,10 +368,13 @@ async fn wake_iphones(node: &Node, pass: &mut Pass) -> Result<bool> {
         wanting: tokens.len(),
         ..Outcome::default()
     };
+    let mut results: Vec<(String, Result<(), PushError>)> = vec![];
     for token in &tokens {
         let answer = node.notifier().send_desk_changed(token).await;
+        results.push((token.token.clone(), answer.clone()));
         outcome.record(&token.token, answer, pass);
     }
+    record_token_sends(node, &results)?;
     remove_tokens(node, &outcome.gone)?;
     // With no token registered nothing is wanted and nothing is gone either: 0 is 0, and it counts as done.
     Ok(outcome.accepted || outcome.gone.len() == outcome.wanting)

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { type FakeWindow, startWorker } from '../test/fakeWorker'
+import { hiddenRanges, sharedHidden } from '../test/hiddenChars'
+import { printable } from '../shared/printable'
 
 const network = () => Promise.resolve(new Response('x'))
 const payload = (value: unknown): string => JSON.stringify(value)
@@ -152,6 +154,42 @@ describe('a subscription the browser ended', () => {
     const worker = startWorker(network, { windows: [open] })
     await worker.run('pushsubscriptionchange')
     expect([worker.subscribed, open.messages]).toEqual([[], [{ type: 'push-subscription-changed' }]])
+  })
+})
+
+describe('a label in a notice, against the shared cases of the page’s own helper', () => {
+  const bodyOf = async (detail: string) => (await pushed(payload({ agency: { type: 'device' }, detail }))).shown[0]?.options.body
+
+  it('says each case of the shared file as the page does: a mark for each hidden character, first, and the trim after it', async () => {
+    for (const one of sharedHidden.cases) {
+      const shown = printable(one.text).trim().slice(0, 240)
+      expect(await bodyOf(one.text), JSON.stringify(one.text)).toBe(shown === '' ? 'A device is waiting to be added' : `Device “${shown}” is waiting to be added`)
+      expect(printable(one.text), 'the shared file and the page agree').toBe(one.printable)
+    }
+  })
+
+  it('says a mark for every code point of every range, in the middle of a label and at its ends', async () => {
+    for (const [from, to] of hiddenRanges) {
+      for (let code = from; code <= to; code++) {
+        const hidden = String.fromCodePoint(code)
+        expect(await bodyOf(`a${hidden}b`), `U+${code.toString(16)} inside`).toBe('Device “a?b” is waiting to be added')
+        expect(await bodyOf(`a${hidden}`), `U+${code.toString(16)} last`).toBe('Device “a?” is waiting to be added')
+        expect(await bodyOf(`${hidden}a`), `U+${code.toString(16)} first`).toBe('Device “?a” is waiting to be added')
+      }
+    }
+  })
+})
+
+describe('a label in a notice', () => {
+  it('has each character that reorders or hides a line printed as a mark, in the device’s label, the team’s label, and a request’s title', async () => {
+    const device = (await pushed(payload({ agency: { type: 'device' }, detail: 'Pi\u202Exel' }))).shown[0]
+    expect(device?.options.body).toBe('Device “Pi?xel” is waiting to be added')
+    const request = (await pushed(payload({ agency: { org: 'acme', team: 'app', request: 'r-1' }, title: 'Ap\u200Bp', body: 'Ship\u202Eit' }))).shown[0]
+    expect([request?.title, request?.options.body]).toEqual(['Ap?p', 'Ship?it'])
+  })
+
+  it('keeps the joiners that scripts and emoji need', async () => {
+    expect((await pushed(payload({ agency: { type: 'device' }, detail: '👩\u200D💻 Phone' }))).shown[0]?.options.body).toBe('Device “👩\u200D💻 Phone” is waiting to be added')
   })
 })
 

@@ -13,18 +13,18 @@ use agency_proto::directory::{
 use agency_proto::org::Role;
 use agency_proto::{Id, OrgDefinition};
 
-/// The names the teams of this node (in `teams`) know `id` by: `owner` for a team's owner, and each key of
-/// the team's `people` that maps to it. A team that addresses no such name is left out.
-fn names_in(teams: &[&HostedTeam], id: &Id) -> Vec<RuntimeNames> {
+/// The names the teams of this node (in `teams`) know `ids` by: `owner` for a team's owner, and each key of
+/// the team's `people` that maps to one of them. A team that addresses no such name is left out.
+fn names_in(teams: &[&HostedTeam], ids: &[&Id]) -> Vec<RuntimeNames> {
     teams
         .iter()
         .filter_map(|hosted| {
             let mapped = hosted
                 .people
                 .iter()
-                .filter(|(_, mapped)| *mapped == id)
+                .filter(|(_, mapped)| ids.contains(mapped))
                 .map(|(name, _)| name.clone());
-            let owner = (&hosted.owner == id).then(|| "owner".to_owned());
+            let owner = ids.contains(&&hosted.owner).then(|| "owner".to_owned());
             let names: Vec<String> = owner.into_iter().chain(mapped).collect();
             (!names.is_empty()).then(|| RuntimeNames {
                 team: hosted.team.clone(),
@@ -47,7 +47,8 @@ fn departments(body: &OrgDefinition) -> Vec<DirectoryDepartment> {
 }
 
 /// The directory of `org`, for a node whose account is a member of it: the members, the seats, and the
-/// external parties, in the order of the definition, with their names in this node's teams of the org.
+/// external parties, in the order of the definition, with their names in this node's teams of the org. A
+/// member who took a seat has the names of the seat too, since a request for it is theirs now.
 pub fn directory(node: &Node, org: &Id) -> Result<Directory> {
     let (doc, _) = membership(node, org)?;
     let body = &doc.body;
@@ -66,7 +67,13 @@ pub fn directory(node: &Node, org: &Id) -> Result<Directory> {
             Role::Answerer => "answerer",
         }
         .to_owned(),
-        runtime_names: names_in(&teams, &person.id),
+        ask_about: person.ask_about.clone(),
+        runtime_names: names_in(
+            &teams,
+            &std::iter::once(&person.id)
+                .chain(&person.formerly)
+                .collect::<Vec<_>>(),
+        ),
     });
     let seats = body.seats.iter().map(|seat| DirectoryParty {
         id: seat.id.clone(),
@@ -74,7 +81,7 @@ pub fn directory(node: &Node, org: &Id) -> Result<Directory> {
         department: seat.department.clone(),
         ask_about: seat.ask_about.clone(),
         answered_by: seat.relays.clone(),
-        runtime_names: names_in(&teams, &seat.id),
+        runtime_names: names_in(&teams, &[&seat.id]),
     });
     let externals = body.externals.iter().map(|external| DirectoryParty {
         id: external.id.clone(),
@@ -82,7 +89,7 @@ pub fn directory(node: &Node, org: &Id) -> Result<Directory> {
         department: None,
         ask_about: external.ask_about.clone(),
         answered_by: external.relays.clone(),
-        runtime_names: names_in(&teams, &external.id),
+        runtime_names: names_in(&teams, &[&external.id]),
     });
     Ok(Directory {
         org: org.clone(),

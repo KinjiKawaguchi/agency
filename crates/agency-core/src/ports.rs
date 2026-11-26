@@ -68,6 +68,11 @@ pub trait RootKeys: Send + Sync {
     fn create(&self, org: &Id) -> std::result::Result<PublicKey, String>;
     /// Whether this node keeps the secret of `key` as a root key of `org`. Never asks for presence.
     fn holds(&self, org: &Id, key: &PublicKey) -> bool;
+    /// Whether the key may be here: `holds`, or a store that cannot say right now (a locked keychain). Only
+    /// for knowing that this node is the root; anything that acts on the key being here uses `holds`.
+    fn may_hold(&self, org: &Id, key: &PublicKey) -> bool {
+        self.holds(org, key)
+    }
     /// Signs `message` with `key`, a root key of `org` kept here. `purpose` says what it signs, for a
     /// presence prompt. Refused when the owner does not confirm, or the key is not kept here.
     fn sign(
@@ -95,6 +100,11 @@ pub trait RootKeys: Send + Sync {
     ) -> std::result::Result<(), String> {
         let signer = |message: &[u8]| self.sign(org, key, message, purpose);
         work(&signer)
+    }
+    /// Whether a key made here cannot be copied out (a keychain), so that an org must have a recovery key
+    /// before its root moves here: without one, losing this machine would lose the org.
+    fn needs_recovery(&self) -> bool {
+        false
     }
 }
 
