@@ -7,7 +7,7 @@ extension Ja {
         public static func requests(_ count: Int) -> String { "\(count) 件の依頼があなたを待っています" }
 
         public static func participant(label: String) -> String { "\(label) があなたの返事を待っています" }
-        public static func participants(_ count: Int) -> String { "\(count) 人があなたの返事を待っています" }
+        public static func participants(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています" }
 
         public static func blocked(team: String, title: String, reason: String) -> String { "\(team): 「\(title)」が止まりました (\(reason))" }
         public static func blockedMany(_ count: Int) -> String { "\(count) 件の仕事が止まりました" }

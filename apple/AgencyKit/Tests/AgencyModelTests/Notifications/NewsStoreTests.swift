@@ -190,6 +190,15 @@ struct NewsStoreTests {
         #expect(news.banners[0].destination == .people)
     }
 
+    @Test("several participants are counted as participants, in the words of the glossary")
+    func severalParticipants() async {
+        let news = store()
+        await news.poll()
+        source.snapshot = .success(Teams.snapshot(waitingOnViewer: ["backend", "frontend", "devops"]))
+        await news.poll()
+        #expect(news.banners.map(\.text) == ["参加者 2 人があなたの返事を待っています"])
+    }
+
     @Test("a work item newly blocked makes a banner with its title and the reason; several say how many")
     func blocked() async {
         let news = store()
