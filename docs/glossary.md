@@ -83,6 +83,7 @@ What the org's work achieves, as numbers about the business or the product, not 
 - **Outcome** (成果). What an org's work achieves, told by numbers about its business (revenue, margin, churn) or its product (activation, retention, lead time of a feature, a latency budget). Not the delivery numbers of the evaluation.
 - **KPI** (KPI). A measure the org states in `kpis[]` of its definition: an `id`, a `label`, its `kind` (`business` or `product`), its `unit`, and whether a `higher` or a `lower` value is better. It holds no number and no target figure. A `money` KPI names its currency by an ISO 4217 code (`JPY`), and there is no conversion: the org measures in the currency it reports in. The other units are `percent`, `count`, `ratio`, and `seconds` (a duration).
 - **Observation** (実績値). One number for a KPI on one day, with where it came from (entered by hand, or from a connector), who entered it, and when. It is kept on the owner's node only, never in the definition, and only the owner reads it.
+- **Reading** (読み取り). How a KPI's numbers stand around the day the epic an aim names shipped: the last number on or before that day, the first at least 14 days after it, and their change. It is a *correlation*, never a cause, and it refuses (with a state that says why) when there is too little to read. Read at `/api/orgs/<org>/outcomes/readings`, owner only.
 - **Aim** (狙い). What a team's plan says an epic is meant to move: `plan.aims[]` pairs an epic (by its item reference) with a KPI of the org.
 
 ## Do not use

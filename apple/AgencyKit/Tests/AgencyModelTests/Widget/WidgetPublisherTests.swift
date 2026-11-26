@@ -30,8 +30,21 @@ struct WidgetPublisherTests {
     private let now = Date(timeIntervalSince1970: 1_795_521_600)
     private let items = Desk.openItems([Teams.team()])
 
-    private func publisher(_ sink: RecordingSink) -> WidgetPublisher {
-        WidgetPublisher(host: "node.example", preferences: WidgetPreferencesStore(storage: MemoryStorage()), sink: sink)
+    /// A publisher whose node has said it does not hide titles.
+    private func publisher(_ sink: RecordingSink, nodeHides: Bool? = false) -> WidgetPublisher {
+        let preferences = WidgetPreferencesStore(storage: MemoryStorage())
+        let publisher = WidgetPublisher(host: "node.example", preferences: preferences, sink: sink)
+        if let nodeHides { preferences.nodeSays(hidesTitles: nodeHides) }
+        return publisher
+    }
+
+    @Test("before the node has said whether it hides titles, what is written has none")
+    func unknownNode() throws {
+        let sink = RecordingSink()
+        publisher(sink, nodeHides: nil).publish(items: items, now: now)
+        let written = try #require(sink.written.first)
+        #expect(!written.requests.isEmpty)
+        #expect(written.requests.allSatisfy { $0.title == nil && $0.teamLabel == nil })
     }
 
     @Test("the desk is written for the widgets, and the widgets are told to reload")

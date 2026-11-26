@@ -1,7 +1,7 @@
 //! The APNs adapter against a stand-in APNs server: the provider token is an ES256 JWT that verifies with
 //! the key's public half, each token goes to its environment's host, and APNs answers map to "gone" or
 //! "failed". The key in tests/data/apns-test-key.p8 is made for these tests and used nowhere else.
-use agency_adapters::apns::{payload, Apns, ApnsHosts};
+use agency_adapters::apns::{desk_payload, payload, Apns, ApnsHosts};
 use agency_adapters::memory::ManualClock;
 use agency_core::config::PushConfig;
 use agency_core::ports::Notifier;
@@ -129,10 +129,15 @@ async fn sends_a_signed_alert_to_the_tokens_environment() {
     assert_eq!(headers["apns-topic"], "com.example.agency");
     assert_eq!(headers["apns-push-type"], "alert");
     assert_eq!(headers["apns-collapse-id"], "r-20261124-110000-a1b2");
+    assert_eq!(headers["apns-priority"], "10");
+    assert!(
+        headers.get("apns-expiration").is_none(),
+        "an alert is kept until it can be delivered"
+    );
     assert_eq!(
         body,
         &json!({
-            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app", "badge": 3 },
+            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app", "badge": 3, "content-available": 1 },
             "agency": { "org": "acme", "team": "app", "request": "r-20261124-110000-a1b2" },
         })
     );
@@ -277,4 +282,100 @@ fn a_request_with_no_title_to_show_says_only_that_one_waits() {
         json!({ "org": "acme", "team": "app", "request": "r-1" }),
         "no `type`: a request, as before"
     );
+}
+
+#[tokio::test]
+async fn the_desk_push_is_a_background_push_with_nothing_of_the_desk_in_it() {
+    let (hosts, seen) = stand_in().await;
+    let clock = ManualClock::at(T0);
+    let apns = apns(hosts, &clock);
+    apns.send_desk_changed(&token("aa", PushEnvironment::Production))
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap().clone();
+    let (environment, device, headers, body) = &seen[0];
+    assert_eq!(
+        (environment.as_str(), device.as_str()),
+        ("production", "aa".repeat(32).as_str())
+    );
+    assert_eq!(headers["apns-topic"], "com.example.agency");
+    assert_eq!(headers["apns-push-type"], "background");
+    assert_eq!(
+        headers["apns-priority"], "5",
+        "Apple refuses priority 10 for a push with only content-available"
+    );
+    assert_eq!(headers["apns-collapse-id"], "desk");
+    let expires = agency_proto::clock::parse(T0).unwrap().unix_timestamp() + 60 * 60;
+    assert_eq!(headers["apns-expiration"], expires.to_string().as_str());
+    assert_eq!(
+        body,
+        &json!({ "aps": { "content-available": 1 }, "agency": { "type": "desk" } }),
+        "no alert, sound, badge, title, label or count"
+    );
+    assert_eq!(body, &desk_payload());
+    assert!(headers["authorization"]
+        .to_str()
+        .unwrap()
+        .starts_with("bearer "));
+}
+
+#[tokio::test]
+async fn the_desk_push_has_the_same_answers_as_an_alert() {
+    let (hosts, _) = stand_in().await;
+    let clock = ManualClock::at(T0);
+    let apns = apns(hosts, &clock);
+    let wake = |prefix: &'static str| {
+        let apns = &apns;
+        async move {
+            apns.send_desk_changed(&token(prefix, PushEnvironment::Production))
+                .await
+        }
+    };
+    assert_eq!(wake("bb").await, Err(PushError::Gone));
+    assert_eq!(wake("cc").await, Err(PushError::Gone));
+    assert!(matches!(wake("dd").await, Err(PushError::Failed(_))));
+    assert!(matches!(wake("ee").await, Err(PushError::Failed(_))));
+}
+
+#[test]
+fn only_a_requests_alert_asks_to_wake_the_app() {
+    let aps_of = |notice: &Notice| payload(notice)["aps"].clone();
+    assert_eq!(aps_of(&notice())["content-available"], 1);
+    let hidden = Notice {
+        kind: NoticeKind::Request {
+            org: Id::parse("acme").unwrap(),
+            team: Id::parse("app").unwrap(),
+            request: "r-1".into(),
+            team_label: None,
+            title: None,
+        },
+        badge: 1,
+    };
+    assert_eq!(
+        aps_of(&hidden)["content-available"],
+        1,
+        "also with the titles left out"
+    );
+    let device = Notice {
+        kind: NoticeKind::Device {
+            device: Id::parse("d-1").unwrap(),
+            label: Some("Tablet".into()),
+        },
+        badge: 1,
+    };
+    let decision = Notice {
+        kind: NoticeKind::Decision {
+            org: Id::parse("acme").unwrap(),
+            team: Id::parse("app").unwrap(),
+            id: "dc-1".into(),
+            title: None,
+        },
+        badge: 1,
+    };
+    for other in [device, decision] {
+        assert!(
+            aps_of(&other).get("content-available").is_none(),
+            "{other:?}"
+        );
+    }
 }
