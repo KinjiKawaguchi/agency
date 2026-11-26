@@ -182,3 +182,22 @@ async fn the_status_class_and_the_time_are_recorded_and_a_5xx_is_an_error() {
     assert_eq!(by_name("GET /slow").errors, 0);
     assert!(metrics.series.iter().all(Series::is_consistent));
 }
+
+#[tokio::test]
+async fn a_route_that_refuses_a_method_is_one_series_whatever_method_was_tried() {
+    let (url, recorder, _dir) = server().await;
+    let client = reqwest::Client::new();
+    for method in ["POST", "PUT", "DELETE", "PATCH", "BREW"] {
+        let method = reqwest::Method::from_bytes(method.as_bytes()).unwrap();
+        let response = client
+            .request(method, format!("{url}/boom"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 405);
+    }
+    assert_eq!(
+        summary(&recorder),
+        [("OTHER /boom".to_owned(), "4xx".to_owned(), 5, 0)]
+    );
+}

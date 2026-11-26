@@ -66,9 +66,17 @@ async fn get_metrics(State(api): Shared, Query(query): Query<HashMap<String, Str
             )
         }
     };
-    let mut metrics = api
-        .metrics
-        .read(days, kind, query.get("name").map(String::as_str));
+    // Reading the files is blocking work: it does not run on a worker that answers requests.
+    let recorder = api.metrics.clone();
+    let name = query.get("name").cloned();
+    let read =
+        tokio::task::spawn_blocking(move || recorder.read(days, kind, name.as_deref())).await;
+    let Ok(mut metrics) = read else {
+        return refuse(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "the measurements could not be read",
+        );
+    };
     if days > HOURS_UP_TO_DAYS {
         for series in &mut metrics.series {
             series.by_hour.clear();

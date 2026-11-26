@@ -377,7 +377,8 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            flushing.flush();
+            let flushing = flushing.clone();
+            let _ = tokio::task::spawn_blocking(move || flushing.flush()).await;
         }
     });
     logger.record(
@@ -441,7 +442,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await?;
-    recorder.flush();
+    let _ = tokio::task::spawn_blocking(move || recorder.flush()).await;
     Ok(())
 }
 

@@ -38,10 +38,17 @@ fn status_class(status: StatusCode) -> &'static str {
     }
 }
 
-/// The name of a request's series from its method and what it matched.
-fn series_name(method: &Method, matched: Option<&str>) -> String {
+/// The name of a request's series from its method and what it matched. A request that a route refused for
+/// its method (a 405) is named with `OTHER`, not with the method it asked with: the route is the node's, but
+/// the method is the requester's, and a series for each would be a way to make many.
+fn series_name(method: &Method, matched: Option<&str>, status: StatusCode) -> String {
+    let word = if status == StatusCode::METHOD_NOT_ALLOWED {
+        "OTHER"
+    } else {
+        method_word(method)
+    };
     match matched {
-        Some(template) => format!("{} {template}", method_word(method)),
+        Some(template) => format!("{word} {template}"),
         None => UNMATCHED.to_owned(),
     }
 }
@@ -61,7 +68,7 @@ pub async fn record_request(
     let response = next.run(request).await;
     let key = SeriesKey::new(
         SeriesKind::Serve,
-        series_name(&method, matched.as_deref()),
+        series_name(&method, matched.as_deref(), response.status()),
         status_class(response.status()),
     );
     recorder.record(key, started.elapsed());
