@@ -119,7 +119,7 @@ When `/api/me` gives an org a `recovery` (`OrgRef.recovery`: `takesEffectAt`, `n
 
 The node's push of the kind `recovery` (`agency: { type: "recovery", org }`, its title and body written by the node) reaches every token whatever kinds the app registered with, and the app asks the system to show every notification it gets, so the notification settings do not hide it; tapping it opens the desk of the home node that is current. The push does not name its node (agency#117), so with several home nodes the recovery may be on another one: its item is seen once the owner has switched to that node.
 
-The cancel command is built from the org's id, which the node gave, and is made to be pasted into a terminal, so it is shown only when the id is a plain identifier (letters, digits, `.`, `_`, `-`, at most 128, the rule the push link uses); otherwise the item says in words where to run `agency root-cancel-recovery`.
+The cancel command is built from the org's id, which the node gave, and is made to be pasted into a terminal, so it is shown only when the id is one the node itself would have made (its `Id` rule: lower-case letters, digits and hyphens, not starting with a hyphen, at most 40, the web's rule too); otherwise the item says in words where to run `agency root-cancel-recovery` (the web's sentence).
 
 ## Build
 

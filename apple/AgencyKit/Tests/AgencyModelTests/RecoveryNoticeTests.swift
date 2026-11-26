@@ -49,20 +49,28 @@ struct RecoveryNoticeTests {
         ])
     }
 
-    @Test("an org id that is not a plain identifier is never put in a command to paste: the title stays and the words say where to run it")
+    @Test("an org id that is not the node's own kind is never put in a command to paste: the title stays and the words say where to run it")
     func oddIdentifier() throws {
-        for odd in ["acme; rm -rf ~", "a b", "$(whoami)", "acme`x`", "a/b", "ac\\nme", "", String(repeating: "a", count: 129)] {
-            let json = #"{"id":"\#(odd.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\"", with: ""))","label":"Acme","isRoot":true,"teams":[],"recovery":{}}"#
-            let org = try JSONDecoder().decode(OrgRef.self, from: Data(json.utf8))
+        // The same cases as the web's, and the same rule: lower case, digits and hyphens, no leading hyphen, at most 40.
+        for odd in ["acme; rm -rf ~", "$(id)", "$(whoami)", "Acme", "A.b", "acme.lab", "acme_lab", "a b", "-x", "--org", "acme`x`", "a/b", "ac\nme", "acme.lab_1-x", "", "é", String(repeating: "a", count: 41)] {
+            let json = try JSONSerialization.data(withJSONObject: ["id": odd, "label": "Acme", "isRoot": true, "teams": [], "recovery": [String: String]()] as [String: Any])
+            let org = try JSONDecoder().decode(OrgRef.self, from: json)
             let notice = RecoveryNotice(org: org, recovery: try #require(org.recovery))
             #expect(notice.cancelCommand == nil, Comment(rawValue: odd))
             #expect(notice.cancelInWords == Ja.Recovery.cancelInWords)
             #expect(notice.lines(in: tokyo).first == "Acme のルート鍵の回復が始まりました。", "the notice itself is still shown")
         }
-        let plain = try #require(RecoveryNotice.all(in: try orgs(org("acme.lab_1-x", recovery: "{}"))).first)
-        #expect(plain.cancelCommand == "agency root-cancel-recovery --org acme.lab_1-x" && plain.cancelInWords == nil)
+        for plain in ["acme", "a", "0", "acme-lab-1", "a-", String(repeating: "a", count: 40)] {
+            let notice = try #require(RecoveryNotice.all(in: try orgs(org(plain, recovery: "{}"))).first)
+            #expect(notice.cancelCommand == "agency root-cancel-recovery --org \(plain)" && notice.cancelInWords == nil, Comment(rawValue: plain))
+        }
         let member = try #require(RecoveryNotice.all(in: try orgs(org("a b", isRoot: false, recovery: "{}"))).first)
         #expect(member.cancelCommand == nil && member.cancelInWords == nil, "a member is not told to run anything")
+    }
+
+    @Test("the words without a command are the web's, whole: when, where, what to run and that it cancels")
+    func inWordsAreTheWebs() {
+        #expect(Ja.Recovery.cancelInWords == "心当たりがないときは、ルート鍵のノードで、この組織を指定して agency root-cancel-recovery を実行し、取り消してください。")
     }
 
     @Test("a member's notice without a time leaves the time out and still says who can cancel it")
