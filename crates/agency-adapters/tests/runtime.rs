@@ -266,6 +266,79 @@ async fn readers_share_one_run_of_the_command_and_a_decision_reruns_it() {
     );
 }
 
+/// A runtime that fails because a command is missing says so once, with what to do, and a failure of
+/// another kind does not.
+#[tokio::test]
+async fn the_log_says_what_to_do_when_a_command_of_the_runtime_is_not_found() {
+    let fake = Fake::new();
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let written = lines.clone();
+    let runtimes = CommandRuntime::with_log(Box::new(move |line| {
+        written.lock().unwrap().push(line.into())
+    }))
+    .keeping(std::time::Duration::ZERO, std::time::Duration::ZERO)
+    .serving_stale_for(std::time::Duration::ZERO);
+    let team = fake.team("app");
+    let logged = || std::mem::take(&mut *lines.lock().unwrap());
+    runtimes.view(&team).await.unwrap();
+    logged();
+
+    // The runtime runs, and the command it runs is not on its PATH (what the scrum harness says).
+    fake.answer(
+        "view",
+        r#"{"error":{"status":503,"message":"spawnSync gh ENOENT"}}"#,
+        0,
+    );
+    for _ in 0..3 {
+        assert!(runtimes.view(&team).await.is_err());
+    }
+    let missing = logged();
+    assert_eq!(
+        missing.len(),
+        2,
+        "the failure and what to do, once and not on every call: {missing:?}"
+    );
+    assert_eq!(
+        missing[0],
+        "agency: team acme/app: the team runtime fails: spawnSync gh ENOENT"
+    );
+    assert!(
+        missing[1].starts_with("agency: team acme/app: a command the team runtime runs was not found: put its directory on the PATH of the launchd agent or the systemd unit"),
+        "{missing:?}"
+    );
+
+    // Another failure is logged as before, with no advice about the PATH.
+    fake.answer(
+        "view",
+        r#"{"error":{"status":503,"message":"the board is locked"}}"#,
+        0,
+    );
+    assert!(runtimes.view(&team).await.is_err());
+    assert_eq!(
+        logged(),
+        ["agency: team acme/app: the team runtime fails: the board is locked"]
+    );
+
+    // The runtime's own command is not there.
+    let gone = HostedTeam::new(
+        id("acme"),
+        id("gone"),
+        id("alice"),
+        RuntimeCommand::of(vec!["/nonexistent/runtime".into()]),
+    );
+    assert!(runtimes.view(&gone).await.is_err());
+    let own = logged();
+    assert_eq!(own.len(), 2, "{own:?}");
+    assert!(
+        own[0].contains("cannot start the team runtime: No such file or directory"),
+        "{own:?}"
+    );
+    assert!(
+        own[1].contains("a command the team runtime runs was not found"),
+        "{own:?}"
+    );
+}
+
 #[tokio::test]
 async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answers_again() {
     let fake = Fake::new();

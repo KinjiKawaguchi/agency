@@ -123,6 +123,7 @@ fn person(account: &str, key: PublicKey) -> Person {
 
 fn org(root: PublicKey, bob: PublicKey) -> OrgDefinition {
     OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,

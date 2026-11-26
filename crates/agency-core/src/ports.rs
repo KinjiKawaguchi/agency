@@ -287,6 +287,11 @@ pub trait Notifier: Send + Sync {
         None
     }
 
+    /// Whether the keys of a browser's subscription can be sent to; the reason when they cannot.
+    fn web_push_check_keys(&self, _p256dh: &str, _auth: &str) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Sends a notification to a browser's subscription.
     async fn send_web(
         &self,

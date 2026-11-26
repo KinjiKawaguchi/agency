@@ -27,6 +27,15 @@ pub struct Listed {
     /// What to set for a session that runs on this source. Empty for the default login.
     pub env: BTreeMap<String, String>,
     pub seven_day_threshold: u32,
+    /// Its 7-day window is at or past its threshold (so also when it is at 100). False when its usage
+    /// is unknown: unknown is not past.
+    pub over_threshold: bool,
+    /// A limit of the plan itself is reached: the 7-day window at 100, or the 5-hour window at 100 and
+    /// not yet reset. Nothing can be started on it for now. False when its usage is unknown.
+    pub blocked: bool,
+    /// Its usage cannot be read now: no file, a file older than 30 minutes, or a window that has since
+    /// reset. The other two flags say nothing then.
+    pub unknown: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -92,24 +101,54 @@ fn entries(
             tool: collector.tool(),
             env: env_of(collector),
             seven_day_threshold: threshold,
+            over_threshold: false,
+            blocked: false,
+            unknown: true,
         };
         found.push((source, listed));
     }
     Ok(found)
 }
 
-pub fn list(sources: &[FundingConfig], tool: Option<Tool>) -> Result<Vec<Listed>, String> {
+/// The sources that sessions can run on, in order of preference, with where each stands now.
+pub fn list(
+    sources: &[FundingConfig],
+    usage: &dyn FundingSource,
+    tool: Option<Tool>,
+    now: OffsetDateTime,
+) -> Result<Vec<Listed>, String> {
     Ok(entries(sources, tool)?
         .into_iter()
-        .map(|(_, listed)| listed)
+        .map(|(config, listed)| {
+            let (windows, read_at) = usage.usage(config);
+            let standing = standing(&windows, read_at.as_ref(), listed.seven_day_threshold, now);
+            with_standing(listed, standing)
+        })
         .collect())
+}
+
+/// The entry, with the flags of where it stands.
+fn with_standing(listed: Listed, standing: Standing) -> Listed {
+    let (over_threshold, blocked, unknown) = match standing {
+        Standing::Unknown => (false, false, true),
+        Standing::Under(_) => (false, false, false),
+        Standing::Over(_) => (true, false, false),
+        Standing::AtLimit(seven_day) => (seven_day >= listed.seven_day_threshold, true, false),
+    };
+    Listed {
+        over_threshold,
+        blocked,
+        unknown,
+        ..listed
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Standing {
     Under(u32),
     Over(u32),
-    AtLimit,
+    /// A limit is reached; the 7-day window is at this percent.
+    AtLimit(u32),
     Unknown,
 }
 
@@ -133,7 +172,7 @@ fn standing(
     };
     let five_hour = window(windows, UsageWindowName::FiveHour, now);
     if seven_day >= 100 || five_hour.is_some_and(|used| used >= 100) {
-        Standing::AtLimit
+        Standing::AtLimit(seven_day)
     } else if seven_day < threshold {
         Standing::Under(seven_day)
     } else {
@@ -148,7 +187,7 @@ fn describe(listed: &Listed, standing: Standing) -> String {
             "{id} is at {used}% of its 7-day window (threshold {})",
             listed.seven_day_threshold
         ),
-        Standing::AtLimit => format!("{id} has reached a limit"),
+        Standing::AtLimit(_) => format!("{id} has reached a limit"),
         Standing::Unknown => format!("the usage of {id} cannot be read"),
     }
 }
@@ -165,7 +204,7 @@ pub fn pick(
         .map(|(config, listed)| {
             let (windows, read_at) = usage.usage(config);
             let standing = standing(&windows, read_at.as_ref(), listed.seven_day_threshold, now);
-            (listed, standing)
+            (with_standing(listed, standing), standing)
         })
         .collect();
     let describe_all = |upto: usize| {
@@ -436,7 +475,9 @@ mod tests {
             claude("a", Some(90)),
             source("x", Some(codex), None),
         ];
-        let listed = list(&sources, None).unwrap();
+        let usage = Usage::default();
+        let now = clock::parse(NOW).unwrap();
+        let listed = list(&sources, &usage, None, now).unwrap();
         let summary: Vec<_> = listed
             .iter()
             .map(|l| {
@@ -466,9 +507,98 @@ mod tests {
                 ),
             ]
         );
-        assert_eq!(list(&sources, Some(Tool::Codex)).unwrap().len(), 1);
-        assert!(list(&[claude("a", Some(0))], None).is_err());
-        assert!(list(&[claude("a", Some(101))], None).is_err());
+        assert_eq!(
+            list(&sources, &usage, Some(Tool::Codex), now)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(list(&[claude("a", Some(0))], &usage, None, now).is_err());
+        assert!(list(&[claude("a", Some(101))], &usage, None, now).is_err());
+    }
+
+    /// (over_threshold, blocked, unknown) of each source in a list.
+    fn flags(sources: &[FundingConfig], usage: &Usage) -> Vec<(bool, bool, bool)> {
+        let now = clock::parse(NOW).unwrap();
+        list(sources, usage, None, now)
+            .unwrap()
+            .iter()
+            .map(|l| (l.over_threshold, l.blocked, l.unknown))
+            .collect()
+    }
+
+    #[test]
+    fn each_source_says_whether_it_is_past_its_threshold_blocked_or_unknown() {
+        let sources = [
+            claude("under", None),
+            claude("over", None),
+            claude("full", None),
+            claude("fivehour", None),
+            claude("stale", None),
+            claude("none", None),
+            claude("edge", Some(50)),
+        ];
+        let mut usage = Usage::default();
+        reported(&mut usage, "under", 79, FRESH);
+        reported(&mut usage, "over", 85, FRESH);
+        reported(&mut usage, "full", 100, FRESH);
+        let weekly = window(UsageWindowName::SevenDay, 10, LATER);
+        let five_hour = window(UsageWindowName::FiveHour, 100, LATER);
+        usage.0.insert(
+            "fivehour".into(),
+            (
+                vec![five_hour, weekly],
+                Some(Timestamp::parse(FRESH).unwrap()),
+            ),
+        );
+        reported(&mut usage, "stale", 95, STALE);
+        reported(&mut usage, "edge", 50, FRESH);
+        assert_eq!(
+            flags(&sources, &usage),
+            [
+                (false, false, false), // under its threshold
+                (true, false, false),  // past it, with room left
+                (true, true, false),   // at 100: past every threshold, and the plan's limit
+                (false, true, false),  // blocked for hours by the 5-hour window, the week is fine
+                (false, false, true),  // 95% a while ago: unknown is not past
+                (false, false, true),  // no usage at all
+                (true, false, false),  // at the threshold is past it
+            ]
+        );
+    }
+
+    #[test]
+    fn a_five_hour_window_that_has_reset_blocks_nothing_and_a_pick_carries_the_flags_too() {
+        let sources = [claude("a", None), claude("b", None)];
+        let mut usage = Usage::default();
+        let weekly = window(UsageWindowName::SevenDay, 90, LATER);
+        let reset = window(UsageWindowName::FiveHour, 100, EARLIER);
+        usage.0.insert(
+            "a".into(),
+            (vec![reset, weekly], Some(Timestamp::parse(FRESH).unwrap())),
+        );
+        reported(&mut usage, "b", 10, FRESH);
+        assert_eq!(
+            flags(&sources, &usage),
+            [(true, false, false), (false, false, false)]
+        );
+        let pick = picked(&sources, &usage);
+        let chosen = pick.chosen.unwrap();
+        assert_eq!(chosen.source.as_str(), "b");
+        assert_eq!(
+            (chosen.over_threshold, chosen.blocked, chosen.unknown),
+            (false, false, false)
+        );
+        let json = serde_json::to_value(&chosen).unwrap();
+        assert_eq!(
+            (
+                json["overThreshold"].clone(),
+                json["blocked"].clone(),
+                json["unknown"].clone()
+            ),
+            (false.into(), false.into(), false.into()),
+            "the names the harness reads"
+        );
     }
 
     #[test]
@@ -479,7 +609,7 @@ mod tests {
         let json = serde_json::to_string(&picked(&sources, &usage)).unwrap();
         assert_eq!(
             json,
-            r#"{"state":"ok","source":"a","tool":"claude","env":{"CLAUDE_CONFIG_DIR":"/home/alice/.claude-a"},"sevenDayThreshold":80,"reason":"a is at 12% of its 7-day window (threshold 80)"}"#
+            r#"{"state":"ok","source":"a","tool":"claude","env":{"CLAUDE_CONFIG_DIR":"/home/alice/.claude-a"},"sevenDayThreshold":80,"overThreshold":false,"blocked":false,"unknown":false,"reason":"a is at 12% of its 7-day window (threshold 80)"}"#
         );
         let none = pick(&[], &usage, Tool::Codex, clock::parse(NOW).unwrap()).unwrap();
         assert_eq!(

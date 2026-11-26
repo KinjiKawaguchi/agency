@@ -3,7 +3,9 @@ import type { Id } from "./Id.js";
 import type { TeamPlan } from "./TeamPlan.js";
 
 /**
- * A team and the node it runs on.
+ * A team and the node it runs on. Made with `TeamPlace::new`, so a new field gets its default in one place
+ * and not in every place that builds one (other crates cannot build it by hand; a test keeps this crate
+ * from doing it either).
  */
 export type TeamPlace = { id: Id, label: string, department: Id | null, 
 /**

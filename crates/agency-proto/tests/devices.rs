@@ -37,6 +37,7 @@ struct Keys {
 
 fn org(keys: &Keys) -> OrgDefinition {
     OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,

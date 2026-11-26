@@ -36,16 +36,36 @@ pub struct WebPush {
     is_open_for_tests: bool,
 }
 
-fn client(resolver: Option<Arc<network::PublicOnly>>) -> Result<reqwest::Client, String> {
+/// The HTTP client of the node: `https` only, no redirect, names resolved to public addresses only. A test
+/// that needs a local server to stand for a push service asks for one with none of the last and the first.
+fn client(is_open_for_tests: bool) -> Result<reqwest::Client, String> {
     let builder = reqwest::Client::builder()
         .user_agent(crate::USER_AGENT)
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10));
-    let builder = match resolver {
-        Some(resolver) => builder.dns_resolver(resolver),
-        None => builder,
+    let builder = if is_open_for_tests {
+        builder
+    } else {
+        builder
+            .https_only(true)
+            .dns_resolver(Arc::new(network::PublicOnly))
     };
     builder.build().map_err(|error| error.to_string())
+}
+
+/// Whether a subscription's keys are a browser's: `p256dh` a point on P-256 (65 octets), `auth` 16 octets,
+/// both base64url. Checked when the subscription is registered, so a key that no message can ever be
+/// encrypted to is refused then and not at the first send.
+pub fn check_keys(p256dh: &str, auth: &str) -> Result<(), String> {
+    let point = B64
+        .decode(p256dh)
+        .ok()
+        .and_then(|bytes| p256::PublicKey::from_sec1_bytes(&bytes).ok());
+    let is_secret = B64.decode(auth).is_ok_and(|bytes| bytes.len() == 16);
+    if point.is_none() || !is_secret {
+        return Err("p256dh is not a point of P-256 or auth is not 16 octets".to_owned());
+    }
+    Ok(())
 }
 
 impl WebPush {
@@ -58,7 +78,7 @@ impl WebPush {
         clock: Arc<dyn Clock>,
     ) -> Result<Self, String> {
         Ok(Self {
-            http: client(Some(Arc::new(network::PublicOnly)))?,
+            http: client(false)?,
             vapid: Vapid::load_or_create(key_path)?,
             subject: config.subject.clone().unwrap_or(default_subject),
             extra_hosts: config.extra_hosts.clone(),
@@ -70,7 +90,7 @@ impl WebPush {
     #[cfg(test)]
     fn for_tests(clock: Arc<dyn Clock>) -> Self {
         Self {
-            http: client(None).unwrap(),
+            http: client(true).unwrap(),
             vapid: Vapid::new(p256::SecretKey::from_slice(&[5u8; 32]).unwrap()),
             subject: "mailto:ops@acme.example".to_owned(),
             extra_hosts: vec![],
@@ -238,6 +258,10 @@ impl Notifier for WithWebPush {
 
     fn web_push_key(&self) -> Option<VapidKey> {
         Some(self.web.key())
+    }
+
+    fn web_push_check_keys(&self, p256dh: &str, auth: &str) -> Result<(), String> {
+        check_keys(p256dh, auth)
     }
 
     async fn send_web(

@@ -77,6 +77,15 @@ async fn call<T: DeserializeOwned>(
     }
 }
 
+/// Whether a failure says that a command was not found: the runtime's own command, or one that it runs
+/// (Node says `spawnSync gh ENOENT`, a shell says `command not found`). The usual cause is a `PATH` of
+/// the launchd agent or the systemd unit that lacks the command's directory.
+fn names_a_missing_command(failure: &str) -> bool {
+    ["ENOENT", "No such file or directory", "command not found"]
+        .iter()
+        .any(|sign| failure.contains(sign))
+}
+
 /// How long a team's view is reused. Every page, push pass, decision check, and signed read from
 /// another node asks for the view, and each run of the command is a new process.
 pub const VIEW_KEPT: Duration = Duration::from_secs(5);
@@ -285,9 +294,16 @@ impl Inner {
         let name = format!("{}/{}", team.org, team.team);
         match (before, failure) {
             (Some(Some(was)), Some(now)) if was == now => {}
-            (_, Some(now)) => (self.log)(&format!(
-                "agency: team {name}: the team runtime fails: {now}"
-            )),
+            (_, Some(now)) => {
+                (self.log)(&format!(
+                    "agency: team {name}: the team runtime fails: {now}"
+                ));
+                if names_a_missing_command(&now) {
+                    (self.log)(&format!(
+                        "agency: team {name}: a command the team runtime runs was not found: put its directory on the PATH of the launchd agent or the systemd unit (docs/install.md, \"Run it with launchd\")"
+                    ));
+                }
+            }
             (Some(Some(_)), None) => (self.log)(&format!(
                 "agency: team {name}: the team runtime answers again"
             )),

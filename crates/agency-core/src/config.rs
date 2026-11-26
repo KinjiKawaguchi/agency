@@ -27,6 +27,9 @@ pub struct HostedTeam {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub people: BTreeMap<String, Id>,
     pub runtime: RuntimeCommand,
+    /// Where the team's delivery numbers come from. Without it, the team has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<DeliveryConfig>,
 }
 
 impl HostedTeam {
@@ -38,12 +41,21 @@ impl HostedTeam {
             owner,
             people: BTreeMap::new(),
             runtime,
+            delivery: None,
         }
     }
 
     /// The same team with these addressees: runtime names mapped to org person ids.
     pub fn with_people(self, people: BTreeMap<String, Id>) -> Self {
         Self { people, ..self }
+    }
+
+    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`).
+    pub fn with_delivery(self, repos: Vec<String>) -> Self {
+        Self {
+            delivery: Some(DeliveryConfig { repos }),
+            ..self
+        }
     }
 
     /// The same team run by another command.
@@ -123,9 +135,6 @@ pub struct NodeConfig {
     /// The account's sources of funding, shown to clients with their usage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub funding: Vec<FundingConfig>,
-    /// Where each hosted team's delivery numbers come from. A team that is not listed has none.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub delivery: Vec<DeliveryConfig>,
     /// Cloudflare Access in front of the Client API. Without it, the Client API answers only direct
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -141,6 +150,34 @@ pub struct NodeConfig {
     /// same meaning and is still read.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_titles: bool,
+}
+
+impl WebPushConfig {
+    /// Why the node cannot send with this setting: an entry of `extraHosts` that is not a host name (or `*.` and a
+    /// domain) in lowercase, such as an address or a form of one (`0x7f.1`).
+    pub fn check(&self) -> Result<(), String> {
+        if let Some(subject) = &self.subject {
+            let is_contact = subject
+                .strip_prefix("mailto:")
+                .or_else(|| subject.strip_prefix("https://"))
+                .is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace));
+            if !is_contact {
+                return Err(format!(
+                    "webPush.subject: \"{subject}\" is not a mailto: or https:// address"
+                ));
+            }
+        }
+        match self
+            .extra_hosts
+            .iter()
+            .find(|entry| !crate::web_push::is_host_pattern(entry))
+        {
+            Some(entry) => Err(format!(
+                "webPush.extraHosts: \"{entry}\" is not a host name in lowercase, or `*.` and a domain"
+            )),
+            None => Ok(()),
+        }
+    }
 }
 
 /// Web Push: the node's own VAPID key lives in its data directory, never here.
@@ -163,8 +200,6 @@ pub struct WebPushConfig {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
-    pub org: Id,
-    pub team: Id,
     pub repos: Vec<String>,
 }
 
@@ -338,6 +373,81 @@ mod tests {
     }
 
     #[test]
+    fn a_team_may_name_the_repositories_its_delivery_numbers_come_from() {
+        let old = r#"{"org":"acme","team":"app","owner":"owner","runtime":{"command":["scrum","runtime"]}}"#;
+        let without: HostedTeam = serde_json::from_str(old).unwrap();
+        assert_eq!(
+            without.delivery, None,
+            "a configuration from before still loads"
+        );
+        assert!(
+            !serde_json::to_string(&without)
+                .unwrap()
+                .contains("delivery"),
+            "and is written without it"
+        );
+
+        let with = without.with_delivery(vec!["acme/app".into(), "acme/web".into()]);
+        let text = serde_json::to_string(&with).unwrap();
+        assert!(
+            text.contains(r#""delivery":{"repos":["acme/app","acme/web"]}"#),
+            "{text}"
+        );
+        let again: HostedTeam = serde_json::from_str(&text).unwrap();
+        assert_eq!(again.delivery, with.delivery);
+        let unknown = text.replace(r#""repos""#, r#""token":"x","repos""#);
+        assert!(
+            serde_json::from_str::<HostedTeam>(&unknown).is_err(),
+            "no other key, a token least of all"
+        );
+    }
+
+    #[test]
+    fn a_web_push_subject_is_a_mailto_or_https_contact() {
+        let subject = |text: &str| WebPushConfig {
+            subject: Some(text.to_owned()),
+            extra_hosts: vec![],
+        };
+        for good in ["mailto:ops@acme.example", "https://node.acme.example"] {
+            assert_eq!(subject(good).check(), Ok(()), "{good}");
+        }
+        for bad in [
+            "",
+            "mailto:",
+            "ops@acme.example",
+            "http://127.0.0.1:4400",
+            "https://",
+            "mailto:a b@x.example",
+        ] {
+            let error = subject(bad).check().unwrap_err();
+            assert!(error.contains("webPush.subject"), "{bad}: {error}");
+        }
+    }
+
+    #[test]
+    fn web_push_hosts_must_be_names_and_say_which_entry_is_not() {
+        let hosts = |list: &[&str]| WebPushConfig {
+            subject: None,
+            extra_hosts: list.iter().map(|one| (*one).to_owned()).collect(),
+        };
+        assert_eq!(hosts(&[]).check(), Ok(()));
+        assert_eq!(
+            hosts(&["push.acme.example", "*.edge.acme.example"]).check(),
+            Ok(())
+        );
+        for bad in [
+            "127.0.0.1",
+            "0x7f.1",
+            "2130706433",
+            "*.com",
+            "Push.Acme.example",
+        ] {
+            let error = hosts(&["push.acme.example", bad]).check().unwrap_err();
+            assert!(error.contains(bad), "{error}");
+        }
+    }
+
+    #[test]
     fn trusting_never_replaces_another_roots_fingerprint() {
         let mut config = NodeConfig {
             url: "http://127.0.0.1:4400".into(),
@@ -350,7 +460,6 @@ mod tests {
             teams: vec![],
             trusted: vec![],
             funding: vec![],
-            delivery: vec![],
             access: None,
             push: None,
             web_push: None,

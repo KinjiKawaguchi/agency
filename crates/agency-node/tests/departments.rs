@@ -37,13 +37,7 @@ async fn the_root_builds_departments_and_places_teams_in_them() {
     )
     .unwrap();
     departments::place_team(&alice.node, &org, &id("app"), Some(id("dev"))).unwrap();
-    let web = TeamPlace {
-        id: id("web"),
-        label: "Web".into(),
-        department: Some(id("clients")),
-        node: alice.url(),
-        plan: None,
-    };
+    let web = TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("clients")));
     orgs::add_team(&alice.node, &org, web).unwrap();
 
     let now = body(&alice);
@@ -152,13 +146,7 @@ async fn departments_stay_a_tree_with_real_links() {
             orgs::add_team(
                 &alice.node,
                 &org,
-                TeamPlace {
-                    id: id("web"),
-                    label: "Web".into(),
-                    department: Some(id("nope")),
-                    node: alice.url(),
-                    plan: None,
-                },
+                TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("nope"))),
             ),
             ErrorKind::NotFound,
         ),
@@ -189,6 +177,7 @@ async fn only_the_roots_node_changes_departments() {
 fn plan(shares: [u32; 5], weekly_budget_usd: u32) -> agency_proto::org::TeamPlan {
     let [new_feature, improvement, maintenance, debt, incident] = shares;
     agency_proto::org::TeamPlan {
+        aims: vec![],
         allocation: agency_proto::org::Allocation {
             new_feature,
             improvement,

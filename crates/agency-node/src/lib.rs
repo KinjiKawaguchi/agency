@@ -63,6 +63,19 @@ fn web_push_subject(config: &NodeConfig) -> String {
     }
 }
 
+/// What to tell the operator when the contact sent to push services is not one they accept: without
+/// `webPush.subject` and without `access`, it is the node's own origin, which on a machine's own address is
+/// `http://127.0.0.1:...`, and Apple's push service refuses a contact that is not `https` or `mailto:`.
+pub fn web_push_subject_warning(config: &NodeConfig) -> Option<String> {
+    let has_own = config
+        .web_push
+        .as_ref()
+        .is_some_and(|web| web.subject.is_some());
+    (!has_own && !web_push_subject(config).starts_with("https://")).then(|| {
+        "web push has no contact for push services that is https; set webPush.subject to a mailto: address (Apple refuses the node's http address)".to_owned()
+    })
+}
+
 /// The node's notifier: APNs for tokens, and, with a `webPush` setting, browsers' push services for
 /// subscriptions (the VAPID key is made in the data directory on first use).
 fn notifier(
@@ -75,6 +88,13 @@ fn notifier(
         return tokens;
     };
     let key_path = data_dir.join("web-push-vapid.key");
+    if let Err(error) = web_config.check() {
+        eprintln!("agency: web push is off: {error}");
+        return tokens;
+    }
+    if let Some(warning) = web_push_subject_warning(config) {
+        eprintln!("agency: {warning}");
+    }
     match WebPush::new(web_config, web_push_subject(config), &key_path, clock) {
         Ok(web) => Arc::new(WithWebPush { tokens, web }),
         Err(error) => {

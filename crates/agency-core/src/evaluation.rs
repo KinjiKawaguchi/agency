@@ -1,16 +1,19 @@
 //! A team's delivery evaluation (docs/protocol.md, "Evaluation"): worked out on the node the team runs on
 //! from its repositories on GitHub and its token usage, and passed on to other nodes over a signed read.
 //! Nothing is stored here; a read of GitHub is kept for a short while by the adapter, not by this module.
+use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::delivery::{evaluate, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
-use crate::ports::DeliveryError;
-use crate::read_auth::{verify_read_once, ReadAuth};
+use crate::ports::{DeliveryError, PeerError};
+use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use crate::usage::check_days;
 use agency_proto::evaluation::{Evaluation, TeamUnavailable};
+use agency_proto::org::TeamPlace;
+use agency_proto::usage::DEFAULT_USAGE_DAYS;
 use agency_proto::{Date, Id, Role, Timestamp};
 
 /// The answer for a team that has no numbers: it is listed as unavailable, with the reason.
@@ -52,13 +55,12 @@ async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, 
         .collect()
 }
 
-/// The repositories of a hosted team, if the node's configuration names any.
-fn repositories(node: &Node, hosted: &HostedTeam) -> Option<Vec<String>> {
-    node.config()
+/// The repositories of a hosted team, if its configuration names any.
+fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
+    hosted
         .delivery
-        .into_iter()
-        .find(|config| config.org == hosted.org && config.team == hosted.team)
-        .map(|config| config.repos)
+        .as_ref()
+        .map(|delivery| delivery.repos.clone())
         .filter(|repos| !repos.is_empty())
 }
 
@@ -68,7 +70,7 @@ fn repositories(node: &Node, hosted: &HostedTeam) -> Option<Vec<String>> {
 pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
-    let Some(repos) = repositories(node, hosted) else {
+    let Some(repos) = repositories(hosted) else {
         let reason = "no repositories are configured for this team".to_owned();
         return unavailable(node, hosted, &period, days, reason);
     };
@@ -94,6 +96,84 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
         teams: vec![evaluate(hosted.team.clone(), &input)],
         unavailable: vec![],
     }
+}
+
+/// The evaluation of a team on another node, read live from it. Whatever goes wrong becomes the reason
+/// the team is unavailable: no address and nothing the other node said is passed on.
+async fn remote_evaluation(
+    node: &Node,
+    org: &Id,
+    place: &TeamPlace,
+    days: u32,
+) -> std::result::Result<Evaluation, String> {
+    let path = routes::evaluation(org, &place.id, days);
+    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let answer = node
+        .peers()
+        .get_evaluation(&place.node, &path, &auth)
+        .await
+        .map_err(|error| match error {
+            PeerError::Status { status: 404, .. } => {
+                "the team's node does not give delivery numbers".to_owned()
+            }
+            PeerError::Status { status: 403, .. } => {
+                "the team's node does not give delivery numbers to this account".to_owned()
+            }
+            _ => "the team's node did not answer".to_owned(),
+        })?;
+    let names_the_team = |teams: &[Id]| teams.len() == 1 && teams[0] == place.id;
+    let named: Vec<Id> = answer
+        .teams
+        .iter()
+        .map(|team| team.team.clone())
+        .chain(answer.unavailable.iter().map(|team| team.team.clone()))
+        .collect();
+    if answer.check(org, days).is_err() || !names_the_team(&named) {
+        return Err("the team's node sent an answer that is not what was asked for".to_owned());
+    }
+    Ok(answer)
+}
+
+/// The evaluation of every team of an org for the node's account (Client API): a team on this node is
+/// worked out here and a team elsewhere is read from its node. A team that cannot answer is listed in
+/// `unavailable` with the reason, and the others are still answered. `days` defaults to 14. An answerer
+/// of the org does not read it, as it does not read token usage on a team's node.
+pub async fn org_evaluation(node: &Node, org: &Id, days: Option<u32>) -> Result<Evaluation> {
+    let (doc, person) = membership(node, org)?;
+    if person.role == Role::Answerer {
+        return Err(Error::new(
+            ErrorKind::Forbidden,
+            "an answerer does not read the org's evaluation",
+        ));
+    }
+    let days = check_days(days.unwrap_or(DEFAULT_USAGE_DAYS))?;
+    let period = Period::new(node.now(), node.utc_offset(), days);
+    let mut answer = Evaluation {
+        org: org.clone(),
+        days,
+        from: period.first(),
+        until: period.last(),
+        generated_at: generated_at(node),
+        teams: vec![],
+        unavailable: vec![],
+    };
+    for place in &doc.body.teams {
+        let one = match node.hosted(org, &place.id) {
+            Some(hosted) => Ok(evaluate_hosted(node, &hosted, days).await),
+            None => remote_evaluation(node, org, place, days).await,
+        };
+        match one {
+            Ok(one) => {
+                answer.teams.extend(one.teams);
+                answer.unavailable.extend(one.unavailable);
+            }
+            Err(reason) => answer.unavailable.push(TeamUnavailable {
+                team: place.id.clone(),
+                reason,
+            }),
+        }
+    }
+    Ok(answer)
 }
 
 /// The evaluation of a team on this node, for a signed read by a member of its org. The signature must
