@@ -445,7 +445,8 @@ Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
 - `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
-- through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
+- through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices;
+- on a node with an `access` setting, even a malformed one, a direct local request may read but never write (403): the owner is who Access says it is, so a process of the same OS user on the node's machine cannot write as the owner. Without `access`, a direct local request is the owner, since nothing else could be; such a node protects nothing from processes of the same OS user.
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 A node with an `access` setting adds `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`) to every answer, so browsers reach its public host name over HTTPS only.
