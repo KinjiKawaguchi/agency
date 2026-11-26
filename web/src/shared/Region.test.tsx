@@ -70,4 +70,48 @@ describe('a region', () => {
       vi.useRealTimers()
     }
   })
+
+  it('keeps the failure on screen while it tries again by itself, and starts the countdown over when that fails too', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { Content, calls } = reader(2, 'Back at last')
+      renderRegion(Content)
+      expect(await screen.findByRole('alert')).toHaveTextContent('Trying again in 30 s.')
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      // The second read failed as well: still the failure, never a skeleton in between, and the countdown is 30 s again.
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(await screen.findByText(/Trying again in (29|30) s\./)).toBeInTheDocument()
+      expect(calls()).toBe(2)
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      expect(await screen.findByText('Back at last')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('comes back when the read that threw has passed, though another read is in error on purpose', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const client = createQueryClient([0])
+      // Token use that a team does not report: a 404 that stays an error in the cache, as it should.
+      await client.prefetchQuery({ queryKey: ['usage-not-reported'], queryFn: () => Promise.reject(new ApiError('Token usage is not available.', 404)), retry: false })
+      expect(client.getQueryState(['usage-not-reported'])?.status).toBe('error')
+      const { Content } = reader(1, 'Back although another read is an error')
+      render(
+        <I18nProvider initial="en">
+          <QueryClientProvider client={client}>
+            <Region what="the thing" skeleton={<Loading><Skeleton /></Loading>}>
+              <Content />
+            </Region>
+          </QueryClientProvider>
+        </I18nProvider>,
+      )
+      expect(await screen.findByRole('alert')).toHaveTextContent('Trying again in 30 s.')
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      expect(await screen.findByText('Back although another read is an error')).toBeInTheDocument()
+      expect(client.getQueryState(['usage-not-reported'])?.status).toBe('error')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
