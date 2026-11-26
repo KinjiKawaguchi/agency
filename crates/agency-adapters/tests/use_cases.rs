@@ -81,18 +81,9 @@ fn bare(account: &str) -> Fixture {
         id: id(account),
         label: account.to_uppercase(),
     };
-    data.save_config(&NodeConfig {
-        url: format!("http://{}.example", account.id),
-        listen: "127.0.0.1:0".into(),
-        account,
-        scrum: "scrum".into(),
-        teams: vec![],
-        trusted: vec![],
-        funding: vec![],
-        access: None,
-        push: None,
-    })
-    .unwrap();
+    let url = format!("http://{}.example", account.id);
+    data.save_config(&NodeConfig::new(url, "127.0.0.1:0", account, "scrum"))
+        .unwrap();
     let clock = ManualClock::at(T0);
     let runtime = MemoryRuntime::default();
     runtime
