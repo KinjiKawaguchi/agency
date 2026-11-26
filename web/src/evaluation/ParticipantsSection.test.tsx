@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import type { ParticipantEvaluation } from '../api/evaluationApi'
+import { createApiClient } from '../api/client'
 import { I18nProvider } from '../i18n'
 import { createTestNode } from '../test/testDevice'
 import { renderApp } from '../test/render'
@@ -76,6 +77,29 @@ describe('the participants of a team', () => {
     expect(screen.getByText(/1 merged pull request is not attributed to a participant/)).toBeInTheDocument()
   })
 
+  it('draws nothing at all for no participants, not a heading and an empty list', () => {
+    draw([], 3)
+    expect(screen.queryByText('Participants')).not.toBeInTheDocument()
+    expect(document.querySelector('.ev-participants')).toBeNull()
+    expect(screen.queryByText(/not attributed/)).not.toBeInTheDocument()
+  })
+
+  it('says why waiting is a lower bound, in the protocol’s own terms, in both languages', () => {
+    const { unmount } = draw([person()])
+    const english = document.querySelector('.ev-participants .ev-note')?.textContent ?? ''
+    expect(english).toContain('sessions that overlap count once')
+    expect(english).toContain('A moment in which one session works counts as working even if another waits')
+    expect(english).toContain('a session that waits for another agent counts as idle')
+    expect(english).toContain('lower bound')
+    unmount()
+    draw([person()], undefined, 'ja')
+    const japanese = document.querySelector('.ev-participants .ev-note')?.textContent ?? ''
+    expect(japanese).toContain('重なったセッションは 1 回として数えます')
+    expect(japanese).toContain('別のセッションが待っていても作業に数えます')
+    expect(japanese).toContain('ほかのエージェントを待っているセッションは待機に数えます')
+    expect(japanese).toContain('下限')
+  })
+
   it('reads in Japanese', () => {
     draw([person()], 2, 'ja')
     expect(screen.getByText('参加者')).toBeInTheDocument()
@@ -90,6 +114,21 @@ describe('on the evaluation page', () => {
     expect(await screen.findAllByRole('heading', { level: 4, name: 'backend' })).not.toHaveLength(0)
     expect(screen.getAllByRole('heading', { level: 4, name: 'reviewer' }).length).toBeGreaterThan(0)
     expect(screen.getAllByText('None merged').length).toBeGreaterThan(0)
+  })
+
+  it('shows nothing for a team whose answer lists no participant, as for one with none given', async () => {
+    const node = createTestNode({ evaluation: true, participants: true })
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/evaluation')) return answer
+      const body = (await answer.json()) as { teams: Array<Record<string, unknown>> }
+      return new Response(JSON.stringify({ ...body, teams: body.teams.map((team) => ({ ...team, participants: [], unattributedMerged: 4 })) }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/evaluation', node, client, enrolled: true })
+    await screen.findAllByRole('heading', { level: 2, name: /team$/ })
+    await waitFor(() => expect(document.querySelector('.ev-team .card')).not.toBeNull())
+    expect(screen.queryByText('Participants')).not.toBeInTheDocument()
+    expect(screen.queryByText(/not attributed/)).not.toBeInTheDocument()
   })
 
   it('shows nothing of them, and no error or hint, when the answer has none (the viewer is not the team’s owner)', async () => {

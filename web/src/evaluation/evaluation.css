@@ -506,8 +506,7 @@
 }
 
 .ev-facts dt {
-  color: var(--muted, var(--ink));
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .ev-facts dd {

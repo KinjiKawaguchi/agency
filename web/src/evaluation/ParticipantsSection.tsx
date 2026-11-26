@@ -73,6 +73,8 @@ function Row({ participant }: { participant: ParticipantEvaluation }) {
 export function ParticipantsSection({ participants, unattributedMerged }: Props) {
   const { t } = useI18n()
   const text = t.evaluation.participants
+  // A period with no participant to tell of is not a card with a heading and no one in it.
+  if (participants.length === 0) return null
   return (
     <div className="card ev-participants">
       <p className="card-head">

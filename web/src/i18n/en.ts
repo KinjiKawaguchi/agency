@@ -533,8 +533,7 @@ export const en = {
     participants: {
       title: 'Participants',
       lead: 'How each participant spent the period, what their tokens cost, and the pull requests merged under their name. Only the team’s owner reads this.',
-      time: 'Time with a session alive',
-      timeNote: 'Counted while at least one of the participant’s sessions was alive; sessions that overlap count once. Waiting is time spent waiting for a human’s decision, and at least that: the real wait may be longer.',
+      timeNote: 'Counted while at least one of the participant’s sessions was alive; sessions that overlap count once. A moment in which one session works counts as working even if another waits. Waiting counts only a human’s decision: a session that waits for another agent counts as idle. So the waiting shown is a lower bound of the time spent waiting for a human.',
       working: 'Working',
       waiting: 'Waiting for a decision (at least)',
       idle: 'Idle',
@@ -542,10 +541,9 @@ export const en = {
       cost: 'Cost',
       tokens: (count: string) => `${count} tokens`,
       merged: 'Merged',
-      mergedCount: (count: number) => `${count} merged ${count === 1 ? 'pull request' : 'pull requests'}`,
       perPr: 'Cost per merged pull request',
       noMerged: 'None merged',
-      unattributed: (count: number) => `${count} merged ${count === 1 ? 'pull request is' : 'pull requests are'} not attributed to a participant: the runtime did not name an author for ${count === 1 ? 'it' : 'them'}. The participants’ merged pull requests and these add up to the team’s.`,
+      unattributed: (count: number) => `${count} merged ${count === 1 ? 'pull request is' : 'pull requests are'} not attributed to a participant: the team’s runtime did not name an author for ${count === 1 ? 'it' : 'them'}. The participants’ merged pull requests and these add up to the team’s.`,
       timeLabel: (working: string, waiting: string, idle: string) => `Working ${working}, waiting at least ${waiting}, idle ${idle}`,
     },
 
