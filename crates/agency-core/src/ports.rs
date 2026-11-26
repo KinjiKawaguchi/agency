@@ -23,6 +23,7 @@ use agency_proto::{
     Timestamp, TokenUsage,
 };
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
@@ -120,6 +121,27 @@ pub trait OutcomeStore {
     fn append_observation(&self, org: &Id, observation: &Observation) -> Result<()>;
 }
 
+/// When the node first saw an epic that a team's plan aims at a KPI finished. A team's view keeps a finished
+/// epic only for a limited time, and a reading looks 90 days past the ship day, so the node keeps the day
+/// itself (see "Readings" in docs/protocol.md).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShipRecord {
+    pub team: Id,
+    /// The epic's item reference.
+    pub epic: String,
+    pub shipped_at: Timestamp,
+}
+
+/// The ship days of an org's epics, on this node only, appended and never rewritten.
+pub trait ShipLedger {
+    /// Every record of the org, in the order they were appended. An epic can have more than one when two
+    /// passes saw it at once: the first is the one that counts.
+    fn ships(&self, org: &Id) -> Vec<ShipRecord>;
+    /// Appends one record.
+    fn append_ship(&self, org: &Id, record: &ShipRecord) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -138,6 +160,7 @@ pub trait Store:
     + DeviceRequestStore
     + PushStore
     + OutcomeStore
+    + ShipLedger
     + Send
     + Sync
 {
@@ -154,6 +177,7 @@ impl<
             + DeviceRequestStore
             + PushStore
             + OutcomeStore
+            + ShipLedger
             + Send
             + Sync,
     > Store for T

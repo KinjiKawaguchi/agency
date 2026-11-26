@@ -12,7 +12,7 @@ const REASONS = ['empty', 'not-an-address', 'needs-https', 'has-credentials'] as
  */
 export function HomeNodesCard() {
   const { t } = useI18n()
-  const { nodes, change } = useHomeNodes()
+  const { nodes, listed, change } = useHomeNodes()
   const [label, setLabel] = useState('')
   const [address, setAddress] = useState('')
   const [problem, setProblem] = useState<(typeof REASONS)[number] | null>(null)
@@ -39,17 +39,21 @@ export function HomeNodesCard() {
         <input type="text" value={nodes.self ?? ''} placeholder={window.location.host} maxLength={MAX_NODE_LABEL} onChange={(event) => change((current) => withSelfLabel(current, event.target.value))} />
       </label>
       <p className="muted">{text.thisHost(window.location.host)}</p>
-      {nodes.others.length === 0 ? (
+      {listed.length === 0 ? (
         <p className="muted">{text.none}</p>
       ) : (
         <ul className="device-list node-list">
-          {nodes.others.map((one) => (
+          {listed.map((one) => (
             <li key={one.origin}>
               <a href={one.origin} rel="noopener noreferrer">{one.label}</a>
               <span className="muted">{new URL(one.origin).host}</span>
-              <button className="btn small" type="button" onClick={() => change((current) => withoutNode(current, one.origin))} aria-label={text.remove(one.label)}>
-                {text.removeShort}
-              </button>
+              {one.isFromNode ? (
+                <span className="muted">{text.fromNode}</span>
+              ) : (
+                <button className="btn small" type="button" onClick={() => change((current) => withoutNode(current, one.origin))} aria-label={text.remove(one.label)}>
+                  {text.removeShort}
+                </button>
+              )}
             </li>
           ))}
         </ul>

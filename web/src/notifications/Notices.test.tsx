@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { installFakeNotification, setPageVisibility, type FakeNotifications } from '../test/fakeNotification'
-import { TEAM_KEY } from '../api/queries'
+import { DEVICES_KEY, TEAM_KEY } from '../api/queries'
 import { currentQueryClient, refreshQueries, renderApp } from '../test/render'
 import { createTestNode, decideAsTestDevice } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair } from '../device/deviceKey'
@@ -116,6 +116,57 @@ describe('what is new, said by the operating system while the page is hidden', (
     vi.spyOn(window, 'focus').mockImplementation(() => undefined)
     fake.shown[0]?.onclick?.()
     await waitFor(() => expect(history.location.pathname).toBe('/desk'))
+  })
+
+  it('says no title to the operating system when the node hides titles, though the page’s own notice keeps it', async () => {
+    const node = createTestNode({ hidesTitles: true })
+    renderApp({ path: '/overview', node, enrolled: true })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    await settle()
+    await askFrom(node, 'Phone')
+    await refreshQueries()
+    expect(await screen.findByText('Phone asks to be added as a device.')).toBeInTheDocument()
+    await waitFor(() => expect(fake.shown).toHaveLength(1))
+    expect(fake.shown[0]?.options?.body).toBe('A device is waiting to be added')
+  })
+
+  it('says no title for a decision either, when the node hides titles', async () => {
+    const node = createTestNode({ hidesTitles: true })
+    renderApp({ path: '/overview', node, enrolled: true })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    await settle()
+    await decideAsTestDevice(createApiClient((request) => node.handle(request)), { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: 'Add a second frontend agent', choice: 'approve', text: '' })
+    await refreshQueries()
+    expect(await screen.findByText('A decision “Add a second frontend agent” was applied.')).toBeInTheDocument()
+    await waitFor(() => expect(fake.shown).toHaveLength(1))
+    expect(fake.shown[0]?.options?.body).toBe('A decision was applied.')
+  })
+
+  it('says the title when the node says it does not hide titles', async () => {
+    const node = createTestNode({ hidesTitles: false })
+    renderApp({ path: '/overview', node, enrolled: true })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    await settle()
+    await askFrom(node, 'Phone')
+    await refreshQueries()
+    await waitFor(() => expect(fake.shown).toHaveLength(1))
+    expect(fake.shown[0]?.options?.body).toBe('Phone asks to be added as a device.')
+  })
+
+  it('says no title until the node has answered who the viewer is and whether it hides titles', async () => {
+    const node = createTestNode({ hidesTitles: false })
+    // The account is never answered; the device list and the decision log are, and they carry labels and titles.
+    const client = createApiClient(async (request) => {
+      if (request.method === 'GET' && new URL(request.url, 'http://mock.local').pathname === '/api/me') await new Promise<never>(() => undefined)
+      return node.handle(request)
+    })
+    renderApp({ path: '/overview', node, client, enrolled: true })
+    await settle()
+    await askFrom(node, 'Phone')
+    // Only the device list: the account's read never ends, and waiting for it would wait for ever.
+    await refreshQueries(DEVICES_KEY)
+    await waitFor(() => expect(fake.shown).toHaveLength(1))
+    expect(fake.shown[0]?.options?.body).toBe('A device is waiting to be added')
   })
 
   it('shows none while the page is in front, though the page’s own notice appears', async () => {

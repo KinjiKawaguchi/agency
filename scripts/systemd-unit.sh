@@ -4,8 +4,9 @@
 #   scripts/systemd-unit.sh --agency <agency binary> --dir <data directory> --out <unit file>
 #
 # The unit runs with the PATH of the shell that runs this script, so the team runtime finds the same
-# tools as your terminal does (a systemd user service otherwise gets a short default PATH). Its output
-# goes to <data directory>/logs/serve.log. This script only writes the file; docs/install.md says how to
+# tools as your terminal does (a systemd user service otherwise gets a short default PATH). What it prints
+# at start and a crash go to <data directory>/logs/serve.log; the node's own log is
+# <data directory>/logs/node.jsonl. This script only writes the file; docs/install.md says how to
 # load it (`systemctl --user enable --now <unit name>`) and how to keep it running after you log out.
 set -euo pipefail
 

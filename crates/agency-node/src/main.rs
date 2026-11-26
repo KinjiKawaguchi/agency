@@ -10,9 +10,11 @@ use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::Decided;
 use agency_core::invites::join;
+use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::ports::ConfigStore;
 use agency_core::push::notify_waiting;
+use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -335,28 +337,51 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let port = listener.local_addr()?.port();
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
-    warn_misplaced(&node, |line| eprintln!("agency: {line}"));
+    let logger = opened.logger().clone();
+    logger.record(
+        LogLevel::Info,
+        "start",
+        &format!("node running: {} (listening on {listen})", node.url()),
+    );
+    warn_misplaced(&node, |line| logger.warn("placement", &line));
+    for line in agency_core::client::home_nodes(&node.config()).1 {
+        logger.warn("placement", &line);
+    }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
     let background = node.clone();
+    let background_log = logger.clone();
     tokio::spawn(async move {
+        let logger = background_log;
         let mut tick = 0u64;
         loop {
             if tick.is_multiple_of(2) {
                 if let Err(error) = refresh(&background).await {
-                    eprintln!("agency: re-reading the replicas failed: {error}");
+                    logger.warn(
+                        "replicas",
+                        &format!("re-reading the replicas failed: {error}"),
+                    );
+                }
+                if let Err(error) = record_all(&background).await {
+                    eprintln!("agency: remembering the days epics shipped failed: {error}");
                 }
                 match notify_waiting(&background).await {
                     Ok(pass) => {
                         for failure in pass.failures {
-                            eprintln!("agency: a push notification was not sent: {failure}");
+                            logger.warn(
+                                "push",
+                                &format!("a push notification was not sent: {failure}"),
+                            );
                         }
                     }
-                    Err(error) => eprintln!("agency: checking for new requests failed: {error}"),
+                    Err(error) => logger.warn(
+                        "requests",
+                        &format!("checking for new requests failed: {error}"),
+                    ),
                 }
             }
             if let Err(error) = deliver_due(&background).await {
-                eprintln!("agency: retrying the outbox failed: {error}");
+                logger.warn("outbox", &format!("retrying the outbox failed: {error}"));
             }
             tick += 1;
             tokio::time::sleep(Duration::from_secs(15)).await;
