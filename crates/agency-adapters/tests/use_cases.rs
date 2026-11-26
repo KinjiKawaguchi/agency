@@ -93,6 +93,7 @@ fn bare(account: &str) -> Fixture {
         push: None,
         web_push: None,
         hide_titles: false,
+        home_nodes: vec![],
     })
     .unwrap();
     let clock = ManualClock::at(T0);

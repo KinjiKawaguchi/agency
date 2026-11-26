@@ -150,6 +150,18 @@ pub struct NodeConfig {
     /// same meaning and is still read.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_titles: bool,
+    /// The owner's other home nodes, for their other accounts, which clients offer to switch to. The
+    /// node says only where they are; it never reads or copies anything from them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub home_nodes: Vec<HomeNodeConfig>,
+}
+
+/// One of the owner's other home nodes, as configured: a label and its node origin.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HomeNodeConfig {
+    pub label: String,
+    pub url: String,
 }
 
 /// Web Push: the node's own VAPID key lives in its data directory, never here.
@@ -391,6 +403,7 @@ mod tests {
             push: None,
             web_push: None,
             hide_titles: false,
+            home_nodes: vec![],
         };
         let acme = id("acme");
         config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://a.example".into());

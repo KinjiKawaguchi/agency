@@ -1,5 +1,6 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
+use crate::config::NodeConfig;
 use crate::decisions::{Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
@@ -8,9 +9,9 @@ use crate::outbox::Parcel;
 use crate::signed_decisions::decide_signed;
 use crate::views::{mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
 use agency_proto::client::{
-    AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult, DecisionState,
-    Funding, Me, OrgRef, SignedDecisionInput, SnapshotSource, TeamLocation, TeamRef, TeamSnapshot,
-    MAX_NOTE,
+    is_home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
+    DecisionState, Funding, HomeNode, Me, OrgRef, SignedDecisionInput, SnapshotSource,
+    TeamLocation, TeamRef, TeamSnapshot, MAX_NOTE,
 };
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Id, OrgDefinition, Person, Timestamp};
@@ -87,6 +88,7 @@ pub fn me(node: &Node) -> Me {
         account,
         orgs: orgs.collect(),
         funding: funding(node),
+        home_nodes: None,
     }
 }
 
@@ -262,4 +264,39 @@ pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
     DecisionLog {
         entries: entries.collect(),
     }
+}
+
+/// The other home nodes the owner configured (`homeNodes`), each with a label of 1 to 80 characters and
+/// a usable origin that is not this node's own; and a line for each entry left out, for the node's log.
+pub fn home_nodes(config: &NodeConfig) -> (Vec<HomeNode>, Vec<String>) {
+    let mut kept: Vec<HomeNode> = vec![];
+    let mut left_out = vec![];
+    for entry in &config.home_nodes {
+        let label = entry.label.trim();
+        let url = entry.url.trim_end_matches('/');
+        let reason = if !(1..=80).contains(&label.chars().count()) {
+            Some("its label must be 1 to 80 characters")
+        } else if !is_home_node_origin(url) {
+            Some(
+                "its url must be https://<host>[:<port>], or http:// on this machine, with no path",
+            )
+        } else if url == config.url.trim_end_matches('/') {
+            Some("it is this node")
+        } else if kept.iter().any(|one| one.url == url) {
+            Some("it is listed twice")
+        } else {
+            None
+        };
+        match reason {
+            Some(reason) => left_out.push(format!(
+                "home node {:?} ({}) is left out: {reason}",
+                entry.label, entry.url
+            )),
+            None => kept.push(HomeNode {
+                label: label.to_owned(),
+                url: url.to_owned(),
+            }),
+        }
+    }
+    (kept, left_out)
 }

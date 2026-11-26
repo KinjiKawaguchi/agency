@@ -229,3 +229,36 @@ fn a_team_view_beyond_its_limits_is_refused() {
     long_status.people[0].status = "x".repeat(limits::LINE + 1);
     assert!(long_status.check_limits().is_err());
 }
+
+#[test]
+fn a_home_node_origin_is_https_or_loopback_http_and_nothing_more() {
+    use agency_proto::client::is_home_node_origin;
+    for accepted in [
+        "https://work.example.com",
+        "https://work.example.com:8443",
+        "http://127.0.0.1:4400",
+        "http://localhost:4400",
+        "http://[::1]:4400",
+        "https://[2001:db8::1]",
+    ] {
+        assert!(is_home_node_origin(accepted), "{accepted}");
+    }
+    for refused in [
+        "http://work.example.com",
+        "http://192.168.1.2:4400",
+        "https://work.example.com/",
+        "https://work.example.com/desk",
+        "https://alice@work.example.com",
+        "https://work.example.com?x=1",
+        "https://work.example.com#top",
+        "https://",
+        "https://work.example.com:",
+        "https://work.example.com:84a3",
+        "https://work.example.com:123456",
+        "https://.example.com",
+        "ftp://work.example.com",
+        "work.example.com",
+    ] {
+        assert!(!is_home_node_origin(refused), "{refused}");
+    }
+}

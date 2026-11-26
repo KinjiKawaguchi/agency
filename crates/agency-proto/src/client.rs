@@ -30,6 +30,61 @@ pub struct Me {
     pub account: AccountRef,
     pub orgs: Vec<OrgRef>,
     pub funding: Vec<Funding>,
+    /// The other home nodes of the same human, for their other accounts, as the node's owner
+    /// configured them. Given only to the owner, and absent when there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub home_nodes: Option<Vec<HomeNode>>,
+}
+
+/// Another home node of the same human: the home node of another of their accounts (for example a work
+/// account). It says only where that node is; nothing of it is copied, and a client signs in to it and
+/// keeps a device key for it on its own.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct HomeNode {
+    pub label: String,
+    /// Its node origin: `https://<host>[:<port>]`, or `http://` on this machine's loopback, with no path.
+    pub url: String,
+}
+
+/// Whether `url` can be a home node's origin for a client: `https` with a host and an optional port and
+/// nothing else, or `http` only on the loopback (`localhost`, `127.0.0.1`, `[::1]`). No user name,
+/// path, query, or fragment.
+pub fn is_home_node_origin(url: &str) -> bool {
+    let (rest, is_https) = match url.strip_prefix("https://") {
+        Some(rest) => (rest, true),
+        None => match url.strip_prefix("http://") {
+            Some(rest) => (rest, false),
+            None => return false,
+        },
+    };
+    let (host, port) = match rest.strip_prefix('[') {
+        Some(bracketed) => match bracketed.split_once(']') {
+            Some((inside, after)) => (format!("[{inside}]"), after),
+            None => return false,
+        },
+        None => match rest.find(':') {
+            Some(colon) => (rest[..colon].to_owned(), &rest[colon..]),
+            None => (rest.to_owned(), ""),
+        },
+    };
+    let port = match port {
+        "" => true,
+        with_colon => with_colon.strip_prefix(':').is_some_and(|digits| {
+            !digits.is_empty() && digits.len() <= 5 && digits.bytes().all(|b| b.is_ascii_digit())
+        }),
+    };
+    let is_name = !host.is_empty()
+        && host.len() <= 253
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-[]:".contains(&b))
+        && !host.starts_with('.')
+        && !host.ends_with('.');
+    let is_loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]");
+    port && is_name && (is_https || is_loopback)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
