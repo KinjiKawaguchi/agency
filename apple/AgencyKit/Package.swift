@@ -13,7 +13,7 @@ let package = Package(
     ],
     dependencies: [
         // CryptoKit's API on every platform, so the signing code is tested on Linux too.
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.15.1"),
     ],
     targets: [
         .target(name: "AgencyKit"),
