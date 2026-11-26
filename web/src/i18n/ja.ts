@@ -79,6 +79,14 @@ export const ja: Messages = {
       return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
+    // The iPhone's words for a push whose titles are hidden (apple/Shared/ja.lproj), and the same for the kinds it has no push for.
+    hidden: {
+      request: 'あなたを待っている依頼があります',
+      participant: '参加者があなたの返事を待っています',
+      blocked: '止まった仕事があります',
+      device: '端末が追加を待っています',
+      decisionRefused: '決定が断られました',
+    },
     devicesMark: (count) => `承認待ち ${count} 件`,
     os: {
       title: 'このブラウザの通知',
