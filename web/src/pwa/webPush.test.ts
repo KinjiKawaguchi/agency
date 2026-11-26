@@ -100,6 +100,9 @@ describe('what the node knows of how a push service took the notices', () => {
   it('is failing when a time cannot be read: a refusal is not hidden behind a time that means nothing', () => {
     expect(deliveryOf({ lastSucceededAt: 'not a time', lastFailure: failure }).kind).toBe('failing')
   })
+  it('is failing when the time of the refusal cannot be read, since a refusal that cannot be dated is still one', () => {
+    expect(deliveryOf({ lastSucceededAt: '2026-11-24T10:00:00Z', lastFailure: { ...failure, at: 'not a time' } }).kind).toBe('failing')
+  })
   it('compares the times as times, not as texts (an offset is not a later time)', () => {
     expect(deliveryOf({ lastSucceededAt: '2026-11-24T20:30:00+09:00', lastFailure: failure }).kind).toBe('taken')
     expect(deliveryOf({ lastSucceededAt: '2026-11-24T12:30:00+09:00', lastFailure: failure }).kind).toBe('failing')

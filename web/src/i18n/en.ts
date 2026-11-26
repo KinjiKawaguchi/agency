@@ -136,7 +136,7 @@ export const en = {
         turnOn: 'Turn on for a closed app',
         turnOff: 'Turn off for a closed app',
         isOn: 'On. The node tells this browser when something is new, with the page closed.',
-        isFailing: (when: string, reason: string) => `The push service of this browser did not take the last notice (${when}): ${reason}. The node tries again for a day. If it keeps failing, turn this off and on again.`,
+        isFailing: (when: string, reason: string) => `The push service of this browser did not take the last notice (${when}): ${reason}. The node tries again for up to a day. If it keeps failing, turn this off and on again.`,
         lastTaken: (when: string) => `The last notice it took was at ${when}.`,
         neverTaken: 'It has taken none yet.',
         isStale: 'This browser was subscribed with a key the node no longer has, so it is not told. Subscribe again.',
