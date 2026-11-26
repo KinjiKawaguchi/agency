@@ -30,6 +30,11 @@ pub struct Me {
     pub account: AccountRef,
     pub orgs: Vec<OrgRef>,
     pub funding: Vec<Funding>,
+    /// Whether the node keeps titles and labels off every notification (`hideTitles`): a client that shows
+    /// them outside the app, such as a widget, leaves them out too. Left out when the node does not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, type = "boolean")]
+    pub hides_titles: bool,
     /// The other home nodes of the same human, for their other accounts, as the node's owner
     /// configured them. Given only to the owner, and absent when there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]

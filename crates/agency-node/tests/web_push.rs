@@ -5,7 +5,9 @@ mod common;
 
 use agency_core::push::notify_waiting;
 use agency_proto::client::VapidKey;
-use common::{alice, body, get, post, Running, TOKEN};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+use base64::Engine;
+use common::{alice, body, get, id, post, Running, TOKEN};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -170,6 +172,8 @@ async fn an_endpoint_that_is_not_an_allowed_push_service_is_refused() {
                     "push.acme.example".into(),
                     "*.edge.acme.example".into(),
                     "10.0.0.1".into(),
+                    "0x7f.1".into(),
+                    "2130706433".into(),
                 ],
             });
         })
@@ -179,6 +183,8 @@ async fn an_endpoint_that_is_not_an_allowed_push_service_is_refused() {
         ("https://a.edge.acme.example/x", 200),
         ("https://edge.acme.example/x", 400),
         ("https://10.0.0.1/x", 400),
+        ("https://0x7f.1/x", 400),
+        ("https://2130706433/x", 400),
     ] {
         assert_eq!(
             register(&alice, &subscription(endpoint)).await.0,
@@ -200,6 +206,7 @@ async fn keys_labels_and_the_number_of_subscriptions_are_checked() {
     for input in [
         bad("p256dh", json!("short")),
         bad("p256dh", json!(format!("{}=", &P256DH[..86]))),
+        bad("p256dh", json!(B64.encode([4u8; 65]))),
         bad("auth", json!(&AUTH[..21])),
         bad("auth", json!("!".repeat(22))),
         bad("label", json!("")),
@@ -376,5 +383,145 @@ async fn a_subscription_made_with_another_key_is_not_sent_to_and_hidden_titles_r
         (team_label, title),
         (&None, &None),
         "the node-wide setting hides titles for browsers too"
+    );
+}
+
+/// A node opened from a configuration as `agency` opens it (nothing stands in for its notifier), in a
+/// directory that outlives the call.
+fn opened_with(
+    dir: &std::path::Path,
+    web_push: Option<agency_core::config::WebPushConfig>,
+) -> std::sync::Arc<agency_core::Node> {
+    use agency_adapters::files::DataDir;
+    use agency_core::config::{Account, NodeConfig};
+    use agency_core::ports::ConfigStore;
+    let data = DataDir::new(dir.join("node"));
+    if !dir.join("node").exists() {
+        data.create_key().unwrap();
+    }
+    data.save_config(&NodeConfig {
+        url: "http://127.0.0.1:4400".into(),
+        listen: "127.0.0.1:4400".into(),
+        account: Account {
+            id: id("alice"),
+            label: "ALICE".into(),
+        },
+        scrum: "scrum".into(),
+        teams: vec![],
+        trusted: vec![],
+        funding: vec![],
+        access: None,
+        push: None,
+        web_push,
+        hide_titles: false,
+        home_nodes: vec![],
+    })
+    .unwrap();
+    agency_node::open(data, agency_node::Overrides::default())
+        .unwrap()
+        .node
+}
+
+#[test]
+fn a_node_makes_its_vapid_key_once_and_has_no_web_push_with_a_list_that_is_not_names() {
+    use agency_core::config::WebPushConfig;
+    let dir = tempfile::tempdir().unwrap();
+    assert!(agency_core::web_push::vapid_key(&opened_with(dir.path(), None)).is_none());
+    assert!(!dir.path().join("node/web-push-vapid.key").exists());
+
+    let first =
+        agency_core::web_push::vapid_key(&opened_with(dir.path(), Some(WebPushConfig::default())))
+            .unwrap();
+    let again =
+        agency_core::web_push::vapid_key(&opened_with(dir.path(), Some(WebPushConfig::default())))
+            .unwrap();
+    assert_eq!(first, again, "the key is kept in the data directory");
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(dir.path().join("node/web-push-vapid.key"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+
+    let hosts = |list: &[&str]| WebPushConfig {
+        subject: None,
+        extra_hosts: list.iter().map(|one| (*one).to_owned()).collect(),
+    };
+    let valid = opened_with(dir.path(), Some(hosts(&["push.acme.example"])));
+    assert!(agency_core::web_push::vapid_key(&valid).is_some());
+    let invalid = opened_with(dir.path(), Some(hosts(&["push.acme.example", "0x7f.1"])));
+    assert!(
+        agency_core::web_push::vapid_key(&invalid).is_none(),
+        "the node does not send with a list that has an address in it"
+    );
+}
+
+#[test]
+fn the_node_warns_when_push_services_would_be_given_a_contact_they_refuse() {
+    use agency_core::config::WebPushConfig;
+    let dir = tempfile::tempdir().unwrap();
+    let warning = |web_push: WebPushConfig, url: &str| {
+        let node = opened_with(dir.path(), Some(web_push));
+        node.update_config(|config| config.url = url.to_owned())
+            .unwrap();
+        agency_node::web_push_subject_warning(&node.config())
+    };
+    let default = || WebPushConfig::default();
+    let text =
+        warning(default(), "http://127.0.0.1:4400").expect("an http origin is not a contact");
+    assert!(
+        text.contains("webPush.subject") && text.contains("mailto:"),
+        "{text}"
+    );
+    assert!(
+        warning(default(), "https://node.acme.example").is_none(),
+        "an https origin is one"
+    );
+    let mailto = WebPushConfig {
+        subject: Some("mailto:ops@acme.example".into()),
+        extra_hosts: vec![],
+    };
+    assert!(
+        warning(mailto, "http://127.0.0.1:4400").is_none(),
+        "a subject that is set is the operator's"
+    );
+}
+
+#[tokio::test]
+async fn me_says_when_the_node_hides_titles_and_otherwise_says_nothing() {
+    let (alice, _) = alice().await;
+    let me = |alice: &Running| {
+        let request = get(alice, "/api/me").send();
+        async move { body(request.await.unwrap()).await.1 }
+    };
+    assert!(
+        me(&alice).await.get("hidesTitles").is_none(),
+        "left out, never false"
+    );
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    assert_eq!(me(&alice).await["hidesTitles"], true);
+    alice
+        .node
+        .update_config(|config| config.hide_titles = false)
+        .unwrap();
+    assert!(me(&alice).await.get("hidesTitles").is_none());
+    let push = agency_core::config::PushConfig {
+        key_path: "/nonexistent.p8".into(),
+        key_id: "ABCDE12345".into(),
+        team_id: "ABCDE12345".into(),
+        bundle_id: "com.example.agency".into(),
+        hide_titles: true,
+    };
+    alice
+        .node
+        .update_config(|config| config.push = Some(push))
+        .unwrap();
+    assert_eq!(
+        me(&alice).await["hidesTitles"],
+        true,
+        "push.hideTitles means the same"
     );
 }

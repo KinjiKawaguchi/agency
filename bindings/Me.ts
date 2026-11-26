@@ -9,6 +9,11 @@ import type { OrgRef } from "./OrgRef.js";
  */
 export type Me = { account: AccountRef, orgs: Array<OrgRef>, funding: Array<Funding>, 
 /**
+ * Whether the node keeps titles and labels off every notification (`hideTitles`): a client that shows
+ * them outside the app, such as a widget, leaves them out too. Left out when the node does not.
+ */
+hidesTitles?: boolean, 
+/**
  * The other home nodes of the same human, for their other accounts, as the node's owner
  * configured them. Given only to the owner, and absent when there are none.
  */

@@ -308,6 +308,10 @@ impl Notifier for MemoryNotifier {
         self.0.lock().ok()?.web_key.clone()
     }
 
+    fn web_push_check_keys(&self, p256dh: &str, auth: &str) -> Result<(), String> {
+        crate::web_push::check_keys(p256dh, auth)
+    }
+
     async fn send_web(
         &self,
         subscription: &WebSubscription,

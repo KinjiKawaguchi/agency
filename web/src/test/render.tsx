@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { act, render, type RenderResult } from '@testing-library/react'
-import { createMemoryHistory } from '@tanstack/react-router'
+import { createMemoryHistory, type RouterHistory } from '@tanstack/react-router'
 import { App } from '../app/App'
 import { createApiClient, type ApiClient } from '../api/client'
 import { createQueryClient } from '../app/queryClient'
@@ -79,7 +79,7 @@ export async function refreshQueries(queryKey?: readonly unknown[]): Promise<voi
 }
 
 /** Renders the whole app against a fresh mock node. */
-export function renderApp(options: Options = {}): RenderResult & { node: MockNode } {
+export function renderApp(options: Options = {}): RenderResult & { node: MockNode; history: RouterHistory } {
   const isEnrolled = options.enrolled ?? (options.node === undefined && options.keyStore === undefined)
   const create = isEnrolled ? createTestNode : createMockNode
   const node = options.node ?? create({ ...(options.failWith === undefined ? {} : { failWith: options.failWith }), ...(options.view === undefined ? {} : { view: options.view }), ...(options.siteError === undefined ? {} : { siteError: options.siteError }), ...(options.usage === undefined ? {} : { usage: options.usage }), ...(options.evaluation === undefined ? {} : { evaluation: options.evaluation }), ...(options.evaluationFailsWith === undefined ? {} : { evaluationFailsWith: options.evaluationFailsWith }), ...(options.evaluationUnavailableTeam === undefined ? {} : { evaluationUnavailableTeam: options.evaluationUnavailableTeam }), ...(options.activity === undefined ? {} : { activity: options.activity }), ...(options.activityFailsWith === undefined ? {} : { activityFailsWith: options.activityFailsWith }), ...(options.activityClock === undefined ? {} : { activityClock: options.activityClock }), ...(options.moreOrgs === undefined ? {} : { moreOrgs: options.moreOrgs }), ...(options.usageFailsWith === undefined ? {} : { usageFailsWith: options.usageFailsWith }), ...(options.refuseDecisionsWith === undefined ? {} : { refuseDecisionsWith: options.refuseDecisionsWith }), ...(options.outcome === undefined ? {} : { outcome: options.outcome }), ...(options.earlierDecisions === undefined ? {} : { earlierDecisions: options.earlierDecisions }), ...(options.pushTokensFailWith === undefined ? {} : { pushTokensFailWith: options.pushTokensFailWith }), ...(options.nothingWaiting === undefined ? {} : { nothingWaiting: options.nothingWaiting }), ...(options.decisionLogFailsWith === undefined ? {} : { decisionLogFailsWith: options.decisionLogFailsWith }) })
@@ -87,5 +87,5 @@ export function renderApp(options: Options = {}): RenderResult & { node: MockNod
   const queryClient = createQueryClient(options.retryDelays ?? [0, 0], options.devicesPollMs === undefined ? {} : { devicesPollMs: options.devicesPollMs })
   lastQueryClient = queryClient
   const result = render(<App client={options.client ?? createApiClient((request) => node.handle(request))} history={history} locale={options.locale ?? 'en'} keyStore={options.keyStore ?? (isEnrolled ? testKeyStore() : memoryKeyStore())} queryClient={queryClient} />)
-  return { ...result, node }
+  return { ...result, node, history }
 }

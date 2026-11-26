@@ -245,7 +245,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
-- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https:` address the push service may reach you at; default the node's public host name) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
+- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
@@ -404,6 +404,13 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
 | a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
 | the team's node did not answer | That node is down or unreachable. |
+
+## The org's numbers
+
+The org states what it measures (its KPIs) in its definition, with no number. The numbers themselves (revenue, retention, a lead time) are business data, and the node keeps them in `outcomes/<org>.jsonl` of its data directory, one line for each number, with the directory readable by its owner only (`0700`, the file `0600`). Nothing else the node serves holds them, and only the node's owner reads or enters them: `agency outcome-add --org acme --kpi revenue --date 2026-11-24 --value 1350000` enters one, and `agency outcome-list --org acme --kpi revenue` lists a KPI's numbers.
+
+- **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
+- The numbers are for reading how a measure moves, not for accounting.
 
 ## Updating a node
 

@@ -149,6 +149,20 @@ async fn me_with_funding(alice: &Running) -> Value {
     me
 }
 
+/// alice's `/api/me` when her node keeps titles off notifications: `hidesTitles` is there, `true`.
+async fn me_hiding_titles(alice: &Running) -> Value {
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    let me = read(alice, "/api/me").await;
+    alice
+        .node
+        .update_config(|config| config.hide_titles = false)
+        .unwrap();
+    me
+}
+
 /// Bob's node reads alice's newest org definition. It takes only the next version of the one it has, so
 /// this runs after each change of alice's, and a second after the clock moved on: a node accepts a
 /// signed read once, and a manual clock repeats the time of the last one.
@@ -252,6 +266,7 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
             read(alice, "/api/push/subscriptions").await,
         ),
         ("me-funding", me_with_funding(alice).await),
+        ("me-hides-titles", me_hiding_titles(alice).await),
         ("me-home-nodes", me_with_home_nodes(alice).await),
         ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),
