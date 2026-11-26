@@ -5,7 +5,7 @@ import Foundation
 public struct TeamView: Decodable, Equatable, Sendable {
     public let org: String
     public let team: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let generatedAt: Instant
     public let people: [PersonStatus]
     public let requests: [Request]
@@ -20,7 +20,7 @@ public struct PersonStatus: Decodable, Equatable, Sendable {
 
     /// The team runtime's own name for them.
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let kind: Kind
     public let role: Role
     public let state: State

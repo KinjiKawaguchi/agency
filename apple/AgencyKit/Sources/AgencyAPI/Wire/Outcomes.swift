@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// `GET /api/orgs/<org>/outcomes?days=<1 to 90>`: the numbers the owner keeps for what the org measures.
@@ -49,7 +50,7 @@ public struct Kpi: Decodable, Equatable, Sendable {
     }
 
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let kind: Kind
     public let unit: Unit
     public let goodWhen: GoodWhen
