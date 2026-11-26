@@ -351,6 +351,9 @@ export const en = {
       label: 'Changes waiting for the root key',
       title: (count: number) => (count === 1 ? '1 change waits for the root key’s signature.' : `${count} changes wait for the root key’s signature.`),
       item: (what: string, org: string, when: string) => `${what} (${org}, asked ${when})`,
+      addMember: (label: string, member: string) => `Add member ${label} (${member})`,
+      addDevice: (label: string, member: string) => `Add device ${label} for ${member}`,
+      removeDevice: (device: string, member: string) => `Remove device ${device} of ${member}`,
       command: ['Sign them together on the root key’s node: run ', ' there.'] satisfies Around,
     },
     recovery: {

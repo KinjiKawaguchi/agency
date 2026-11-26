@@ -1,11 +1,21 @@
 import type { Me } from '../api/clientApi'
 import { useI18n } from '../i18n'
-import { rootChangesOf } from './provisional'
+import type { Messages } from '../i18n/en'
+import { rootChangesOf, type RootChangeRef } from './provisional'
 import './rootchange.css'
+
+/** What a change does, in the page's words from its kind and fields; the node's English `what` only for a kind that is not known or has lost a field. */
+function describe(change: RootChangeRef, text: Messages['desk']['rootChanges']): string {
+  const { kind, member, label, device } = change
+  if (kind === 'addMember' && member !== undefined && label !== undefined) return text.addMember(label, member)
+  if (kind === 'addDevice' && member !== undefined && label !== undefined) return text.addDevice(label, member)
+  if (kind === 'removeDevice' && member !== undefined && device !== undefined) return text.removeDevice(device, member)
+  return change.what
+}
 
 /**
  * The changes others asked the root key to sign, which wait for the owner (`Me.rootChanges`): one item on the desk with how many
- * they are, what each changes (in the node's words), and the command that signs them together. Nothing is drawn for an answer
+ * they are, what each changes, and the command that signs them together. Nothing is drawn for an answer
  * that has not come, and nothing when none wait: the node gives the list to the owner only.
  */
 export function RootChangesNotice({ me }: { me: Me }) {
@@ -21,7 +31,7 @@ export function RootChangesNotice({ me }: { me: Me }) {
       </p>
       <ul>
         {changes.map((change) => (
-          <li key={change.id}>{text.item(change.what, labelOf(change.org), fmt.relative(change.receivedAt, t.time.justNow))}</li>
+          <li key={change.id}>{text.item(describe(change, text), labelOf(change.org), fmt.relative(change.receivedAt, t.time.justNow))}</li>
         ))}
       </ul>
       <p>

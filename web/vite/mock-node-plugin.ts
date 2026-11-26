@@ -54,7 +54,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     ...(query?.get('pendingRoot') === '1' ? { pendingRoot: true } : {}),
     // Changes that wait for the root key's signature, as the node tells its owner.
     ...(query?.get('rootChanges') === '1'
-      ? { rootChanges: [{ id: 'c1', org: 'acme', what: 'add member carol (Carol)', receivedAt: new Date(Date.now() - 2 * 3_600_000).toISOString() }, { id: 'c2', org: 'acme', what: 'add device iPhone for bob', receivedAt: new Date(Date.now() - 5 * 60_000).toISOString() }] }
+      ? { rootChanges: [{ id: 'c1', org: 'acme', what: 'add member carol (Carol)', kind: 'addMember', member: 'carol', label: 'Carol', receivedAt: new Date(Date.now() - 2 * 3_600_000).toISOString() }, { id: 'c2', org: 'acme', what: 'add device iPhone for bob', kind: 'addDevice', member: 'bob', label: 'iPhone', receivedAt: new Date(Date.now() - 5 * 60_000).toISOString() }] }
       : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),

@@ -3,17 +3,24 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { deviceKeyOf, generateKeyPair } from '../device/deviceKey'
 import { createFormatters } from '../i18n/format'
-import { createMockNode, PENDING_ROOT_MESSAGE } from '../mock/node'
+import { createMockNode } from '../mock/node'
 import { heldNode } from '../test/heldNode'
 import { refreshQueries, renderApp } from '../test/render'
 import { createTestNode } from '../test/testDevice'
-import { pendingOf, rootChangesOf } from './provisional'
+import { answerOf, rootChangesOf } from './provisional'
 
 const AGO = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
 const WAITING = [
   { id: 'c1', org: 'acme', what: 'add member carol (Carol)', receivedAt: AGO(120) },
   { id: 'c2', org: 'acme', what: 'add device iPhone for bob', receivedAt: AGO(5) },
 ]
+const STRUCTURED = [
+  { id: 's1', org: 'acme', what: 'add member carol (Carol)', receivedAt: AGO(30), kind: 'addMember', member: 'carol', label: 'Carol' },
+  { id: 's2', org: 'acme', what: 'add device iPhone for bob', receivedAt: AGO(20), kind: 'addDevice', member: 'bob', label: 'iPhone' },
+  { id: 's3', org: 'acme', what: 'remove device d-1234 of bob', receivedAt: AGO(10), kind: 'removeDevice', member: 'bob', device: 'd-1234' },
+]
+const PENDING_EN = 'Approved here; it takes effect once the root key’s node signs it: run agency root-sign there.'
+const PENDING_JA = 'ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。'
 const item = () => screen.findByRole('status', { name: /Changes waiting for the root key|ルート鍵の署名を待っている変更/ })
 
 describe('the changes that wait for the root key’s signature, on the desk', () => {
@@ -27,6 +34,39 @@ describe('the changes that wait for the root key’s signature, on the desk', ()
     expect(rows[1]).toHaveTextContent('add device iPhone for bob (Acme, asked')
     expect(one).toHaveTextContent('Sign them together on the root key’s node: run agency root-sign there.')
     expect(within(one).getByText('agency root-sign').tagName).toBe('CODE')
+  })
+
+  it('words each change from its kind and fields, in the page’s language, and not from the node’s English', async () => {
+    renderApp({ node: createTestNode({ rootChanges: STRUCTURED }), path: '/desk', enrolled: true })
+    const rows = within(await item()).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Add member Carol (carol) (Acme, asked')
+    expect(rows[1]).toHaveTextContent('Add device iPhone for bob (Acme, asked')
+    expect(rows[2]).toHaveTextContent('Remove device d-1234 of bob (Acme, asked')
+    expect(screen.queryByText(/add member carol \(Carol\)/)).not.toBeInTheDocument()
+  })
+
+  it('words them in Japanese too, with the glossary’s words', async () => {
+    renderApp({ node: createTestNode({ rootChanges: STRUCTURED }), path: '/desk', enrolled: true, locale: 'ja' })
+    const rows = within(await item()).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('メンバー Carol（carol）の追加（Acme、')
+    expect(rows[1]).toHaveTextContent('bob の端末「iPhone」の追加（Acme、')
+    expect(rows[2]).toHaveTextContent('bob の端末 d-1234 の削除（Acme、')
+    expect(screen.queryByText(/add device iPhone for bob/)).not.toBeInTheDocument()
+  })
+
+  it('says the node’s own words for a kind it does not know, and for a known kind that lacks a field', async () => {
+    const odd = [
+      { id: 'o1', org: 'acme', what: 'rotate the moon', receivedAt: AGO(5), kind: 'rotateMoon' },
+      { id: 'o2', org: 'acme', what: 'add member dave (Dave)', receivedAt: AGO(4), kind: 'addMember', member: 'dave' },
+      { id: 'o3', org: 'acme', what: 'remove device d-9 of bob', receivedAt: AGO(3), kind: 'removeDevice', member: 'bob' },
+      { id: 'o4', org: 'acme', what: 'add device Tab for bob', receivedAt: AGO(2), kind: 'addDevice', label: 'Tab' },
+    ]
+    renderApp({ node: createTestNode({ rootChanges: odd }), path: '/desk', enrolled: true })
+    const rows = within(await item()).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('rotate the moon (Acme, asked')
+    expect(rows[1]).toHaveTextContent('add member dave (Dave) (Acme, asked')
+    expect(rows[2]).toHaveTextContent('remove device d-9 of bob (Acme, asked')
+    expect(rows[3]).toHaveTextContent('add device Tab for bob (Acme, asked')
   })
 
   it('says one change in the singular', async () => {
@@ -69,41 +109,48 @@ describe('the changes that wait for the root key’s signature, on the desk', ()
 })
 
 describe('an approval of a device that the root key’s node holds', () => {
-  async function approve(node: ReturnType<typeof createMockNode>) {
+  async function approve(node: ReturnType<typeof createMockNode>, locale: 'en' | 'ja' = 'en') {
     const other = await deviceKeyOf(await generateKeyPair())
     await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Phone', publicKey: other.publicKey })
-    renderApp({ node, path: '/devices', enrolled: true })
+    renderApp({ node, path: '/devices', enrolled: true, locale })
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
+    await user.click(await screen.findByRole('button', { name: locale === 'ja' ? 'コードが一致したので承認する' : 'The codes match: approve it' }))
     return user
   }
 
-  it('is said with the node’s message, not as a success and not as an error, and is not approved a second time', async () => {
+  it('is said in the page’s own words, not as a success and not as an error, and is not approved a second time', async () => {
     const node = createTestNode({ pendingRoot: true })
     await approve(node)
-    const status = await screen.findByText(PENDING_ROOT_MESSAGE)
+    const status = await screen.findByText(PENDING_EN)
     expect(status.closest('[role="status"]')).not.toBeNull()
+    expect(screen.queryByText(/root key's node signs it/)).not.toBeInTheDocument()
     expect(screen.queryByText('Phone is added.')).not.toBeInTheDocument()
     expect(screen.queryByText(/Could not add the device/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeDisabled()
     expect(await screen.findByLabelText('Pairing code of Phone')).toBeInTheDocument()
   })
 
+  it('is said in Japanese in the page’s Japanese, and the node’s English message is not shown', async () => {
+    await approve(createTestNode({ pendingRoot: true }), 'ja')
+    expect(await screen.findByText(PENDING_JA)).toBeInTheDocument()
+    expect(screen.queryByText(/Approved here/)).not.toBeInTheDocument()
+  })
+
   it('is still said as a success when the node applied it', async () => {
     await approve(createTestNode())
     expect(await screen.findByText('Phone is added.')).toBeInTheDocument()
-    expect(screen.queryByText(PENDING_ROOT_MESSAGE)).not.toBeInTheDocument()
+    expect(screen.queryByText(PENDING_EN)).not.toBeInTheDocument()
   })
 
-  it('says it in the words of the page when the node sent a pending with no message', async () => {
-    const node = createTestNode({ pendingRoot: true })
+  it('shows the node’s message for an outcome the page does not know, and not a success', async () => {
+    const node = createTestNode()
     const raw = node.handle
-    const client = createApiClient(async (request) => (new URL(request.url, 'http://mock.local').pathname === '/api/devices/changes' ? new Response(JSON.stringify({ outcome: 'pending' }), { headers: { 'content-type': 'application/json' } }) : raw(request)))
+    const client = createApiClient(async (request) => (new URL(request.url, 'http://mock.local').pathname === '/api/devices/changes' ? new Response(JSON.stringify({ outcome: 'frozen', message: 'The root key’s node is closed for the night.' }), { headers: { 'content-type': 'application/json' } }) : raw(request)))
     const other = await deviceKeyOf(await generateKeyPair())
     await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Phone', publicKey: other.publicKey })
     renderApp({ node, client, path: '/devices', enrolled: true })
     await userEvent.setup().click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
-    expect(await screen.findByText('Approved here; it takes effect once the root key’s node signs it: run agency root-sign there.')).toBeInTheDocument()
+    expect(await screen.findByText('The root key’s node is closed for the night.')).toBeInTheDocument()
     expect(screen.queryByText('Phone is added.')).not.toBeInTheDocument()
   })
 })
@@ -117,10 +164,16 @@ describe('how the node says what waits', () => {
     for (const value of [undefined, null, 'x', 7, {}]) expect(rootChangesOf(me(value)), String(value)).toEqual([])
   })
 
-  it('takes only an outcome of pending as one, with its message when it has one', () => {
-    expect(pendingOf({ outcome: 'pending', message: 'm' })).toEqual({ outcome: 'pending', message: 'm' })
-    expect(pendingOf({ outcome: 'pending' })).toEqual({ outcome: 'pending' })
-    expect(pendingOf({ outcome: 'pending', message: '' })).toEqual({ outcome: 'pending' })
-    for (const value of [{ outcome: 'applied' }, { outcome: 'queued', message: 'm' }, { outcome: 'delivered' }, null, 'pending', undefined]) expect(pendingOf(value), String(value)).toBeUndefined()
+  it('reads kind and its fields when they are text, and leaves out what is not', () => {
+    const [one] = rootChangesOf(me([{ ...STRUCTURED[1], member: 7, label: '' }]))
+    expect(one).toEqual({ id: 's2', org: 'acme', what: 'add device iPhone for bob', receivedAt: STRUCTURED[1]!.receivedAt, kind: 'addDevice' })
+    expect(rootChangesOf(me(STRUCTURED))).toEqual(STRUCTURED)
+  })
+
+  it('takes pending as the held change, an unknown outcome with a message as its message, and the rest as done', () => {
+    expect(answerOf({ outcome: 'pending', message: 'm' })).toEqual({ status: 'pending' })
+    expect(answerOf({ outcome: 'pending' })).toEqual({ status: 'pending' })
+    expect(answerOf({ outcome: 'frozen', message: 'm' })).toEqual({ status: 'unknown', message: 'm' })
+    for (const value of [{ outcome: 'frozen' }, { outcome: 'frozen', message: '' }, { outcome: 'applied' }, { outcome: 'queued', message: 'm' }, { outcome: 'delivered' }, null, 'pending', undefined]) expect(answerOf(value), String(value)).toEqual({ status: 'done' })
   })
 })

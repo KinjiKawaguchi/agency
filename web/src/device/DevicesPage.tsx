@@ -15,7 +15,7 @@ import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
 import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
-import { pendingOf } from '../rootchange/provisional'
+import { answerOf } from '../rootchange/provisional'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
@@ -100,9 +100,9 @@ function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; dev
       const waiting: string[] = []
       for (const { org, signerId } of orgs) {
         const result = await api.submitDeviceChange(await signChange(deviceKey, signerId, addChangeFor(request, org, me.data.account.id, new Date())))
-        const pending = pendingOf(result)
-        if (pending === undefined) continue
-        waiting.push(pending.message ?? pendingWords)
+        const answer = answerOf(result)
+        if (answer.status === 'done') continue
+        waiting.push(answer.status === 'pending' ? pendingWords : answer.message)
         // Kept as it comes, so that a later org's failure does not take away what the root's node already holds.
         setHeld([...waiting])
       }
