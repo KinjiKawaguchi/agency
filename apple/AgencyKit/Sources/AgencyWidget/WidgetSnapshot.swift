@@ -13,16 +13,19 @@ public struct WidgetRequest: Codable, Equatable, Sendable {
     public let team: String
     public let request: String
     public let kind: Kind
-    public let title: String
-    public let teamLabel: String
+    /// What the request is about; `nil` when titles are not to be shown outside the app (the owner turned them off on
+    /// widgets, or the node hides them), and then nothing of the request but its kind is in the file.
+    public let title: String?
+    /// The team's label, left out with the title.
+    public let teamLabel: String?
 
-    public init(org: String, team: String, request: String, kind: Kind, title: String, teamLabel: String) {
+    public init(org: String, team: String, request: String, kind: Kind, title: String?, teamLabel: String?) {
         self.org = org
         self.team = team
         self.request = request
         self.kind = kind
-        self.title = Self.cut(title, to: Self.titleLimit)
-        self.teamLabel = Self.cut(teamLabel, to: Self.teamLimit)
+        self.title = title.map { Self.cut($0, to: Self.titleLimit) }
+        self.teamLabel = teamLabel.map { Self.cut($0, to: Self.teamLimit) }
     }
 
     /// Cut at a character boundary, with an ellipsis when something was left out.

@@ -80,6 +80,12 @@ struct WidgetRenderingTests {
         check("long", WidgetSnapshot(host: "h", writtenAt: now, waitingCount: 12, requests: requests))
     }
 
+    @Test("without titles a widget shows the kinds and the count only, and still fits")
+    func hiddenTitles() {
+        let requests = (0..<3).map { WidgetRequest(org: "acme", team: "app", request: "r-\($0)", kind: [.proposal, .question, .pendingDecision][$0], title: nil, teamLabel: nil) }
+        check("hidden", WidgetSnapshot(host: "h", writtenAt: now, waitingCount: 5, requests: requests))
+    }
+
     @Test("a count of three digits fits")
     func bigCount() {
         check("count", snapshot(count: 128, titles: ["決めること"]))

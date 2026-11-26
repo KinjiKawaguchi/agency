@@ -24,15 +24,15 @@ struct WidgetSnapshotTests {
     @Test("a long title is cut at a character with an ellipsis, a short one is kept, and spaces around it go")
     func cutting() {
         let long = String(repeating: "あ", count: 200)
-        let cut = request(title: long).title
+        let cut = request(title: long).title ?? ""
         #expect(cut.count == WidgetRequest.titleLimit)
         #expect(cut.hasSuffix("…"))
         #expect(request(title: "  Ship it?\n").title == "Ship it?")
-        #expect(request(title: String(repeating: "x", count: WidgetRequest.titleLimit)).title.count == WidgetRequest.titleLimit)
-        #expect(!request(title: String(repeating: "x", count: WidgetRequest.titleLimit)).title.hasSuffix("…"))
-        #expect(request(team: String(repeating: "t", count: 100)).teamLabel.count == WidgetRequest.teamLimit)
+        #expect(request(title: String(repeating: "x", count: WidgetRequest.titleLimit)).title?.count == WidgetRequest.titleLimit)
+        #expect(request(title: String(repeating: "x", count: WidgetRequest.titleLimit)).title?.hasSuffix("…") == false)
+        #expect(request(team: String(repeating: "t", count: 100)).teamLabel?.count == WidgetRequest.teamLimit)
         // An emoji outside the BMP is one character, not two halves.
-        #expect(request(title: String(repeating: "🚀", count: 200)).title.count == WidgetRequest.titleLimit)
+        #expect(request(title: String(repeating: "🚀", count: 200)).title?.count == WidgetRequest.titleLimit)
     }
 
     @Test("a snapshot is fresh for three hours, then says how old it is")
@@ -70,6 +70,34 @@ struct WidgetSnapshotTests {
         #expect(WidgetWording.kind(.pendingDecision) == "判断待ち")
         let words = [WidgetWording.displayName, WidgetWording.description, WidgetWording.nothingWaits, WidgetWording.notSynced, WidgetWording.waitingLabel]
         for forbidden in ["ユーザー", "デバイス", "サーバー"] { #expect(!words.contains { $0.contains(forbidden) }) }
+    }
+}
+
+@Suite("Widget snapshot without titles")
+struct WidgetHiddenTitlesTests {
+    @Test("a request without a title or a team keeps its kind, and the file has no text of it at all")
+    func hidden() throws {
+        let hidden = WidgetRequest(org: "acme", team: "app", request: "r-1", kind: .proposal, title: nil, teamLabel: nil)
+        #expect(hidden.title == nil)
+        #expect(hidden.teamLabel == nil)
+        let snapshot = WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 1, requests: [hidden])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agency-widget-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WidgetSnapshotStore(directory: directory)
+        try store.write(snapshot)
+        let text = try String(contentsOf: directory.appendingPathComponent(WidgetSnapshotStore.fileName), encoding: .utf8)
+        #expect(!text.contains("title"))
+        #expect(!text.contains("teamLabel"))
+        #expect(store.read() == snapshot)
+        #expect(store.read()?.requests.first?.title == nil)
+    }
+
+    @Test("a snapshot with titles and one without are not the same content")
+    func differs() {
+        let shown = WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 1, requests: [request()])
+        let hidden = WidgetSnapshot(host: "h", writtenAt: written, waitingCount: 1, requests: [WidgetRequest(org: "acme", team: "app", request: "r-1", kind: .question, title: nil, teamLabel: nil)])
+        #expect(!shown.hasSameContent(as: hidden))
     }
 }
 
