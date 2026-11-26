@@ -84,6 +84,29 @@ fn work_types_have_the_glossary_wire_names() {
     assert!(view.work.iter().any(|item| item.work_type.is_none()));
 }
 
+/// docs/protocol.md, "Work items": `doneAt` on a done item and on a finished epic, left out otherwise.
+#[test]
+fn done_at_is_optional_on_work_items_and_epics() {
+    let view: TeamView = serde_json::from_str(SAMPLE).unwrap();
+    assert!(view.work.iter().any(|item| item.done_at.is_some()));
+    assert!(view.work.iter().any(|item| item.done_at.is_none()));
+    let mut value = sample_value();
+    value["epics"][1]["doneAt"] = json!("2026-11-21T10:00:00Z");
+    let view: TeamView = serde_json::from_value(value.clone()).unwrap();
+    assert!(view.epics[1].done_at.is_some() && view.epics[0].done_at.is_none());
+    assert_eq!(
+        serde_json::to_value(&view).unwrap(),
+        value,
+        "written back as read"
+    );
+    let mut bad = sample_value();
+    bad["work"][4]["doneAt"] = json!("2026-11-20");
+    assert!(
+        serde_json::from_value::<TeamView>(bad).is_err(),
+        "a time, not a date"
+    );
+}
+
 #[test]
 fn teamview_rejects_values_outside_the_contract() {
     let cases: [(&str, Value); 7] = [

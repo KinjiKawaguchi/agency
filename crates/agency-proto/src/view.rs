@@ -188,6 +188,10 @@ pub struct WorkItem {
     /// field is the board's value and is never guessed here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_type: Option<WorkType>,
+    /// When the item first reached `done`: the board's own time when the tracker has one, otherwise
+    /// when the runtime first saw it. Absent while the item is not done, and when it is not known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done_at: Option<Timestamp>,
 }
 
 /// What a piece of work is for (docs/glossary.md, "Work type").
@@ -264,6 +268,10 @@ pub struct EpicForecast {
     /// Absent when the team has no recent throughput to forecast from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forecast: Option<Forecast>,
+    /// When the epic's last child reached `done`: present only once `done` equals `total`, and when the
+    /// time is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done_at: Option<Timestamp>,
     pub basis: String,
 }
 
