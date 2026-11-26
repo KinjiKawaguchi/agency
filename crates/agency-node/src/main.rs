@@ -6,6 +6,8 @@ mod kpi_cli;
 mod logs_cli;
 mod outcome_cli;
 mod peer_cli;
+mod recovery_cli;
+mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -14,6 +16,7 @@ use agency_core::decisions::Decided;
 use agency_core::invites::join;
 use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
+use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::push::notify_waiting;
 use agency_core::ships::record_all;
@@ -101,6 +104,9 @@ enum Command {
     PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
+    RootRecovery(recovery_cli::RootRecovery),
+    RootRecover(recovery_cli::RootRecover),
+    RootCancelRecovery(recovery_cli::RootCancelRecovery),
     /// Moves an org to a new root key (on the root key's node): the next version names it, signed by the
     /// current root key; the old key is forgotten once it is published
     RootRotate {
@@ -264,6 +270,20 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        if let Some(pending) = &doc.body.root.pending {
+            let at = orgs::recovery_takes_effect(node, &doc)
+                .map(agency_proto::clock::format)
+                .unwrap_or_else(|| "a time this node has no record of".to_owned());
+            let what = if pending.public_key.is_some() {
+                "a new root key"
+            } else {
+                "a new recovery key"
+            };
+            println!(
+                "  A RECOVERY WAITS: it moves {} to {what} at {at}. If you did not start it, run `agency root-cancel-recovery --org {}` now.",
+                doc.body.org, doc.body.org
+            );
+        }
         let lines = dept_cli::department_lines(&doc.body);
         let plans = dept_cli::plan_lines(&doc.body);
         for line in lines
@@ -274,6 +294,9 @@ fn status(node: &Node) {
         {
             println!("{line}");
         }
+    }
+    for line in seen_cli::seen_lines(node) {
+        println!("{line}");
     }
     for doc in node.store().orgs() {
         let devices = doc
@@ -378,6 +401,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
                 }
                 match notify_waiting(&background).await {
                     Ok(pass) => {
+                        for recovery in pass.recoveries {
+                            logger.warn("recovery", &recovery);
+                            eprintln!("agency: {recovery}");
+                        }
                         for failure in pass.failures {
                             logger.warn(
                                 "push",
@@ -459,6 +486,9 @@ async fn run(cli: Cli) -> Result<()> {
             if is_here && state_dir.is_none() {
                 bail!("a team on this node needs --state-dir");
             }
+            if !is_here {
+                peer_about::read_origin(&node, &org, &place_url).await?;
+            }
             let doc = orgs::add_team(
                 &node,
                 &org,
@@ -497,6 +527,9 @@ async fn run(cli: Cli) -> Result<()> {
         Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
+        Command::RootRecovery(args) => recovery_cli::root_recovery(&node, args).await?,
+        Command::RootRecover(args) => recovery_cli::root_recover(&node, args).await?,
+        Command::RootCancelRecovery(args) => recovery_cli::root_cancel_recovery(&node, args)?,
         Command::RootRotate { org } => {
             let doc = orgs::rotate_root(&node, &id(&org)?)?;
             println!(
@@ -510,6 +543,9 @@ async fn run(cli: Cli) -> Result<()> {
             team,
             node: origin,
         } => {
+            if origin != node.url() {
+                peer_about::read_origin(&node, &id(&org)?, &origin).await?;
+            }
             let doc = orgs::move_team(&node, &id(&org)?, &id(&team)?, origin.clone())?;
             println!(
                 "Moved team {team} of org {org} to {origin} (version {})",

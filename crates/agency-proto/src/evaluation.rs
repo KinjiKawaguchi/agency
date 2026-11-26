@@ -2,8 +2,9 @@
 //! token usage (docs/protocol.md, "Evaluation"). Counts and seconds are integers; costs are estimates at
 //! API prices in US dollars, as in `usage`. An optional field is left out, never null.
 use crate::ids::Id;
+use crate::participant_metrics::{MAX_NAME_BYTES, MAX_PARTICIPANTS};
 use crate::timestamp::{Date, Timestamp};
-use crate::usage::valid_days;
+use crate::usage::{valid_days, TokenCounts};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -79,6 +80,33 @@ pub struct EvaluationSummary {
     pub cost_per_merged_pr_usd: Option<f64>,
 }
 
+/// One participant's numbers over the period, added up from the team runtime's `participantMetrics` and
+/// the pull requests GitHub says were merged (docs/protocol.md, "Participant metrics").
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct ParticipantEvaluation {
+    /// The participant's name in the team runtime.
+    pub name: String,
+    /// Seconds in the period at least one of the participant's sessions was working, was waiting for
+    /// a human's decision, or was alive and neither.
+    #[ts(type = "number")]
+    pub busy_seconds: u64,
+    #[ts(type = "number")]
+    pub waiting_seconds: u64,
+    #[ts(type = "number")]
+    pub idle_seconds: u64,
+    /// Estimated cost of the participant's tokens, rounded to cents.
+    pub cost_usd: f64,
+    pub tokens: TokenCounts,
+    /// The pull requests merged in the period (`merged` and `reverts` of the summary together) whose
+    /// author the runtime named this participant.
+    pub merged: u32,
+    /// `costUsd` divided by `merged`; left out when the participant merged nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_per_merged_pr_usd: Option<f64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -91,6 +119,21 @@ pub struct TeamEvaluation {
     pub summary: EvaluationSummary,
     /// Oldest day first; days with nothing in them may be left out.
     pub by_day: Vec<DayEvaluation>,
+    /// The team's participants, by name, when its runtime reports them: none otherwise (also from a node
+    /// that does not know of them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<ParticipantEvaluation>>", optional)]
+    pub participants: Vec<ParticipantEvaluation>,
+    /// The pull requests merged in the period that no participant is named the author of. The merged pull
+    /// requests of `participants` and these add up to the summary's `merged` and `reverts`. Left out when
+    /// it is 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    #[ts(as = "Option<u32>", optional)]
+    pub unattributed_merged: u32,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 /// A team the node could not get numbers for. The reason is plain text with no secret and no address.
@@ -228,6 +271,68 @@ pub(crate) fn check_days(
     Ok(())
 }
 
+/// The pull requests merged in the period, as the summary counts them.
+fn merged_total(summary: &EvaluationSummary) -> u64 {
+    let counts = summary.merged;
+    [
+        counts.feat,
+        counts.fix,
+        counts.refactor,
+        counts.docs,
+        counts.test,
+        counts.chore,
+        counts.other,
+        summary.reverts,
+    ]
+    .iter()
+    .map(|count| u64::from(*count))
+    .sum()
+}
+
+/// Checks a team's participants: each named and listed once, no more time than the period holds (the three
+/// times of a participant add up to at most `days` times 86 400 seconds), costs that are numbers not
+/// negative, and their merged pull requests, with the unattributed ones, adding up to the summary's.
+fn check_participants(team: &TeamEvaluation, team_days: u32) -> Result<(), String> {
+    if team.participants.is_empty() && team.unattributed_merged == 0 {
+        return Ok(());
+    }
+    if team.participants.len() > MAX_PARTICIPANTS {
+        return Err("reported more participants than a report may hold".into());
+    }
+    let mut names = std::collections::BTreeSet::new();
+    let mut merged = u64::from(team.unattributed_merged);
+    for participant in &team.participants {
+        let name = &participant.name;
+        if name.is_empty() || name.len() > MAX_NAME_BYTES || !names.insert(name.as_str()) {
+            return Err("reported a participant without a usable name, or twice".into());
+        }
+        let seconds = [
+            participant.busy_seconds,
+            participant.waiting_seconds,
+            participant.idle_seconds,
+        ]
+        .iter()
+        .fold(0u64, |sum, part| sum.saturating_add(*part));
+        if seconds > u64::from(team_days) * 86_400 {
+            return Err(format!(
+                "reported more time than the period holds for {name}"
+            ));
+        }
+        let costs = [
+            Some(participant.cost_usd),
+            participant.cost_per_merged_pr_usd,
+        ];
+        if costs.iter().flatten().any(|cost| !valid_cost(*cost)) {
+            return Err(format!("reported a malformed cost for {name}"));
+        }
+        merged += u64::from(participant.merged);
+    }
+    if merged != merged_total(&team.summary) {
+        return Err("reported merged pull requests of participants that do not add up".into());
+    }
+    Ok(())
+}
+
 impl Evaluation {
     /// Checks that this is a well-formed report of the org and range that were asked for.
     pub fn check(&self, org: &Id, days: u32) -> Result<(), String> {
@@ -245,6 +350,7 @@ impl Evaluation {
             let mut costs: Vec<f64> = team.by_day.iter().map(|day| day.cost_usd).collect();
             costs.extend(team.summary.cost_per_merged_pr_usd);
             check_days(&dates, &team.from, &team.until, &costs, days)?;
+            check_participants(team, days)?;
         }
         Ok(())
     }
@@ -311,6 +417,89 @@ mod tests {
             .check(&acme(), 14)
             .unwrap_err()
             .contains("ends before"));
+    }
+
+    #[test]
+    fn a_team_without_participants_leaves_them_out_and_reads_them_back_when_there_are_some() {
+        let value = serde_json::to_value(sample()).unwrap();
+        let docs = &value["teams"][1];
+        assert!(docs.get("participants").is_none() && docs.get("unattributedMerged").is_none());
+        let app = &value["teams"][0];
+        assert_eq!(app["participants"].as_array().unwrap().len(), 3);
+        assert_eq!(app["unattributedMerged"], 1);
+        assert!(app["participants"][2].get("costPerMergedPrUsd").is_none());
+        // An answer of a node that does not know of participants still reads.
+        let mut old = value.clone();
+        old["teams"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("participants");
+        old["teams"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("unattributedMerged");
+        let read: Evaluation = serde_json::from_value(old).unwrap();
+        assert_eq!(read.check(&acme(), 14), Ok(()));
+        assert!(read.teams[0].participants.is_empty());
+    }
+
+    #[test]
+    fn refuses_participants_that_are_not_well_formed_or_do_not_add_up_to_the_summary() {
+        let refused = |change: &dyn Fn(&mut TeamEvaluation)| {
+            let mut report = sample();
+            change(&mut report.teams[0]);
+            report.check(&acme(), 14).unwrap_err()
+        };
+        assert!(refused(&|t| t.participants[0].merged += 1).contains("do not add up"));
+        assert!(refused(&|t| t.unattributed_merged = 0).contains("do not add up"));
+        assert!(refused(&|t| t.participants[1].name = "backend".into()).contains("twice"));
+        assert!(refused(&|t| t.participants[0].name = String::new()).contains("usable name"));
+        assert!(refused(&|t| t.participants[0].name = "x".repeat(201)).contains("usable name"));
+        assert!(refused(&|t| t.participants[0].cost_usd = -0.01).contains("malformed cost"));
+        let whole = 14 * 86_400;
+        assert!(refused(&|t| {
+            let p = &mut t.participants[0];
+            (p.busy_seconds, p.waiting_seconds, p.idle_seconds) = (whole, 1, 0);
+        })
+        .contains("more time than the period"));
+        assert!(
+            refused(&|t| t.participants[0].idle_seconds = 1_000_000_000_000)
+                .contains("more time than the period")
+        );
+        assert!(refused(&|t| t.participants[0].busy_seconds = u64::MAX).contains("more time"));
+        let mut full = sample();
+        let p = &mut full.teams[0].participants[0];
+        (p.busy_seconds, p.waiting_seconds, p.idle_seconds) = (whole, 0, 0);
+        assert_eq!(
+            full.check(&acme(), 14),
+            Ok(()),
+            "alive the whole period is the most"
+        );
+        assert!(refused(&|t| t.participants[0].cost_usd = f64::NAN).contains("malformed cost"));
+        assert!(
+            refused(&|t| t.participants[0].cost_per_merged_pr_usd = Some(f64::INFINITY))
+                .contains("malformed cost")
+        );
+        assert!(refused(&|t| {
+            let one = t.participants[0].clone();
+            t.participants = (0..1001)
+                .map(|n| ParticipantEvaluation {
+                    name: n.to_string(),
+                    ..one.clone()
+                })
+                .collect();
+        })
+        .contains("more participants"));
+        // Only unattributed pull requests, with no participant, still have to add up.
+        assert!(refused(&|t| {
+            t.participants.clear();
+            t.unattributed_merged = 6;
+        })
+        .contains("do not add up"));
+        let mut all = sample();
+        all.teams[0].participants.clear();
+        all.teams[0].unattributed_merged = 7;
+        assert_eq!(all.check(&acme(), 14), Ok(()));
     }
 
     #[test]

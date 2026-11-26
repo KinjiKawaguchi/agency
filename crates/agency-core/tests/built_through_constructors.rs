@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 /// The types built through `Type::new` and its `with_*` methods.
-const CONSTRUCTED: [&str; 3] = ["HostedTeam", "NodeConfig", "TeamPlace"];
+const CONSTRUCTED: [&str; 4] = ["HostedTeam", "NodeConfig", "OrgDefinition", "TeamPlace"];
 
 fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap().flatten() {
@@ -38,11 +38,15 @@ fn builds_by_hand(line: &str, name: &str) -> bool {
         format!("struct {name}"),
         format!("impl {name}"),
         format!("for {name}"),
-        format!("-> {name}"),
     ]
     .iter()
     .any(|text| line.contains(text));
-    contains_word(line, &needle) && !is_not_literal
+    // A return type, with or without a path before the name (`-> agency_proto::Name {`), opens a body.
+    let is_return_type = line
+        .find("->")
+        .zip(line.find(&needle))
+        .is_some_and(|(arrow, at)| arrow < at);
+    contains_word(line, &needle) && !is_not_literal && !is_return_type
 }
 
 #[test]
@@ -50,10 +54,15 @@ fn only_the_whole_name_is_taken_for_a_literal() {
     let literal = format!("let config = NodeConfig{}", " {");
     let other = format!("let entry = HomeNodeConfig{}", " {");
     let qualified = format!("agency_core::config::NodeConfig{}", " {");
+    let returned = format!("fn body() -> agency_proto::NodeConfig{}", " {");
     assert!(builds_by_hand(&literal, "NodeConfig"));
     assert!(
         builds_by_hand(&qualified, "NodeConfig"),
         "a path before the name still counts"
+    );
+    assert!(
+        !builds_by_hand(&returned, "NodeConfig"),
+        "a function that returns it, by a path, is not a literal"
     );
     assert!(
         !builds_by_hand(&other, "NodeConfig"),

@@ -12,6 +12,7 @@ import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
 import { KeyKeepingNotes } from './KeyKeepingNotes'
 import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
+import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
 import { useDeviceKey } from './useDeviceKey'
@@ -191,6 +192,7 @@ function Unsupported() {
 export function DevicesPage() {
   const { t } = useI18n()
   const key = useDeviceKey()
+  const standing = useStanding()
   return (
     <>
       <h1 className="page-title">{t.devices.title}</h1>
@@ -199,7 +201,7 @@ export function DevicesPage() {
       {key.status === 'unsupported' ? <Unsupported /> : null}
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
-      <HomeNodesCard />
+      {standing.status === 'guest' ? null : <HomeNodesCard />}
       <OsNoticesCard />
       <InstallCard />
     </>

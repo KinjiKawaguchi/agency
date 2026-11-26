@@ -23,7 +23,7 @@ fn graphql_page(title: &str, merged: &str) -> String {
     json!({"data": {"repository": {"pullRequests": {
         "pageInfo": {"hasNextPage": false, "endCursor": null},
         "nodes": [{
-            "title": title, "body": "", "createdAt": "2026-11-22T01:00:00Z", "mergedAt": merged, "updatedAt": merged,
+            "number": 7, "title": title, "body": "", "createdAt": "2026-11-22T01:00:00Z", "mergedAt": merged, "updatedAt": merged,
             "commits": {"nodes": []}, "closingIssuesReferences": {"nodes": []},
         }]}}}})
     .to_string()
@@ -69,6 +69,16 @@ async fn collects_the_pull_requests_and_runs_of_every_repository() {
         .map(|p| p.title.as_str())
         .collect();
     assert_eq!(titles, ["feat: in name=app", "feat: in name=web"]);
+    let repos: Vec<&str> = facts
+        .pull_requests
+        .iter()
+        .map(|p| p.repo.as_str())
+        .collect();
+    assert_eq!(
+        repos,
+        ["acme/app", "acme/web"],
+        "each pull request knows its repository"
+    );
     let runs: Vec<(&str, &str, Verdict)> = facts
         .runs
         .iter()

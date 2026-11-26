@@ -4,7 +4,9 @@
 
 pub mod about;
 pub mod activity;
+pub mod capabilities;
 pub mod client;
+pub mod clients_seen;
 pub mod config;
 pub mod decisions;
 pub mod delivery;
@@ -26,8 +28,10 @@ pub mod peer_about;
 pub mod ports;
 pub mod push;
 mod push_events;
+pub mod push_retries;
 pub mod read_auth;
 pub mod readings;
+pub mod recovery;
 pub mod routes;
 pub mod ships;
 pub mod signed_decisions;

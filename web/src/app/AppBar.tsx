@@ -6,6 +6,7 @@ import { useApi } from '../api/context'
 import { devicesQuery, meQuery } from '../api/queries'
 import { enrollmentOf } from '../device/enrollment'
 import { useDeviceKey } from '../device/useDeviceKey'
+import { useStanding } from '../guest/useStanding'
 import { useWaiting, type Waiting } from '../desk/useWaitingCount'
 import { useI18n } from '../i18n'
 import { LOCALES, LOCALE_NAMES, isLocale } from '../i18n/locale'
@@ -22,18 +23,23 @@ const THEME_LABELS = (t: ReturnType<typeof useI18n>['t']): Record<Theme, string>
   dark: t.settings.themeDark,
 })
 
-type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live' | '/outcomes'
+type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live' | '/outcomes' | '/devices'
 
 interface Group {
-  key: 'desk' | 'overview' | 'organization' | 'results'
+  key: 'desk' | 'overview' | 'organization' | 'results' | 'devices'
   /** The pages of the group, the one a click on the group opens first. */
   pages: ReadonlyArray<{ to: PagePath; label: (t: Messages) => string }>
   label: (t: Messages) => string
 }
 
 /** The main menu has one entry per group, so a phone shows four; a group of several pages lists them in a menu of its own. */
+const DESK: Group = { key: 'desk', label: (t) => t.nav.desk, pages: [{ to: '/desk', label: (t) => t.nav.desk }] }
+
+/** A member the node hosts has two entries: their decisions, and their devices. */
+const GUEST_GROUPS: readonly Group[] = [DESK, { key: 'devices', label: (t) => t.nav.devices, pages: [{ to: '/devices', label: (t) => t.nav.devices }] }]
+
 const GROUPS: readonly Group[] = [
-  { key: 'desk', label: (t) => t.nav.desk, pages: [{ to: '/desk', label: (t) => t.nav.desk }] },
+  DESK,
   { key: 'overview', label: (t) => t.nav.overview, pages: [{ to: '/overview', label: (t) => t.nav.overview }] },
   {
     key: 'organization',
@@ -67,6 +73,7 @@ export function AppBar() {
   const { t, locale, setLocale } = useI18n()
   const { theme, setTheme } = useTheme()
   const waiting = useWaiting()
+  const standing = useStanding()
   const { nodes, listed } = useHomeNodes()
   const api = useApi()
   const me = useQuery(meQuery(api)).data
@@ -82,7 +89,9 @@ export function AppBar() {
   const outcomes = useOutcomesAccess()
   // The owner's page is in the menu only once the owner's read has answered: no entry while it is read, and none for anyone else.
   const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => page.to !== '/outcomes' || outcomes.status === 'available')
-  const current = GROUPS.find((group) => pagesOf(group).some((page) => isOn(path, page.to)))
+  // Until the node has said who the viewer is, no entry is shown: a guest is not offered the owner's pages for a moment.
+  const groups = standing.status === 'guest' ? GUEST_GROUPS : standing.status === 'loading' ? [] : GROUPS
+  const current = groups.find((group) => pagesOf(group).some((page) => isOn(path, page.to)))
 
   useEffect(() => {
     document.title = waiting.status === 'known' && waiting.count > 0 ? `(${waiting.count}) ${t.app.name}` : t.app.name
@@ -97,7 +106,7 @@ export function AppBar() {
         </Link>
         {nodeName === undefined ? null : <Link className="node-chip" to="/devices" title={t.devices.homeNodes.title}>{nodeName}</Link>}
         <nav className="mainnav" aria-label={t.nav.label}>
-          {GROUPS.map((group) => (
+          {groups.map((group) => (
             <Link key={group.key} to={pagesOf(group)[0]?.to ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
               {group.label(t)}
               {group.key === 'desk' ? <WaitingCount waiting={waiting} /> : null}

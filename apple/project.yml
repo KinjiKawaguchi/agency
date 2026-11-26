@@ -63,7 +63,9 @@ targets:
         # The node's host, for the universal link the Access sign-in returns through.
         com.apple.developer.associated-domains:
           - applinks:$(AGENCY_ASSOCIATED_HOST)
+          - applinks:$(AGENCY_ASSOCIATED_HOST_2)
           - webcredentials:$(AGENCY_ASSOCIATED_HOST)
+          - webcredentials:$(AGENCY_ASSOCIATED_HOST_2)
     info:
       path: App/Info.plist
       properties:
@@ -77,6 +79,9 @@ targets:
         # The host the app is built to return to after an Access sign-in; the app uses that sign-in
         # only for a home node on this host.
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
+        # Every host or `*.` wildcard the build has an associated domain for: a node on one of them signs in through a
+        # universal link, any other through the app's own scheme.
+        AgencyAssociatedHosts: $(AGENCY_ASSOCIATED_HOST) $(AGENCY_ASSOCIATED_HOST_2)
         # The source the build was made from: the commit, and `git describe` against the apple-v tags
         # (apple/scripts/testflight.sh sets them; a build run from Xcode says unknown).
         AgencyBuildCommit: $(AGENCY_BUILD_COMMIT)
@@ -138,7 +143,9 @@ targets:
         com.apple.developer.aps-environment: $(APS_ENVIRONMENT)
         com.apple.developer.associated-domains:
           - applinks:$(AGENCY_ASSOCIATED_HOST)
+          - applinks:$(AGENCY_ASSOCIATED_HOST_2)
           - webcredentials:$(AGENCY_ASSOCIATED_HOST)
+          - webcredentials:$(AGENCY_ASSOCIATED_HOST_2)
         # The data protection keychain holds the Access token and the key's handle.
         keychain-access-groups:
           - $(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
@@ -152,6 +159,9 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
+        # Every host or `*.` wildcard the build has an associated domain for: a node on one of them signs in through a
+        # universal link, any other through the app's own scheme.
+        AgencyAssociatedHosts: $(AGENCY_ASSOCIATED_HOST) $(AGENCY_ASSOCIATED_HOST_2)
         ITSAppUsesNonExemptEncryption: false
         # Lets a node on this Mac or the local network be opened over plain http, as on the iPhone.
         NSAppTransportSecurity:
