@@ -7,6 +7,8 @@ public protocol OutcomesSource: Sendable {
     func me() async throws -> Me
     func outcomes(org: String, days: Int) async throws -> Outcomes
     func readings(org: String) async throws -> Readings
+    /// The evaluation of the last `days` days, for the cost under the KPIs.
+    func evaluation(org: String, days: Int) async throws -> Evaluation
     func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation
     func numberHistory(org: String, kpi: String, limit: Int) async throws -> [KpiObservation]
 }
@@ -95,12 +97,23 @@ public final class OutcomesStore {
     /// The history of a KPI the owner has opened, by `org/kpi`: kept only while it is open, in memory like the rest.
     public private(set) var histories: [String: HistoryState] = [:]
 
+    /// What the org's work cost on the days its KPIs are drawn over, by org, for the period shown. An org not in it has not been
+    /// read: its cost is on its way, which is not a cost of nothing. It is read after the numbers are on screen (an evaluation asks
+    /// every team's runtime, which is slow) and again no sooner than `costLifetime` later.
+    public private(set) var costs: [String: OrgCost] = [:]
+
+    /// How long a read cost is kept before a refresh asks again.
+    public static let costLifetime: TimeInterval = 300
+    @ObservationIgnored private var costsReadAt: [String: Date] = [:]
+    @ObservationIgnored private let now: @Sendable () -> Date
+
     @ObservationIgnored private let source: any OutcomesSource
     @ObservationIgnored private let retry: RetryPolicy
 
-    public init(source: any OutcomesSource, retry: RetryPolicy = .standard) {
+    public init(source: any OutcomesSource, retry: RetryPolicy = .standard, now: @escaping @Sendable () -> Date = { Date() }) {
         self.source = source
         self.retry = retry
+        self.now = now
     }
 
     // MARK: Reading
@@ -123,6 +136,7 @@ public final class OutcomesStore {
             // A period chosen meanwhile has its own answer coming; this one is for the old one.
             guard days == self.days else { return }
             apply(results, before: before)
+            await readCosts()
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
@@ -131,6 +145,45 @@ public final class OutcomesStore {
             loading = before
         } catch {
             loading = .failed(DeskStore.reason(error))
+        }
+    }
+
+    /// Reads the cost of each org on the days of its KPIs, unless a cost read lately is still good. A cost that cannot be read says
+    /// so for that org and leaves the numbers alone.
+    private func readCosts() async {
+        let (days, source, retry, stamp) = (days, source, retry, now())
+        let wanted = orgs.filter { org in
+            // Only a cost that was read is kept: one that could not be read is asked for again.
+            guard case .ready? = costs[org.id], let readAt = costsReadAt[org.id] else { return true }
+            return stamp.timeIntervalSince(readAt) >= Self.costLifetime
+        }
+        let found = await withTaskGroup(of: (String, OrgCost?).self) { group in
+            for org in wanted {
+                group.addTask { (org.id, await Self.readCost(of: org, source: source, retry: retry)) }
+            }
+            var results: [String: OrgCost] = [:]
+            for await (id, cost) in group { if let cost { results[id] = cost } }
+            return results
+        }
+        // A period chosen meanwhile has its own cost coming.
+        guard days == self.days else { return }
+        for (id, cost) in found {
+            costs[id] = cost
+            costsReadAt[id] = stamp
+        }
+    }
+
+    /// `nil` when the read was cancelled, which says nothing.
+    private static func readCost(of org: OrgOutcomes, source: any OutcomesSource, retry: RetryPolicy) async -> OrgCost? {
+        let dates = OutcomeDay.dates(from: org.from, until: org.until)
+        guard !dates.isEmpty else { return .unavailable }
+        do {
+            let evaluation = try await retry.run { try await source.evaluation(org: org.id, days: dates.count) }
+            return .ready(CostOnDays(evaluation: evaluation, dates: dates))
+        } catch is CancellationError {
+            return nil
+        } catch {
+            return .unavailable
         }
     }
 
@@ -195,6 +248,8 @@ public final class OutcomesStore {
     public func choose(days: Int) async {
         guard Self.periods.contains(days), days != self.days else { return }
         self.days = days
+        costs = [:]
+        costsReadAt = [:]
         await refresh()
     }
 

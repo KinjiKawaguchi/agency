@@ -18,6 +18,8 @@ private final class FakeOutcomesSource: OutcomesSource, @unchecked Sendable {
     private var _history: @Sendable (String, String) throws -> [KpiObservation] = { _, _ in [] }
     private(set) var entered: [ObservationInput] = []
     private(set) var historyReads = 0
+    private var _evaluation: @Sendable (String, Int) throws -> Evaluation = { _, _ in throw NodeError.http(status: 404, message: nil) }
+    private(set) var evaluationsAsked: [(org: String, days: Int)] = []
 
     static let twoOrgs = """
     {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[
@@ -29,6 +31,7 @@ private final class FakeOutcomesSource: OutcomesSource, @unchecked Sendable {
     func set(outcomes: @escaping @Sendable (String, Int) throws -> Outcomes) { lock.withLock { _outcomes = outcomes } }
     func set(readings: @escaping @Sendable (String) throws -> Readings) { lock.withLock { _readings = readings } }
     func set(enter: @escaping @Sendable (ObservationInput) throws -> KpiObservation) { lock.withLock { _enter = enter } }
+    func set(evaluation: @escaping @Sendable (String, Int) throws -> Evaluation) { lock.withLock { _evaluation = evaluation } }
     func set(history: @escaping @Sendable (String, String) throws -> [KpiObservation]) { lock.withLock { _history = history } }
 
     func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation {
@@ -51,6 +54,11 @@ private final class FakeOutcomesSource: OutcomesSource, @unchecked Sendable {
             await withCheckedContinuation { continuation in lock.withLock { gate = continuation } }
         }
         let make = lock.withLock { daysAsked.append(days); return _outcomes }
+        return try make(org, days)
+    }
+
+    func evaluation(org: String, days: Int) async throws -> Evaluation {
+        let make = lock.withLock { evaluationsAsked.append((org, days)); return _evaluation }
         return try make(org, days)
     }
 
@@ -343,4 +351,77 @@ struct OutcomesStoreTests {
         await store.refresh()
         #expect(store.loading == .loaded && store.hasAnswered && !store.isAvailable)
     }
+
+    // MARK: The cost of the same days
+
+    private final class Clock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _now = Date(timeIntervalSince1970: 1_795_000_000)
+        var now: Date { lock.withLock { _now } }
+        func advance(_ seconds: TimeInterval) { lock.withLock { _now = _now.addingTimeInterval(seconds) } }
+    }
+
+    private func costStore(_ clock: Clock = Clock()) -> OutcomesStore {
+        source.set(outcomes: { _, _ in try OutcomeSamples.outcomes() })
+        source.set(evaluation: { _, _ in try CostSamples.evaluation(teams: [(from: "2026-11-11", until: "2026-11-24", byDay: [(date: "2026-11-23", usd: 9.5)])]) })
+        return OutcomesStore(source: source, retry: .never, now: { clock.now })
+    }
+
+    @Test("the cost of the days of the KPIs is read for each org after the numbers, for as many days as the KPIs are drawn over")
+    func costRead() async throws {
+        let store = costStore()
+        #expect(store.costs.isEmpty, "not read yet is not a cost of nothing")
+        await store.refresh()
+        #expect(store.loading == .loaded && store.orgs.count == 2)
+        #expect(Set(source.evaluationsAsked.map(\.org)) == ["acme", "lab"] && source.evaluationsAsked.allSatisfy { $0.days == 14 })
+        guard case .ready(let cost)? = store.costs["acme"] else { Issue.record("no cost"); return }
+        #expect(cost.days.count == 14 && cost.days.first?.date == "2026-11-11" && cost.days.last?.date == "2026-11-24")
+        #expect(cost.days.first { $0.date == "2026-11-23" }?.usd == 9.5 && cost.days.first { $0.date == "2026-11-12" }?.usd == 0)
+    }
+
+    @Test("a cost that cannot be read says so for its org and leaves the numbers alone, and is asked for again at the next read")
+    func costFails() async throws {
+        let store = costStore()
+        source.set(evaluation: { _, _ in throw NodeError.http(status: 503, message: "busy") })
+        await store.refresh()
+        #expect(store.loading == .loaded && store.orgs.count == 2 && store.costs["acme"] == .unavailable)
+        let asked = source.evaluationsAsked.count
+        source.set(evaluation: { _, _ in try CostSamples.evaluation(teams: [(from: "2026-11-11", until: "2026-11-24", byDay: [])]) })
+        await store.refresh()
+        #expect(source.evaluationsAsked.count == asked + 2)
+        if case .ready? = store.costs["acme"] {} else { Issue.record("should be ready now") }
+    }
+
+    @Test("a cost that was read is kept for five minutes, then asked for again")
+    func costLifetime() async {
+        let clock = Clock()
+        let store = costStore(clock)
+        await store.refresh()
+        let first = source.evaluationsAsked.count
+        clock.advance(OutcomesStore.costLifetime - 1)
+        await store.refresh()
+        #expect(source.evaluationsAsked.count == first, "a refresh every few seconds does not ask every team's runtime each time")
+        clock.advance(2)
+        await store.refresh()
+        #expect(source.evaluationsAsked.count == first + 2)
+    }
+
+    @Test("another period has its own cost: the one read is dropped and the new one is read for the new days")
+    func costPeriod() async {
+        let store = costStore()
+        await store.refresh()
+        let first = source.evaluationsAsked.count
+        await store.choose(days: 30)
+        #expect(source.evaluationsAsked.count == first + 2)
+        #expect(store.costs.count == 2)
+    }
+
+    @Test("a cost read that is cancelled says nothing for its org")
+    func costCancelled() async {
+        let store = costStore()
+        source.set(evaluation: { _, _ in throw CancellationError() })
+        await store.refresh()
+        #expect(store.costs.isEmpty && store.loading == .loaded)
+    }
 }
+
