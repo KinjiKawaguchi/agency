@@ -40,13 +40,8 @@ fn genesis(root: &AccountKey) -> SignedOrg {
             role: Role::Member,
             devices: vec![],
         }],
-        teams: vec![TeamPlace {
-            id: id("app"),
-            label: "app".into(),
-            department: Some(id("dev")),
-            node: "https://alice.example".into(),
-            plan: None,
-        }],
+        teams: vec![TeamPlace::new(id("app"), "app", "https://alice.example")
+            .with_department(Some(id("dev")))],
         revoked: vec![],
         at: AT.into(),
     };
