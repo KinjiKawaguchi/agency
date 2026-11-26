@@ -408,6 +408,25 @@ ReadingState "notShipped" | "shipDateUnknown" | "noBaseline" | "tooEarly" | "noF
 - The node **remembers each epic's ship day**, because a team's view keeps a finished epic only for a limited time (30 days for the scrum harness) while the window runs 90 days past it: `outcomes/<org>.ships.jsonl` in its data directory (the same directory and modes as the numbers) holds `{ team, epic, shippedAt }`, written the first time the node sees the epic's `doneAt` and never changed, by the node's own loop and when the owner reads the readings, and only for epics that an aim names. It is delivery data, not a business number, and is read only through the owner-only routes.
 - Like every route of the numbers, it is owner-only. The shared sample, with made-up figures, is `testdata/readings.sample.json`.
 
+## Metrics
+
+What a node measured of itself: how long it takes to answer, and how its own calls go. It is the node's own data and is read only by its owner; no other node reads it, and it is never in a federation route. (The route that serves it, `GET /api/metrics`, and the recording that fills it follow; this section is the shape of the answer.)
+
+```
+Metrics    { from: Timestamp, until: Timestamp, generatedAt: Timestamp, series: Series[] }
+Series     { kind: "serve" | "call" | "client", name, status, peer?, client?, count, errors, sumMs,
+             buckets: int[15], p50Ms?, p95Ms?, p99Ms?, byHour: HourSeries[] }
+HourSeries { hour: Timestamp, count, errors, p95Ms? }
+```
+
+- A series is one `kind`, `name`, and `status` (and `peer` or `client`). `serve` is a route this node answers, named by its route template (`GET /api/orgs/{org}/teams/{team}/usage`), never by a path with ids in it; `status` is the class of the HTTP status (`2xx`, `3xx`, `4xx`, `5xx`). `call` is a call this node makes (`peer get_view`, `runtime view`, `apns send`, `github graphql`); `status` is `ok`, `error`, or `timeout`, and for a peer the class of its HTTP status; `peer` is the host of the peer's origin, which stays on the node. `client` is what a client observed and reported to its home node (`client` is `web` or `ios`; `status` the class, or `network`).
+- Nothing holds a request body, a token, an email, an address, a header, or a query string. A name is a template or a fixed phrase.
+- Durations are kept as a histogram with fixed buckets: a duration falls in the first bucket whose upper bound, in milliseconds, it does not pass: 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000, and a last bucket for what is slower. `buckets` has these 15 counts and adds up to `count`; `sumMs` adds up the durations.
+- `p50Ms`, `p95Ms`, and `p99Ms` are the percentile by nearest rank (`ceil(n x percent / 100)`-th of the sorted durations), each given as the **upper bound of its bucket**: a duration is not known more exactly than its bucket, and an answer does not claim more. A percentile that lies in the last bucket has no bound and is left out, as is any percentile of a series with no durations.
+- `errors` is the number of the `count` that were errors: a 5xx, or a call that failed.
+- `byHour` is the same series by hour of UTC, oldest first; hours with no call may be left out. `from` and `until` are the start of the first hour and the end of the last. `series` is ordered by kind (`serve`, `call`, `client`), then name, then status.
+- The shared sample is `testdata/metrics.sample.json`; a test reads it back unchanged and checks that every series agrees with itself (15 buckets that add up to `count`, the percentiles those of the buckets).
+
 ## Client API
 
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
