@@ -16,6 +16,13 @@ public enum JaFormat {
         formatter("M月d日 H:mm", timeZone).string(from: date)
     }
 
+    /// `11月25日` from `2026-11-25`; the text as it is when it is not a date.
+    public static func shortDate(_ day: String) -> String {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return day }
+        return "\(parts[1])月\(parts[2])日"
+    }
+
     private static func grouped(_ value: Int) -> String {
         let digits = String(value)
         return digits.enumerated().map { index, digit in

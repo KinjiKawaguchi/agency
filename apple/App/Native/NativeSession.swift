@@ -23,6 +23,8 @@ final class NativeSession {
     @ObservationIgnored private var registeredPush: PushRegistration?
     /// The overview of every org and team, read from the same client.
     let overview: OverviewStore
+    /// The participants and work of every team, read from the same client.
+    let people: PeopleStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -46,6 +48,7 @@ final class NativeSession {
             storage: DraftDefaultsStorage(host: homeNode.host)
         )
         overview = OverviewStore(source: client)
+        people = PeopleStore(source: client)
     }
 
     /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
@@ -62,6 +65,7 @@ final class NativeSession {
             await desk.refresh()
             await pairing?.refresh()
             await overview.refresh()
+            await people.refresh()
         case .canceled:
             break
         case .unavailable:
