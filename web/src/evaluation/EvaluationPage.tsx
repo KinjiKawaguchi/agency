@@ -4,6 +4,7 @@ import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
 import { evaluationQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
+import { NodeSpeedSection } from '../metrics/NodeSpeedSection'
 import { EffortSection } from './EffortSection'
 import { TeamEvaluation } from './TeamEvaluation'
 import './evaluation.css'
@@ -60,6 +61,7 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
           <EffortSection org={chosen.id} days={period} teamLabels={teamLabels} />
         </>
       )}
+      <NodeSpeedSection />
     </>
   )
 }

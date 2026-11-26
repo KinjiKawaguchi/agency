@@ -98,6 +98,17 @@ What the org's work achieves, as numbers about the business or the product, not 
 - **Movement** (動き). The change of a KPI's number, worded by direction (rose 上がった, fell 下がった, unchanged 変わらず) and, from the KPI's `goodWhen`, as better (良い方) or worse (悪い方); a KPI with a `goodWhen` a client does not know is not coloured, and a change that is written as 0 in the KPI's unit is unchanged. A reading's movement is never worded as caused by the work: the screens say 「完了のあとで数値が動きました。この仕事が動かしたとは言えません。」 (English: "The figure moved after the work shipped. That does not say the work moved it.").
 - **Outcomes page** (成果の指標; English "Outcomes"). The owner's screen of the KPIs' numbers and the readings. Its Japanese name is not 成果 alone, because the Results group of the menu it sits in (English "Results", 成果) has that name.
 
+## The node's own measurements
+
+What a node measures of itself, kept on the node and read only by its owner (`/api/metrics`, "Metrics" in `docs/protocol.md`).
+
+- **Response time** (応答時間). How long a node takes to answer a request, or how long a call it makes takes to be answered. The screens say response time, not *latency*.
+- **Route group** (ルートの区分). The area of the Client API a route belongs to (`desk`, `teams`, `usage`, `evaluation`, ...), as the node says it in `group`; a call the node makes has the group of its first word (`runtime`, `peer`, `push`, `github`). The screens give each its own name.
+- **In-node read** (ノード内の読み取り). A read the node answers from its own state, without asking the team's runtime, a peer, or GitHub (`isInNodeRead`). Only these have a response-time budget.
+- **Budget** (応答時間の予算), in this section only: the response time an in-node read must keep, 100 ms at the 95th percentile in the reference environment (`budget.inNodeReadP95Ms`). Not the cost budget of a team's plan (`weeklyBudgetUsd`): a screen that shows both says which.
+- **Objective** (目標). A response time the node's operator sets for a route group (`metrics.objectives` in `config.json`: a group and a `p95Ms`); the node says whether it was `met` or `notMet` over the days asked, or `unknown` when it cannot tell, with what it measured.
+- **p50, p95, p99**. The response time that 50, 95, or 99 of every 100 requests were within, as the node gives it: **the upper bound of the bucket** the request fell in, so a screen says "at most", never an exact time; one beyond the last bucket (30 000 ms) has no bound and is shown as slower than 30 seconds.
+
 ## Do not use
 
 | Do not say | Say | Why |

@@ -2,6 +2,7 @@
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
+import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
@@ -87,6 +88,10 @@ interface MockNodeOptions {
   outcomes?: boolean
   /** Makes the outcomes routes answer this status, as a node that fails (503). */
   outcomesFailWith?: number
+  /** The owner reads the node's own measurements (`/api/metrics`), as the variant says; without it the route answers 403, as to anyone but the owner. `'absent'` is a node that does not measure (404). */
+  metrics?: MetricsVariant | 'absent'
+  /** Makes the measurements route answer this status, as a node that fails (503). */
+  metricsFailWith?: number
   /** A claim link the node has made for one seat (agency#201): the code, and how a redeem of it ends. Without it the claim routes answer 404. */
   claim?: MockClaimOptions
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -278,6 +283,15 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
+  /** The owner's measurements of the node itself: 1 to 30 days, and nothing for anyone else. */
+  const handleMetrics = (url: URL): Response => {
+    if (options.metrics === 'absent') return failure(404, 'No such route.')
+    if (options.metricsFailWith !== undefined) return failure(options.metricsFailWith, 'The measurements could not be read.')
+    if (options.metrics === undefined) return failure(403, 'Only the owner reads these numbers.')
+    const days = Number(url.searchParams.get('days') ?? '1')
+    if (!Number.isInteger(days) || days < 1 || days > 30) return failure(400, 'days is 1 to 30.')
+    return json(metricsAnswer(now, days, options.metrics))
+  }
   /** The owner's numbers: the shared samples and what was entered, over the days asked; anyone else is refused, as the node refuses them, even to read. */
   const handleOutcomes = async (request: Request, url: URL, org: string, part: string | undefined): Promise<Response> => {
     if (options.outcomesFailWith !== undefined) return failure(options.outcomesFailWith, 'The numbers could not be read.')
@@ -359,6 +373,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (extra !== undefined) return json(moreOrgDefinition(extra))
       return orgMatch[1] === ORG_DEFINITION.org ? json({ ...ORG_DEFINITION, teams: withPlans(ORG_DEFINITION.teams) }) : failure(404, 'No such organization.')
     }
+    if (request.method === 'GET' && url.pathname === '/api/metrics') return handleMetrics(url)
     const outcomesMatch = OUTCOMES_PATH.exec(url.pathname)
     if (outcomesMatch !== null && (request.method === 'GET' || (request.method === 'POST' && outcomesMatch[2] === '/observations'))) return handleOutcomes(request, url, outcomesMatch[1] ?? '', outcomesMatch[2])
     const evaluationMatch = EVALUATION_PATH.exec(url.pathname)

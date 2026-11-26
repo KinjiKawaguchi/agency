@@ -1,0 +1,174 @@
+.mt-section .period {
+  margin: 8px 0 16px;
+}
+
+.mt-card {
+  margin-bottom: 16px;
+}
+
+.mt-card .sub-head {
+  margin-top: 0;
+}
+
+.mt-verdict {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+}
+
+.mt-verdict.is-within {
+  border-left-color: var(--ok);
+}
+
+.mt-verdict.is-over {
+  border-left-color: var(--hold);
+}
+
+.mt-sub {
+  margin: 14px 0 6px;
+  font-size: 0.9rem;
+}
+
+.mt-routes {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mt-routes li {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.mt-scroll {
+  overflow-x: auto;
+}
+
+.mt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.mt-table th,
+.mt-table td {
+  padding: 6px 10px 6px 0;
+  text-align: left;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.mt-table thead th {
+  color: var(--ink);
+  opacity: 0.75;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.mt-table .num {
+  text-align: right;
+}
+
+.mt-group th,
+.mt-group td {
+  padding-top: 12px;
+  font-weight: 600;
+}
+
+.mt-route th {
+  padding-left: 14px;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.mt-route td {
+  font-size: 0.85rem;
+}
+
+.mt-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-family: var(--font);
+}
+
+.mt-objectives {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mt-objective {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 0 8px 10px;
+  border-left: 3px solid var(--border-strong);
+  margin-bottom: 6px;
+}
+
+.mt-objective.is-met {
+  border-left-color: var(--ok);
+}
+
+.mt-objective.is-notMet {
+  border-left-color: var(--hold);
+}
+
+.mt-table code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* On a phone the table is not wider than the page: the head is kept for screen readers, and each row is its own block
+   whose numbers carry their own label. */
+@media (max-width: 640px) {
+  .mt-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .mt-table,
+  .mt-table tbody {
+    display: block;
+  }
+
+  .mt-table tr {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px 6px;
+    padding: 6px 0;
+  }
+
+  .mt-table th,
+  .mt-table td {
+    display: block;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .mt-table th {
+    grid-column: 1 / -1;
+  }
+
+  .mt-table td {
+    text-align: left;
+    font-size: 0.8rem;
+  }
+
+  .mt-table td::before {
+    content: attr(data-label);
+    display: block;
+    opacity: 0.65;
+    font-size: 0.7rem;
+  }
+
+  .mt-route th {
+    padding-left: 10px;
+  }
+}

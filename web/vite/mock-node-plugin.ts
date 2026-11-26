@@ -30,6 +30,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
   const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
+  const metrics = query?.get('metrics') ?? process.env.AGENCY_MOCK_METRICS
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -43,6 +44,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     // mock node (the desk's times too), for the dev server and the screenshots.
     ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
+    ...(metrics === 'usual' || metrics === 'empty' || metrics === 'slow' || metrics === 'absent' ? { metrics } : {}),
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
