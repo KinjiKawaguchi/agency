@@ -45,6 +45,9 @@ export function formatKpiAxis(value: number, kpi: KpiInfo, locale: Locale, units
   return formatKpiValue(value, kpi, locale, units)
 }
 
+/** Whether a change is written as 0 in the unit (a yen, or a percent to two decimals, rounds it away): it is then no movement. */
+export const isWrittenAsZero = (change: number, kpi: KpiInfo, locale: Locale, units: DurationUnits): boolean => !/[1-9]/.test(formatKpiChange(Math.abs(change), kpi, locale, units).replace(/ポイント|points/, ''))
+
 /** A change in the KPI's own unit, with its sign: +4 points (of a percent), −3, +1.2×. */
 export function formatKpiChange(change: number, kpi: KpiInfo, locale: Locale, units: DurationUnits): string {
   // The change of a percent KPI is a number of points, not a percent of a percent.
