@@ -13,7 +13,7 @@ public final class ShellRouter {
     }
 
     /// What the node says the viewer is: a member it hosts has the desk and the devices only.
-    public var standing: Standing = .loading {
+    public var standing: Standing {
         didSet { if !availableTabs.contains(tab) { tab = .desk } }
     }
 
@@ -23,7 +23,10 @@ public final class ShellRouter {
     /// The desk item to open on the desk (`<org>:<team>:<request>`), until the desk has taken it.
     public var openItemID: String?
 
-    public init() {}
+    /// - Parameter standing: what the node says the viewer is; until it has said, the owner's screens are not offered.
+    public init(standing: Standing = .loading) {
+        self.standing = standing
+    }
 
     /// The kinds of news the open screen shows by itself, so they make no banner: the devices screen lists a
     /// device that asks to be added.
