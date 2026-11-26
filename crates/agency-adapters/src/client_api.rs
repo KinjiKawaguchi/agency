@@ -41,6 +41,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+mod outcomes;
+
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
 /// The attribute of `<meta name="agency-token">` that the web client's build leaves for the node to fill in.
@@ -485,6 +487,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
+        .merge(outcomes::routes(api.clone()))
         .route(
             "/api/push/tokens",
             get(get_push_tokens).post(post_push_token),

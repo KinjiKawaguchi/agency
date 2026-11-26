@@ -14,6 +14,7 @@ use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow, VapidKey};
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
+use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
@@ -106,6 +107,15 @@ pub trait PushStore {
     fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;
 }
 
+/// The numbers of the outcome analysis: business data, kept only on this node, appended and never
+/// rewritten (see "Outcomes" in docs/protocol.md).
+pub trait OutcomeStore {
+    /// Every observation of the org, oldest first (in the order they were appended).
+    fn observations(&self, org: &Id) -> Vec<Observation>;
+    /// Appends one observation. The caller holds the node's write lock.
+    fn append_observation(&self, org: &Id, observation: &Observation) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -123,6 +133,7 @@ pub trait Store:
     + DecisionLogStore
     + DeviceRequestStore
     + PushStore
+    + OutcomeStore
     + Send
     + Sync
 {
@@ -138,6 +149,7 @@ impl<
             + DecisionLogStore
             + DeviceRequestStore
             + PushStore
+            + OutcomeStore
             + Send
             + Sync,
     > Store for T

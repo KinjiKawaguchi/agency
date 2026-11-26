@@ -18,6 +18,7 @@ pub mod node;
 pub mod notice;
 pub mod orgs;
 pub mod outbox;
+pub mod outcomes;
 pub mod ports;
 pub mod push;
 mod push_events;
