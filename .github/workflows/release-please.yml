@@ -36,7 +36,7 @@ jobs:
     if: needs.release-please.outputs.prs != ''
     runs-on: ubuntu-22.04
     steps:
-      # The release pull requests are one for the node and one for the iOS app; the lock file is the node's.
+      # The release pull requests are one for the node and one for the Apple apps; the lock file is the node's.
       - name: Find the node's release pull request
         id: node
         env:

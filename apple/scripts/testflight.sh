@@ -6,7 +6,7 @@
 # Needs apple/Local.xcconfig (team and bundle ID) and an app record for that bundle ID. The key
 # settings come from the environment only (see docs/apple.md). Nothing secret is printed. The build
 # number is the current UTC time, so every run is higher than the one before; BUILD_NUMBER overrides it.
-# The build says which source it was made from (the commit, and `git describe` against the ios-v tags,
+# The build says which source it was made from (the commit, and `git describe` against the apple-v tags,
 # in its Info.plist), and each upload is recorded in apple/uploads.log: time, build number, version,
 # commit, and describe. A tree with uncommitted changes is built, and recorded as -dirty.
 # The archive and this project's DerivedData are deleted at the end, also after a failure.
@@ -32,7 +32,7 @@ exit_if_problems
 
 # Where the build comes from. Outside a git checkout, or without a tag, these say so.
 BUILD_COMMIT=$(git -C "$REPOSITORY_ROOT" rev-parse --short=12 HEAD 2> /dev/null || echo unknown)
-BUILD_DESCRIBE=$(git -C "$REPOSITORY_ROOT" describe --tags --match 'ios-v*' --long --dirty --always --abbrev=12 2> /dev/null || echo unknown)
+BUILD_DESCRIBE=$(git -C "$REPOSITORY_ROOT" describe --tags --match 'apple-v*' --long --dirty --always --abbrev=12 2> /dev/null || echo unknown)
 MARKETING_VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' "$APPLE_DIR/project.yml" 2> /dev/null | head -n 1 || true)
 case "$BUILD_DESCRIBE" in
   *-dirty) printf 'Warning: the working tree has uncommitted changes; this build is recorded as %s.\n' "$BUILD_DESCRIBE" ;;

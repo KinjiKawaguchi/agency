@@ -155,7 +155,7 @@ The name of a new bundle ID is `Agency`, and of the widget extension's `Agency W
 3. exports with `ExportOptions.plist`, whose `destination` is `upload` and `method` is `app-store-connect`, so the export step sends the build to App Store Connect,
 4. deletes `apple/build/` and this project's DerivedData folder, also when a step failed.
 
-The build says which source it was made from (`AgencyBuildCommit` and `AgencyBuildDescribe` in its `Info.plist`: the commit, and `git describe` against the `ios-v` tags), and every upload that succeeded is appended to `apple/uploads.log` (not committed). See [releasing.md](releasing.md) for versions and tags.
+The build says which source it was made from (`AgencyBuildCommit` and `AgencyBuildDescribe` in its `Info.plist`: the commit, and `git describe` against the `apple-v` tags), and every upload that succeeded is appended to `apple/uploads.log` (not committed). See [releasing.md](releasing.md) for versions and tags.
 
 Both archive and export run with `-allowProvisioningUpdates -authenticationKeyPath ... -authenticationKeyID ... -authenticationKeyIssuerID ...`, which lets Xcode create the certificate and provisioning profile itself.
 

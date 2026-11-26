@@ -77,7 +77,7 @@ targets:
         # The host the app is built to return to after an Access sign-in; the app uses that sign-in
         # only for a home node on this host.
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
-        # The source the build was made from: the commit, and `git describe` against the ios-v tags
+        # The source the build was made from: the commit, and `git describe` against the apple-v tags
         # (apple/scripts/testflight.sh sets them; a build run from Xcode says unknown).
         AgencyBuildCommit: $(AGENCY_BUILD_COMMIT)
         AgencyBuildDescribe: $(AGENCY_BUILD_DESCRIBE)

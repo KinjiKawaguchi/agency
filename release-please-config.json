@@ -85,8 +85,8 @@
       "pull-request-title-pattern": "chore: release ${version}"
     },
     "apple": {
-      "package-name": "ios",
-      "component": "ios",
+      "package-name": "apple",
+      "component": "apple",
       "include-component-in-tag": true,
       "tag-separator": "-",
       "changelog-path": "CHANGELOG.md",

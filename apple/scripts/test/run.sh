@@ -293,7 +293,7 @@ GIT=(git -C "$ROOT" -c user.name=test -c user.email=test@example.com -c commit.g
 "${GIT[@]}" init -q -b main
 "${GIT[@]}" add -A
 "${GIT[@]}" commit -q -m "feat: first"
-"${GIT[@]}" tag ios-v0.4.2
+"${GIT[@]}" tag apple-v0.4.2
 echo more >> "$ROOT/apple/project.yml"
 printf 'settings:\n  base:\n    MARKETING_VERSION: "0.4.2"\n' > "$ROOT/apple/project.yml"
 "${GIT[@]}" commit -q --allow-empty -m "fix: second"
@@ -302,14 +302,14 @@ COMMIT=$("${GIT[@]}" rev-parse --short=12 HEAD)
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" BUILD_NUMBER=202611260900
 ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
 check "the build carries the commit it was made from" contains "$ARCHIVE" "AGENCY_BUILD_COMMIT=$COMMIT"
-check "and how far it is from the last ios tag (a tag of another artifact is not one)" contains "$ARCHIVE" "AGENCY_BUILD_DESCRIBE=ios-v0.4.2-1-g$COMMIT "
+check "and how far it is from the last apple tag (a tag of another artifact is not one)" contains "$ARCHIVE" "AGENCY_BUILD_DESCRIBE=apple-v0.4.2-1-g$COMMIT "
 check "it records the commit, the describe, and the version" \
-  contains "$(cat "$ROOT/apple/uploads.log")" "build 202611260900"$'\t'"version 0.4.2"$'\t'"commit $COMMIT"$'\t'"ios-v0.4.2-1-g$COMMIT"
+  contains "$(cat "$ROOT/apple/uploads.log")" "build 202611260900"$'\t'"version 0.4.2"$'\t'"commit $COMMIT"$'\t'"apple-v0.4.2-1-g$COMMIT"
 check "a clean tree gives no warning" [ -z "$(printf '%s' "$OUTPUT" | grep -F 'uncommitted changes')" ]
 echo changed >> "$ROOT/apple/project.yml"
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" BUILD_NUMBER=202611260901
-check "a working tree with changes is built, and says so" contains "$OUTPUT" "uncommitted changes; this build is recorded as ios-v0.4.2-1-g$COMMIT-dirty"
-check "and the record says -dirty" contains "$(tail -n 1 "$ROOT/apple/uploads.log")" "ios-v0.4.2-1-g$COMMIT-dirty"
+check "a working tree with changes is built, and says so" contains "$OUTPUT" "uncommitted changes; this build is recorded as apple-v0.4.2-1-g$COMMIT-dirty"
+check "and the record says -dirty" contains "$(tail -n 1 "$ROOT/apple/uploads.log")" "apple-v0.4.2-1-g$COMMIT-dirty"
 ROOT=$(new_repository tf-failed-upload)
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" FAKE_FAIL=export
 check "an upload that failed is not recorded" [ ! -e "$ROOT/apple/uploads.log" ]
