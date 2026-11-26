@@ -34,7 +34,9 @@ public struct RequestLink: Equatable, Sendable {
     private static let allowedScalars = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-".unicodeScalars)
     private static let maximumLength = 128
 
-    static func identifier(_ value: Any?) -> String? {
+    /// An identifier of an org, a team or a request as the node writes it: letters, digits, `.`, `_` and `-`, at most 128. What
+    /// is built into a link or a command from a value the node gave must pass it first.
+    public static func identifier(_ value: Any?) -> String? {
         guard let text = value as? String, !text.isEmpty, text.count <= maximumLength,
               text.unicodeScalars.allSatisfy(allowedScalars.contains)
         else { return nil }

@@ -24,6 +24,9 @@ struct RecoveryBanner: View {
                     .font(.system(.footnote, design: .monospaced))
                     .textSelection(.enabled)
                     .wrapping()
+            } else if let inWords = notice.cancelInWords {
+                Text(Ja.Recovery.notYours).font(.subheadline).wrapping()
+                Text(inWords).font(.subheadline).wrapping()
             }
         }
         .card()

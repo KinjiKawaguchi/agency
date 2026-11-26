@@ -49,6 +49,22 @@ struct RecoveryNoticeTests {
         ])
     }
 
+    @Test("an org id that is not a plain identifier is never put in a command to paste: the title stays and the words say where to run it")
+    func oddIdentifier() throws {
+        for odd in ["acme; rm -rf ~", "a b", "$(whoami)", "acme`x`", "a/b", "ac\\nme", "", String(repeating: "a", count: 129)] {
+            let json = #"{"id":"\#(odd.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\"", with: ""))","label":"Acme","isRoot":true,"teams":[],"recovery":{}}"#
+            let org = try JSONDecoder().decode(OrgRef.self, from: Data(json.utf8))
+            let notice = RecoveryNotice(org: org, recovery: try #require(org.recovery))
+            #expect(notice.cancelCommand == nil, Comment(rawValue: odd))
+            #expect(notice.cancelInWords == Ja.Recovery.cancelInWords)
+            #expect(notice.lines(in: tokyo).first == "Acme のルート鍵の回復が始まりました。", "the notice itself is still shown")
+        }
+        let plain = try #require(RecoveryNotice.all(in: try orgs(org("acme.lab_1-x", recovery: "{}"))).first)
+        #expect(plain.cancelCommand == "agency root-cancel-recovery --org acme.lab_1-x" && plain.cancelInWords == nil)
+        let member = try #require(RecoveryNotice.all(in: try orgs(org("a b", isRoot: false, recovery: "{}"))).first)
+        #expect(member.cancelCommand == nil && member.cancelInWords == nil, "a member is not told to run anything")
+    }
+
     @Test("a member's notice without a time leaves the time out and still says who can cancel it")
     func memberNoTime() throws {
         let member = try #require(RecoveryNotice.all(in: try orgs(org("acme", isRoot: false, recovery: "{}"))).first)

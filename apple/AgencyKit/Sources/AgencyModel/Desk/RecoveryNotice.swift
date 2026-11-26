@@ -1,4 +1,5 @@
 import AgencyAPI
+import AgencyKit
 import AgencyProtocol
 import Foundation
 
@@ -43,6 +44,13 @@ public struct RecoveryNotice: Equatable, Identifiable, Sendable {
         return lines
     }
 
-    /// What to run on the root key's node to cancel it; none for a viewer who cannot.
-    public var cancelCommand: String? { isRoot ? Ja.Recovery.cancelCommand(orgID: orgID) : nil }
+    /// What to run on the root key's node to cancel it, to be pasted into a terminal: only for the viewer who can cancel it, and
+    /// only when the org's id is a plain identifier. The id is the node's word and is never put in a command unchecked.
+    public var cancelCommand: String? {
+        guard isRoot, RequestLink.identifier(orgID) != nil else { return nil }
+        return Ja.Recovery.cancelCommand(orgID: orgID)
+    }
+
+    /// Where to run it, in words, for the viewer who can cancel it when there is no command to give.
+    public var cancelInWords: String? { isRoot && cancelCommand == nil ? Ja.Recovery.cancelInWords : nil }
 }
