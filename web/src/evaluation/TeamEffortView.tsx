@@ -4,7 +4,7 @@ import { AllocationRows } from './AllocationRows'
 import { BudgetMeter } from './BudgetMeter'
 import { Columns } from './Columns'
 import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, shownShare, totalCost, weekSpend } from './effort'
-import { daysEnding, lastDayOf, niceMax } from './series'
+import { daysEnding, niceMax } from './series'
 
 export type PlanState = { kind: 'stated'; plan: TeamPlan } | { kind: 'none' } | { kind: 'unreadable' }
 
@@ -13,16 +13,15 @@ interface Props {
   effort: TeamEffort
   plan: PlanState
   days: number
-  generatedAt: string
-  until: string | undefined
 }
 
 /** One team's effort: its cost by work type against the plan, its weekly budget, and its cost by day. */
-export function TeamEffortView({ label, effort, plan, days, generatedAt, until }: Props) {
+export function TeamEffortView({ label, effort, plan, days }: Props) {
   const { t, fmt } = useI18n()
   const text = t.evaluation.effort
   const stated = plan.kind === 'stated' ? plan.plan : undefined
-  const last = lastDayOf(effort.byDay, until, generatedAt)
+  // The team's own last day: in the time zone of its node, which is the one its days are written in.
+  const last = effort.until
   const dates = daysEnding(last, days)
   const byDate = new Map(effort.byDay.map((day) => [day.date, day]))
   const columns = dates.map((date) => ({ date, segments: EFFORT_TYPES.map((type) => ({ key: type, label: text.types[type], color: EFFORT_COLORS[type], value: byDate.get(date)?.costUsd[type] ?? 0 })) }))

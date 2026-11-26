@@ -63,6 +63,21 @@ export const ja: Messages = {
     loadFailed: (reason) => `このチームを読み込めませんでした: ${reason}`,
     funding: '利用上限',
   },
+  notices: {
+    request: (count, title, team) => (count === 1 ? `あなたを待っている依頼があります: ${title} (${team})。` : `あなたを待つ依頼が ${count} 件、新しく届きました。`),
+    participant: (count, label) => (count === 1 ? `${label} があなたを待っています。` : `参加者 ${count} 人があなたを待っています。`),
+    blocked: (count, title, team) => (count === 1 ? `止まりました: ${title} (${team})。` : `仕事の項目 ${count} 件が新しく止まりました。`),
+    aDevice: '端末',
+    device: (count, label) => (count === 1 ? `${label} が、端末として追加されるのを待っています。` : `${count} 台の端末が、追加されるのを待っています。`),
+    decision: (state, count, title, reason) => {
+      const named = count === 1 && title !== '' ? `「${title}」` : ''
+      const label = state === 'refused' ? '受け付けられませんでした' : state === 'queued' ? '送信待ちです' : state === 'applied' ? '反映されました' : '届きました'
+      if (count > 1) return `決定 ${count} 件が${label}。`
+      return `決定${named}が${label}${state === 'refused' && reason !== undefined ? `: ${reason}` : '。'}`
+    },
+    more: (count) => `ほかにも新しいことが ${count} 件あります。`,
+    devicesMark: (count) => `承認待ち ${count} 件`,
+  },
   people: {
     title: '参加者と仕事',
     team: (label) => `${label} チーム`,
@@ -341,7 +356,7 @@ export const ja: Messages = {
     noData: 'この期間はありません',
     teamUnavailable: (reason) => `このチームは数字を返せませんでした: ${reason}`,
     units: { minute: '分', hour: '時間', day: '日' },
-    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他' },
+    types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他', revert: 'リバート' },
     tiles: {
       features: 'マージした新機能',
       merged: 'マージしたプルリクエスト',
@@ -410,5 +425,13 @@ export const ja: Messages = {
       table: { show: '数字を表で見る', caption: (team) => `${team}チームの作業種別別`, type: '作業種別', cost: 'API 価格', share: '割合', intended: '意図', total: '合計' },
       source: (path) => `エージェントが引用する同じ数字: GET ${path}。意図する割合は組織定義の \`teams[].plan\` です。`,
     },
+  },
+  loading: {
+    label: '読み込んでいます…',
+    failed: (what, reason) => `${what}を読み込めませんでした: ${reason}`,
+    retryIn: (seconds) => `${seconds} 秒後にもう一度試します。`,
+    retrying: 'もう一度試しています…',
+    tryAgain: 'もう一度試す',
+    what: { overview: '全体', orgChart: '組織図', people: '参加者と仕事' },
   },
 }

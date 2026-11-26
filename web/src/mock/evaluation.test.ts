@@ -12,8 +12,8 @@ describe('the mock evaluation', () => {
     const { byDay, summary } = teamEvaluation('app', 30, NOW)
     expect(summary).toEqual(summaryOf(byDay))
     expect(summary.merged.feat).toBe(byDay.reduce((sum, day) => sum + day.merged.feat, 0))
-    expect(summary.prLeadMedianSeconds).not.toBeNull()
-    expect(byDay.every((day) => day.prLeadSeconds.length === Object.values(day.merged).reduce((sum, count) => sum + count, 0))).toBe(true)
+    expect(summary.prLeadMedianSeconds).toBeDefined()
+    expect(byDay.every((day) => day.prLeadSeconds.length === Object.values(day.merged).reduce((sum, count) => sum + count, 0) + day.reverts)).toBe(true)
   })
 
   it('keeps the period: dates end today, ascend, and number at most `days`', () => {
@@ -37,7 +37,7 @@ describe('the mock’s summary, against numbers worked out by hand', () => {
     const summary = summaryOf([day('2026-11-24', [3600, 10_800]), day('2026-11-25', [7200, 14_400])])
     expect(summary.prLeadMedianSeconds).toBe(9000)
     expect(summary.prLeadP90Seconds).toBe(14_400)
-    expect(summary.issueLeadMedianSeconds).toBeNull()
+    expect(summary.issueLeadMedianSeconds).toBeUndefined()
   })
 
   it('takes the p90 of ten samples as the ninth', () => {
@@ -45,11 +45,24 @@ describe('the mock’s summary, against numbers worked out by hand', () => {
     expect(summaryOf([day('2026-11-25', tenHours)]).prLeadP90Seconds).toBe(9 * 3600)
   })
 
-  it('adds up the red time, finds the longest day, and divides the cost by the merged pull requests', () => {
+  it('adds up the red time, finds the longest day, and divides the cost by every merged pull request, the reverts included', () => {
+    // Two typed pull requests and one revert: $15 over 3.
     const summary = summaryOf([day('2026-11-24', [], { mainRedSeconds: 600, costUsd: 10, reverts: 1 }), day('2026-11-25', [], { mainRedSeconds: 1800, costUsd: 5 })])
     expect(summary.mainRedSeconds).toBe(2400)
     expect(summary.longestRedSeconds).toBe(1800)
     expect(summary.reverts).toBe(1)
-    expect(summary.costPerMergedPrUsd).toBe(7.5)
+    expect(summary.costPerMergedPrUsd).toBe(5)
+  })
+
+  it('rounds the median of an even count down to a whole second, as the node does', () => {
+    expect(summaryOf([day('2026-11-25', [1, 2])]).prLeadMedianSeconds).toBe(1)
+  })
+
+  it('says each team’s period, in its own days, and leaves out a field with nothing to say', () => {
+    const { byDay, from, until, summary } = teamEvaluation('app', 14, new Date('2026-11-26T09:00:00Z'))
+    expect([from, until]).toEqual(['2026-11-13', '2026-11-26'])
+    expect(byDay.every((one) => one.date >= from && one.date <= until)).toBe(true)
+    expect(summaryOf([]) && 'costPerMergedPrUsd' in summaryOf([])).toBe(false)
+    expect(summary.merged).toBeDefined()
   })
 })

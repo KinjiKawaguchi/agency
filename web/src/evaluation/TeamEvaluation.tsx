@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { Columns } from './Columns'
 import { DayTable } from './DayTable'
 import { durationAxis, formatDuration } from './duration'
-import { countMax, fillDays, lastDayOf, niceMax, PULL_REQUEST_TYPES, rollingCostPerPullRequest, rollingMedian, totalMerged, TYPE_COLORS } from './series'
+import { countMax, fillDays, niceMax, PULL_REQUEST_TYPES, rollingCostPerPullRequest, rollingMedian, allMerged, REVERT_COLOR, TYPE_COLORS } from './series'
 import { SummaryTiles } from './SummaryTiles'
 import { HOUR_SECONDS } from './time'
 import { TrendChart } from './TrendChart'
@@ -14,20 +14,17 @@ interface Props {
   label: string
   numbers: TeamNumbers
   days: number
-  generatedAt: string
-  /** The period's last day, when the node names it. */
-  until: string | undefined
 }
 
 /** One team's evaluation: the headline numbers, then each of them over the days. */
-export function TeamEvaluation({ label, numbers, days, generatedAt, until }: Props) {
+export function TeamEvaluation({ label, numbers, days }: Props) {
   const { t, fmt } = useI18n()
   const text = t.evaluation
-  const rows = fillDays(numbers.byDay, days, lastDayOf(numbers.byDay, until, generatedAt))
+  const rows = fillDays(numbers.byDay, days, numbers.until)
   const dates = rows.map((row) => row.date)
   const duration = (seconds: number): string => formatDuration(seconds, text.units)
 
-  const mergedMax = countMax(Math.max(0, ...rows.map((row) => totalMerged(row.merged))))
+  const mergedMax = countMax(Math.max(0, ...rows.map((row) => allMerged(row))))
   const prLead = rollingMedian(rows, (row) => row.prLeadSeconds, TREND_DAYS)
   const issueLead = rollingMedian(rows, (row) => row.issueLeadSeconds, TREND_DAYS)
   const leadAxis = durationAxis(Math.max(HOUR_SECONDS, ...prLead.map((value) => value ?? 0), ...issueLead.map((value) => value ?? 0)), text.units)
@@ -53,6 +50,10 @@ export function TeamEvaluation({ label, numbers, days, generatedAt, until }: Pro
               {text.types[type]}
             </li>
           ))}
+          <li>
+            <i style={{ background: REVERT_COLOR }} />
+            {text.types.revert}
+          </li>
         </ul>
         <Columns
           label={text.charts.merged}
@@ -60,7 +61,7 @@ export function TeamEvaluation({ label, numbers, days, generatedAt, until }: Pro
           format={fmt.integer}
           hasTotal
           describe={text.charts.dayMerged}
-          columns={rows.map((row) => ({ date: row.date, segments: PULL_REQUEST_TYPES.map((type) => ({ key: type, label: text.types[type], color: TYPE_COLORS[type], value: row.merged[type] })) }))}
+          columns={rows.map((row) => ({ date: row.date, segments: [...PULL_REQUEST_TYPES.map((type) => ({ key: type, label: text.types[type], color: TYPE_COLORS[type], value: row.merged[type] })), { key: 'revert', label: text.types.revert, color: REVERT_COLOR, value: row.reverts }] }))}
         />
       </div>
 

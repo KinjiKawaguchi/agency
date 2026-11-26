@@ -192,7 +192,7 @@ describe('org chart', () => {
 
     it('says a team could not be read in its place', async () => {
       renderApp({ path: '/org', moreOrgs: true })
-      expect(await box('Team', 'Shop')).toHaveTextContent('Could not read this team')
+      await waitFor(async () => expect(await box('Team', 'Shop')).toHaveTextContent('Could not read this team'))
     })
 
     it('shows participants as faces in the team’s box, six at most, and says how many more', async () => {

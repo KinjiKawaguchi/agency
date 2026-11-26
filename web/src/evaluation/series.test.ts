@@ -1,5 +1,5 @@
 import type { DayEvaluation } from '../api/evaluationApi'
-import { countMax, emptyCounts, fillDays, lastDayOf, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
+import { allMerged, countMax, daysEnding, emptyCounts, fillDays, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
 
 const day = (date: string, overrides: Partial<DayEvaluation> = {}): DayEvaluation => ({ date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [], ...overrides })
 
@@ -15,25 +15,17 @@ describe('fillDays', () => {
   })
 })
 
-describe('lastDayOf', () => {
-  it('takes the day the node names', () => {
-    expect(lastDayOf([day('2026-11-24')], '2026-11-26', '2026-11-26T00:00:00Z')).toBe('2026-11-26')
-  })
-
-  it('takes the newest day the node reports when it does not name one, not the UTC date of the report', () => {
-    // 05:00 in Tokyo on the 26th is still the 25th in UTC.
-    expect(lastDayOf([day('2026-11-26'), day('2026-11-24')], undefined, '2026-11-25T20:00:00Z')).toBe('2026-11-26')
-  })
-
-  it('falls back to the UTC date of the report only when the period has no day at all', () => {
-    expect(lastDayOf([], undefined, '2026-11-25T20:00:00Z')).toBe('2026-11-25')
-  })
-
-  it('keeps the newest day, and all its numbers, in the days a chart draws, as the node’s summary counts them', () => {
+describe('a team’s own period', () => {
+  it('ends at the team’s last day, which may be a day ahead of the UTC date of the report, and keeps its newest day with all its numbers', () => {
+    // 05:00 in Tokyo on the 26th is still the 25th in UTC; the node says the period ends on the 26th.
     const byDay = [day('2026-11-25', { reverts: 1 }), day('2026-11-26', { reverts: 2 })]
-    const rows = fillDays(byDay, 3, lastDayOf(byDay, undefined, '2026-11-25T20:00:00Z'))
+    const rows = fillDays(byDay, 3, '2026-11-26')
     expect(rows.map((row) => row.date)).toEqual(['2026-11-24', '2026-11-25', '2026-11-26'])
     expect(rows.reduce((sum, row) => sum + row.reverts, 0)).toBe(byDay.reduce((sum, row) => sum + row.reverts, 0))
+  })
+
+  it('counts the days back from the last one, across a month end', () => {
+    expect(daysEnding('2026-12-02', 4)).toEqual(['2026-11-29', '2026-11-30', '2026-12-01', '2026-12-02'])
   })
 })
 
@@ -59,12 +51,15 @@ describe('rollingMedian', () => {
 
 describe('rollingCostPerPullRequest', () => {
   it('divides the window’s cost by the window’s merged pull requests, and says nothing when none merged', () => {
-    const rows = [day('a', { costUsd: 10 }), day('b', { costUsd: 20, merged: { ...emptyCounts(), feat: 2, fix: 1 } }), day('c', { costUsd: 30 })]
+    // Day b merged 2 features and a fix, and day c one revert, which the node counts on its own.
+    const rows = [day('a', { costUsd: 10 }), day('b', { costUsd: 20, merged: { ...emptyCounts(), feat: 2, fix: 1 } }), day('c', { costUsd: 30, reverts: 1 })]
     const [first, second, third] = rollingCostPerPullRequest(rows, 2)
     expect(first).toBeNull()
     expect(second).toBe(10)
-    expect(third).toBeCloseTo(50 / 3)
+    expect(third).toBeCloseTo(50 / 4)
     expect(totalMerged(rows[1]!.merged)).toBe(3)
+    expect(allMerged(rows[2]!)).toBe(1)
+    expect(allMerged({ merged: { ...emptyCounts(), feat: 2 }, reverts: 1 })).toBe(3)
   })
 })
 

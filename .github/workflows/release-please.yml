@@ -1,0 +1,66 @@
+name: release-please
+
+# Keeps a release pull request open on main: it bumps the version from the Conventional Commits titles
+# since the last release and writes the changelog. Merging it tags the release and makes the GitHub
+# Release, and the Linux builds are attached to it. docs/releasing.md says how.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+
+jobs:
+  release-please:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr: ${{ steps.release.outputs.pr }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # release-please cannot update Cargo.lock (its TOML updater does not match entries by name), so the lock
+  # file of the release pull request is brought up to date here: the version of each workspace crate. A
+  # push with the workflow's own token starts no other workflow, so this does not loop.
+  cargo-lock:
+    needs: release-please
+    if: needs.release-please.outputs.pr != ''
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - name: Update the workspace crates' versions in Cargo.lock
+        run: cargo update --workspace
+      - name: Commit it to the release pull request
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update Cargo.lock for the release" -- Cargo.lock
+          git push
+
+  # A tag made with the workflow's own token starts no other workflow, so the builds are called from here.
+  builds:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write

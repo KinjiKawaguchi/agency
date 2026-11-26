@@ -87,3 +87,20 @@ export const stickingOut = (page: Page): Promise<string[]> =>
     }
     return found
   })
+
+/**
+ * Moves the page's clock on in steps, with the real network answering in between, until `done` holds. A read that
+ * is tried again waits on a timer of the page, so a test that installed the fake clock (`page.clock.install()`)
+ * needs this to get past the backoff without waiting for it.
+ */
+export async function waitOnClock(page: Page, done: () => Promise<boolean>): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(5_000)
+        return done()
+      },
+      { timeout: 30_000, intervals: [100] },
+    )
+    .toBe(true)
+}
