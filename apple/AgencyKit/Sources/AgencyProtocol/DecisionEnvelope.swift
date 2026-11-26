@@ -18,7 +18,7 @@ public struct DecisionEnvelope: Equatable, Sendable {
     public enum Kind: String, Sendable, Decodable {
         /// Answers a request (`target` is the request id).
         case answer
-        /// Decides a board item that waits for a decision (`target` is `repo#N`).
+        /// Decides a board item that waits for a decision (`target` is the item's reference).
         case judge
     }
 

@@ -103,7 +103,7 @@ A read that fails any of these checks is refused like a read of an org or team t
   "payload": { "text": "", "choice": "a" }, "account": "alice", "at": "2026-11-24T12:00:00Z" }
 ```
 
-- `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is `repo#N`).
+- `kind`: `answer` (answers a request; `target` is the request id) or `judge` (decides a board item waiting for a decision; `target` is the item's reference). Either way `target` is 1 to 120 bytes of ASCII letters, digits, `.`, `_`, `#`, and `-`; anything else is refused as a malformed target (see "Item references").
 - `signer` is the id of one of the deciding member's devices. The signature is checked with that device's key, found under the member whose `account` is the envelope's `account`. A signature by an account key is refused.
 - The receiving node (the team's node) applies an envelope only after checking the signature, membership, expiry (7 days after it was made, and at most 5 minutes ahead), that the envelope's org and team match where it was sent, that its id has not been applied before, and that its account is the addressee of the request it decides. A repeated envelope is not applied again; the node answers that it received it, even if the request no longer waits.
 - The request an envelope decides is the one in the team's current view whose `answerWith` is the envelope's `kind` and `target`. Its addressee is the member the rule in "Requests" gives (the same rule as `mine`). An envelope from anyone else, or for a request that is not waiting, is refused with 403, and both get the same refusal.
@@ -182,7 +182,7 @@ Request       { id, kind: "question" | "proposal" | "pendingDecision", title, co
                 answerWith: { kind: "answer" | "judge", target } }
 RequestOption { key, text, isRecommended: boolean, detail?: string }
 ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
-WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
+WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
                 workType?: WorkType }
@@ -191,6 +191,12 @@ BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipm
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
                 forecast?: { days, at: Timestamp }, basis }
 ```
+
+Item references:
+
+- A work item is named by an **item reference** (`WorkItem.ref`, `EpicForecast.ref`, and where a work item is named: `WorkItem.epic`, `Request.issue`, `Request.blocks`, `PersonStatus.holding`). It is an opaque string that the team's harness chooses, for example `app#12` or `ENG-123`. Nothing in a node or a client splits it, reads a number out of it, or builds a link from it, and two references are the same only when the strings are equal. A view allows 200 characters.
+- One use is stricter. The `target` of a `judge` envelope is an item reference, and an envelope's `target` is checked by the node (400, `malformed target`) and by the iPhone app before it signs: 1 to 120 bytes of ASCII letters, digits, `.`, `_`, `#`, and `-`. So a pending decision's `answerWith.target` has to follow that rule, even where `ref` and `issue` are longer or hold other characters (`owner/repo#12`, a URL).
+- A runtime whose tracker's ids do not fit gives the pending decision a reference that does (for example `PROJ-12`, or a short hash), keeps a lookup from it to the item, and reads it back in `decide`. The item's `ref` and `issue` may stay as the tracker writes them. The rule is widened only when a real tracker needs it, because every node and the app must accept the wider rule before a harness sends it.
 
 Participants (`people`, humans and agents):
 
@@ -205,7 +211,7 @@ Work items:
 Requests:
 
 - `question`: the team asks something. `proposal`: the team asks for approval of a document (`document`) with options. `pendingDecision`: a board item is blocked until someone decides.
-- `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its `repo#N`; the others with `answer` and the request id.
+- `answerWith` is exactly the `kind` and `target` of the decision envelope that answers the request, so clients never derive them. A `pendingDecision` is answered with `judge` and its item reference; the others with `answer` and the request id. So the `answerWith.target` of a pending decision follows the stricter rule of "Item references" below.
 - `to` absent means the team's owner. The node maps runtime names to org members through its hosted-team configuration: `owner` is the org member id of the team's owner, and the optional `people` map names other runtime names (`{ "<runtime name>": "<org member id>" }`). A `to` that is not in `people` goes to the owner.
 - In the other direction, an org member's runtime name is their key in `people`; otherwise `owner` if they are the team's owner; otherwise they have none in that team.
 - Which requests are a reader's to decide ("mine") is one rule, computed by the reader's home node and given to clients as `TeamSnapshot.mine`. The desk, the badge counts, and push notifications all use it, and the team's node applies a decision only from the member it gives (see "Decision envelope").

@@ -99,7 +99,7 @@ public struct AnswerWith: Decodable, Equatable, Sendable {
 public struct WorkItem: Decodable, Equatable, Sendable {
     public enum Status: String, Decodable, Sendable { case backlog, next, inProgress, release, done }
 
-    /// `repo#N`
+    /// The work item's item reference: an opaque string the team's harness chooses.
     public let ref: String
     public let title: String
     public let status: Status
