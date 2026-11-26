@@ -12,7 +12,7 @@ describe('the mock evaluation', () => {
     const { byDay, summary } = teamEvaluation('app', 30, NOW)
     expect(summary).toEqual(summaryOf(byDay))
     expect(summary.merged.feat).toBe(byDay.reduce((sum, day) => sum + day.merged.feat, 0))
-    expect(summary.prLeadMedianSeconds).not.toBeNull()
+    expect(summary.prLeadMedianSeconds).toBeDefined()
     expect(byDay.every((day) => day.prLeadSeconds.length === Object.values(day.merged).reduce((sum, count) => sum + count, 0) + day.reverts)).toBe(true)
   })
 
@@ -37,7 +37,7 @@ describe('the mock’s summary, against numbers worked out by hand', () => {
     const summary = summaryOf([day('2026-11-24', [3600, 10_800]), day('2026-11-25', [7200, 14_400])])
     expect(summary.prLeadMedianSeconds).toBe(9000)
     expect(summary.prLeadP90Seconds).toBe(14_400)
-    expect(summary.issueLeadMedianSeconds).toBeNull()
+    expect(summary.issueLeadMedianSeconds).toBeUndefined()
   })
 
   it('takes the p90 of ten samples as the ninth', () => {
@@ -52,5 +52,17 @@ describe('the mock’s summary, against numbers worked out by hand', () => {
     expect(summary.longestRedSeconds).toBe(1800)
     expect(summary.reverts).toBe(1)
     expect(summary.costPerMergedPrUsd).toBe(5)
+  })
+
+  it('rounds the median of an even count down to a whole second, as the node does', () => {
+    expect(summaryOf([day('2026-11-25', [1, 2])]).prLeadMedianSeconds).toBe(1)
+  })
+
+  it('says each team’s period, in its own days, and leaves out a field with nothing to say', () => {
+    const { byDay, from, until, summary } = teamEvaluation('app', 14, new Date('2026-11-26T09:00:00Z'))
+    expect([from, until]).toEqual(['2026-11-13', '2026-11-26'])
+    expect(byDay.every((one) => one.date >= from && one.date <= until)).toBe(true)
+    expect(summaryOf([]) && 'costPerMergedPrUsd' in summaryOf([])).toBe(false)
+    expect(summary.merged).toBeDefined()
   })
 })

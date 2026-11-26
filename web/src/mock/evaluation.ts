@@ -12,7 +12,8 @@ function median(values: readonly number[]): number | null {
   if (values.length === 0) return null
   const sorted = values.toSorted((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? (sorted[middle] ?? null) : (((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2)
+  // The mean of the two middle samples, rounded down to a whole second, as the node does.
+  return sorted.length % 2 === 1 ? (sorted[middle] ?? null) : Math.floor(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2)
 }
 
 const DAY_MS = 86_400_000
@@ -67,6 +68,9 @@ const percentile = (values: readonly number[], share: number): number | null => 
   return sorted[Math.min(sorted.length - 1, Math.ceil(share * sorted.length) - 1)] ?? null
 }
 
+/** A field the node leaves out when it has nothing to say (an optional field is never null). */
+const left = <K extends string>(key: K, value: number | null): { [P in K]?: number } => (value === null ? {} : ({ [key]: value } as { [P in K]?: number }))
+
 export function summaryOf(days: readonly DayEvaluation[]): EvaluationSummary {
   const merged = emptyCounts()
   for (const day of days) for (const type of TYPES) merged[type] += day.merged[type]
@@ -76,14 +80,14 @@ export function summaryOf(days: readonly DayEvaluation[]): EvaluationSummary {
   const count = totalMerged(merged) + days.reduce((sum, day) => sum + day.reverts, 0)
   return {
     merged,
-    prLeadMedianSeconds: median(prLead),
-    prLeadP90Seconds: percentile(prLead, 0.9),
-    issueLeadMedianSeconds: median(issueLead),
-    issueLeadP90Seconds: percentile(issueLead, 0.9),
+    ...left('prLeadMedianSeconds', median(prLead)),
+    ...left('prLeadP90Seconds', percentile(prLead, 0.9)),
+    ...left('issueLeadMedianSeconds', median(issueLead)),
+    ...left('issueLeadP90Seconds', percentile(issueLead, 0.9)),
     mainRedSeconds: days.reduce((sum, day) => sum + day.mainRedSeconds, 0),
     longestRedSeconds: Math.max(0, ...days.map((day) => day.mainRedSeconds)),
     reverts: days.reduce((sum, day) => sum + day.reverts, 0),
-    costPerMergedPrUsd: count === 0 ? null : Math.round((cost / count) * 100) / 100,
+    ...left('costPerMergedPrUsd', count === 0 ? null : Math.round((cost / count) * 100) / 100),
   }
 }
 
@@ -91,10 +95,10 @@ export function teamEvaluation(team: string, days: number, now: Date): TeamEvalu
   const dates = Array.from({ length: days }, (_, index) => new Date(now.getTime() - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10))
   // A day with nothing in it is left out, as the node may do.
   const byDay = dates.map((date) => dayFor(team, date)).filter((day) => totalMerged(day.merged) + day.reverts > 0 || day.mainRedSeconds > 0 || day.costUsd > 0)
-  return { team, summary: summaryOf(byDay), byDay }
+  return { team, from: dates[0] ?? '', until: dates.at(-1) ?? '', summary: summaryOf(byDay), byDay }
 }
 
 export function evaluationReport(org: string, teams: readonly string[], days: number, now: Date): Evaluation {
   const date = (daysAgo: number): string => new Date(now.getTime() - daysAgo * DAY_MS).toISOString().slice(0, 10)
-  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEvaluation(team, days, now)) }
+  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEvaluation(team, days, now)), unavailable: [] }
 }

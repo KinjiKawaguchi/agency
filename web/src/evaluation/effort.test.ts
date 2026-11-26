@@ -5,6 +5,8 @@ const zero = (): Record<EffortType, number> => ({ newFeature: 0, improvement: 0,
 const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 const effortOf = (costs: Partial<Record<EffortType, number>>): TeamEffort => ({
   team: 'app',
+  from: '2026-11-13',
+  until: '2026-11-26',
   byType: Object.fromEntries(EFFORT_TYPES.map((type) => [type, { costUsd: costs[type] ?? 0, tokens }])) as TeamEffort['byType'],
   byDay: [],
 })

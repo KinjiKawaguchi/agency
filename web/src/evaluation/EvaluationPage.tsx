@@ -79,7 +79,7 @@ function OrgEvaluation({ org, days, teamLabels }: { org: string; days: number; t
     <>
       {report.teams.length === 0 && (report.unavailable ?? []).length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
       {report.teams.map((numbers) => (
-        <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} generatedAt={report.generatedAt} until={report.until} />
+        <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} />
       ))}
       {(report.unavailable ?? []).map((one) => (
         <section key={one.team} className="ev-team">

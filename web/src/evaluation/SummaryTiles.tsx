@@ -21,8 +21,8 @@ export function SummaryTiles({ summary, days }: { summary: EvaluationSummary; da
   const text = t.evaluation.tiles
   const duration = (seconds: number): string => formatDuration(seconds, t.evaluation.units)
   const merged = allMerged(summary)
-  const lead = (median: number | null, p90: number | null): Pick<Parameters<typeof Tile>[0], 'value' | 'note'> =>
-    median === null || p90 === null ? { value: '—', note: t.evaluation.noData } : { value: duration(median), note: text.leadNote(duration(p90)) }
+  const lead = (median: number | undefined, p90: number | undefined): Pick<Parameters<typeof Tile>[0], 'value' | 'note'> =>
+    median === undefined || p90 === undefined ? { value: '—', note: t.evaluation.noData } : { value: duration(median), note: text.leadNote(duration(p90)) }
   return (
     <div className="ev-tiles">
       <Tile label={text.features} value={fmt.integer(summary.merged.feat)} note={text.perDay(oneDecimal(summary.merged.feat / days))} />
@@ -31,7 +31,7 @@ export function SummaryTiles({ summary, days }: { summary: EvaluationSummary; da
       <Tile label={text.issueLead} {...lead(summary.issueLeadMedianSeconds, summary.issueLeadP90Seconds)} />
       <Tile label={text.red} value={duration(summary.mainRedSeconds)} note={text.redNote(duration(summary.longestRedSeconds))} />
       <Tile label={text.reverts} value={fmt.integer(summary.reverts)} note={text.revertsNote(merged)} />
-      <Tile label={text.cost} value={summary.costPerMergedPrUsd === null ? '—' : fmt.money(summary.costPerMergedPrUsd)} note={summary.costPerMergedPrUsd === null ? t.evaluation.noData : text.costNote} />
+      <Tile label={text.cost} value={summary.costPerMergedPrUsd === undefined ? '—' : fmt.money(summary.costPerMergedPrUsd)} note={summary.costPerMergedPrUsd === undefined ? t.evaluation.noData : text.costNote} />
     </div>
   )
 }
