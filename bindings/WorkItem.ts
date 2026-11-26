@@ -5,10 +5,11 @@ import type { WorkStatus } from "./WorkStatus.js";
 
 export type WorkItem = { 
 /**
- * `repo#N`
+ * The work item's item reference: an opaque string the team's harness chooses (for example
+ * `app#12`). Nothing parses it. See "TeamView" in docs/protocol.md.
  */
 ref: string, title: string, status: WorkStatus, assignee?: string, blocked?: Blocked, 
 /**
- * The parent epic's ref (`repo#N`).
+ * The parent epic's item reference.
  */
 epic?: string, points?: number, eta?: Eta, };

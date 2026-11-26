@@ -47,6 +47,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
   - **Proposal** (稟議, `proposal`): approval of a document, with options. 稟議書 means the document itself, and only that.
   - **Question** (質問, `question`): the team asks something, with options or free text.
   - **Pending decision** (判断待ち, `pendingDecision`): a board item is blocked until someone decides. It is answered with `judge`.
+- **Item reference**. The opaque string that names a work item, chosen by the team's harness: `WorkItem.ref` on the wire, and the same string in an epic's `ref`, a request's `issue`, and a participant's `holding`. Nothing in Agency parses it. The one that decides a pending decision (`answerWith.target`) must be 1 to 120 bytes of letters, digits, and `._#-`, so a runtime maps a tracker's id that does not fit into one that does (see "Item references" in the protocol). Not shown to people as a term.
 - **Envelope**. The signed document that carries a decision to the team's node (`kind` `answer` or `judge`). Not shown to people.
 - **Decision** (決定). A member's answer to a request, sent as an envelope signed by one of the member's devices. It is also what the log lists ("Recently decided" / 最近の決定).
 - **Approval** (決裁). The decision on a proposal, and only on a proposal: the verb is 決裁する, the stamp 決裁. A question is answered (答える, 回答), and a pending decision is judged (判断を送る).

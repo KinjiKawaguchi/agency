@@ -148,6 +148,29 @@ fn envelope_shape_and_freshness() {
     assert!(bad_target.validate().is_err());
 }
 
+/// docs/protocol.md, "Item references": a target is 1 to 120 bytes of ASCII letters, digits, and `._#-`.
+#[test]
+fn an_envelope_target_follows_the_documented_character_set_and_length() {
+    let with_target = |target: &str| {
+        let mut body = envelope(AT);
+        body.target = target.into();
+        body.validate()
+    };
+    for accepted in ["app#12", "ENG-123", "a.b_c-D#9", &"a".repeat(120)] {
+        assert_eq!(with_target(accepted), Ok(()), "{accepted}");
+    }
+    for refused in [
+        "",
+        "owner/repo#12",
+        "PROJ:12",
+        "app 12",
+        "caf\u{e9}#1",
+        &"a".repeat(121),
+    ] {
+        assert!(with_target(refused).is_err(), "{refused}");
+    }
+}
+
 #[test]
 fn signature_is_bound_to_its_kind() {
     let key = AccountKey::generate();

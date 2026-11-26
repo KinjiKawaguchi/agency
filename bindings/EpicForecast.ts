@@ -4,7 +4,7 @@ import type { Forecast } from "./Forecast.js";
 
 export type EpicForecast = { 
 /**
- * `repo#N`
+ * The epic's item reference.
  */
 ref: string, title: string, 
 /**

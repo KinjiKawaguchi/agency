@@ -205,7 +205,7 @@ pub struct DecisionEntry {
     pub org: Id,
     pub team: Id,
     pub kind: EnvelopeKind,
-    /// The request id or work item ref (`repo#N`) it answered.
+    /// The request id or work item's item reference it answered.
     pub target: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
