@@ -13,6 +13,7 @@ use agency_core::decisions::Decided;
 use agency_core::invites::join;
 use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
+use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::push::notify_waiting;
 use agency_core::ships::record_all;
@@ -453,6 +454,9 @@ async fn run(cli: Cli) -> Result<()> {
             if is_here && state_dir.is_none() {
                 bail!("a team on this node needs --state-dir");
             }
+            if !is_here {
+                peer_about::read_origin(&node, &org, &place_url).await?;
+            }
             let doc = orgs::add_team(
                 &node,
                 &org,
@@ -504,6 +508,9 @@ async fn run(cli: Cli) -> Result<()> {
             team,
             node: origin,
         } => {
+            if origin != node.url() {
+                peer_about::read_origin(&node, &id(&org)?, &origin).await?;
+            }
             let doc = orgs::move_team(&node, &id(&org)?, &id(&team)?, origin.clone())?;
             println!(
                 "Moved team {team} of org {org} to {origin} (version {})",

@@ -54,38 +54,48 @@ fn gap(
     })
 }
 
-/// Refuses a version, before it is signed, that uses a capability the current one does not use yet while a
-/// node of the org (the nodes of the new version's teams that do not run here) does not list it. A field the
-/// current version already carries is not checked again: a node that cannot read it refuses the current
-/// version already, and refusing every later one would not help it. Taking such a node's teams out of the
-/// org leaves it out of the check.
+/// Refuses a version, before it is signed, when a node of the org (the nodes of the new version's teams that
+/// do not run here) does not list a capability it must read: for a node already in the org, those the new
+/// version uses and the current one does not use yet (a node that cannot read a field the current version
+/// already carries refuses the current version already, and refusing every later one would not help it); for a
+/// node the version **brings into** the org, everything the new version uses, since it will refuse every
+/// version from the start. Taking a lagging node's teams out of the org leaves it out of the check.
 pub(crate) fn check_before_signing(
     node: &Node,
     current: &OrgDefinition,
     next: &OrgDefinition,
 ) -> Result<()> {
-    let already = Capability::used_by(current);
-    let needed: BTreeSet<Capability> = Capability::used_by(next)
-        .into_iter()
-        .filter(|one| !already.contains(one))
-        .collect();
-    if needed.is_empty() {
+    let used = Capability::used_by(next);
+    if used.is_empty() {
         return Ok(());
     }
+    let already = Capability::used_by(current);
+    let newly: BTreeSet<Capability> = used.difference(&already).copied().collect();
+    let in_the_org = peer_origins(node, current);
     let kept = peers_of(node, &next.org);
     let now = node.now();
-    let behind: Vec<String> = peer_origins(node, next)
-        .iter()
-        .filter_map(|origin| gap(origin, kept.get(origin), &needed, now))
-        .collect();
+    let mut behind: Vec<String> = vec![];
+    let mut missing: BTreeSet<Capability> = BTreeSet::new();
+    for origin in peer_origins(node, next) {
+        let is_new = !in_the_org.contains(&origin);
+        let needed = if is_new { &used } else { &newly };
+        if needed.is_empty() {
+            continue;
+        }
+        if let Some(why) = gap(&origin, kept.get(&origin), needed, now) {
+            let label = if is_new { " (new to the org)" } else { "" };
+            behind.push(format!("{}{label}", why));
+            missing.extend(needed.iter().copied());
+        }
+    }
     if behind.is_empty() {
         return Ok(());
     }
-    let names: Vec<&str> = needed.iter().map(|one| one.name()).collect();
+    let names: Vec<&str> = missing.iter().map(|one| one.name()).collect();
     Err(Error::new(
         ErrorKind::Conflict,
         format!(
-            "cannot sign a version that uses {}, which older nodes refuse: {}. Update those nodes, then run `agency sync` to read them again",
+            "cannot sign a version that uses {}, which older nodes refuse: {}. Update those nodes, then read them again (`agency sync`; adding or moving a team reads the new node itself)",
             names.join(", "),
             behind.join("; ")
         ),
