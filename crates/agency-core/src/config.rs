@@ -120,6 +120,7 @@ pub struct TrustedOrg {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct NodeConfig {
     /// This node's origin, where other nodes send to.
     pub url: String,
@@ -329,6 +330,35 @@ pub struct AccessConfig {
 }
 
 impl NodeConfig {
+    /// A node's configuration with no hosted teams, trusted orgs, funding sources, Access, push, Web Push,
+    /// or other home nodes.
+    pub fn new(
+        url: impl Into<String>,
+        listen: impl Into<String>,
+        account: Account,
+        scrum: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            url: url.into(),
+            listen: listen.into(),
+            account,
+            scrum: scrum.into(),
+            teams: vec![],
+            trusted: vec![],
+            funding: vec![],
+            access: None,
+            push: None,
+            web_push: None,
+            hide_titles: false,
+            home_nodes: vec![],
+        }
+    }
+
+    /// The owner's other home nodes (`homeNodes`).
+    pub fn with_home_nodes(self, home_nodes: Vec<HomeNodeConfig>) -> Self {
+        Self { home_nodes, ..self }
+    }
+
     pub fn hosted(&self, org: &Id, team: &Id) -> Option<&HostedTeam> {
         self.teams
             .iter()
@@ -461,23 +491,12 @@ mod tests {
 
     #[test]
     fn trusting_never_replaces_another_roots_fingerprint() {
-        let mut config = NodeConfig {
-            url: "http://127.0.0.1:4400".into(),
-            listen: "127.0.0.1:4400".into(),
-            account: Account {
-                id: id("alice"),
-                label: "Alice".into(),
-            },
-            scrum: "scrum".into(),
-            teams: vec![],
-            trusted: vec![],
-            funding: vec![],
-            access: None,
-            push: None,
-            web_push: None,
-            hide_titles: false,
-            home_nodes: vec![],
+        let account = Account {
+            id: id("alice"),
+            label: "Alice".into(),
         };
+        let mut config =
+            NodeConfig::new("http://127.0.0.1:4400", "127.0.0.1:4400", account, "scrum");
         let acme = id("acme");
         config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://a.example".into());
         config.trust(acme.clone(), "b".repeat(32));

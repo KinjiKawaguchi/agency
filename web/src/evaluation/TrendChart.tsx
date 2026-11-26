@@ -2,6 +2,7 @@ import { useI18n } from '../i18n'
 import { ChartFrame } from './ChartFrame'
 import { positionOf } from './series'
 import { Tip } from './Tip'
+import { useDays } from './useDays'
 
 export interface Line {
   key: string
@@ -44,6 +45,7 @@ const lastIndexWithValue = (values: readonly (number | null)[]): number => value
 /** Lines over days, with a marker on each line's last value and a crosshair that tells every line's value for the day. */
 export function TrendChart({ dates, lines, max, format, label, noData }: TrendChartProps) {
   const { fmt } = useI18n()
+  const days = useDays(dates.length)
   return (
     <ChartFrame max={max} format={format} dates={dates} label={label}>
       <svg className="ev-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -58,9 +60,9 @@ export function TrendChart({ dates, lines, max, format, label, noData }: TrendCh
           <i key={line.key} className="ev-end" style={{ left: `${centerOf(index, dates.length)}%`, bottom: `${Math.min(value / max, 1) * 100}%`, background: line.color }} />
         )
       })}
-      <div className="ev-cells">
+      <div className="ev-cells" onKeyDown={days.onKeyDown}>
         {dates.map((date, index) => (
-          <div key={date} className="ev-cell" tabIndex={0} aria-label={`${fmt.shortDate(date)}: ${lines.map((line) => `${line.label} ${valueText(line.values[index] ?? null, format, noData)}`).join(', ')}`}>
+          <div key={date} className="ev-cell" {...days.itemProps(index)} aria-label={`${fmt.shortDate(date)}: ${lines.map((line) => `${line.label} ${valueText(line.values[index] ?? null, format, noData)}`).join(', ')}`}>
             <Tip title={fmt.shortDate(date)} position={positionOf(index, dates.length)} rows={lines.map((line) => ({ key: line.key, label: line.label, color: line.color, value: valueText(line.values[index] ?? null, format, noData) }))} />
           </div>
         ))}

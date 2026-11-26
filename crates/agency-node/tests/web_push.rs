@@ -399,24 +399,13 @@ fn opened_with(
     if !dir.join("node").exists() {
         data.create_key().unwrap();
     }
-    data.save_config(&NodeConfig {
-        url: "http://127.0.0.1:4400".into(),
-        listen: "127.0.0.1:4400".into(),
-        account: Account {
-            id: id("alice"),
-            label: "ALICE".into(),
-        },
-        scrum: "scrum".into(),
-        teams: vec![],
-        trusted: vec![],
-        funding: vec![],
-        access: None,
-        push: None,
-        web_push,
-        hide_titles: false,
-        home_nodes: vec![],
-    })
-    .unwrap();
+    let account = Account {
+        id: id("alice"),
+        label: "ALICE".into(),
+    };
+    let mut config = NodeConfig::new("http://127.0.0.1:4400", "127.0.0.1:4400", account, "scrum");
+    config.web_push = web_push;
+    data.save_config(&config).unwrap();
     agency_node::open(data, agency_node::Overrides::default())
         .unwrap()
         .node

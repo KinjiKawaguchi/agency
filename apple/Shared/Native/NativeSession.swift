@@ -24,7 +24,8 @@ final class NativeSession {
     /// What was last told to the node about the push token, so that a change of the token or of the kinds is told again.
     @ObservationIgnored private var registeredPush: RegisteredPush?
     /// Whether the home node took the kinds of push the owner chose; `false` for a node that sends requests only.
-    private(set) var nodeSendsPushKinds = true
+    /// Whether the home node sends the kinds the owner chose, or `nil` until it has answered the registration.
+    private(set) var nodeSendsPushKinds: Bool?
     /// The overview of every org and team, read from the same client.
     let overview: OverviewStore
     /// The participants and work of every team, read from the same client.
