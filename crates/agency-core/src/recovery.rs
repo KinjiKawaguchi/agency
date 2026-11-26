@@ -30,6 +30,19 @@ pub fn add(node: &Node, org: &Id, key: PublicKey) -> Result<SignedOrg> {
     })
 }
 
+/// Names, as the recovery key of `org`, the one `other` already has, once its words prove it: one set of words
+/// for both. Whoever has those words can then start a recovery of both orgs, each with its own wait.
+pub fn add_same_as(node: &Node, org: &Id, other: &Id, words_key: &AccountKey) -> Result<SignedOrg> {
+    let theirs = load(node, other)?;
+    if theirs.body.root.recovery.as_ref() != Some(&words_key.public()) {
+        return Err(Error::new(
+            ErrorKind::Forbidden,
+            format!("these words are not the recovery key of org {other}"),
+        ));
+    }
+    add(node, org, words_key.public())
+}
+
 /// Signs `body` with the recovery key of `current`, if `words_key` is it.
 fn sign_with_recovery(
     current: &SignedOrg,

@@ -188,3 +188,17 @@ async fn new_words_replace_the_old_ones_after_the_wait() {
     assert_eq!(done.body.root.recovery, Some(new.public()));
     assert_eq!(done.body.root.public_key, root, "the root key stays");
 }
+
+#[tokio::test]
+async fn a_second_org_takes_the_same_words_only_when_they_prove_the_first_orgs_key() {
+    let (alice, _) = alice().await;
+    let words = AccountKey::from_seed([0x39; 32]);
+    recovery::add(&alice.node, &id("acme"), words.public()).unwrap();
+    orgs::create(&alice.node, id("beta"), "Beta".into()).unwrap();
+
+    let wrong = AccountKey::from_seed([0x3a; 32]);
+    let refused = recovery::add_same_as(&alice.node, &id("beta"), &id("acme"), &wrong).unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Forbidden);
+    let doc = recovery::add_same_as(&alice.node, &id("beta"), &id("acme"), &words).unwrap();
+    assert_eq!(doc.body.root.recovery, Some(words.public()));
+}

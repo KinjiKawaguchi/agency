@@ -20,8 +20,12 @@ pub struct RootRecovery {
     #[arg(long)]
     org: String,
     /// Replaces the recovery key that the org has; asks for its words first
-    #[arg(long)]
+    #[arg(long, conflicts_with = "same_words_as")]
     replace: bool,
+    /// Uses the recovery words of this other org instead of new ones, after you type them: one set of words
+    /// for both, so whoever has them can start a recovery of both (each still waits 72 hours)
+    #[arg(long, value_name = "OTHER_ORG")]
+    same_words_as: Option<String>,
 }
 
 /// Starts a recovery of an org with its recovery words, naming a new root key made on this node; with
@@ -103,6 +107,16 @@ fn show_words(key: &AccountKey) -> Result<()> {
 
 pub async fn root_recovery(node: &Node, args: RootRecovery) -> Result<()> {
     let org = id(&args.org)?;
+    if let Some(other) = &args.same_words_as {
+        let other = id(other)?;
+        let words = ask_words(&format!("{other} org's"))?;
+        let doc = recovery::add_same_as(node, &org, &other, &words)?;
+        println!(
+            "Org {org} has the recovery key of {other} (version {}): the same words recover both.",
+            doc.body.version
+        );
+        return Ok(());
+    }
     let new = AccountKey::generate();
     if !args.replace {
         show_words(&new)?;
