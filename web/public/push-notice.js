@@ -37,7 +37,13 @@
     },
   }
 
-  const cut = (value, length) => (typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, length) : undefined)
+  // A character that reorders or hides how a line reads becomes `?`, as the node and the page print it (src/shared/printable.ts).
+  const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+  // The mark comes first, then the trim: `trim` takes U+FEFF and the control whitespace off, and the page would have said a mark there.
+  const cut = (value, length) => {
+    const text = typeof value === 'string' ? value.replace(HIDDEN, '?').trim() : ''
+    return text === '' ? undefined : text.slice(0, length)
+  }
 
   /** A time as the viewer reads one (their locale and zone), or nothing when it is not a time. */
   function timeOf(value, language) {

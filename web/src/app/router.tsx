@@ -1,14 +1,8 @@
-import { OutcomesPage } from '../outcomes/OutcomesPage'
 import { OUTCOMES_PERIODS } from '../outcomes/useOutcomesAccess'
 import { Navigate, Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
-import { CostsPage } from '../costs/CostsPage'
-import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
-import { LivePage } from '../live/LivePage'
+import { PERIODS } from '../evaluation/periods'
 import { DevicesPage } from '../device/DevicesPage'
 import { DeskPage } from '../desk/DeskPage'
-import { OrgChartPage } from '../org/OrgChartPage'
-import { OverviewPage } from '../overview/OverviewPage'
-import { PeoplePage } from '../people/PeoplePage'
 import { ClaimPage } from '../claim/ClaimPage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
 import { isGuestPage, useStanding } from '../guest/useStanding'
@@ -16,6 +10,16 @@ import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { Loading, Skeleton } from '../shared/Skeleton'
 import { AppBar } from './AppBar'
+import { lazyPage } from './lazyPage'
+
+// The desk and the devices are what a person opens first, and what a hosted member has; the other pages are fetched when they are opened.
+const OverviewPage = lazyPage(() => import('../overview/OverviewPage').then((page) => ({ default: page.OverviewPage })))
+const PeoplePage = lazyPage(() => import('../people/PeoplePage').then((page) => ({ default: page.PeoplePage })))
+const OrgChartPage = lazyPage(() => import('../org/OrgChartPage').then((page) => ({ default: page.OrgChartPage })))
+const CostsPage = lazyPage(() => import('../costs/CostsPage').then((page) => ({ default: page.CostsPage })))
+const EvaluationPage = lazyPage(() => import('../evaluation/EvaluationPage').then((page) => ({ default: page.EvaluationPage })))
+const OutcomesPage = lazyPage(() => import('../outcomes/OutcomesPage').then((page) => ({ default: page.OutcomesPage })))
+const LivePage = lazyPage(() => import('../live/LivePage').then((page) => ({ default: page.LivePage })))
 
 /** The claim page is a person's first page, before there is anything of the app for them: it has none of the app's bar and notices. */
 const isClaimPath = (path: string): boolean => path === '/claim' || path.startsWith('/claim/')

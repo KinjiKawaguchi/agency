@@ -236,6 +236,22 @@ pub fn subscriptions(node: &Node) -> Result<PushSubscriptionList> {
     })
 }
 
+/// The longest reason kept: what a destination's record says is short, and the node does not keep more than it was given.
+const MAX_REASON_CHARS: usize = 200;
+
+/// A failure of a push service to take a notice at a time. The reason is what the adapter gave (the service's host or
+/// name and the status it answered), without control characters and cut at `MAX_REASON_CHARS`.
+pub(crate) fn failure_at(at: &Timestamp, reason: &str) -> PushFailure {
+    PushFailure {
+        at: at.clone(),
+        reason: reason
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(MAX_REASON_CHARS)
+            .collect(),
+    }
+}
+
 /// What a notice sent to a browser's push service came to, for the subscription's own record.
 pub(crate) enum Sent<'a> {
     Taken,
@@ -259,12 +275,7 @@ pub(crate) fn record_sends(node: &Node, results: &[(&str, Sent<'_>)]) -> Result<
         };
         match result {
             Sent::Taken => one.last_succeeded_at = Some(at.clone()),
-            Sent::NotTaken(reason) => {
-                one.last_failure = Some(PushFailure {
-                    at: at.clone(),
-                    reason: (*reason).to_owned(),
-                });
-            }
+            Sent::NotTaken(reason) => one.last_failure = Some(failure_at(&at, reason)),
         }
         changed = true;
     }
@@ -358,5 +369,31 @@ mod tests {
         ] {
             assert!(!is_host_pattern(entry), "{entry}");
         }
+    }
+
+    #[test]
+    fn a_failure_keeps_its_time_and_a_short_reason_without_control_characters() {
+        let at = Timestamp::parse("2026-11-24T12:00:00Z").unwrap();
+        let kept = failure_at(&at, "push.example answered 503");
+        assert_eq!(
+            (kept.at.clone(), kept.reason.as_str()),
+            (at.clone(), "push.example answered 503")
+        );
+        assert_eq!(
+            failure_at(&at, "a\u{0}b\nc\u{1b}[31md").reason,
+            "abc[31md",
+            "no control character is kept: a line or an escape cannot reach a log or a screen through it"
+        );
+        let long = "x".repeat(MAX_REASON_CHARS + 50);
+        assert_eq!(
+            failure_at(&at, &long).reason.chars().count(),
+            MAX_REASON_CHARS
+        );
+        let exact = "y".repeat(MAX_REASON_CHARS);
+        assert_eq!(
+            failure_at(&at, &exact).reason,
+            exact,
+            "what fits is kept whole"
+        );
     }
 }

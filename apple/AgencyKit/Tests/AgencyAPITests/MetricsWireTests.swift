@@ -19,7 +19,7 @@ struct MetricsWireTests {
     func sample() throws {
         let metrics = try JSONDecoder().decode(Metrics.self, from: Fixtures.sample("metrics"))
         #expect(metrics.budget?.inNodeReadP95Ms == 100)
-        #expect(metrics.series.count == 7 && metrics.objectives.isEmpty)
+        #expect(metrics.series.count == 8 && metrics.objectives.map(\.group) == ["desk", "outcomes", "usage", "evaluation"])
         let read = try #require(metrics.series.first)
         #expect(read.kind == .serve && read.isInNodeRead && read.group == "desk" && read.p95Ms == 10)
         let runtime = try #require(metrics.series.first { $0.name == "runtime view" })
@@ -35,9 +35,9 @@ struct MetricsWireTests {
 
     @Test("objectives are read as the node states them, and a state the app does not know is unknown")
     func objectives() throws {
-        let json = answer(extra: #","objectives":[{"group":"desk","p95Ms":50,"state":"met","measuredP95Ms":25},{"group":"usage","p95Ms":500,"state":"borrowed"}]"#)
+        let json = answer(extra: #","objectives":[{"group":"desk","p95Ms":50,"state":"met","measuredP95Ms":25},{"group":"usage","p95Ms":500,"state":"borrowed"},{"group":"teams","p95Ms":75,"state":"undetermined","measuredP95Ms":100}]"#)
         let objectives = try read(json).objectives
-        #expect(objectives.map(\.state) == [.met, .unknown])
+        #expect(objectives.map(\.state) == [.met, .unknown, .undetermined])
         #expect(objectives[0].measuredP95Ms == 25 && objectives[1].measuredP95Ms == nil)
     }
 

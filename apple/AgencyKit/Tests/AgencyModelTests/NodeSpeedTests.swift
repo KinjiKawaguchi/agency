@@ -157,11 +157,11 @@ struct NodeSpeedTests {
 
     @Test("the objectives are said as the node states them, with its state and what it measured, and the app compares nothing")
     func objectives() throws {
-        let json = #"[{"group":"desk","p95Ms":50,"state":"notMet","measuredP95Ms":100},{"group":"usage","p95Ms":2500,"state":"met"},{"group":"other","p95Ms":10,"state":"unknown"}]"#
+        let json = #"[{"group":"desk","p95Ms":50,"state":"notMet","measuredP95Ms":100},{"group":"usage","p95Ms":2500,"state":"met"},{"group":"other","p95Ms":10,"state":"unknown"},{"group":"teams","p95Ms":75,"state":"undetermined","measuredP95Ms":100}]"#
         let lines = NodeSpeed(metrics(series: [series("GET /a", [(5, 1)])], objectives: try JSONDecoder().decode([Objective].self, from: Data(json.utf8)))).objectives
-        #expect(lines.map(\.target) == ["デスク: p95 50 ミリ秒 以下", "使用量: p95 2.5 秒 以下", "その他: p95 10 ミリ秒 以下"])
-        #expect(lines.map(\.stateWord) == ["未達", "達成", "まだ判断できません"])
-        #expect(lines.map(\.measured) == ["計測値: 100 ミリ秒 以下。", nil, nil])
+        #expect(lines.map(\.target) == ["デスク: p95 50 ミリ秒 以下", "使用量: p95 2.5 秒 以下", "その他: p95 10 ミリ秒 以下", "チーム: p95 75 ミリ秒 以下"])
+        #expect(lines.map(\.stateWord) == ["未達", "達成", "まだ判断できません", "この目標に対して判断できません"], "undetermined (the objective is inside the bucket) is not unknown (no call)")
+        #expect(lines.map(\.measured) == ["計測値: 100 ミリ秒 以下。", nil, nil, "計測値: 100 ミリ秒 以下。"])
     }
 
     @Test("an answer with no series says nothing was measured, which is not 0 ms, and has no rows")

@@ -39,10 +39,20 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
     public let isMine: Bool
     /// The people (not work refs) that are stopped until the request is decided.
     public let blockedPeople: [PersonStatus]
+    /// The seat or external party the viewer answers this request for, when it is addressed to one (the node says so, for the
+    /// viewer's own requests only).
+    public let answersFor: String?
 
     /// Whether this app can make the envelope that answers it: the node names the kind of envelope (`answerWith`), and a kind
     /// this app does not know is one it cannot make. Such a request is shown and counted, and answered elsewhere.
     public var isAnswerableHere: Bool { request.answerWith.kind != .unknown }
+
+    /// A label as a line shows it: without the spaces around it, and none at all when nothing else is left (the node does not send
+    /// an empty one, and a line that says nothing is not shown).
+    public static func shownLabel(_ label: String) -> String? {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     public static func key(org: String, team: String, request: String) -> String {
         "\(org):\(team):\(request)"
@@ -61,6 +71,7 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
         decider = addressee.flatMap(team.person(named:))
         self.isMine = isMine
         blockedPeople = request.blocks.compactMap(team.person(named:))
+        answersFor = isMine ? team.relayedFor[request.id].flatMap(Self.shownLabel) : nil
     }
 }
 

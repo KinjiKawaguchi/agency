@@ -87,13 +87,17 @@ pub enum Role {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+#[non_exhaustive]
 pub struct Person {
     pub id: Id,
     pub label: String,
     pub account: Id,
     /// The account key, held by the person's home node. It signs reads, join requests, and the first
-    /// device, never decisions.
-    pub public_key: PublicKey,
+    /// device, never decisions. Left out only for a member hosted by the root's node (`hostedBy`), which
+    /// has no node and so no account key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub public_key: Option<PublicKey>,
     pub department: Option<Id>,
     pub role: Role,
     /// Keys held by the person's clients. Only these sign decisions. Left out of JSON when empty, so
@@ -101,6 +105,91 @@ pub struct Person {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Device>>", optional)]
     pub devices: Vec<Device>,
+    /// The ids of the seats this person took, so that what named a seat (a request addressed to it, the
+    /// history) reaches them. Left out when empty, so a version signed before seats keeps its signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Id>>", optional)]
+    pub formerly: Vec<Id>,
+    /// What to ask this person about, in the org's own words: what the seat they took said. Left out when
+    /// empty, like `formerly`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub ask_about: Vec<String>,
+    /// Set when the member has no node of its own: the root's node hosts it, and its clients use that node's
+    /// Client API (a hosted member, docs/glossary.md). Left out for every other member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hosted_by: Option<HostedBy>,
+}
+
+/// Which node hosts a member that has no node of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum HostedBy {
+    /// The node that holds the org's root key.
+    Root,
+}
+
+impl Person {
+    /// A member with a node of its own, in no department, with the role `member` and no devices yet. Built
+    /// through this, `hosted`, and the `with_` methods, never by a struct literal.
+    pub fn new(id: Id, label: impl Into<String>, account: Id, public_key: PublicKey) -> Self {
+        Self {
+            id,
+            label: label.into(),
+            account,
+            public_key: Some(public_key),
+            department: None,
+            role: Role::Member,
+            devices: vec![],
+            formerly: vec![],
+            ask_about: vec![],
+            hosted_by: None,
+        }
+    }
+
+    /// A member hosted by the root's node: no account key, its member id as its account, and the devices
+    /// that act for it (at least one).
+    pub fn hosted(id: Id, label: impl Into<String>, devices: Vec<Device>) -> Self {
+        Self {
+            account: id.clone(),
+            id,
+            label: label.into(),
+            public_key: None,
+            department: None,
+            role: Role::Member,
+            devices,
+            formerly: vec![],
+            ask_about: vec![],
+            hosted_by: Some(HostedBy::Root),
+        }
+    }
+
+    pub fn with_department(self, department: Option<Id>) -> Self {
+        Self { department, ..self }
+    }
+
+    pub fn with_role(self, role: Role) -> Self {
+        Self { role, ..self }
+    }
+
+    pub fn with_devices(self, devices: Vec<Device>) -> Self {
+        Self { devices, ..self }
+    }
+
+    pub fn with_formerly(self, formerly: Vec<Id>) -> Self {
+        Self { formerly, ..self }
+    }
+
+    pub fn with_ask_about(self, ask_about: Vec<String>) -> Self {
+        Self { ask_about, ..self }
+    }
+
+    /// Whether the root's node hosts this member, which then has no account key and no node.
+    pub fn is_hosted(&self) -> bool {
+        self.hosted_by.is_some()
+    }
 }
 
 /// A key held by one of a person's clients (a browser, a phone, the CLI). Its private key never leaves
@@ -367,9 +456,13 @@ impl OrgDefinition {
 
     /// A member: listed in the definition, with a key that is not revoked.
     pub fn member(&self, account: &Id) -> Option<&Person> {
-        self.people
-            .iter()
-            .find(|one| &one.account == account && !self.revoked.contains(&one.public_key))
+        self.people.iter().find(|one| {
+            &one.account == account
+                && one
+                    .public_key
+                    .as_ref()
+                    .is_none_or(|key| !self.revoked.contains(key))
+        })
     }
 
     /// A device of a member, which may sign for them. A well-formed definition never lists a revoked
@@ -382,7 +475,7 @@ impl OrgDefinition {
 
     /// Account, root, and recovery keys: these must never be device keys.
     fn node_keys(&self) -> HashSet<&PublicKey> {
-        let accounts = self.people.iter().map(|p| &p.public_key);
+        let accounts = self.people.iter().filter_map(|p| p.public_key.as_ref());
         let pending = self.root.pending.iter();
         let roots = [Some(&self.root.public_key), self.root.recovery.as_ref()]
             .into_iter()
@@ -397,7 +490,11 @@ impl OrgDefinition {
         let root = &self.root;
         let pending = root.pending.as_ref();
         let new_root = pending.and_then(|one| one.public_key.as_ref());
-        let accounts: HashSet<&PublicKey> = self.people.iter().map(|p| &p.public_key).collect();
+        let accounts: HashSet<&PublicKey> = self
+            .people
+            .iter()
+            .filter_map(|p| p.public_key.as_ref())
+            .collect();
         let held: HashSet<&PublicKey> = accounts
             .iter()
             .copied()
@@ -474,6 +571,7 @@ impl OrgDefinition {
         }) {
             return Err("malformed department label, or its parent or head is missing".into());
         }
+        self.validate_hosted()?;
         if self.has_department_cycle() {
             return Err("a department is under itself".into());
         }
@@ -496,6 +594,30 @@ impl OrgDefinition {
         crate::outcome::validate(self)?;
         crate::seat::validate(self)?;
         self.validate_devices()
+    }
+
+    /// A member has an account key exactly when it is not hosted. A hosted member's account is its member id,
+    /// it has at least one device (its only way to act), and it is never the root's account, whose node holds
+    /// the root key.
+    fn validate_hosted(&self) -> Result<(), String> {
+        for person in &self.people {
+            if person.public_key.is_some() == person.is_hosted() {
+                return Err(format!(
+                    "member {} must have an account key, or be hosted with none",
+                    person.id
+                ));
+            }
+            let is_hosted_well = person.account == person.id
+                && !person.devices.is_empty()
+                && person.account != self.root.account;
+            if person.is_hosted() && !is_hosted_well {
+                return Err(format!(
+                    "hosted member {} needs its member id as its account, a device, and not to be the root",
+                    person.id
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Whether following parents from some department leads back to it. Departments form a tree.

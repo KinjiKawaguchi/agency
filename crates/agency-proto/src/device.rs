@@ -41,8 +41,9 @@ pub enum DeviceOp {
 /// devices, which leaves only adding the first one; after that, only their devices sign changes.
 fn change_key<'a>(person: &'a Person, signer: &Id) -> Result<&'a PublicKey, String> {
     if person.devices.is_empty() {
-        if signer == &person.account {
-            return Ok(&person.public_key);
+        // A hosted member has no account key: its first device comes with its claim, signed by the root.
+        if let (true, Some(key)) = (signer == &person.account, &person.public_key) {
+            return Ok(key);
         }
         return Err(
             "a person without devices adds their first device with their account key".into(),

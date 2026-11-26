@@ -11,6 +11,8 @@ public struct Team: Equatable, Sendable {
     public let mine: Set<String>
     /// The ids of the team's people who wait on the viewer: the node's rule, never worked out here.
     public let waitingOnViewer: Set<String>
+    /// For the viewer's requests addressed to a seat or an external party they answer for: whom each is for, by request id.
+    public let relayedFor: [String: String]
 
     public init(snapshot: TeamSnapshot) {
         view = snapshot.view
@@ -18,6 +20,7 @@ public struct Team: Equatable, Sendable {
         source = snapshot.source
         mine = Set(snapshot.mine)
         waitingOnViewer = Set(snapshot.waitingOnViewer)
+        relayedFor = snapshot.relayedFor ?? [:]
     }
 
     public var isReplica: Bool {

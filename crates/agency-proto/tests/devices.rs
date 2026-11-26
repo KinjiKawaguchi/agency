@@ -4,7 +4,7 @@ use agency_proto::device::{check_device_change, envelope_signer};
 use agency_proto::org::Root;
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
-    Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
+    Kind, OrgDefinition, Payload, Person, Signed, Timestamp,
 };
 
 const AT: &str = "2026-11-24T12:00:00Z";
@@ -18,15 +18,12 @@ fn now() -> clock::OffsetDateTime {
 }
 
 fn person(account: &str, key: &AccountKey) -> Person {
-    Person {
-        id: id(account),
-        label: account.to_uppercase(),
-        account: id(account),
-        public_key: key.public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    }
+    Person::new(
+        id(account),
+        account.to_uppercase(),
+        id(account),
+        key.public(),
+    )
 }
 
 /// Keys of one test org: alice is the root, bob a member; each has an account key on their node.

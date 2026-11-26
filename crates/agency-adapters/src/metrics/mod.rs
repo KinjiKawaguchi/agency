@@ -299,6 +299,7 @@ impl Recorder {
             budget: Budget {
                 in_node_read_p95_ms: IN_NODE_READ_P95_BUDGET_MS,
             },
+            objectives: vec![],
             series: series_of(hours, wanted),
         }
     }

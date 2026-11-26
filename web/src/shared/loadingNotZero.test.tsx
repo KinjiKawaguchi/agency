@@ -57,7 +57,8 @@ describe('a screen before the node has answered', () => {
   it('has a placeholder for what is waiting in the overview lead', async () => {
     const { release } = await held('/overview', [TEAM_VIEW])
     await waitFor(() => expect(document.querySelector('.ov-lead .skeleton')).not.toBeNull())
-    expect(screen.queryByText(/waits? for you|Nothing waits/)).not.toBeInTheDocument()
+    // The lead says nothing of the whole while a team is read. (A team that has answered may say its own line: that is what it answered.)
+    expect(document.querySelector('.ov-lead')?.textContent).not.toMatch(/waits? for you|Nothing waits/)
     await release()
     await waitFor(() => expect(document.querySelector('.ov-lead .skeleton')).toBeNull())
     expect(document.querySelector('.ov-lead')?.textContent).not.toBe('')

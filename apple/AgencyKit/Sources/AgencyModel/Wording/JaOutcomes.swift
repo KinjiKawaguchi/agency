@@ -15,6 +15,17 @@ extension Ja {
         public static let noNumber = "この期間に数値がありません。"
         public static let gap = "—"
 
+        /// The cost of the same days under a KPI's numbers, in the web's words.
+        public enum Cost {
+            public static let title = "同じ日のコスト"
+            public static let series = "コスト"
+            public static func day(_ date: String, _ cost: String) -> String { "\(date): \(cost)" }
+            public static let unavailable = "この期間のコストを読み込めませんでした。"
+            public static let none = "この期間のコストは報告されていません。"
+            public static let noCost = "コストの報告なし"
+            public static func partial(_ count: Int) -> String { "報告できなかった \(count) チームを除きます。" }
+        }
+
         public static func lastEntered(_ day: String) -> String { "最後に入れた数値: \(day)" }
         public static func lastNumber(_ value: String, day: String) -> String { "最後の数値: \(value)、\(day)" }
 

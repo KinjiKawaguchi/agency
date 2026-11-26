@@ -122,6 +122,78 @@ pub fn is_in_node_read(kind: SeriesKind, name: &str) -> bool {
     .contains(&template)
 }
 
+/// Whether an objective the operator set for a group is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ObjectiveState {
+    /// The 95th percentile of the group is within the objective: the upper bound of its bucket is at most
+    /// the objective.
+    Met,
+    /// It is not: every duration in its bucket is above the objective (the bucket's lower bound is at or
+    /// above it), which includes a 95th percentile slower than the last bound (30 000 ms).
+    NotMet,
+    /// The objective falls inside the bucket of the 95th percentile, so the measurement cannot say: a
+    /// bucket is the most that is known of a duration. A screen shows it as that, not as met or not met.
+    Undetermined,
+    /// There is nothing to compare: the group had no calls in the range.
+    Unknown,
+}
+
+/// An objective the operator set for the node (`metrics.objectives` in `config.json`) and how the
+/// measurements stand against it over the range asked for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct ObjectiveResult {
+    /// The group of routes the objective is for (`group` of a `serve` series).
+    pub group: String,
+    /// The most the 95th percentile of the group may be, in milliseconds: what the operator set.
+    pub p95_ms: u32,
+    pub state: ObjectiveState,
+    /// The 95th percentile it was compared to, as the upper bound of its bucket; left out when there is
+    /// none (no calls, or slower than 30 000 ms).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measured_p95_ms: Option<u32>,
+}
+
+/// How the `serve` series of `group` stand against an objective of `p95_ms`: the buckets of all of the
+/// group's series (every route and status of it) are added up and the bucket of their 95th percentile is
+/// compared: `Met` when its upper bound is at most the objective, `NotMet` when its lower bound (the bound
+/// before it, 0 for the first) is at or above it, and `Undetermined` when the objective falls inside it.
+pub fn judge(group: &str, p95_ms: u32, series: &[Series]) -> ObjectiveResult {
+    let mut buckets = [0u64; BUCKETS];
+    for one in series
+        .iter()
+        .filter(|one| one.kind == SeriesKind::Serve && one.group == group)
+    {
+        for (total, count) in buckets.iter_mut().zip(&one.buckets) {
+            *total += count;
+        }
+    }
+    let bucket = percentile_bucket(&buckets, 95);
+    let measured = bucket.and_then(|index| BUCKET_BOUNDS_MS.get(index).copied());
+    let state = match bucket {
+        None => ObjectiveState::Unknown,
+        Some(index) => {
+            let lower = index
+                .checked_sub(1)
+                .map_or(0, |below| BUCKET_BOUNDS_MS[below]);
+            match measured {
+                Some(upper) if upper <= p95_ms => ObjectiveState::Met,
+                _ if lower >= p95_ms => ObjectiveState::NotMet,
+                _ => ObjectiveState::Undetermined,
+            }
+        }
+    };
+    ObjectiveResult {
+        group: group.to_owned(),
+        p95_ms,
+        state,
+        measured_p95_ms: measured,
+    }
+}
+
 /// What the answer says of the budget, so that a screen does not decide it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -219,6 +291,11 @@ pub struct Metrics {
     pub generated_at: Timestamp,
     /// The budget an in-node read is held to.
     pub budget: Budget,
+    /// How the groups the operator set objectives for stand against them. Left out when there are none, and
+    /// in an answer narrowed to a kind or a name (which would not be the whole of a group).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<ObjectiveResult>>", optional)]
+    pub objectives: Vec<ObjectiveResult>,
     /// Ordered by kind, then name, then status.
     pub series: Vec<Series>,
 }
@@ -284,6 +361,12 @@ pub fn bucket_of(millis: u64) -> usize {
 /// The `percent`th percentile (1 to 100) of the durations in `buckets`, by nearest rank, as the upper
 /// bound of its bucket in milliseconds. `None` without durations, or when it lies in the last bucket.
 pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
+    percentile_bucket(buckets, percent).and_then(|index| BUCKET_BOUNDS_MS.get(index).copied())
+}
+
+/// The index of the bucket the `percent`th percentile of the durations in `buckets` lies in, by nearest rank.
+/// `None` without durations or for a percent outside 1 to 100.
+pub fn percentile_bucket(buckets: &[u64], percent: u64) -> Option<usize> {
     let total: u64 = buckets.iter().sum();
     if total == 0 || !(1..=100).contains(&percent) {
         return None;
@@ -293,7 +376,7 @@ pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
     for (index, count) in buckets.iter().enumerate() {
         seen += count;
         if seen >= rank {
-            return BUCKET_BOUNDS_MS.get(index).copied();
+            return Some(index);
         }
     }
     None

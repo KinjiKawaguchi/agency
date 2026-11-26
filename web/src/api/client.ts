@@ -1,4 +1,5 @@
 import type { ClaimInput, ClaimState } from '../claim/provisional'
+import { labelsMadePrintable } from '../shared/printable'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, VapidKey, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
@@ -125,7 +126,8 @@ async function readJson<T>(response: Response): Promise<T> {
     const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : `HTTP ${response.status}`
     throw new ApiError(message, response.status)
   }
-  return body as T
+  // The labels in an answer are drawn as they are printed on a terminal: a hidden character is a `?`.
+  return labelsMadePrintable(body) as T
 }
 
 /** How long after a call failed without an answer the node is asked whether the sign-in is really gone. */

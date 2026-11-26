@@ -1,8 +1,9 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    group_of, is_error_status, is_in_node_read, valid_name, valid_status, Metrics, Series,
-    SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
+    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, Metrics,
+    ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS,
+    ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -100,12 +101,12 @@ fn a_series_kind_is_written_in_lower_case_and_the_peer_and_client_only_where_the
     let kinds: Vec<&str> = series.iter().map(|s| s["kind"].as_str().unwrap()).collect();
     assert_eq!(
         kinds,
-        ["serve", "serve", "serve", "call", "call", "client", "client"]
+        ["serve", "serve", "serve", "serve", "call", "call", "client", "client"]
     );
     assert_eq!(serde_json::to_value(SeriesKind::Client).unwrap(), "client");
     assert!(series[0].get("peer").is_none() && series[0].get("client").is_none());
-    assert_eq!(series[3]["peer"], "node-b.example");
-    assert_eq!(series[5]["client"], "web");
+    assert_eq!(series[4]["peer"], "node-b.example");
+    assert_eq!(series[6]["client"], "web");
 }
 
 fn first() -> Series {
@@ -354,4 +355,195 @@ fn a_series_that_says_another_group_or_another_budget_than_its_name_is_refused()
     for bad in [other_group, budget_where_there_is_none, no_budget] {
         assert!(!bad.is_consistent(), "{bad:?}");
     }
+}
+
+#[test]
+fn the_objectives_of_the_sample_are_what_judging_its_series_gives() {
+    let metrics = sample();
+    assert_eq!(metrics.objectives.len(), 4);
+    for stated in &metrics.objectives {
+        assert_eq!(
+            &judge(&stated.group, stated.p95_ms, &metrics.series),
+            stated,
+            "{}",
+            stated.group
+        );
+    }
+    let value = serde_json::to_value(&metrics).unwrap();
+    let states: Vec<&str> = value["objectives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["state"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        states,
+        ["met", "undetermined", "notMet", "unknown"],
+        "each of the four"
+    );
+    assert!(
+        value["objectives"][3].get("measuredP95Ms").is_none(),
+        "left out when there is none"
+    );
+}
+
+#[test]
+fn an_objective_is_met_when_the_95th_percentile_of_the_whole_group_is_within_it() {
+    let series = sample().series;
+    let desk = |p95| judge("desk", p95, &series);
+    assert_eq!(
+        (desk(10).state, desk(10).measured_p95_ms),
+        (ObjectiveState::Met, Some(10)),
+        "exactly the objective is met"
+    );
+    assert_eq!(
+        desk(9).state,
+        ObjectiveState::Undetermined,
+        "p95 is in (5, 10]: 9 is inside it"
+    );
+    assert_eq!(
+        desk(5).state,
+        ObjectiveState::NotMet,
+        "5 is the bucket's lower bound"
+    );
+    assert_eq!(desk(30_000).state, ObjectiveState::Met);
+    // The group's series are added up: usage has a 2xx series (p95 1000) and a 5xx one (30 000 ms).
+    let usage = judge("usage", 30_000, &series);
+    assert_eq!(
+        (usage.state, usage.measured_p95_ms),
+        (ObjectiveState::Met, Some(30_000))
+    );
+    assert_eq!(
+        judge("usage", 29_999, &series).state,
+        ObjectiveState::Undetermined
+    );
+    assert_eq!(
+        judge("usage", 10_000, &series).state,
+        ObjectiveState::NotMet
+    );
+    // No calls in the group is not met and not failed.
+    let none = judge("evaluation", 100, &series);
+    assert_eq!(
+        (none.state, none.measured_p95_ms),
+        (ObjectiveState::Unknown, None)
+    );
+    // What is not a `serve` series of the group is not in it: a call of the group's name, a client's report.
+    let mut only_others: Vec<Series> = series
+        .iter()
+        .filter(|s| s.kind != SeriesKind::Serve)
+        .cloned()
+        .collect();
+    only_others.iter_mut().for_each(|s| s.group = "desk".into());
+    assert_eq!(
+        judge("desk", 10, &only_others).state,
+        ObjectiveState::Unknown
+    );
+    // Slower than the last bound is not met, whatever the objective, and has no measured number.
+    let mut slow = series[0].clone();
+    slow.buckets = vec![0; 15];
+    slow.buckets[14] = 5;
+    let beyond = judge("desk", 30_000, &[slow]);
+    assert_eq!(
+        (beyond.state, beyond.measured_p95_ms),
+        (ObjectiveState::NotMet, None)
+    );
+}
+
+#[test]
+fn the_states_are_written_in_camel_case_and_the_field_is_left_out_when_there_are_none() {
+    assert_eq!(
+        serde_json::to_value(ObjectiveState::NotMet).unwrap(),
+        "notMet"
+    );
+    let mut quiet = sample();
+    quiet.objectives.clear();
+    assert!(serde_json::to_value(&quiet)
+        .unwrap()
+        .get("objectives")
+        .is_none());
+    let read: ObjectiveResult =
+        serde_json::from_str(r#"{"group":"desk","p95Ms":5,"state":"met"}"#).unwrap();
+    assert_eq!(read.measured_p95_ms, None);
+}
+
+/// A group whose only series has ten durations in the bucket with the index `bucket`.
+fn group_in_bucket(bucket: usize) -> Vec<Series> {
+    let mut series = sample()
+        .series
+        .into_iter()
+        .find(|s| s.group == "desk")
+        .unwrap();
+    series.buckets = vec![0; 15];
+    series.buckets[bucket] = 10;
+    vec![series]
+}
+
+#[test]
+fn an_objective_inside_the_bucket_of_the_95th_percentile_is_undetermined_not_met_and_not_unmet() {
+    // The 95th percentile is in the bucket (50, 100]: its upper bound is 100 and its lower bound 50.
+    let series = group_in_bucket(6);
+    let state = |objective| judge("desk", objective, &series).state;
+    assert_eq!(
+        state(100),
+        ObjectiveState::Met,
+        "the upper bound is within the objective"
+    );
+    assert_eq!(state(101), ObjectiveState::Met);
+    assert_eq!(
+        state(99),
+        ObjectiveState::Undetermined,
+        "the objective is inside the bucket"
+    );
+    assert_eq!(
+        state(75),
+        ObjectiveState::Undetermined,
+        "75 ms with a p95 in (50, 100] is not 'over'"
+    );
+    assert_eq!(state(51), ObjectiveState::Undetermined);
+    assert_eq!(
+        state(50),
+        ObjectiveState::NotMet,
+        "everything in the bucket is above 50"
+    );
+    assert_eq!(state(10), ObjectiveState::NotMet);
+    assert_eq!(
+        judge("desk", 75, &series).measured_p95_ms,
+        Some(100),
+        "the number compared is the upper bound"
+    );
+}
+
+#[test]
+fn the_first_bucket_starts_at_zero_and_the_last_has_no_upper_bound() {
+    // The first bucket is (0, 1]: an objective of 1 is met, and nothing is below it to be over.
+    let first = group_in_bucket(0);
+    assert_eq!(judge("desk", 1, &first).state, ObjectiveState::Met);
+    // The second is (1, 2]: an objective of 1 is not met (every duration in it is over 1 ms), 2 is.
+    let second = group_in_bucket(1);
+    assert_eq!(judge("desk", 1, &second).state, ObjectiveState::NotMet);
+    assert_eq!(judge("desk", 2, &second).state, ObjectiveState::Met);
+    // The slowest bucket is above 30 000 ms: any objective up to the last bound is not met, and there is no
+    // number to say.
+    let last = group_in_bucket(14);
+    for objective in [1, 29_999, 30_000] {
+        let result = judge("desk", objective, &last);
+        assert_eq!(
+            (result.state, result.measured_p95_ms),
+            (ObjectiveState::NotMet, None),
+            "{objective}"
+        );
+    }
+    // An objective past the last bound (which a node does not accept) is inside that bucket.
+    assert_eq!(
+        judge("desk", 40_000, &last).state,
+        ObjectiveState::Undetermined
+    );
+    // The bucket before the last is (10 000, 30 000].
+    let near = group_in_bucket(13);
+    assert_eq!(judge("desk", 30_000, &near).state, ObjectiveState::Met);
+    assert_eq!(
+        judge("desk", 29_999, &near).state,
+        ObjectiveState::Undetermined
+    );
+    assert_eq!(judge("desk", 10_000, &near).state, ObjectiveState::NotMet);
 }
