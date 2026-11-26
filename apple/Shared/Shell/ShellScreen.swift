@@ -23,7 +23,7 @@ struct ShellScreen: View {
                 onOpenDesk: { model.router.tab = .desk }, onOpenOverview: { model.router.tab = .overview }, onSignInAgain: signInAgain
             )
         case .results:
-            ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: signInAgain)
+            ResultsScreen(costs: session.costs, evaluation: session.evaluation, outcomes: session.outcomes, onSignInAgain: signInAgain)
         case .devices:
             DevicesScreen(store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Key.noKey(.platform) })
         }
