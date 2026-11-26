@@ -447,6 +447,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         devices: vec![],
     };
     let body = OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,

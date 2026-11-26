@@ -66,9 +66,12 @@ agency --dir ~/.agency dept-remove --org acme --dept clients
 agency --dir ~/.agency team-plan --org acme --team app --new-feature 40 --improvement 20 --maintenance 20 --debt 15 --incident 5 --weekly-budget-usd 500
 agency --dir ~/.agency team-set --org acme --team web --label "Web client"
 agency --dir ~/.agency team-remove --org acme --team web
+agency --dir ~/.agency kpi-add --org acme --kpi revenue --label "Revenue" --kind business --unit money --currency JPY --good-when higher
+agency --dir ~/.agency kpi-add --org acme --kpi activation --label "Activation" --kind product --unit percent --good-when higher
+agency --dir ~/.agency plan-aim --org acme --team app --epic app#10 --kpi activation
 ```
 
-`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `team-plan` states what the org intends for a team: the percent of its effort for each kind of work (adding up to 100) and its weekly budget in whole US dollars; `team-plan --none` clears it. `team-set` renames a team, and `team-remove` takes it out of the org's definition; it refuses while the team is still in this node's `config.json`, so remove it there first and a team that runs here is never left outside the org. `agency status` lists each org's departments, their teams, and the teams' plans.
+`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `team-plan` states what the org intends for a team: the percent of its effort for each kind of work (adding up to 100) and its weekly budget in whole US dollars; `team-plan --none` clears it (its aims with it). `team-set` renames a team, and `team-remove` takes it out of the org's definition; it refuses while the team is still in this node's `config.json`, so remove it there first and a team that runs here is never left outside the org. `kpi-add` states what the org measures (a KPI: a label, a kind, a unit, and which way is better; a money KPI names its currency, and money is never converted; no number, since the numbers are business data that stay on the owner's node), `kpi-set` changes it, and `kpi-remove` takes it out while no plan aims at it. `plan-aim` states that a team's plan aims an epic at a KPI (the team needs a plan first), and `plan-unaim` takes it out. `agency status` lists each org's departments, their teams, the teams' plans, KPIs, and aims.
 
 Join from an invite link and answer (on the invitee's home node):
 

@@ -196,6 +196,7 @@ pub struct TeamPlanArgs {
 
 fn plan_of(args: &TeamPlanArgs) -> Option<TeamPlan> {
     Some(TeamPlan {
+        aims: vec![],
         allocation: Allocation {
             new_feature: args.new_feature?,
             improvement: args.improvement?,

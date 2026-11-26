@@ -4,6 +4,9 @@ use agency_proto::canonical::canonical_of;
 use agency_proto::org::{
     verify_genesis, verify_successor, Allocation, Department, Root, SignedOrg, TeamPlace, TeamPlan,
 };
+use agency_proto::outcome::{
+    Aim, Currency, GoodWhen, Kpi, KpiKind, KpiUnit, EPIC, MAX_AIMS, MAX_KPIS,
+};
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
     Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
@@ -17,6 +20,7 @@ const AT: &str = "2026-11-24T12:00:00Z";
 
 fn genesis(root: &AccountKey) -> SignedOrg {
     let body = OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,
@@ -335,6 +339,7 @@ fn comment_envelope() -> Envelope {
 fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
     body.teams[0].plan = Some(TeamPlan {
+        aims: vec![],
         allocation: Allocation {
             new_feature: 40,
             improvement: 20,
@@ -349,6 +354,148 @@ fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
 }
 
+fn allocation() -> Allocation {
+    Allocation {
+        new_feature: 40,
+        improvement: 20,
+        maintenance: 20,
+        debt: 15,
+        incident: 5,
+    }
+}
+
+fn kpi(raw: &str, label: &str, unit: KpiUnit) -> Kpi {
+    Kpi {
+        id: id(raw),
+        label: label.into(),
+        kind: KpiKind::Business,
+        unit,
+        good_when: GoodWhen::Higher,
+    }
+}
+
+fn aim(epic: &str, kpi: &str) -> Aim {
+    Aim {
+        epic: epic.into(),
+        kpi: id(kpi),
+    }
+}
+
+/// The next version of `org`, with KPIs and a team plan that aims at one: how what an org measures is signed.
+fn org_with_outcomes(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    let yen = KpiUnit::Money {
+        currency: Currency::parse("JPY").unwrap(),
+    };
+    let mut activation = kpi("activation", "Activation", KpiUnit::Percent);
+    activation.kind = KpiKind::Product;
+    let mut lead_time = kpi("lead-time", "Lead time of a feature", KpiUnit::Seconds);
+    lead_time.kind = KpiKind::Product;
+    lead_time.good_when = GoodWhen::Lower;
+    body.kpis = vec![kpi("revenue", "Revenue", yen), activation, lead_time];
+    let plan = TeamPlan::new(allocation(), 500).with_aims(vec![aim("app#10", "activation")]);
+    body.teams[0].plan = Some(plan);
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
+#[test]
+fn what_an_org_measures_is_left_out_of_a_version_that_states_nothing() {
+    let key = AccountKey::from_seed([7u8; 32]);
+    let canonical = canonical_of(&genesis(&key).body).unwrap();
+    assert!(
+        !canonical.contains("kpis") && !canonical.contains("aims"),
+        "{canonical}"
+    );
+}
+
+#[test]
+fn a_kpi_is_written_with_its_unit_and_currency_beside_each_other() {
+    let yen = kpi(
+        "revenue",
+        "Revenue",
+        KpiUnit::Money {
+            currency: Currency::parse("JPY").unwrap(),
+        },
+    );
+    let written = serde_json::to_value(&yen).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "id": "revenue", "label": "Revenue", "kind": "business", "unit": "money", "currency": "JPY", "goodWhen": "higher" })
+    );
+    assert_eq!(serde_json::from_value::<Kpi>(written).unwrap(), yen);
+    let seconds = serde_json::to_value(kpi("lead-time", "Lead time", KpiUnit::Seconds)).unwrap();
+    assert_eq!(seconds["unit"], "seconds");
+    assert!(seconds.get("currency").is_none());
+    for bad in [
+        serde_json::json!({ "id": "r", "label": "R", "kind": "business", "unit": "usd", "goodWhen": "higher" }),
+        serde_json::json!({ "id": "r", "label": "R", "kind": "business", "unit": "money", "goodWhen": "higher" }),
+        serde_json::json!({ "id": "r", "label": "R", "kind": "business", "unit": "money", "currency": "yen", "goodWhen": "higher" }),
+    ] {
+        assert!(serde_json::from_value::<Kpi>(bad.clone()).is_err(), "{bad}");
+    }
+    for bad in ["jpy", "JP", "JPYY", "J1Y", "", "円円円"] {
+        assert!(Currency::parse(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn what_an_org_measures_and_aims_at_is_checked_by_every_node() {
+    let key = AccountKey::from_seed([7u8; 32]);
+    let with = |kpis: Vec<Kpi>, aims: Vec<Aim>| {
+        let mut body = genesis(&key).body;
+        body.kpis = kpis;
+        body.teams[0].plan = Some(TeamPlan::new(allocation(), 0).with_aims(aims));
+        body.validate()
+    };
+    let count = || kpi("count", "Count", KpiUnit::Count);
+    assert_eq!(with(vec![count()], vec![aim("app#1", "count")]), Ok(()));
+    assert_eq!(with(vec![], vec![]), Ok(()));
+    assert!(with(vec![count(), count()], vec![]).is_err(), "a KPI twice");
+    assert!(
+        with(vec![kpi("count", "", KpiUnit::Count)], vec![]).is_err(),
+        "a label"
+    );
+    let many: Vec<Kpi> = (0..=MAX_KPIS)
+        .map(|n| kpi(&format!("k{n}"), "K", KpiUnit::Count))
+        .collect();
+    assert!(with(many, vec![]).is_err(), "more than {MAX_KPIS} KPIs");
+    assert!(
+        with(vec![count()], vec![aim("app#1", "other")]).is_err(),
+        "a KPI that is not stated"
+    );
+    assert!(
+        with(
+            vec![count()],
+            vec![aim("app#1", "count"), aim("app#1", "count")]
+        )
+        .is_err(),
+        "repeated"
+    );
+    assert_eq!(
+        with(
+            vec![count()],
+            vec![aim("app#1", "count"), aim("app#2", "count")]
+        ),
+        Ok(()),
+        "two epics may aim at one KPI"
+    );
+    for epic in ["", &"e".repeat(EPIC + 1), "app\n#1"] {
+        assert!(
+            with(vec![count()], vec![aim(epic, "count")]).is_err(),
+            "{epic:?}"
+        );
+    }
+    let aims: Vec<Aim> = (0..=MAX_AIMS)
+        .map(|n| aim(&format!("app#{n}"), "count"))
+        .collect();
+    assert!(
+        with(vec![count()], aims).is_err(),
+        "more than {MAX_AIMS} aims"
+    );
+}
+
 #[test]
 fn a_plan_allocation_adds_up_to_100() {
     let key = AccountKey::from_seed([7u8; 32]);
@@ -361,18 +508,21 @@ fn a_plan_allocation_adds_up_to_100() {
         incident: 5,
     };
     body.teams[0].plan = Some(TeamPlan {
+        aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert_eq!(body.validate(), Ok(()));
     allocation.incident = 4;
     body.teams[0].plan = Some(TeamPlan {
+        aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert!(body.validate().is_err(), "99");
     allocation.incident = u32::MAX;
     body.teams[0].plan = Some(TeamPlan {
+        aims: vec![],
         allocation,
         weekly_budget_usd: 0,
     });
@@ -420,6 +570,7 @@ fn vectors_match_testdata() {
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
+        "orgWithOutcomes": org_with_outcomes(&key, &org),
         "deviceChangeP256": device_change_p256(),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
