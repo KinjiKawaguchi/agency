@@ -12,6 +12,7 @@ pub mod decisions;
 pub mod delivery;
 pub mod departments;
 pub mod devices;
+pub mod directory;
 pub mod error;
 pub mod evaluation;
 pub mod funding_pick;

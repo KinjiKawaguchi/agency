@@ -90,6 +90,28 @@ To change something, send a signed envelope to its writer.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers). Either decides only the requests addressed to them (see "Requests"). An answerer also reads only those: a team's node serves an answerer a TeamView with just the requests addressed to it, and no people, work items, or epics, and does not serve it token usage (403).
 
+## The directory for agents
+
+An org's agents must know whom to ask for what: this thing goes to this member, that one to a seat, a legal check to an outside party. A team's runtime knows the people of its team only by its own names (see "Requests"), and the org definition reaches it no other way, so a team's harness reads the directory from **its own node**:
+
+```
+agency directory --org <org> [--json]
+```
+
+It is local and read-only, and answers only for an org the node's account belongs to. `--json` prints the `Directory`:
+
+```
+Directory         { org, departments: DirectoryDepartment[], members: DirectoryMember[], seats: DirectoryParty[], externals: DirectoryParty[] }
+DirectoryMember   { id, label, department?, role: "member" | "answerer", runtimeNames: RuntimeNames[] }
+DirectoryParty    { id, label, department?, askAbout: string[], answeredBy: Id[], runtimeNames: RuntimeNames[] }
+RuntimeNames      { team, names: string[] }
+```
+
+- The members, the seats, and the external parties are in the order of the definition. `askAbout` is what to ask a seat or an external party about, in the org's own words, and `answeredBy` the members who answer for them in order of preference (for a seat with none, the team's owner does; for an external party there is always one). A member has no `askAbout`: the org does not say what to ask them about.
+- `runtimeNames` is the names the **teams this node runs** know the addressee by: `owner` for a team's owner, and each key of the team's `people` that maps to its id. A request whose `to` is one of those names is for the addressee, so a harness that wants to ask Carol about an invoice writes `finance` if that is her name in its team. A team that addresses none of these names is left out, and a team on another node is not here: only its own node knows its names.
+- It holds labels, departments, roles and what to ask about: **never a key, a device, an account, an address, an email, or a phone number**, because the definition holds none of them for a seat or an external party and this is not the place to add them for a member.
+- The sample, with made-up names, is `testdata/directory.sample.json`.
+
 ## Devices (kind `device`)
 
 A device change adds or removes one of a member's devices:
