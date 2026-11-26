@@ -30,6 +30,9 @@ impl HttpPeers {
         Ok(Self {
             http: reqwest::Client::builder()
                 .user_agent(crate::USER_AGENT)
+                // Others choose where this node sends (team places, invite links, team domains); a
+                // redirect would send its requests, and their headers, somewhere else.
+                .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(8))
                 .build()?,
         })

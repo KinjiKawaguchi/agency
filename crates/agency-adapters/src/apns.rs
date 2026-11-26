@@ -77,6 +77,7 @@ impl Apns {
         let key = EncodingKey::from_ec_der(&pkcs8_der(&pem)?);
         let http = reqwest::Client::builder()
             .user_agent(crate::USER_AGENT)
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|error| error.to_string())?;
