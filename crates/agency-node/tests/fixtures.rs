@@ -301,6 +301,8 @@ async fn evaluation_answer(alice: &Running) -> Value {
     let at = |raw: &str| agency_proto::clock::parse(raw).unwrap();
     let pull_request =
         |title: &str, opened: &str, merged: &str, started: Option<&str>| MergedPullRequest {
+            repo: "acme/app".into(),
+            number: 1,
             title: title.into(),
             body: String::new(),
             opened_at: at(opened),

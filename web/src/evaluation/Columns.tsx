@@ -15,6 +15,8 @@ export interface ColumnData {
   date: string
   /** In stacking order, the first at the bottom. */
   segments: readonly Segment[]
+  /** The day has no number to draw: no column and no tip (it is not a day of 0), and `noData` is what it reads aloud. */
+  isMissing?: boolean
 }
 
 interface ColumnsProps {
@@ -26,16 +28,19 @@ interface ColumnsProps {
   describe: (date: string, total: number) => string
   /** Whether the tip adds a total below its rows; true for a stack of several types. */
   hasTotal?: boolean
+  /** What a day with no number reads aloud, after its date; needed only where a column can be missing. */
+  noData?: string
 }
 
 /** Columns by day, each one a stack of its segments. A single segment makes a plain column chart. */
-export function Columns({ columns, max, format, label, describe, hasTotal = false }: ColumnsProps) {
+export function Columns({ columns, max, format, label, describe, hasTotal = false, noData }: ColumnsProps) {
   const { fmt } = useI18n()
   const days = useDays(columns.length)
   return (
     <ChartFrame max={max} format={format} dates={columns.map((column) => column.date)} label={label}>
       <div className="ev-cols" onKeyDown={days.onKeyDown}>
         {columns.map((column, index) => {
+          if (column.isMissing === true) return <div key={column.date} className="ev-col" {...days.itemProps(index)} aria-label={noData === undefined ? fmt.shortDate(column.date) : `${fmt.shortDate(column.date)}: ${noData}`} />
           const total = column.segments.reduce((sum, segment) => sum + segment.value, 0)
           const isSingle = column.segments.length === 1
           const rows = column.segments.filter((segment) => isSingle || segment.value > 0)

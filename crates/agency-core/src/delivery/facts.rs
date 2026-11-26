@@ -13,6 +13,9 @@ pub struct DeliveryFacts {
 /// A pull request that was merged.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MergedPullRequest {
+    /// The repository (`owner/name`) and the number the pull request has in it.
+    pub repo: String,
+    pub number: u64,
     pub title: String,
     pub body: String,
     pub opened_at: OffsetDateTime,

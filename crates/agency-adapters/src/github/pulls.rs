@@ -12,7 +12,7 @@ const PAGES_AT_MOST: usize = 20;
 const QUERY: &str = "query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){\
 pullRequests(states:MERGED,first:50,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){\
 pageInfo{hasNextPage endCursor}\
-nodes{title body createdAt mergedAt updatedAt \
+nodes{number title body createdAt mergedAt updatedAt \
 commits(first:1){nodes{commit{authoredDate}}} \
 closingIssuesReferences(first:5){nodes{timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){\
 nodes{... on ProjectV2ItemStatusChangedEvent{createdAt status}}}}}}}}}";
@@ -50,6 +50,7 @@ struct PageInfo {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Node {
+    number: u64,
     title: String,
     body: Option<String>,
     created_at: String,
@@ -103,8 +104,10 @@ fn issue_started_at(issues: &[Issue]) -> Option<OffsetDateTime> {
 }
 
 /// The pull request, if it was merged and its times can be read.
-fn merged_pull_request(node: &Node) -> Option<MergedPullRequest> {
+fn merged_pull_request(repo: &str, node: &Node) -> Option<MergedPullRequest> {
     Some(MergedPullRequest {
+        repo: repo.to_owned(),
+        number: node.number,
         title: node.title.clone(),
         body: node.body.clone().unwrap_or_default(),
         opened_at: time(&node.created_at)?,
@@ -124,6 +127,7 @@ fn merged_pull_request(node: &Node) -> Option<MergedPullRequest> {
 /// when it merged, so once a page's last pull request was updated before `since`, the rest were merged
 /// before it.
 fn read_page(
+    repo: &str,
     text: &str,
     since: OffsetDateTime,
 ) -> Result<(Vec<MergedPullRequest>, Option<String>), GhError> {
@@ -136,7 +140,7 @@ fn read_page(
     let found = page
         .nodes
         .iter()
-        .filter_map(merged_pull_request)
+        .filter_map(|node| merged_pull_request(repo, node))
         .filter(|pull_request| pull_request.merged_at >= since)
         .collect();
     let older = page
@@ -175,7 +179,7 @@ pub async fn merged_since(
         if let Some(cursor) = &after {
             args.extend(["-f".into(), format!("after={cursor}")]);
         }
-        let (found, next) = read_page(&gh.run(&args).await?, since)?;
+        let (found, next) = read_page(&format!("{owner}/{name}"), &gh.run(&args).await?, since)?;
         all.extend(found);
         match next {
             Some(cursor) => after = Some(cursor),
@@ -201,7 +205,7 @@ mod tests {
         issues: serde_json::Value,
     ) -> serde_json::Value {
         json!({
-            "title": title, "body": null, "createdAt": "2026-11-22T01:00:00Z", "mergedAt": merged, "updatedAt": updated,
+            "number": 7, "title": title, "body": null, "createdAt": "2026-11-22T01:00:00Z", "mergedAt": merged, "updatedAt": updated,
             "commits": {"nodes": [{"commit": {"authoredDate": "2026-11-22T00:00:00Z"}}]},
             "closingIssuesReferences": {"nodes": issues},
         })
@@ -215,6 +219,23 @@ mod tests {
 
     fn issue(events: serde_json::Value) -> serde_json::Value {
         json!({"timelineItems": {"nodes": events}})
+    }
+
+    #[test]
+    fn a_pull_request_carries_its_repository_and_number_so_that_a_runtime_can_name_its_author() {
+        let mut numbered = node(
+            "feat: x",
+            Some("2026-11-22T02:00:00Z"),
+            "2026-11-22T02:00:00Z",
+            json!([]),
+        );
+        numbered["number"] = json!(1234);
+        let text = page(vec![numbered], None);
+        let (found, _) = read_page("acme/web", &text, at("2026-11-01T00:00:00Z")).unwrap();
+        assert_eq!(
+            (found[0].repo.as_str(), found[0].number),
+            ("acme/web", 1234)
+        );
     }
 
     #[test]
@@ -236,7 +257,7 @@ mod tests {
             )],
             None,
         );
-        let (found, next) = read_page(&text, at("2026-11-01T00:00:00Z")).unwrap();
+        let (found, next) = read_page("acme/app", &text, at("2026-11-01T00:00:00Z")).unwrap();
         assert_eq!(next, None);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].title, "feat: a");
@@ -268,7 +289,7 @@ mod tests {
             )],
             None,
         );
-        let (found, _) = read_page(&text, at("2026-11-01T00:00:00Z")).unwrap();
+        let (found, _) = read_page("acme/app", &text, at("2026-11-01T00:00:00Z")).unwrap();
         assert_eq!(found[0].issue_started_at, Some(at("2026-11-21T11:00:00Z")));
         let before = json!([{"createdAt": "2026-11-21T08:00:00Z", "status": "Next"}]);
         let text = page(
@@ -281,7 +302,10 @@ mod tests {
             None,
         );
         assert_eq!(
-            read_page(&text, at("2026-11-01T00:00:00Z")).unwrap().0[0].issue_started_at,
+            read_page("acme/app", &text, at("2026-11-01T00:00:00Z"))
+                .unwrap()
+                .0[0]
+                .issue_started_at,
             None
         );
     }
@@ -305,7 +329,7 @@ mod tests {
             ],
             None,
         );
-        let (found, _) = read_page(&text, at("2026-11-01T00:00:00Z")).unwrap();
+        let (found, _) = read_page("acme/app", &text, at("2026-11-01T00:00:00Z")).unwrap();
         assert_eq!(
             (found[0].has_issue, found[0].issue_started_at),
             (false, None)
@@ -336,7 +360,7 @@ mod tests {
             ],
             None,
         );
-        let (found, _) = read_page(&text, at("2026-11-01T00:00:00Z")).unwrap();
+        let (found, _) = read_page("acme/app", &text, at("2026-11-01T00:00:00Z")).unwrap();
         assert_eq!(
             found.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(),
             ["feat: new"]
@@ -355,7 +379,10 @@ mod tests {
             )],
             Some("c1"),
         );
-        assert_eq!(read_page(&recent, since).unwrap().1.as_deref(), Some("c1"));
+        assert_eq!(
+            read_page("acme/app", &recent, since).unwrap().1.as_deref(),
+            Some("c1")
+        );
         let stale = page(
             vec![node(
                 "a",
@@ -366,7 +393,7 @@ mod tests {
             Some("c2"),
         );
         assert_eq!(
-            read_page(&stale, since).unwrap().1,
+            read_page("acme/app", &stale, since).unwrap().1,
             None,
             "everything after was updated before the period"
         );
@@ -379,7 +406,7 @@ mod tests {
             )],
             None,
         );
-        assert_eq!(read_page(&last, since).unwrap().1, None);
+        assert_eq!(read_page("acme/app", &last, since).unwrap().1, None);
     }
 
     #[test]
@@ -392,7 +419,7 @@ mod tests {
             r#"{"data":{"repository":null}}"#,
         ] {
             assert_eq!(
-                read_page(text, since).err(),
+                read_page("acme/app", text, since).err(),
                 Some(GhError::Failed),
                 "{text}"
             );

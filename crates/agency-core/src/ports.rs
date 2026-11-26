@@ -1,4 +1,5 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
+use crate::clients_seen::ClientsSeen;
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
@@ -18,6 +19,7 @@ use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
+use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -178,6 +180,12 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The app releases the node has seen (`clients_seen`), kept in its data directory.
+pub trait ClientsSeenStore {
+    fn clients_seen(&self) -> ClientsSeen;
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -198,6 +206,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + ClientsSeenStore
     + Send
     + Sync
 {
@@ -216,6 +225,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + ClientsSeenStore
             + Send
             + Sync,
     > Store for T
@@ -323,6 +333,21 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// The team's participants over the last `days` days, with the days cut at `utc_offset_minutes` (minutes
+    /// east of UTC). A runtime that does not report them answers 404, which is what a runtime that does not
+    /// implement this answers.
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        _days: u32,
+        _utc_offset_minutes: i32,
+    ) -> Result<ParticipantMetrics, RuntimeError> {
+        Err(RuntimeError {
+            status: 404,
+            message: "the team runtime does not report participant metrics".into(),
+        })
+    }
+
     /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
     /// report activity answers 404.
     async fn activity(
@@ -376,6 +401,21 @@ pub trait Notifier: Send + Sync {
     /// Whether the keys of a browser's subscription can be sent to; the reason when they cannot.
     fn web_push_check_keys(&self, _p256dh: &str, _auth: &str) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Sends a notification to each of some browsers' subscriptions, the answers in the order of the subscriptions. The
+    /// default sends one after another; an adapter that can send to several at once (a push service that is slow must
+    /// not hold the others, nor the iPhone's notice) does.
+    async fn send_web_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        let mut answers = Vec::with_capacity(subscriptions.len());
+        for subscription in subscriptions {
+            answers.push(self.send_web(subscription, notice).await);
+        }
+        answers
     }
 
     /// Sends a notification to a browser's subscription.
