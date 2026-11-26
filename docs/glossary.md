@@ -85,6 +85,9 @@ What the org's work achieves, as numbers about the business or the product, not 
 - **Observation** (実績値). One number for a KPI on one day, with where it came from (entered by hand, or from a connector), who entered it, and when. It is kept on the owner's node only, never in the definition, and only the owner reads it.
 - **Reading** (読み取り). How a KPI's numbers stand around the day the epic an aim names shipped: the last number on or before that day, the first at least 14 days after it, and their change. It is a *correlation*, never a cause, and it refuses (with a state that says why) when there is too little to read. Read at `/api/orgs/<org>/outcomes/readings`, owner only.
 - **Aim** (狙い). What a team's plan says an epic is meant to move: `plan.aims[]` pairs an epic (by its item reference) with a KPI of the org.
+- **Reading state** (読み取りの状態). Why a reading has numbers, or why it has none; only `ready` has numbers. The names on screen: `ready` (読めます), `notShipped` (まだ完了していません), `shipDateUnknown` (完了した日が分かりません), `noBaseline` (比べる元の数値がありません), `tooEarly` (まだ早すぎます), `noFollowUp` (その後の数値がありません), `tooFew` (数値が足りません). A state that refuses says what is missing, and a screen draws no trend and no 0 for it.
+- **Movement** (動き). The change of a KPI's number, worded by direction (rose 上がった, fell 下がった, unchanged 変わらず) and, from the KPI's `goodWhen`, as better (良い方) or worse (悪い方); a KPI with a `goodWhen` a client does not know is not coloured. A movement is told as "moved after it shipped" (完了のあとで動きました) and never as caused by the work.
+- **Outcomes page** (成果の指標). The owner's screen of the KPIs' numbers and the readings. Its name in Japanese is not 成果 alone, because the Results group (成果) it sits in has that name.
 
 ## Do not use
 
