@@ -378,6 +378,21 @@ pub trait Notifier: Send + Sync {
         Ok(())
     }
 
+    /// Sends a notification to each of some browsers' subscriptions, the answers in the order of the subscriptions. The
+    /// default sends one after another; an adapter that can send to several at once (a push service that is slow must
+    /// not hold the others, nor the iPhone's notice) does.
+    async fn send_web_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        let mut answers = Vec::with_capacity(subscriptions.len());
+        for subscription in subscriptions {
+            answers.push(self.send_web(subscription, notice).await);
+        }
+        answers
+    }
+
     /// Sends a notification to a browser's subscription.
     async fn send_web(
         &self,
