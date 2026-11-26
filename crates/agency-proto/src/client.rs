@@ -527,6 +527,15 @@ pub struct PushToken {
     /// before kinds existed reads as `request` only.
     #[serde(default = "default_push_events")]
     pub events: Vec<PushEvent>,
+    /// When APNs last took a notice for this token; left out until it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_succeeded_at: Option<Timestamp>,
+    /// The last time APNs did not, and why: its status and its reason code, or that it could not be reached;
+    /// never any other words of it. Left out until there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub last_failure: Option<PushFailure>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

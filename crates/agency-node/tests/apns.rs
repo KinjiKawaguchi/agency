@@ -41,6 +41,10 @@ async fn stand_in() -> (ApnsHosts, Seen) {
                     "bb" => (StatusCode::GONE, "Unregistered"),
                     "cc" => (StatusCode::BAD_REQUEST, "BadDeviceToken"),
                     "dd" => (StatusCode::FORBIDDEN, "ExpiredProviderToken"),
+                    "ff" => (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "the body says: a secret detail about the phone",
+                    ),
                     _ => (StatusCode::INTERNAL_SERVER_ERROR, "InternalServerError"),
                 };
                 (status, Json(json!({ "reason": reason })))
@@ -75,6 +79,8 @@ fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
         label: "iPhone".into(),
         registered_at: Timestamp::parse(T0).unwrap(),
         events: vec![PushEvent::Request],
+        last_succeeded_at: None,
+        last_failure: None,
     }
 }
 
@@ -197,6 +203,44 @@ async fn unregistered_and_bad_tokens_are_gone_and_other_errors_fail() {
     assert_eq!(send(&apns, "bb").await, Err(PushError::Gone));
     assert_eq!(send(&apns, "cc").await, Err(PushError::Gone));
     assert!(matches!(send(&apns, "ee").await, Err(PushError::Failed(_))));
+}
+
+#[tokio::test]
+async fn a_failure_is_the_status_and_the_reason_code_and_nothing_else_of_what_apns_said() {
+    let (hosts, _) = stand_in().await;
+    let clock = ManualClock::at(T0);
+    let apns = apns(hosts, &clock);
+    assert_eq!(
+        send(&apns, "ee").await,
+        Err(PushError::Failed(
+            "APNs answered 500 InternalServerError".into()
+        ))
+    );
+    assert_eq!(
+        send(&apns, "ff").await,
+        Err(PushError::Failed("APNs answered 503".into())),
+        "words that are not a reason code are not kept, and no space is left after the status"
+    );
+    assert_eq!(
+        send(&apns, "dd").await,
+        Err(PushError::Failed(
+            "APNs refused the provider token (ExpiredProviderToken)".into()
+        ))
+    );
+}
+
+#[tokio::test]
+async fn an_unreachable_apns_is_said_so_without_the_address_that_has_the_token_in_it() {
+    let hosts = ApnsHosts {
+        production: "http://127.0.0.1:1/production".into(),
+        sandbox: "http://127.0.0.1:1/sandbox".into(),
+    };
+    let clock = ManualClock::at(T0);
+    let Err(PushError::Failed(why)) = send(&apns(hosts, &clock), "ee").await else {
+        panic!("a closed port answers nothing");
+    };
+    assert_eq!(why, "APNs could not be reached");
+    assert!(!why.contains(&"ee".repeat(32)) && !why.contains("127.0.0.1"));
 }
 
 fn alert_of(kind: NoticeKind) -> (Value, Value, String, String) {
