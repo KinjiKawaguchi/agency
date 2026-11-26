@@ -81,6 +81,7 @@ struct NewsStoreTests {
         await news.poll()
         #expect(news.banners.map(\.text) == ["3 件の依頼があなたを待っています"])
         #expect(news.banners[0].count == 3)
+        #expect(news.banners[0].destination == .desk(itemID: nil), "several are on the desk; none of them is opened for the person")
     }
 
     @Test("the same reading twice makes no banner")

@@ -8,11 +8,14 @@ publish.workspace = true
 
 [dependencies]
 agency-core.workspace = true
+aes-gcm.workspace = true
 agency-proto.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
+hkdf.workspace = true
 jsonwebtoken.workspace = true
+p256.workspace = true
 rand_core.workspace = true
 reqwest.workspace = true
 serde.workspace = true

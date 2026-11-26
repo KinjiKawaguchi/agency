@@ -10,14 +10,17 @@ import { addChangeFor, signChange } from './changes'
 import { ApprovalSteps } from './ApprovalSteps'
 import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
+import { KeyKeepingNotes } from './KeyKeepingNotes'
+import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
+import { OsNoticesCard } from '../notifications/OsNoticesCard'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
 
 const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure))
 
-function AskToBeAdded({ deviceKey }: { deviceKey: DeviceKey }) {
+function AskToBeAdded({ deviceKey, onAsk }: { deviceKey: DeviceKey; onAsk: () => void }) {
   const { t } = useI18n()
   const api = useApi()
   const queryClient = useQueryClient()
@@ -33,7 +36,11 @@ function AskToBeAdded({ deviceKey }: { deviceKey: DeviceKey }) {
         <span>{t.devices.labelField}</span>
         <input type="text" value={label} maxLength={80} onChange={(event) => setLabel(event.target.value)} />
       </label>
-      <button className="btn primary" type="button" disabled={ask.isPending || label.trim() === ''} onClick={() => ask.mutate()}>
+      <button className="btn primary" type="button" disabled={ask.isPending || label.trim() === ''} onClick={() => {
+        // The click is what asks the browser to keep the key: some browsers show a prompt for it.
+        onAsk()
+        ask.mutate()
+      }}>
         {ask.isPending ? t.devices.asking : t.devices.ask}
       </button>
       {ask.error === null ? null : <p className="device-invalid" role="alert">{t.devices.askFailed(messageOf(ask.error))}</p>}
@@ -48,11 +55,13 @@ function PairingCode({ code, label, large = false }: { code: string; label: stri
 function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
   const { t } = useI18n()
   const enrollment = enrollmentOf(deviceKey.publicKey, list)
+  const kept: KeyKeeping = useKeyKeeping({ isEnrolled: enrollment.status === 'enrolled' })
   return (
     <section className="device-card">
       <h2 className="sub-head">{t.devices.thisDevice}</h2>
+      <KeyKeepingNotes keeping={kept.keeping} isLost={kept.isLost} />
       <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} large={enrollment.status === 'pending'} />
-      {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} /> : null}
+      {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} onAsk={kept.ask} /> : null}
       {enrollment.status === 'pending' ? (
         <>
           <p className="device-lead" role="status">{t.devices.waitingLead}</p>
@@ -191,6 +200,7 @@ export function DevicesPage() {
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
       <HomeNodesCard />
+      <OsNoticesCard />
       <InstallCard />
     </>
   )

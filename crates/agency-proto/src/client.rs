@@ -30,6 +30,11 @@ pub struct Me {
     pub account: AccountRef,
     pub orgs: Vec<OrgRef>,
     pub funding: Vec<Funding>,
+    /// Whether the node keeps titles and labels off every notification (`hideTitles`): a client that shows
+    /// them outside the app, such as a widget, leaves them out too. Left out when the node does not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(optional, type = "boolean")]
+    pub hides_titles: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -397,4 +402,55 @@ pub struct PushToken {
 #[ts(export)]
 pub struct PushTokenList {
     pub tokens: Vec<PushToken>,
+}
+
+/// The node's VAPID public key, which a browser subscribes with (`applicationServerKey`), and a short
+/// fingerprint of it. A subscription made with another key is void.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct VapidKey {
+    /// Uncompressed P-256 point, base64url without padding.
+    pub public_key: String,
+    pub key_id: String,
+}
+
+/// A browser's Web Push subscription to register for the owner's notifications.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, optional_fields)]
+pub struct PushSubscriptionInput {
+    /// The push service's URL for this browser: `https`, on a host the node allows, at most 500 characters.
+    pub endpoint: String,
+    /// The browser's P-256 public key (65 octets, base64url without padding).
+    pub p256dh: String,
+    /// The browser's authentication secret (16 octets, base64url without padding).
+    pub auth: String,
+    pub label: String,
+    /// The kinds of notification this subscription wants; as for `PushTokenInput`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<PushEvent>>,
+}
+
+/// A registered Web Push subscription. The keys are never given back, and `endpoint` is shortened to its
+/// host and the last 8 characters of its path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushSubscription {
+    /// A hash of the endpoint: what a DELETE names.
+    pub id: String,
+    pub endpoint: String,
+    pub label: String,
+    pub registered_at: Timestamp,
+    pub events: Vec<PushEvent>,
+    /// The `keyId` of the node's VAPID key it was made with.
+    pub key_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PushSubscriptionList {
+    pub subscriptions: Vec<PushSubscription>,
 }

@@ -1,0 +1,27 @@
+{
+  "org": "acme",
+  "days": 14,
+  "from": "2026-11-11",
+  "until": "2026-11-24",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "series": [
+    {
+      "kpi": { "id": "revenue", "label": "Monthly revenue", "kind": "business", "unit": "money", "currency": "JPY", "goodWhen": "higher" },
+      "before": { "kpi": "revenue", "date": "2026-10-31", "value": 1200000.0, "source": { "kind": "manual" }, "enteredAt": "2026-11-02T09:00:00Z", "enteredBy": "owner" },
+      "points": [
+        { "kpi": "revenue", "date": "2026-11-20", "value": 1350000.0, "source": { "kind": "manual" }, "enteredAt": "2026-11-21T09:00:00Z", "enteredBy": "owner", "note": "Before the month's last invoices" }
+      ]
+    },
+    {
+      "kpi": { "id": "activation", "label": "Activation", "kind": "product", "unit": "percent", "goodWhen": "higher" },
+      "points": [
+        { "kpi": "activation", "date": "2026-11-17", "value": 41.5, "source": { "kind": "connector", "name": "analytics-export" }, "enteredAt": "2026-11-18T03:00:00Z", "enteredBy": "owner" },
+        { "kpi": "activation", "date": "2026-11-24", "value": 43.2, "source": { "kind": "connector", "name": "analytics-export" }, "enteredAt": "2026-11-25T03:00:00Z", "enteredBy": "owner" }
+      ]
+    },
+    {
+      "kpi": { "id": "lead-time", "label": "Lead time of a feature", "kind": "product", "unit": "seconds", "goodWhen": "lower" },
+      "points": []
+    }
+  ]
+}

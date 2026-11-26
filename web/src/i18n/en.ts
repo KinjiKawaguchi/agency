@@ -83,6 +83,15 @@ export const en = {
     },
     more: (count: number) => `${count} more things are new.`,
     devicesMark: (count: number) => `${count} waiting to be approved`,
+    os: {
+      title: 'Notifications in this browser',
+      lead: 'Show what is new as a notification of the operating system while this page is hidden. It says what the page says, and stays in this browser.',
+      turnOn: 'Turn on notifications',
+      turnOff: 'Turn off notifications',
+      isOn: 'On. A notification appears when something is new while this page is hidden. The page keeps reading in the background to see it, as far as the browser lets it, and not while the browser is closed.',
+      isBlocked: 'This browser does not allow notifications for this page. Allow them in its site settings, then turn them on here.',
+      isUnsupported: 'This browser cannot show notifications from a page.',
+    },
   },
   people: {
     title: 'Participants and work',
@@ -202,6 +211,11 @@ export const en = {
     title: 'Devices',
     intro: 'Each browser, phone, or command line that decides for you has its own key. The key stays on the device and cannot be copied out of it. Decisions are signed with it.',
     thisDevice: 'This device',
+    keyKeeping: {
+      kept: 'This browser keeps this device’s key until you clear its site data.',
+      atRisk: 'This browser may remove this device’s key if you clear its site data, or when it runs short of space. The key cannot be copied, so this browser would then have to be added again.',
+      lost: 'This browser’s earlier key is gone: its site data was cleared, or the browser removed it. It made a new key, which has to be added again.',
+    },
     codeLabel: 'Pairing code of this device',
     loading: 'Making this device’s key…',
     loadingList: 'Asking the node about your devices…',
