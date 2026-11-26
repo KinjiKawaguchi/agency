@@ -1,4 +1,6 @@
-import { Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
+import { OutcomesPage } from '../outcomes/OutcomesPage'
+import { OUTCOMES_PERIODS } from '../outcomes/useOutcomesAccess'
+import { Navigate, Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
 import { LivePage } from '../live/LivePage'
@@ -9,8 +11,10 @@ import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
 import { ClaimPage } from '../claim/ClaimPage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
+import { isGuestPage, useStanding } from '../guest/useStanding'
 import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { AppBar } from './AppBar'
 
 /** The claim page is a person's first page, before there is anything of the app for them: it has none of the app's bar and notices. */
@@ -18,13 +22,23 @@ const isClaimPath = (path: string): boolean => path === '/claim' || path.startsW
 
 function Shell() {
   const path = useRouterState({ select: (state) => state.location.pathname })
-  if (isClaimPath(path)) {
-    return (
-      <main className="page">
-        <Outlet />
-      </main>
-    )
-  }
+  return isClaimPath(path) ? (
+    <main className="page">
+      <Outlet />
+    </main>
+  ) : (
+    <AppShell path={path} />
+  )
+}
+
+function AppShell({ path }: { path: string }) {
+  const standing = useStanding()
+  // The page on screen can still be the one left while the location is already the new one, so it is asked for itself.
+  const shown = useRouterState({ select: (state) => state.matches.at(-1)?.pathname ?? state.location.pathname })
+  // A page of the owner's would be refused to a guest, so it is not opened: they have the desk and their devices.
+  if (standing.status === 'guest' && !isGuestPage(path)) return <Navigate to="/desk" replace />
+  // The desk and the devices are the guest's own, so they open at once; the owner's pages wait to learn who is asking.
+  const isWaiting = (standing.status === 'loading' || standing.status === 'guest') && !isGuestPage(shown)
   return (
     <>
       <AppBar />
@@ -32,7 +46,14 @@ function Shell() {
       <main className="page">
         <SignInExpiredBanner />
         <AddDeviceNotice />
-        <Outlet />
+        {isWaiting ? (
+          <Loading>
+            <Skeleton kind="title" />
+            <Skeleton />
+          </Loading>
+        ) : (
+          <Outlet />
+        )}
       </main>
     </>
   )
@@ -95,6 +116,20 @@ const evaluationRoute = createRoute({
   },
 })
 
+const outcomesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/outcomes',
+  validateSearch: (search: Record<string, unknown>): { org?: string; days?: number } => ({
+    ...(nonEmpty(search.org) === undefined ? {} : { org: nonEmpty(search.org) }),
+    ...(OUTCOMES_PERIODS.find((one) => one === Number(search.days)) === undefined ? {} : { days: Number(search.days) }),
+  }),
+  component: function OutcomesRoute() {
+    const { org, days } = outcomesRoute.useSearch()
+    const navigate = outcomesRoute.useNavigate()
+    return <OutcomesPage org={org} days={days} onChange={(next) => void navigate({ search: next, replace: true })} />
+  },
+})
+
 const liveRoute = createRoute({ getParentRoute: () => rootRoute, path: '/live', component: LivePage })
 
 const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
@@ -104,7 +139,7 @@ const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devi
 const claimRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim', component: ClaimPage })
 const claimContinueRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim/continue', component: ClaimPage })
 
-const routeTree = rootRoute.addChildren([indexRoute, claimRoute, claimContinueRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, devicesRoute])
+const routeTree = rootRoute.addChildren([indexRoute, claimRoute, claimContinueRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, outcomesRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })

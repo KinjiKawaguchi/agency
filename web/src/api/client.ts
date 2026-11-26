@@ -1,10 +1,12 @@
 import type { ClaimInput, ClaimState } from '../claim/provisional'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Session, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, VapidKey, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
+import type { NumberEntry, NumberInput, Outcomes, Readings } from './outcomesApi'
+import { readNumberEntry, readNumberHistory, readOutcomes, readReadings } from './outcomesAnswers'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -46,6 +48,14 @@ export interface ApiClient {
   devices: () => Promise<DeviceList>
   /** Registers this phone's push token with the node. Idempotent: the node keeps one entry per token. */
   registerPushToken: (input: PushTokenInput) => Promise<void>
+  /** The node's Web Push key, which a browser subscribes with. 404 (an `ApiError`) when the node has no Web Push. */
+  vapidKey: () => Promise<VapidKey>
+  /** The browsers subscribed to the owner's notifications. */
+  pushSubscriptions: () => Promise<PushSubscriptionList>
+  /** Registers this browser's subscription. Idempotent: the node keeps one entry per endpoint, and answers it with its `id`. */
+  registerPushSubscription: (input: PushSubscriptionInput) => Promise<PushSubscription>
+  /** Removes a subscription by its `id`. Removing one that is gone is not an error. */
+  removePushSubscription: (id: string) => Promise<void>
   /** Asks the node to add this device; a device that is already added confirms it after comparing the pairing codes. */
   requestDevice: (input: DeviceRequestInput) => Promise<DeviceRequest>
   /** Adds a device: a change signed by one of the account's devices. */
@@ -59,6 +69,14 @@ export interface ApiClient {
   evaluation: (org: string, days: number) => Promise<Evaluation>
   /** What each team of the org spent, by work type. */
   effort: (org: string, days: number) => Promise<Effort>
+  /** The numbers of the org's KPIs over the last `days` days: owner only (403 for anyone else, which is "nothing to show", not a failure). */
+  outcomes: (org: string, days: number) => Promise<Outcomes>
+  /** How each aim's KPI stands around the day its epic shipped: owner only, as `outcomes`. */
+  readings: (org: string) => Promise<Readings>
+  /** A KPI's history, newest first, the entries a later one superseded included: owner only. */
+  numberHistory: (org: string, kpi: string, limit: number) => Promise<NumberEntry[]>
+  /** Enters a number of a KPI for a day (the node sets who and when); a second one for the same day wins and the first stays in the history. Owner only. */
+  enterNumber: (org: string, input: NumberInput) => Promise<NumberEntry>
   /** What happened in a team after `since` (an RFC 3339 time): board events and messages between its agents, oldest first. */
   activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
@@ -167,23 +185,26 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
   /** The page's token goes stale when the node starts again: a token read from `/api/session` after that is kept for the writes that follow. */
   let renewedToken: string | undefined
 
-  const write = <T>(path: string, body: unknown, token: string): Promise<T> =>
-    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': token }, body: JSON.stringify(body) })).then(readJson<T>)
+  const write = <T>(method: 'POST' | 'DELETE', path: string, body: unknown, token: string): Promise<T> =>
+    dispatch(new Request(url(path), { method, headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), 'x-agency-token': token }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })).then(readJson<T>)
 
   /**
    * A write: JSON with the page's token, which the node demands of every write. The token changes each time the node
    * starts, so a page that was open across a start gets 403 "missing or wrong write token": it asks the node for the
    * token once, and sends the write again once (docs/protocol.md, `/api/session`). A second refusal, or any other, is the answer.
    */
-  const post = async <T>(path: string, body: unknown): Promise<T> => {
+  const submit = async <T>(method: 'POST' | 'DELETE', path: string, body: unknown): Promise<T> => {
     try {
-      return await write<T>(path, body, renewedToken ?? readToken())
+      return await write<T>(method, path, body, renewedToken ?? readToken())
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 403 || !error.message.includes(STALE_TOKEN)) throw error
       renewedToken = (await get<Session>('/api/session')).writeToken
-      return write<T>(path, body, renewedToken)
+      return write<T>(method, path, body, renewedToken)
     }
   }
+  const post = <T>(path: string, body: unknown): Promise<T> => submit<T>('POST', path, body)
+  /** A DELETE has the write token and no body. */
+  const remove = (path: string): Promise<unknown> => submit<unknown>('DELETE', path, undefined)
 
   return {
     onSession: (listener) => {
@@ -196,6 +217,10 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
     activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
+    outcomes: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/outcomes?days=${days}`).then(checked(readOutcomes)),
+    readings: (org) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/readings`).then(checked(readReadings)),
+    numberHistory: (org, kpi, limit) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/observations?kpi=${segment(kpi)}&limit=${limit}`).then(checked(readNumberHistory)),
+    enterNumber: (org, input) => post<unknown>(`/api/orgs/${segment(org)}/outcomes/observations`, input).then(checked(readNumberEntry)),
     effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {
@@ -205,6 +230,10 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
       return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
     },
     registerPushToken: async (input) => void (await post<unknown>('/api/push/tokens', input)),
+    vapidKey: () => get<VapidKey>('/api/push/vapid'),
+    pushSubscriptions: () => get<PushSubscriptionList>('/api/push/subscriptions'),
+    registerPushSubscription: (input) => post<PushSubscription>('/api/push/subscriptions', input),
+    removePushSubscription: async (id) => void (await remove(`/api/push/subscriptions/${segment(id)}`)),
     devices: () => get<DeviceList>('/api/devices'),
     requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
     submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),

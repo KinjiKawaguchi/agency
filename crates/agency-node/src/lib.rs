@@ -263,6 +263,8 @@ impl Opened {
             access,
             assets,
             launch: self.launch.clone(),
+            client_notes: Default::default(),
+            handoff: handoff::Codes::default(),
         };
         let refusals = RefusalLog::new(self.logger.sink(LogLevel::Warn, "refused"));
         let app = server::router_with_log(self.node.clone(), refusals)

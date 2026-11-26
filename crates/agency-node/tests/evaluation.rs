@@ -21,6 +21,8 @@ fn at(raw: &str) -> agency_proto::clock::OffsetDateTime {
 fn facts() -> DeliveryFacts {
     DeliveryFacts {
         pull_requests: vec![MergedPullRequest {
+            repo: "acme/app".into(),
+            number: 1,
             title: "feat(web): add a screen".into(),
             body: String::new(),
             opened_at: at("2026-11-24T08:00:00Z"),

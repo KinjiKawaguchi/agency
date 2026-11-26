@@ -6,5 +6,5 @@
     "runtime": [1],
     "clientApi": { "current": 1, "oldest": 1 }
   },
-  "capabilities": ["orgPlan", "orgAims", "orgKpis", "webPush", "activity", "outcomes"]
+  "capabilities": ["orgPlan", "orgAims", "orgKpis", "orgRecovery", "webPush", "activity", "outcomes"]
 }

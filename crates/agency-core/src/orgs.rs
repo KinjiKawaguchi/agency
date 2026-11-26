@@ -1,6 +1,7 @@
 //! Org definitions. The node with the root key signs each new version and sends it, through the outbox,
 //! to the nodes of the org's teams. Other nodes accept only the next version of the one they have, or a
 //! first copy signed by a root key they trust.
+use crate::capabilities;
 use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
@@ -8,7 +9,11 @@ use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
-use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace, Versions};
+use agency_proto::clock::{self, Duration, OffsetDateTime};
+use agency_proto::org::{
+    verify_genesis, verify_successor, Root, SignedOrg, Succession, TeamPlace, Versions,
+    RECOVERY_WAIT_SECONDS,
+};
 use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Role, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
@@ -27,6 +32,14 @@ pub(crate) fn sign(node: &Node, body: OrgDefinition) -> Result<SignedOrg> {
 /// account key for an org made before root keys were kept apart. A rotation signs the version that
 /// names the new root with the current one.
 fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOrg> {
+    // A version the root signs never carries a waiting recovery, so signing any version cancels it.
+    let body = OrgDefinition {
+        root: Root {
+            pending: None,
+            ..body.root
+        },
+        ..body
+    };
     body.validate().map_err(Error::bad_request)?;
     let signer = node.account();
     if key == &node.key().public() {
@@ -154,10 +167,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         role: Role::Member,
         devices: vec![],
     };
-    let root = Root {
-        account,
-        public_key: root_key.clone(),
-    };
+    let root = Root::new(account, root_key.clone());
     let body = OrgDefinition {
         kpis: vec![],
         org: org.clone(),
@@ -229,6 +239,7 @@ pub fn amend(
     }
     let mut body = OrgDefinition::successor_of(&current, node.now_text());
     edit(&mut body)?;
+    capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
     tell_removed(node, &current.body, &doc)?;
@@ -340,7 +351,12 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     }
     let root = &current.body.root;
     let key = (doc.signer == root.account).then_some(&root.public_key);
-    if !unseen::check(&doc, Kind::Org, key) {
+    let recovery = root
+        .recovery
+        .as_ref()
+        .filter(|_| doc.signer == root.account);
+    let is_by_recovery = || recovery.is_some_and(|key| doc.verify(Kind::Org, key));
+    if !unseen::check(&doc, Kind::Org, key) && !is_by_recovery() {
         return Err(unseen::refused(format!(
             "a definition of {org} signed as {}, not with the root key of this node's copy",
             doc.signer
@@ -357,12 +373,48 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
             ))
         };
     }
-    verify_successor(&current, &doc).map_err(Error::bad_request)?;
+    let succession = verify_successor(&current, &doc).map_err(Error::bad_request)?;
+    match succession {
+        Succession::Root => {}
+        Succession::RecoveryStart => {
+            // Noted before the version is kept: a start kept without its note could never finish.
+            let now = clock::format(node.now());
+            node.store()
+                .note_recovery_start(&org, doc.body.version, &now)?;
+        }
+        Succession::RecoveryFinish => refuse_an_early_finish(node, &current)?,
+    }
     // The trust moves first: if keeping the version then fails, a retry takes it again, and the trust
     // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
     node.store().save_org(&doc)?;
     forget_removed(node, &current.body, &doc.body)
+}
+
+/// When a recovery started by `start` takes effect on this node: `RECOVERY_WAIT_SECONDS` after this
+/// node took the start, by its own clock.
+pub fn recovery_takes_effect(node: &Node, start: &SignedOrg) -> Option<OffsetDateTime> {
+    let org = &start.body.org;
+    let took = node.store().recovery_started(org, start.body.version)?;
+    Some(clock::parse(&took)? + Duration::seconds(RECOVERY_WAIT_SECONDS))
+}
+
+fn refuse_an_early_finish(node: &Node, start: &SignedOrg) -> Result<()> {
+    let org = &start.body.org;
+    match recovery_takes_effect(node, start) {
+        Some(at) if at <= node.now() => Ok(()),
+        Some(at) => Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "the recovery of {org} takes effect on this node at {}",
+                clock::format(at)
+            ),
+        )),
+        None => Err(Error::new(
+            ErrorKind::Conflict,
+            format!("this node has no record of when the recovery of {org} started"),
+        )),
+    }
 }
 
 fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {

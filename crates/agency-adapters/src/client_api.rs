@@ -9,7 +9,9 @@
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
 //! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
-use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
+use crate::handoff::{
+    self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH,
+};
 use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
@@ -17,6 +19,7 @@ use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
 };
+use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
@@ -27,6 +30,8 @@ use agency_proto::client::{
     DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
     SignedDecisionInput,
 };
+use agency_proto::client_version::{self, Platform};
+use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Request, State};
@@ -40,7 +45,7 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 mod outcomes;
 
@@ -69,6 +74,10 @@ pub struct ClientApi {
     /// The running program and its data directory, for the command a client shows the owner. `None`
     /// when they cannot be written out as text; clients then show their own wording.
     pub launch: Option<Launch>,
+    /// When each app version was last noted, so a client that calls often costs no write (see `note_client`).
+    pub client_notes: Mutex<HashMap<(Platform, String), OffsetDateTime>>,
+    /// The codes the app handoff made and that wait to be redeemed.
+    pub handoff: handoff::Codes,
 }
 
 pub(crate) type Shared = State<Arc<ClientApi>>;
@@ -143,7 +152,7 @@ async fn admit(
 }
 
 /// Constant-time comparison, so the token cannot be guessed byte by byte from response times.
-fn is_same_secret(given: &str, expected: &str) -> bool {
+pub(crate) fn is_same_secret(given: &str, expected: &str) -> bool {
     given.len() == expected.len()
         && given
             .bytes()
@@ -219,9 +228,42 @@ async fn guard(
             return refuse(status, message);
         }
     }
+    note_client(&api, request.headers());
     request.extensions_mut().insert(admitted);
     next.run(request).await
 }
+
+/// Notes the app that made an admitted request, from its `x-agency-client` header: at most once an hour for
+/// each version, so a client that calls often costs no write. A header that does not read is ignored; a
+/// failure to note it never fails the request.
+fn note_client(api: &ClientApi, headers: &HeaderMap) {
+    let Some(seen) = header_text(headers, client_version::HEADER).and_then(client_version::parse)
+    else {
+        return;
+    };
+    let now = api.node.now();
+    {
+        let mut noted = api
+            .client_notes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let key = (seen.platform, seen.version.clone());
+        if noted.get(&key).is_some_and(|at| now - *at < NOTE_EVERY) {
+            return;
+        }
+        if noted.len() >= NOTED_KEPT {
+            noted.clear();
+        }
+        noted.insert(key, now);
+    }
+    if let Err(error) = clients_seen::note(&api.node, &seen) {
+        (api.log)(&format!("could not record an app version ({error})"));
+    }
+}
+
+/// How long a version is left before it is noted again, and how many versions the throttle remembers.
+const NOTE_EVERY: Duration = Duration::hours(1);
+const NOTED_KEPT: usize = 256;
 
 /// A malformed id in the path is reported like a missing one.
 fn parse_id(raw: &str) -> Result<Id, Error> {
@@ -575,6 +617,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .layer(middleware::from_fn_with_state(api.clone(), guard))
         // Added after the guard, so it answers without an Access sign-in: Apple's servers fetch it.
         .route(ASSOCIATION_PATH, get(handoff::association))
+        .route(REDEEM_PATH, post(handoff::redeem))
         .with_state(api)
 }
 

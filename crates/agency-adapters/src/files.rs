@@ -1,5 +1,6 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
@@ -7,8 +8,9 @@ use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::ports::{
-    AboutStore, AppliedLog, ConfigStore, DecisionLogStore, DeviceRequestStore, InviteStore,
-    OrgStore, OutboxStore, OutcomeStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, ClientsSeenStore, ConfigStore, DecisionLogStore, DeviceRequestStore,
+    InviteStore, OrgStore, OutboxStore, OutcomeStore, PushStore, ReplicaStore, ShipLedger,
+    ShipRecord,
 };
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
@@ -169,6 +171,12 @@ impl DataDir {
             .map_err(|error| io_error(path, error))
     }
 
+    fn recovery_start_path(&self, org: &Id, version: u64) -> PathBuf {
+        self.dir("orgs")
+            .join(format!("{org}.history"))
+            .join(format!("{version:06}.recovery-start.json"))
+    }
+
     fn org_version_path(&self, org: &Id, version: u64) -> PathBuf {
         self.dir("orgs")
             .join(format!("{org}.history"))
@@ -222,6 +230,14 @@ impl OrgStore for DataDir {
     fn orgs(&self) -> Vec<SignedOrg> {
         read_all(&self.dir("orgs"))
     }
+
+    fn note_recovery_start(&self, org: &Id, version: u64, at: &str) -> Result<()> {
+        write_json(&self.recovery_start_path(org, version), at)
+    }
+
+    fn recovery_started(&self, org: &Id, version: u64) -> Option<String> {
+        read_json(&self.recovery_start_path(org, version))
+    }
 }
 
 impl InviteStore for DataDir {
@@ -271,6 +287,17 @@ impl OutboxStore for DataDir {
 
     fn refused_parcels(&self) -> Vec<Parcel> {
         read_all(&self.dir("refused"))
+    }
+}
+
+impl ClientsSeenStore for DataDir {
+    /// `clients-seen.json`: no account and no device in it, so it is no more private than the rest.
+    fn clients_seen(&self) -> ClientsSeen {
+        read_json(&self.0.join("clients-seen.json")).unwrap_or_default()
+    }
+
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()> {
+        write_json(&self.0.join("clients-seen.json"), seen)
     }
 }
 

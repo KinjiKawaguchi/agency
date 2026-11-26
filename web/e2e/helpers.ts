@@ -13,12 +13,18 @@ export interface NodeOptions {
   outcome?: 'queued' | 'delivered'
   /** Nothing waits on anyone, and nothing was decided before. */
   empty?: boolean
+  /** The node has Web Push: it gives its key and keeps a subscription for each browser. */
+  webPush?: boolean
   /** The node has made a claim link for one seat with this code; `claimFails` is how a claim of it ends, when it does not. */
   claim?: { code: string; fails?: 'unknown' | 'expired' | 'other-email' | 'taken' }
   /** The node's configuration names two other home nodes, Work and a Lab on this machine. */
   homeNodes?: boolean
+  /** The owner is reading: the node serves the outcomes and the readings (the shared samples). Otherwise it answers 403, as to anyone but the owner. */
+  outcomes?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
+  /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
+  guest?: string
 }
 
 /** Starts the mock node over, with its sample data and the given options. */
@@ -31,7 +37,10 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')
   if (options.moreOrgs === true) query.set('orgs', 'more')
+  if (options.outcomes === true) query.set('outcomes', '1')
+  if (options.webPush === true) query.set('webPush', '1')
   if (options.homeNodes === true) query.set('homeNodes', '1')
+  if (options.guest !== undefined) query.set('guest', options.guest)
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
     if (options.claim.fails !== undefined) query.set('claimFails', options.claim.fails)

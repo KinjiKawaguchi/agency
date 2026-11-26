@@ -1,4 +1,5 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
+use crate::clients_seen::ClientsSeen;
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
@@ -18,6 +19,7 @@ use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
+use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -85,6 +87,10 @@ pub trait OrgStore {
     fn orgs(&self) -> Vec<SignedOrg>;
     /// One version of an org's definition, from the history this node kept.
     fn load_org_version(&self, org: &Id, version: u64) -> Option<SignedOrg>;
+    /// Notes when this node took a version that starts a recovery, by its own clock.
+    fn note_recovery_start(&self, org: &Id, version: u64, at: &str) -> Result<()>;
+    /// When this node took the version `version` of `org` that starts a recovery, if it did.
+    fn recovery_started(&self, org: &Id, version: u64) -> Option<String>;
 }
 
 /// Invites, keyed by the SHA-256 of their code. The code itself is never stored.
@@ -174,6 +180,12 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The app releases the node has seen (`clients_seen`), kept in its data directory.
+pub trait ClientsSeenStore {
+    fn clients_seen(&self) -> ClientsSeen;
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -194,6 +206,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + ClientsSeenStore
     + Send
     + Sync
 {
@@ -212,6 +225,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + ClientsSeenStore
             + Send
             + Sync,
     > Store for T
@@ -319,6 +333,21 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// The team's participants over the last `days` days, with the days cut at `utc_offset_minutes` (minutes
+    /// east of UTC). A runtime that does not report them answers 404, which is what a runtime that does not
+    /// implement this answers.
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        _days: u32,
+        _utc_offset_minutes: i32,
+    ) -> Result<ParticipantMetrics, RuntimeError> {
+        Err(RuntimeError {
+            status: 404,
+            message: "the team runtime does not report participant metrics".into(),
+        })
+    }
+
     /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
     /// report activity answers 404.
     async fn activity(
