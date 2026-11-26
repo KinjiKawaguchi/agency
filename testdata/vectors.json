@@ -88,15 +88,15 @@
   },
   "deviceChangeP256": {
     "add": {
-      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"tablet\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
-      "signature": "jIvqZ1EHXEebl2p/+1L/fmM6LSyggKgyeQeffLkyBA6Mt/Qy8WCBC9j9BS8uEdteHTJDQg5QFpX8h5JQnxjoeQ==",
-      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"tablet\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
+      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"d-a9b6d080f431\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
+      "signature": "X/0Hdkd6VeFaJuJ3akcHOZojSaOZl2qKCFgCdTwJjS2w9XUMVOBRp45MvO1LZjVU604vEXXBL6KMIfjL47Vw3A==",
+      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":{\"addedAt\":\"2026-11-24T12:00:00Z\",\"id\":\"d-a9b6d080f431\",\"label\":\"Tablet\",\"publicKey\":\"p256:BEKtlx0DfRqyvt/OPxf5fbrRIF6nzHWgT/WC3cpWoL84H9ul5SQtUc52DyfAPhI3nYNy2cHJz5uqsdVYsRfHuQE=\"},\"op\":\"add\",\"org\":\"acme\"}",
       "signer": "d-a652124afda7"
     },
     "remove": {
-      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"tablet\",\"op\":\"remove\",\"org\":\"acme\"}",
-      "signature": "3qZcatBp7rmidMDEAjhJ6UGCbZ3chd1sjGl8IQVeO+RCx+NyFlyIDVu5bouFQHTQB11+NsszTPmckx6UwG02HQ==",
-      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"tablet\",\"op\":\"remove\",\"org\":\"acme\"}",
+      "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"d-a9b6d080f431\",\"op\":\"remove\",\"org\":\"acme\"}",
+      "signature": "W/cNCMqjTDaygmV4Etfr5j/EJ1nT+SrC57cKILvnX9Dk3453r7drOYQ7MzOH/miNstFFkhTnIbWCBaZPvbSRBQ==",
+      "signedText": "agency/v1/device\n{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"device\":\"d-a9b6d080f431\",\"op\":\"remove\",\"org\":\"acme\"}",
       "signer": "d-a652124afda7"
     },
     "signerKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="

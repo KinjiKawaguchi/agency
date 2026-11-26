@@ -261,13 +261,15 @@ fn p256_signed_change(change: &DeviceChange) -> serde_json::Value {
 /// it again (a bare device id).
 fn device_change_p256() -> serde_json::Value {
     let (_, tablet) = p256_key(0x0c);
+    // A device added by pairing has the id `d-` and its pairing code, as the node and the clients make it.
+    let tablet_id = tablet.device_id();
     let at = Timestamp::parse(AT).unwrap();
     let add = DeviceChange {
         org: id("acme"),
         account: id("alice"),
         op: DeviceOp::Add {
             device: Box::new(Device {
-                id: id("tablet"),
+                id: tablet_id.clone(),
                 label: "Tablet".into(),
                 public_key: tablet,
                 added_at: at.clone(),
@@ -278,9 +280,7 @@ fn device_change_p256() -> serde_json::Value {
     let remove = DeviceChange {
         org: id("acme"),
         account: id("alice"),
-        op: DeviceOp::Remove {
-            device: id("tablet"),
-        },
+        op: DeviceOp::Remove { device: tablet_id },
         at,
     };
     serde_json::json!({
