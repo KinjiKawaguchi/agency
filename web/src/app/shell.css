@@ -204,3 +204,18 @@
     left: 6px;
   }
 }
+
+/* The name of the home node this tab is on, shown once the owner lists another one. */
+.node-chip {
+  max-width: 160px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
