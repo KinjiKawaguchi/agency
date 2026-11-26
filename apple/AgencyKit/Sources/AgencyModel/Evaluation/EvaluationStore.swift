@@ -1,0 +1,157 @@
+import AgencyAPI
+import Foundation
+import Observation
+
+/// Where the evaluation reads from: the home node's Client API. `NodeClient` is the real one.
+public protocol EvaluationSource: Sendable {
+    func me() async throws -> Me
+    func evaluation(org: String, days: Int) async throws -> Evaluation
+}
+
+extension NodeClient: EvaluationSource {}
+
+/// What is known of an org's evaluation.
+public enum EvaluationState: Equatable, Sendable {
+    case loading
+    case ready([TeamEvaluationReport], unavailable: [TeamUnavailableNote])
+    /// The node does not serve the route yet (404).
+    case unavailable
+    /// The node or a team's runtime could not answer, and kept not answering after it was asked again.
+    case couldNotAnswer(String)
+    case failed(String)
+}
+
+/// A team the node could not get numbers for, by the team's own label.
+public struct TeamUnavailableNote: Equatable, Sendable, Identifiable {
+    public let team: String
+    public let label: String
+    public let reason: String
+    public var id: String { team }
+
+    public init(team: String, label: String, reason: String) {
+        self.team = team
+        self.label = label
+        self.reason = reason
+    }
+    public var title: String { Ja.Evaluation.team(label) }
+    public var text: String { Ja.Evaluation.teamUnavailable(reason) }
+}
+
+/// How fast each team of an org ships, over a period the person chooses.
+@MainActor
+@Observable
+public final class EvaluationStore {
+    public enum Loading: Equatable, Sendable {
+        case idle
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    /// The periods to choose from, in days.
+    public static let periods = [14, 30, 90]
+    public static let defaultDays = 14
+
+    public private(set) var loading: Loading = .idle
+    /// The Access session ended: the sign-in has to run again before anything else works.
+    public private(set) var needsSignIn = false
+    public private(set) var orgs: [OrgRef] = []
+    /// The org shown: the one chosen, or the first of the account's orgs.
+    public private(set) var org: OrgRef?
+    public private(set) var days = EvaluationStore.defaultDays
+    public private(set) var state: EvaluationState = .loading
+
+    @ObservationIgnored private let source: any EvaluationSource
+    @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private var chosenOrg: String?
+
+    public init(source: any EvaluationSource, retry: RetryPolicy = .standard) {
+        self.source = source
+        self.retry = retry
+    }
+
+    // MARK: Reading
+
+    public func refresh() async {
+        loading = .loading
+        do {
+            let me = try await source.me()
+            orgs = me.orgs
+            org = me.orgs.first { $0.id == chosenOrg } ?? me.orgs.first
+            needsSignIn = false
+            await readEvaluation()
+            loading = .loaded
+        } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
+            needsSignIn = true
+            loading = .failed(Ja.Desk.signInEnded)
+        } catch is CancellationError {
+            loading = .idle
+        } catch {
+            loading = .failed(DeskStore.reason(error))
+        }
+    }
+
+    public func choose(org id: String) async {
+        guard id != org?.id, let next = orgs.first(where: { $0.id == id }) else { return }
+        chosenOrg = id
+        org = next
+        state = .loading
+        await readEvaluation()
+    }
+
+    public func choose(days: Int) async {
+        guard Self.periods.contains(days), days != self.days else { return }
+        self.days = days
+        await readEvaluation()
+    }
+
+    private func readEvaluation() async {
+        guard let org else {
+            state = .loading
+            return
+        }
+        let (id, days, source, retry) = (org.id, days, source, retry)
+        let outcome: EvaluationState
+        do {
+            let answer = try await retry.run { try await source.evaluation(org: id, days: days) }
+            outcome = .ready(reports(answer, of: org), unavailable: notes(answer, of: org))
+        } catch NodeError.http(404, _) {
+            outcome = .unavailable
+        } catch NodeError.http(503, let message) {
+            outcome = .couldNotAnswer(message ?? "HTTP 503")
+        } catch NodeError.unreadable {
+            // The answer is not what the route promises: the same as the team's runtime not answering.
+            outcome = .couldNotAnswer(Ja.Evaluation.unreadable)
+        } catch is CancellationError {
+            return
+        } catch {
+            outcome = .failed(DeskStore.reason(error))
+        }
+        // A period or an org chosen meanwhile has its own answer coming; this one is for the old one.
+        guard id == self.org?.id, days == self.days else { return }
+        // What is on screen stays when a refresh keeps failing.
+        if case .ready = state, outcome.isRetryExhausted { return }
+        state = outcome
+    }
+
+    private func label(of team: String, in org: OrgRef) -> String {
+        org.teams.first { $0.id == team }?.label ?? team
+    }
+
+    private func reports(_ answer: Evaluation, of org: OrgRef) -> [TeamEvaluationReport] {
+        answer.teams.map { TeamEvaluationReport(numbers: $0, label: label(of: $0.team, in: org), days: answer.days) }
+    }
+
+    private func notes(_ answer: Evaluation, of org: OrgRef) -> [TeamUnavailableNote] {
+        answer.unavailable.map { TeamUnavailableNote(team: $0.team, label: label(of: $0.team, in: org), reason: $0.reason) }
+    }
+}
+
+extension EvaluationState {
+    var isRetryExhausted: Bool {
+        switch self {
+        case .couldNotAnswer, .failed: true
+        case .loading, .ready, .unavailable: false
+        }
+    }
+}
