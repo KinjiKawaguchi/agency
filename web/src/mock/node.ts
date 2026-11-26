@@ -64,6 +64,8 @@ interface MockNodeOptions {
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
+  hidesTitles?: boolean
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
   pushTokensFailWith?: number
   /** Makes only the decision log calls fail with this status. */
@@ -138,6 +140,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
         : []),
     ],
     funding: fundingSources(now),
+    ...(options.hidesTitles === undefined ? {} : { hidesTitles: options.hidesTitles }),
   }
 
   const sourceOf = (view: TeamView): SnapshotSource =>
