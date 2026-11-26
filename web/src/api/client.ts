@@ -101,19 +101,54 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T
 }
 
+/** How long after a call failed without an answer the node is asked whether the sign-in is really gone. */
+const CONFIRM_AFTER_MS = 1000
+
+export interface ClientOptions {
+  /** For tests: the wait before the node is asked whether the sign-in is gone. */
+  confirmAfterMs?: number
+}
+
+/** A call the page cancelled itself (a screen closed, a read replaced by another): it says nothing about the sign-in. */
+const wasCancelled = (cause: unknown, request: Request): boolean => request.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')
+
 /** Talks to the home node. `send` is injectable so tests can route calls to the mock node. */
-export function createApiClient(send: FetchLike = (request) => fetch(request), page: PageEnvironment = browserPage): ApiClient {
+export function createApiClient(send: FetchLike = (request) => fetch(request), page: PageEnvironment = browserPage, { confirmAfterMs = CONFIRM_AFTER_MS }: ClientOptions = {}): ApiClient {
   const url = (path: string): URL => new URL(path, window.location.origin)
   const listeners = new Set<(state: SessionState) => void>()
   const tell = (state: SessionState): void => listeners.forEach((listener) => listener(state))
 
-  /** Sends a call. One that fails without an answer, away from this machine, is taken for an expired sign-in. */
+  /**
+   * Whether the sign-in is really gone: asked a moment after a call failed without an answer, with one call to
+   * the node that takes no part in anything else. A node that answers it (any answer) has a sign-in that holds,
+   * and the call that failed was the connection. Calls that failed at the same moment share the one asking.
+   */
+  let confirming: Promise<boolean> | undefined
+  const isSignInGone = (): Promise<boolean> => {
+    confirming ??= (async () => {
+      await new Promise((resolve) => setTimeout(resolve, confirmAfterMs))
+      if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) return false
+      return send(new Request(url('/api/session'), { headers: { accept: 'application/json' } })).then(
+        () => false,
+        () => true,
+      )
+    })().finally(() => {
+      confirming = undefined
+    })
+    return confirming
+  }
+
+  /**
+   * Sends a call. One that fails without an answer, away from this machine, may be the redirect Access makes once the
+   * sign-in expired, but a lost connection fails the same way, as does a call the page cancelled. It is taken for an
+   * expired sign-in only when the node, asked a moment later, answers nothing either; otherwise it fails as it did.
+   */
   const dispatch = async (request: Request): Promise<Response> => {
     let response: Response
     try {
       response = await send(request)
     } catch (cause) {
-      if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) throw cause
+      if (wasCancelled(cause, request) || !looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline()) || !(await isSignInGone())) throw cause
       tell('expired')
       throw new SignInExpiredError()
     }
