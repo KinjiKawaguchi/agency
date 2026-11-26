@@ -84,7 +84,10 @@ final class NativeSession {
         notifications = NotificationPreferencesStore(storage: NotificationDefaultsStorage(host: homeNode.host)) { news.enabledKinds = $0.bannerKinds }
         news.enabledKinds = notifications.preferences.bannerKinds
         self.news = news
-        widgets = WidgetPublisher(host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)))
+        widgets = WidgetPublisher(
+            host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)),
+            sink: WidgetAppGroupSink()
+        )
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.

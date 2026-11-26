@@ -16,7 +16,6 @@ struct ShellScreen: View {
                 onSignInAgain: signInAgain, onSettings: { model.showsSettings = true }
             )
             .onChange(of: session.desk.waitingCount) { _, count in model.push.setBadge(count) }
-            .onChange(of: session.desk.items) { model.publishWidgets() }
             .onChange(of: session.desk.loading) { _, loading in model.deskLoaded(loading) }
         case .overview:
             OverviewScreen(store: session.overview, onOpenDesk: { model.tab = .desk }, onSignInAgain: signInAgain)

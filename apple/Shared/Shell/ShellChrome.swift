@@ -34,6 +34,7 @@ private struct ShellChrome: ViewModifier {
             }
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
+            .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
             .onChange(of: model.push.pendingLink) { model.takeLink() }
