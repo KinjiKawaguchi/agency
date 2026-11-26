@@ -80,6 +80,14 @@ struct NodeClientTests {
         }
     }
 
+    @Test("stopping a push token carries the identity on the session read and on the delete")
+    func clientHeaderOnUnregister() async throws {
+        let transport = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/ab12", json("", status: 204))])
+        try await identified(transport, identity: "ios/0.3.1 (1)").unregisterPushToken("ab12")
+        #expect(transport.requests.count == 2)
+        for request in transport.requests { #expect(request.headers["x-agency-client"] == "ios/0.3.1 (1)", "\(request.method) \(request.path)") }
+    }
+
     @Test("with no identity no header is sent")
     func noClientHeader() async throws {
         let transport = ScriptedTransport([("GET /api/me", fixture("me"))])
@@ -241,6 +249,28 @@ struct NodeClientTests {
         let post = try #require(transport.requests.last)
         #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"environment":"sandbox","label":"iPhone","token":"ab12"}"#)
         #expect(post.headers["x-agency-token"] == "w-1")
+    }
+
+    @Test("stopping a push token is a write with no body, to the token's own path; a refusal is an error")
+    func unregisterPushToken() async throws {
+        let transport = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/ab12", json("", status: 204))])
+        try await client(transport).unregisterPushToken("ab12")
+        let delete = try #require(transport.requests.last)
+        #expect(delete.method == "DELETE" && delete.path == "/api/push/tokens/ab12")
+        #expect(delete.body == nil)
+        #expect(delete.headers["x-agency-token"] == "w-1")
+        #expect(delete.headers[NodeClient.accessHeader] == "access-jwt")
+
+        let refused = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/ab12", json(#"{"error":"no"}"#, status: 500))])
+        await #expect(throws: NodeError.self) { try await client(refused).unregisterPushToken("ab12") }
+        await #expect(throws: NodeError.notSignedIn) { try await client(ScriptedTransport([]), token: nil).unregisterPushToken("ab12") }
+    }
+
+    @Test("a token that would add a path segment is escaped when it is stopped")
+    func unregisterEscapes() async throws {
+        let transport = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/a%2Fb", json("", status: 204))])
+        try await client(transport).unregisterPushToken("a/b")
+        #expect(transport.requests.last?.path == "/api/push/tokens/a%2Fb")
     }
 
     @Test("the kinds a push token wants are sent as `events`, an empty list included, and left out when not given")

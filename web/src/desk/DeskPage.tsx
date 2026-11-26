@@ -9,6 +9,7 @@ import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
 import { teamKey } from '../api/teams'
 import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
+import { RecoveryNotice } from '../recovery/RecoveryNotice'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
@@ -122,6 +123,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
   const situation = situationOf(teams, items)
   return (
     <>
+      <RecoveryNotice me={me} />
       {error === null ? null : <p className="empty" role="alert">{failureText(t, error)}</p>}
       {teams.map((team) => (
         <ReplicaNotice key={`${team.view.org}/${team.view.team}`} source={team.source} />
