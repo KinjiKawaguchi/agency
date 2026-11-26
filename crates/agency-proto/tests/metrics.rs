@@ -1,7 +1,8 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    is_error_status, valid_name, valid_status, Metrics, Series, SeriesKind,
+    group_of, is_error_status, is_in_node_read, valid_name, valid_status, Metrics, Series,
+    SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -99,12 +100,12 @@ fn a_series_kind_is_written_in_lower_case_and_the_peer_and_client_only_where_the
     let kinds: Vec<&str> = series.iter().map(|s| s["kind"].as_str().unwrap()).collect();
     assert_eq!(
         kinds,
-        ["serve", "serve", "call", "call", "client", "client"]
+        ["serve", "serve", "serve", "call", "call", "client", "client"]
     );
     assert_eq!(serde_json::to_value(SeriesKind::Client).unwrap(), "client");
     assert!(series[0].get("peer").is_none() && series[0].get("client").is_none());
-    assert_eq!(series[2]["peer"], "node-b.example");
-    assert_eq!(series[4]["client"], "web");
+    assert_eq!(series[3]["peer"], "node-b.example");
+    assert_eq!(series[5]["client"], "web");
 }
 
 fn first() -> Series {
@@ -241,4 +242,116 @@ fn errors_are_all_of_the_calls_or_none_as_the_status_says() {
     errors_on_a_success.errors = 1;
     assert!(!some.is_consistent() && !errors_on_a_success.is_consistent());
     assert!(five_xx.is_consistent() && first().is_consistent());
+}
+
+#[test]
+fn a_route_is_in_the_group_of_its_template_and_a_call_in_the_group_of_its_first_word() {
+    use SeriesKind::{Call, Client, Serve};
+    for (name, group) in [
+        ("GET /api/me", "desk"),
+        ("GET /api/session", "desk"),
+        ("GET /api/decisions", "desk"),
+        ("GET /api/about", "desk"),
+        ("GET /api/orgs/{org}", "teams"),
+        ("GET /api/orgs/{org}/teams/{team}/view", "teams"),
+        ("GET /api/orgs/{org}/teams/{team}/activity", "teams"),
+        ("POST /api/orgs/{org}/teams/{team}/envelopes", "teams"),
+        ("GET /api/orgs/{org}/teams/{team}/usage", "usage"),
+        ("GET /api/orgs/{org}/evaluation", "evaluation"),
+        ("GET /api/orgs/{org}/effort", "evaluation"),
+        ("GET /api/orgs/{org}/outcomes", "outcomes"),
+        ("POST /api/orgs/{org}/outcomes/observations", "outcomes"),
+        ("GET /api/devices", "devices"),
+        ("POST /api/devices/requests", "devices"),
+        ("GET /api/push/vapid", "push"),
+        ("DELETE /api/push/tokens/{token}", "push"),
+        ("GET /fed/v1/teams/{org}/{team}/view", "federation"),
+        ("POST /fed/v1/orgs/{org}/join", "federation"),
+        ("GET /api/metrics", "metrics"),
+        ("GET /metrics", "metrics"),
+        ("unmatched", "unmatched"),
+        ("GET /api/something/new", "other"),
+        ("GET /api/mentions", "other"),
+        ("GET /api/me/extra", "other"),
+        ("GET /{*path}", "other"),
+        ("overflow", "other"),
+        ("invalid", "other"),
+    ] {
+        assert_eq!(group_of(Serve, name), group, "{name}");
+        assert_eq!(
+            group_of(Client, name),
+            group,
+            "a client reports the route it called: {name}"
+        );
+        assert!(ROUTE_GROUPS.contains(&group_of(Serve, name)));
+    }
+    for (name, group) in [
+        ("runtime view", "runtime"),
+        ("runtime token_usage", "runtime"),
+        ("peer get_view", "peer"),
+        ("peer post_envelope", "peer"),
+        ("apns send", "push"),
+        ("webpush send", "push"),
+        ("github graphql", "github"),
+        ("something else", "other"),
+        ("overflow", "other"),
+    ] {
+        assert_eq!(group_of(Call, name), group, "{name}");
+        assert!(CALL_GROUPS.contains(&group_of(Call, name)));
+    }
+}
+
+#[test]
+fn the_budget_applies_to_the_reads_a_node_answers_from_its_own_state_and_to_no_others() {
+    use SeriesKind::{Call, Client, Serve};
+    for name in [
+        "GET /api/me",
+        "GET /api/session",
+        "GET /api/decisions",
+        "GET /api/devices",
+        "GET /api/push/vapid",
+        "GET /api/orgs/{org}",
+        "GET /api/orgs/{org}/teams/{team}/view",
+        "GET /api/orgs/{org}/outcomes",
+        "GET /fed/v1/orgs/{org}/about",
+        "GET /fed/v1/orgs/{org}/versions",
+        "GET /fed/v1/teams/{org}/{team}/view",
+    ] {
+        assert!(is_in_node_read(Serve, name), "{name}");
+    }
+    for name in [
+        "GET /api/orgs/{org}/teams/{team}/usage",
+        "GET /api/orgs/{org}/teams/{team}/activity",
+        "GET /api/orgs/{org}/evaluation",
+        "GET /fed/v1/teams/{org}/{team}/usage",
+        "GET /fed/v1/teams/{org}/{team}/evaluation",
+        "POST /api/orgs/{org}/teams/{team}/envelopes",
+        "POST /api/devices/requests",
+        "DELETE /api/push/tokens/{token}",
+        "GET /api/metrics",
+        "unmatched",
+        "overflow",
+    ] {
+        assert!(!is_in_node_read(Serve, name), "{name}");
+    }
+    assert!(
+        !is_in_node_read(Client, "GET /api/me"),
+        "what a client observed includes its network"
+    );
+    assert!(!is_in_node_read(Call, "runtime view"));
+    assert_eq!(IN_NODE_READ_P95_BUDGET_MS, 100);
+    assert_eq!(sample().budget.in_node_read_p95_ms, 100);
+}
+
+#[test]
+fn a_series_that_says_another_group_or_another_budget_than_its_name_is_refused() {
+    let mut other_group = first();
+    other_group.group = "usage".into();
+    let mut budget_where_there_is_none = series_of(SeriesKind::Call);
+    budget_where_there_is_none.is_in_node_read = true;
+    let mut no_budget = first();
+    no_budget.is_in_node_read = false;
+    for bad in [other_group, budget_where_there_is_none, no_budget] {
+        assert!(!bad.is_consistent(), "{bad:?}");
+    }
 }

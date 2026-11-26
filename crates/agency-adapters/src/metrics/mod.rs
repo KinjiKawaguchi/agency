@@ -10,8 +10,9 @@ mod store;
 
 use agency_core::ports::Clock;
 use agency_proto::metrics::{
-    bucket_of, is_error_status, percentile_ms, valid_name, valid_status, HourSeries, Metrics,
-    Series, SeriesKind, BUCKETS, CLIENTS, INVALID, OVERFLOW,
+    bucket_of, group_of, is_error_status, is_in_node_read, percentile_ms, valid_name, valid_status,
+    Budget, HourSeries, Metrics, Series, SeriesKind, BUCKETS, CLIENTS, INVALID,
+    IN_NODE_READ_P95_BUDGET_MS, OVERFLOW,
 };
 use agency_proto::{clock, Timestamp};
 use std::collections::BTreeMap;
@@ -25,6 +26,8 @@ pub const KEPT_DAYS: u32 = 30;
 /// fewer; this bounds the memory if one is ever not. A series past it is recorded under the one series
 /// `overflow` of its kind, status, and client, which have no limit of their own because there are few.
 pub const MOST_SERIES_IN_AN_HOUR: usize = 500;
+/// The most distinct series the totals since the node started hold, bounded the same way.
+pub const MOST_SERIES_IN_THE_TOTALS: usize = 500;
 
 /// Which series a measurement belongs to.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -85,6 +88,19 @@ impl Default for Counts {
 }
 
 impl State {
+    /// The series of the totals a measurement of `key` goes in: its own, or `overflow` when the totals hold
+    /// as many series as they may.
+    fn total_series_for(&self, key: &SeriesKey) -> SeriesKey {
+        if self.totals.contains_key(key) || self.totals.len() < MOST_SERIES_IN_THE_TOTALS {
+            return key.clone();
+        }
+        SeriesKey {
+            name: OVERFLOW.to_owned(),
+            peer: None,
+            ..key.clone()
+        }
+    }
+
     /// The series a measurement of `key` goes in for this hour: its own, or `overflow` when the hour has
     /// no room for another. A series that is new is counted against the hour.
     fn series_for(&mut self, hour: Hour, key: SeriesKey) -> SeriesKey {
@@ -149,6 +165,9 @@ struct Inner {
     dir: PathBuf,
     clock: Arc<dyn Clock>,
     state: Mutex<State>,
+    /// Held for the length of a flush, so that two (the timer's and the one at a stop) do not rewrite a
+    /// file at once.
+    flush_lock: Mutex<()>,
 }
 
 fn hour_of(unix_seconds: i64) -> Hour {
@@ -163,6 +182,7 @@ impl Recorder {
                 dir,
                 clock,
                 state: Mutex::new(State::default()),
+                flush_lock: Mutex::new(()),
             }),
         }
     }
@@ -184,12 +204,13 @@ impl Recorder {
             .state
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        let key = state.series_for(hour, key);
+        let total_key = state.total_series_for(&key);
         state
             .totals
-            .entry(key.clone())
+            .entry(total_key)
             .or_default()
             .add(millis, is_error);
+        let key = state.series_for(hour, key);
         state
             .pending
             .entry((hour, key))
@@ -200,6 +221,11 @@ impl Recorder {
     /// Writes what was recorded since the last flush to the files, and deletes the files that are past
     /// the days kept. What cannot be written is kept for the next flush.
     pub fn flush(&self) {
+        let _one_at_a_time = self
+            .inner
+            .flush_lock
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let pending = {
             let mut state = self
                 .inner
@@ -270,6 +296,9 @@ impl Recorder {
             from: timestamp(first),
             until: timestamp(this_hour + 3600),
             generated_at: timestamp(now.unix_timestamp()),
+            budget: Budget {
+                in_node_read_p95_ms: IN_NODE_READ_P95_BUDGET_MS,
+            },
             series: series_of(hours, wanted),
         }
     }
@@ -335,6 +364,8 @@ fn series_of(
                 status: key.status.clone(),
                 peer: key.peer.clone(),
                 client: key.client.clone(),
+                group: group_of(key.kind, &key.name).to_owned(),
+                is_in_node_read: is_in_node_read(key.kind, &key.name),
                 count: total.count,
                 errors: total.errors,
                 sum_ms: total.sum_ms,

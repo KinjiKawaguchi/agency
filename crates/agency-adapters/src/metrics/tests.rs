@@ -126,10 +126,14 @@ fn a_flush_writes_the_hours_to_a_file_of_the_day_that_only_the_account_reads_and
     let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode(&file), 0o600);
     assert_eq!(mode(&dir.path().join("metrics")), 0o700);
-    // More in the same hour, and a second flush: the lines add up.
+    // More in the same hour, and a second flush: the numbers of the line add up.
     first.record(usage_route("2xx"), ms(10));
     first.flush();
-    assert_eq!(std::fs::read_to_string(&file).unwrap().lines().count(), 2);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap().lines().count(),
+        1,
+        "the second flush adds to the line of the same series and hour; it does not add a line"
+    );
     // A node that restarted reads what the first wrote.
     let second = recorder(dir.path(), &clock);
     let metrics = second.read(1, None, None);
@@ -527,4 +531,206 @@ fn the_limit_is_five_hundred_series_and_the_overflow_of_a_call_has_no_peer() {
         ("overflow", 2, None)
     );
     assert!(overflow.is_consistent());
+}
+
+#[test]
+fn a_day_of_flushes_is_a_line_for_each_series_and_hour_and_not_a_line_for_each_flush() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = ManualClock::at("2026-11-24T00:00:30Z");
+    let recorder = recorder(dir.path(), &clock);
+    // A flush every minute of a day, with three series active in each.
+    for _ in 0..24 * 60 {
+        recorder.record(usage_route("2xx"), ms(10));
+        recorder.record(usage_route("5xx"), ms(20));
+        recorder.record(SeriesKey::new(Call, "runtime view", "ok"), ms(30));
+        recorder.flush();
+        clock.advance(Span::minutes(1));
+    }
+    let lines = std::fs::read_to_string(dir.path().join("metrics/2026-11-24.jsonl")).unwrap();
+    assert_eq!(
+        lines.lines().count(),
+        3 * 24,
+        "three series in each of 24 hours, not 1440 flushes"
+    );
+    assert!(
+        std::fs::metadata(dir.path().join("metrics/2026-11-24.jsonl"))
+            .unwrap()
+            .len()
+            < 24 * 3 * 600,
+        "and the size is that of the lines"
+    );
+    let again = Recorder::new(
+        dir.path().join("metrics"),
+        Arc::new(ManualClock::at("2026-11-24T23:59:00Z")),
+    );
+    let metrics = again.read(1, None, None);
+    assert_eq!(
+        metrics.series.iter().map(|s| s.count).collect::<Vec<_>>(),
+        [1440, 1440, 1440],
+        "nothing lost in the rewrites"
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(dir.path().join("metrics"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(
+        leftovers.len(),
+        1,
+        "no file beside the day's: {leftovers:?}"
+    );
+    let mode = std::fs::metadata(dir.path().join("metrics/2026-11-24.jsonl"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600, "the rewritten file is as private as the first");
+}
+
+#[test]
+fn two_flushes_at_once_lose_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let recorder = recorder(dir.path(), &ManualClock::at(NOW));
+    let threads: Vec<_> = (0..4)
+        .map(|n| {
+            let recorder = recorder.clone();
+            std::thread::spawn(move || {
+                for _ in 0..50 {
+                    recorder.record(SeriesKey::new(Serve, format!("GET /t{n}"), "2xx"), ms(1));
+                    recorder.flush();
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    let again = Recorder::new(dir.path().join("metrics"), Arc::new(ManualClock::at(NOW)));
+    let counts: Vec<u64> = again
+        .read(1, None, None)
+        .series
+        .iter()
+        .map(|s| s.count)
+        .collect();
+    assert_eq!(counts, [50, 50, 50, 50]);
+}
+
+#[test]
+fn the_totals_hold_at_most_so_many_series_over_the_hours_and_the_rest_are_one_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = ManualClock::at(NOW);
+    let recorder = recorder(dir.path(), &clock);
+    assert_eq!(MOST_SERIES_IN_THE_TOTALS, 500);
+    // 600 names, 100 an hour, so that no hour reaches its own limit.
+    for hour in 0..6 {
+        for n in 0..100 {
+            recorder.record(
+                SeriesKey::new(Serve, format!("GET /h{hour}n{n:03}"), "2xx"),
+                ms(1),
+            );
+        }
+        clock.advance(Span::hours(1));
+    }
+    let totals = recorder.totals();
+    assert_eq!(
+        totals.len(),
+        MOST_SERIES_IN_THE_TOTALS + 1,
+        "the 500 there was room for, and `overflow`"
+    );
+    let overflow = totals
+        .iter()
+        .find(|(key, _)| key.name == "overflow")
+        .unwrap();
+    assert_eq!(overflow.1.count, 100);
+    recorder.record(SeriesKey::new(Serve, "GET /h0n000", "2xx"), ms(1));
+    let first = totals
+        .iter()
+        .find(|(key, _)| key.name == "GET /h0n000")
+        .unwrap();
+    assert_eq!(first.1.count, 1, "a series that is there keeps its own");
+    assert_eq!(
+        recorder
+            .totals()
+            .iter()
+            .find(|(key, _)| key.name == "GET /h0n000")
+            .unwrap()
+            .1
+            .count,
+        2
+    );
+}
+
+#[test]
+fn a_file_with_what_the_recorder_would_refuse_is_read_as_the_recorder_would_have_recorded_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let metrics = dir.path().join("metrics");
+    std::fs::create_dir_all(&metrics).unwrap();
+    let buckets = "[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]";
+    let line = |name: &str, status: &str, kind: &str, extra: &str| {
+        format!(
+            r#"{{"hour":1795518000,"kind":"{kind}","name":"{name}","status":"{status}"{extra},"count":1,"errors":0,"sumMs":1,"buckets":{buckets}}}"#
+        )
+    };
+    let text = [
+        line("GET /good", "2xx", "serve", ""),
+        line("GET /a?token=secret", "2xx", "serve", ""),
+        line("BREW /coffee", "2xx", "serve", ""),
+        line("GET /x", "ok", "serve", ""),
+        line("GET /x", "2xx", "client", r#","client":"android""#),
+        line("GET /x", "2xx", "client", ""),
+        line("peer get_view", "ok", "call", r#","peer":"evil?x=1""#),
+    ]
+    .join("\n");
+    std::fs::write(metrics.join("2026-11-24.jsonl"), text + "\n").unwrap();
+    let read = Recorder::new(metrics, Arc::new(ManualClock::at(NOW))).read(1, None, None);
+    assert!(
+        read.series.iter().all(Series::is_consistent),
+        "{:?}",
+        read.series
+    );
+    let seen: Vec<(&str, &str, Option<&str>, u64)> = read
+        .series
+        .iter()
+        .map(|s| {
+            (
+                s.name.as_str(),
+                s.status.as_str(),
+                s.peer.as_deref(),
+                s.count,
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("GET /good", "2xx", None, 1),
+            ("invalid", "2xx", None, 2),
+            ("peer get_view", "ok", Some("invalid"), 1),
+        ],
+        "the two bad names are one series; a bad status and a bad client are not in it"
+    );
+}
+
+#[test]
+fn a_read_says_the_group_the_budget_and_whether_the_budget_applies() {
+    let dir = tempfile::tempdir().unwrap();
+    let recorder = recorder(dir.path(), &ManualClock::at(NOW));
+    recorder.record(SeriesKey::new(Serve, "GET /api/me", "2xx"), ms(3));
+    recorder.record(usage_route("2xx"), ms(3));
+    recorder.record(SeriesKey::new(Call, "runtime view", "ok"), ms(3));
+    let metrics = recorder.read(1, None, None);
+    assert_eq!(metrics.budget.in_node_read_p95_ms, 100);
+    let facts: Vec<(&str, &str, bool)> = metrics
+        .series
+        .iter()
+        .map(|s| (s.name.as_str(), s.group.as_str(), s.is_in_node_read))
+        .collect();
+    assert_eq!(
+        facts,
+        [
+            ("GET /api/me", "desk", true),
+            ("GET /api/orgs/{org}/teams/{team}/usage", "usage", false),
+            ("runtime view", "runtime", false),
+        ]
+    );
 }
