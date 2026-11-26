@@ -263,3 +263,83 @@ async fn readers_share_one_run_of_the_command_and_a_decision_reruns_it() {
         "usage is kept per range"
     );
 }
+
+#[tokio::test]
+async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answers_again() {
+    let fake = Fake::new();
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let written = lines.clone();
+    // Nothing is reused here, so each call runs the command and its outcome is seen.
+    let runtimes = CommandRuntime::with_log(Box::new(move |line| {
+        written.lock().unwrap().push(line.into())
+    }))
+    .keeping(std::time::Duration::ZERO, std::time::Duration::ZERO);
+    let team = fake.team("app");
+    let logged = || std::mem::take(&mut *lines.lock().unwrap());
+
+    runtimes.view(&team).await.unwrap();
+    assert_eq!(
+        logged(),
+        Vec::<String>::new(),
+        "a runtime that answers is not logged"
+    );
+
+    fake.answer("view", "not json", 1);
+    for _ in 0..3 {
+        assert!(runtimes.view(&team).await.is_err());
+    }
+    let failing = logged();
+    assert_eq!(
+        failing.len(),
+        1,
+        "logged once, not on every call: {failing:?}"
+    );
+    assert!(
+        failing[0].starts_with("agency: team acme/app: the team runtime fails: the team runtime did not write an agency-runtime/1 response"),
+        "{failing:?}"
+    );
+
+    fake.answer(
+        "view",
+        r#"{"error":{"status":503,"message":"the board is locked"}}"#,
+        1,
+    );
+    assert!(runtimes.view(&team).await.is_err());
+    assert_eq!(
+        logged(),
+        ["agency: team acme/app: the team runtime fails: the board is locked"],
+        "a different failure is logged"
+    );
+
+    fake.answer(
+        "decide",
+        r#"{"error":{"status":404,"message":"no such request"}}"#,
+        1,
+    );
+    assert!(runtimes.decide(&team, decision("")).await.is_err());
+    assert_eq!(
+        logged(),
+        ["agency: team acme/app: the team runtime answers again"],
+        "a refusal (4xx) is an answer"
+    );
+    assert!(runtimes.decide(&team, decision("")).await.is_err());
+    assert_eq!(logged(), Vec::<String>::new(), "and is never logged itself");
+
+    fake.answer("view", "not json", 1);
+    assert!(runtimes.view(&team).await.is_err());
+    fake.answer("view", &format!(r#"{{"result":{SAMPLE}}}"#), 0);
+    runtimes.view(&team).await.unwrap();
+    runtimes.view(&team).await.unwrap();
+    let recovered = logged();
+    assert_eq!(recovered.len(), 2, "{recovered:?}");
+    assert_eq!(
+        recovered[1],
+        "agency: team acme/app: the team runtime answers again"
+    );
+
+    let other = fake.team("web");
+    fake.answer("view", "not json", 1);
+    assert!(runtimes.view(&other).await.is_err());
+    assert!(runtimes.view(&team).await.is_err());
+    assert_eq!(logged().len(), 2, "each team has its own state");
+}

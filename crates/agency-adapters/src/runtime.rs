@@ -1,5 +1,6 @@
 //! Team runtimes run as commands over agency-runtime/1 (docs/protocol.md). The node never reads or writes
 //! a runtime's files; it runs the team's configured command once per call, without a shell.
+use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
@@ -133,20 +134,20 @@ impl<T: Clone> Shared<T> {
 }
 
 /// Runs each hosted team's command. Remembers the description of each team that described
-/// agency-runtime/1, and shares and reuses views and usage (see `Shared`).
+/// agency-runtime/1, shares and reuses views and usage (see `Shared`), and logs when a team's runtime
+/// starts failing, fails differently, or answers again.
 pub struct CommandRuntime {
     described: Mutex<HashMap<(Id, Id), Describe>>,
     views: Shared<TeamView>,
     usage: Shared<TokenUsage>,
+    /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
+    health: Mutex<HashMap<(Id, Id), Option<String>>>,
+    log: Log,
 }
 
 impl Default for CommandRuntime {
     fn default() -> Self {
-        Self {
-            described: Mutex::default(),
-            views: Shared::new(VIEW_KEPT),
-            usage: Shared::new(USAGE_KEPT),
-        }
+        Self::with_log(Box::new(|line| eprintln!("{line}")))
     }
 }
 
@@ -155,6 +156,52 @@ fn request(team: &HostedTeam, call: RuntimeCall) -> RuntimeRequest {
 }
 
 impl CommandRuntime {
+    pub fn with_log(log: Log) -> Self {
+        Self {
+            described: Mutex::default(),
+            views: Shared::new(VIEW_KEPT),
+            usage: Shared::new(USAGE_KEPT),
+            health: Mutex::default(),
+            log,
+        }
+    }
+
+    /// How long views and usage are reused (`VIEW_KEPT` and `USAGE_KEPT` unless set here).
+    pub fn keeping(self, view: Duration, usage: Duration) -> Self {
+        Self {
+            views: Shared::new(view),
+            usage: Shared::new(usage),
+            ..self
+        }
+    }
+
+    /// Notes how a call went and logs a change: a failure (the command could not run, did not answer
+    /// in time, or answered 5xx) that is new or differs from the last, or the first answer after one.
+    /// A runtime's 4xx is an answer: it refuses a request, it does not fail. Every view, decision, and
+    /// usage read goes through here, so the log says when a team stops working without a line per call.
+    fn observe<T>(&self, team: &HostedTeam, result: &Result<T, RuntimeError>) {
+        let failure = match result {
+            Err(error) if error.status >= 500 => Some(error.message.clone()),
+            _ => None,
+        };
+        let Ok(mut health) = self.health.lock() else {
+            return;
+        };
+        let key = (team.org.clone(), team.team.clone());
+        let before = health.insert(key, failure.clone());
+        let name = format!("{}/{}", team.org, team.team);
+        match (before, failure) {
+            (Some(Some(was)), Some(now)) if was == now => {}
+            (_, Some(now)) => (self.log)(&format!(
+                "agency: team {name}: the team runtime fails: {now}"
+            )),
+            (Some(Some(_)), None) => (self.log)(&format!(
+                "agency: team {name}: the team runtime answers again"
+            )),
+            _ => {}
+        }
+    }
+
     /// Calls `describe` once per team, refuses runtimes that do not speak agency-runtime/1, and
     /// returns its description.
     async fn ensure_described(&self, team: &HostedTeam) -> Result<Describe, RuntimeError> {
@@ -193,7 +240,9 @@ impl TeamRuntime for CommandRuntime {
             check_view(view, &team.org, &team.team)
                 .map_err(|message| unavailable(format!("the team runtime {message}")))
         };
-        self.views.get(team, 0, run).await
+        let result = self.views.get(team, 0, run).await;
+        self.observe(team, &result);
+        result
     }
 
     async fn decide(
@@ -201,14 +250,19 @@ impl TeamRuntime for CommandRuntime {
         team: &HostedTeam,
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError> {
-        self.ensure_described(team).await?;
-        let decided: Result<Decided, RuntimeError> = call(
-            &team.runtime,
-            &request(team, RuntimeCall::Decide { decision }),
-        )
+        let result = async {
+            self.ensure_described(team).await?;
+            let _: Decided = call(
+                &team.runtime,
+                &request(team, RuntimeCall::Decide { decision }),
+            )
+            .await?;
+            Ok(())
+        }
         .await;
         self.views.forget(team).await;
-        decided.map(|_| ())
+        self.observe(team, &result);
+        result
     }
 
     /// Called only if the runtime listed `tokenUsage` in `describe`; otherwise 404.
@@ -226,6 +280,8 @@ impl TeamRuntime for CommandRuntime {
             )
             .await
         };
-        self.usage.get(team, days, run).await
+        let result = self.usage.get(team, days, run).await;
+        self.observe(team, &result);
+        result
     }
 }

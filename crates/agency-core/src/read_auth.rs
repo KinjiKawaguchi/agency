@@ -36,22 +36,26 @@ pub fn sign_read(
     }
 }
 
-/// Checks a signed read against the definition of the org it reads (none when the org or team is not
-/// here) and returns the member who signed it. Every failure is the same `NotFound` (see `unseen`):
-/// a malformed or stale signature, no definition, a non-member, or a wrong signature. Once the
-/// signature is well formed and fresh, one signature check is spent whatever is missing.
+/// Checks a signed read and returns the member who signed it. `definition` is the org's, if this node
+/// has it; `is_here` says whether what is read is on this node (the team runs here, or, for the
+/// definition itself, the org is here). Every failure is the same `NotFound` (see `unseen`): a
+/// malformed or stale signature, no definition, a non-member, a wrong signature, or nothing here. Once
+/// the account and time are well formed, one signature check is spent whatever is missing.
 pub fn verify_read<'a>(
     definition: Option<&'a OrgDefinition>,
+    is_here: bool,
     auth: &ReadAuth,
     method: &str,
     path: &str,
     now: OffsetDateTime,
 ) -> Result<&'a Person> {
-    let account = Id::parse(&auth.account).map_err(|_| unseen::not_found())?;
-    let at = clock::parse(&auth.date).ok_or_else(unseen::not_found)?;
-    if (now - at).whole_seconds().abs() > SKEW_SECONDS {
-        return Err(unseen::not_found());
-    }
+    let account = Id::parse(&auth.account)
+        .map_err(|_| unseen::refused("a signed read without a well-formed account"))?;
+    let at = clock::parse(&auth.date).ok_or_else(|| {
+        unseen::refused(format!(
+            "a signed read by {account} without a well-formed time"
+        ))
+    })?;
     let person = definition.and_then(|definition| definition.member(&account));
     let key: &PublicKey = match person {
         Some(person) => &person.public_key,
@@ -59,7 +63,30 @@ pub fn verify_read<'a>(
     };
     let message = Kind::Read.message(&read_text(method, path, &auth.date, &account));
     let is_valid = key.verify(&message, &auth.signature);
-    person.filter(|_| is_valid).ok_or_else(unseen::not_found)
+    let skew = (now - at).whole_seconds();
+    match (definition, person) {
+        (None, _) => Err(unseen::refused(format!(
+            "a read by {account} in an org this node does not have"
+        ))),
+        (Some(definition), None) => Err(unseen::refused(format!(
+            "a read by {account}, who is not a member of {}",
+            definition.org
+        ))),
+        (Some(_), Some(_)) if !is_valid => Err(unseen::refused(format!(
+            "a read by {account} whose signature does not match their key"
+        ))),
+        (Some(_), Some(_)) if skew.abs() > SKEW_SECONDS => Err(unseen::refused_member(format!(
+            "a read signed by {account} at {}, {} seconds {} this node's clock; check the clocks",
+            clock::format(at),
+            skew.abs(),
+            if skew > 0 { "behind" } else { "ahead of" }
+        ))),
+        (Some(definition), Some(_)) if !is_here => Err(unseen::refused_member(format!(
+            "a read by {account} of something in {} that is not on this node",
+            definition.org
+        ))),
+        (Some(_), Some(person)) => Ok(person),
+    }
 }
 
 /// `verify_read`, accepted once per signature (`Node::accept_read_once`): a copy of a valid read sent
@@ -67,14 +94,20 @@ pub fn verify_read<'a>(
 pub fn verify_read_once<'a>(
     node: &Node,
     definition: Option<&'a OrgDefinition>,
+    is_here: bool,
     auth: &ReadAuth,
     method: &str,
     path: &str,
 ) -> Result<&'a Person> {
-    let person = verify_read(definition, auth, method, path, node.now())?;
-    let signed_at = clock::parse(&auth.date).ok_or_else(unseen::not_found)?;
+    let person = verify_read(definition, is_here, auth, method, path, node.now())?;
+    let signed_at = clock::parse(&auth.date)
+        .ok_or_else(|| unseen::refused("a signed read without a well-formed time"))?;
     if !node.accept_read_once(&auth.signature, signed_at) {
-        return Err(unseen::not_found());
+        // Anyone who saw the read can send the copy, so it is not vouched for by the member.
+        return Err(unseen::refused(format!(
+            "a copy of a read by {} that was already accepted",
+            person.id
+        )));
     }
     Ok(person)
 }

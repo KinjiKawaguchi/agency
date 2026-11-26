@@ -298,6 +298,9 @@ The node writes these to `~/.agency/logs/serve.log`:
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` is not your team domain. |
 | `agency: refused an Access request (expired)` or `(not valid yet)` | The sign-in expired, or this Mac's clock is off. |
 | `agency: refused an Access request (cannot fetch the Access certs: …)`, `(unknown signing key)`, or `(the signature does not match)` | The node cannot get Access's keys from `teamDomain`, or the token was not made for this team domain. |
+| `agency: team acme/app: the team runtime fails: …` | The team's runtime could not run or answered 5xx; the rest of the line says why (see the answers below). It is written once when the runtime starts failing and again only if the reason changes. |
+| `agency: team acme/app: the team runtime answers again` | The runtime works again after a failure. |
+| `agency: refused GET /fed/v1/…: …` | Another node's request was refused, and the line says why (for example "a read signed by bob at …, 400 seconds behind this node's clock; check the clocks"). The caller only got "not found". At most 20 such lines are written a minute, then one line says how many more were not; a refusal of a request validly signed by a member is always written. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
@@ -306,7 +309,7 @@ The node writes these to `~/.agency/logs/serve.log`:
 
 ### Answers from the node
 
-Some problems show only in the node's answers, in the browser or with `curl`, not in the log:
+The node's answers, in the browser or with `curl`, say what went wrong in their `error`:
 
 | Answer | Meaning |
 |---|---|

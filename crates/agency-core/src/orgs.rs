@@ -187,9 +187,10 @@ pub fn read_definition(
     let doc = node.store().load_org(org);
     let has_invite = code.is_some_and(|code| open_invite(node, org, code).is_some());
     if !has_invite {
-        verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
+        let definition = doc.as_ref().map(|doc| &doc.body);
+        verify_read_once(node, definition, doc.is_some(), auth, "GET", path)?;
     }
-    doc.ok_or_else(unseen::not_found)
+    doc.ok_or_else(|| unseen::refused("an invite code for an org this node does not have"))
 }
 
 /// Accepts a definition sent by another node: with a copy, only its next version; without one, only a
@@ -204,7 +205,12 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     };
     let root = &current.body.root;
     let key = (doc.signer == root.account).then_some(&root.public_key);
-    unseen::verify(&doc, Kind::Org, key)?;
+    if !unseen::check(&doc, Kind::Org, key) {
+        return Err(unseen::refused(format!(
+            "a definition of {org} signed as {}, not with the root key of this node's copy",
+            doc.signer
+        )));
+    }
     if current.body.version >= doc.body.version {
         let is_same = current.body.version == doc.body.version && current.digest() == doc.digest();
         return if is_same {
@@ -228,7 +234,15 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
         .map(str::to_owned);
     let is_trusted_root =
         trusted == Some(root.public_key.fingerprint()) && doc.signer == root.account;
-    unseen::verify(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key))?;
+    if !unseen::check(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
+        let org = &doc.body.org;
+        return Err(unseen::refused(match trusted {
+            None => format!("a first definition of {org}, an org this node does not trust"),
+            Some(_) => {
+                format!("a first definition of {org} not signed by the root key this node trusts")
+            }
+        }));
+    }
     if doc.body.version == 1 {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }

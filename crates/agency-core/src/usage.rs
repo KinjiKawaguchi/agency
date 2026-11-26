@@ -88,15 +88,17 @@ pub async fn hosted_usage(
     auth: &ReadAuth,
 ) -> Result<TokenUsage> {
     let hosted = node.config().hosted(org, team).cloned();
-    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
+    let doc = node.store().load_org(org);
     let reader = verify_read_once(
         node,
         doc.as_ref().map(|doc| &doc.body),
+        hosted.is_some(),
         auth,
         "GET",
         &routes::usage(org, team, days),
     )?;
-    let hosted = hosted.ok_or_else(unseen::not_found)?;
+    let hosted =
+        hosted.ok_or_else(|| unseen::refused("a read of a team that does not run here"))?;
     if reader.role == Role::Answerer {
         return Err(Error::new(
             ErrorKind::Forbidden,

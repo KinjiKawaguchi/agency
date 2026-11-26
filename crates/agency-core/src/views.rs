@@ -115,9 +115,11 @@ pub async fn hosted_view(
     path: &str,
 ) -> Result<FederatedView> {
     let hosted = node.config().hosted(org, team).cloned();
-    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
-    let reader = verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
-    let hosted = hosted.ok_or_else(unseen::not_found)?;
+    let doc = node.store().load_org(org);
+    let definition = doc.as_ref().map(|doc| &doc.body);
+    let reader = verify_read_once(node, definition, hosted.is_some(), auth, "GET", path)?;
+    let hosted =
+        hosted.ok_or_else(|| unseen::refused("a read of a team that does not run here"))?;
     let view = runtime_view(node, &hosted).await?;
     let view = match reader.role {
         Role::Member => view,
