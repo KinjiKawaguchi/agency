@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use crate::node::Node;
 use crate::notice::Notice;
 use agency_proto::client::{
-    PushEvent, PushSubscription, PushSubscriptionInput, PushSubscriptionList, VapidKey,
+    PushEvent, PushFailure, PushSubscription, PushSubscriptionInput, PushSubscriptionList, VapidKey,
 };
 use agency_proto::digest::sha256_hex;
 use agency_proto::Timestamp;
@@ -35,6 +35,11 @@ pub struct WebSubscription {
     pub registered_at: Timestamp,
     pub events: Vec<PushEvent>,
     pub key_id: String,
+    /// When a push service last took a notice for this browser, and the last time it did not.
+    #[serde(default)]
+    pub last_succeeded_at: Option<Timestamp>,
+    #[serde(default)]
+    pub last_failure: Option<PushFailure>,
 }
 
 /// A DNS host name: at least two labels of letters, digits, and hyphens, the last starting with a letter. That
@@ -131,6 +136,8 @@ fn view(one: WebSubscription) -> PushSubscription {
         registered_at: one.registered_at,
         events: one.events,
         key_id: one.key_id,
+        last_succeeded_at: one.last_succeeded_at,
+        last_failure: one.last_failure,
     }
 }
 
@@ -171,8 +178,14 @@ pub fn register_subscription(
     }
     let registered_at =
         Timestamp::parse(&node.now_text()).map_err(|error| Error::internal(error.to_string()))?;
+    let id = subscription_id(&endpoint);
+    let known = node
+        .store()
+        .web_subscriptions()
+        .into_iter()
+        .find(|one| one.id == id);
     let entry = WebSubscription {
-        id: subscription_id(&endpoint),
+        id,
         endpoint,
         p256dh: input.p256dh,
         auth: input.auth,
@@ -180,6 +193,9 @@ pub fn register_subscription(
         registered_at,
         events: crate::push::normal_events(input.events),
         key_id: key.key_id,
+        // What was last known of this browser's push service is kept when the browser registers again.
+        last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
+        last_failure: known.and_then(|one| one.last_failure),
     };
     let mut all: Vec<WebSubscription> = node
         .store()
@@ -218,6 +234,44 @@ pub fn subscriptions(node: &Node) -> Result<PushSubscriptionList> {
             .map(view)
             .collect(),
     })
+}
+
+/// What a notice sent to a browser's push service came to, for the subscription's own record.
+pub(crate) enum Sent<'a> {
+    Taken,
+    NotTaken(&'a str),
+}
+
+/// Keeps, for each subscription, when its push service last took a notice and when it last did not (and why), so that
+/// the owner can be told that a browser's notifications fail. A subscription a push service called gone is removed
+/// elsewhere and not recorded here. One write for all the results of a pass.
+pub(crate) fn record_sends(node: &Node, results: &[(&str, Sent<'_>)]) -> Result<()> {
+    if results.is_empty() {
+        return Ok(());
+    }
+    let at =
+        Timestamp::parse(&node.now_text()).map_err(|error| Error::internal(error.to_string()))?;
+    let mut all = node.store().web_subscriptions();
+    let mut changed = false;
+    for (id, result) in results {
+        let Some(one) = all.iter_mut().find(|one| one.id == *id) else {
+            continue;
+        };
+        match result {
+            Sent::Taken => one.last_succeeded_at = Some(at.clone()),
+            Sent::NotTaken(reason) => {
+                one.last_failure = Some(PushFailure {
+                    at: at.clone(),
+                    reason: (*reason).to_owned(),
+                });
+            }
+        }
+        changed = true;
+    }
+    if changed {
+        node.store().save_web_subscriptions(&all)?;
+    }
+    Ok(())
 }
 
 /// The subscriptions that get this notice: of its kind, and made with the node's current key (one made
