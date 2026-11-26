@@ -22,7 +22,7 @@ const e = (kind: NoticeEvent['kind'], key: string): NoticeEvent => ({ kind, key 
 
 describe('what the viewer is told', () => {
   it('names a request, with its team, when one arrives, and counts them when several do', () => {
-    expect(noticesFor([e('request', `request:acme/app/${request.id}`)], lookups, en, on)).toEqual([{ tone: 'info', target: { to: '/desk', item: `acme:app:${request.id}` }, tag: `request/acme/app/${request.id}`, message: `A request waits for you: ${request.title} (${sampleTeamView.label}).` }])
+    expect(noticesFor([e('request', `request:acme/app/${request.id}`)], lookups, en, on)).toEqual([{ tone: 'info', target: { to: '/desk', item: `acme:app:${request.id}` }, tag: `request/acme/app/${request.id}`, message: `A request waits for you: ${request.title} (${sampleTeamView.label}).`, plain: 'A request is waiting for you' }])
     expect(noticesFor([e('request', `request:acme/app/${request.id}`), e('request', 'request:acme/app/r-2')], lookups, en, on)[0]?.message).toBe('2 requests now wait for you.')
   })
 
@@ -38,7 +38,7 @@ describe('what the viewer is told', () => {
   })
 
   it('shows a refused decision as an error with the node’s reason, and a queued one as news', () => {
-    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, en, on)).toEqual([{ tone: 'error', target: { to: '/desk' }, tag: 'decision/d1', message: 'A decision “Add a second frontend agent” was refused: Not the right team.' }])
+    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, en, on)).toEqual([{ tone: 'error', target: { to: '/desk' }, tag: 'decision/d1', message: 'A decision “Add a second frontend agent” was refused: Not the right team.', plain: 'A decision was refused' }])
     expect(noticesFor([e('decision', 'decision:d2:queued')], lookups, en, on)[0]).toMatchObject({ tone: 'info', message: 'A decision “Rename the export endpoint” is queued: its node cannot be reached yet.' })
   })
 
@@ -115,5 +115,43 @@ describe('what a notice is named by, so that a browser shows one notification fo
     expect(tagOf([e('device', 'device:k1'), e('device', 'device:k2')])).toBeUndefined()
     expect(tagOf([e('participant', `participant:acme/app/${sampleTeamView.people[1]!.id}`)])).toBeUndefined()
     expect(tagOf([e('blocked', `blocked:acme/app/${blockedItem.ref}`)])).toBeUndefined()
+  })
+})
+
+describe('what a notice says when no title may leave the page', () => {
+  const person = sampleTeamView.people[1]!
+  const events = [
+    e('request', `request:acme/app/${request.id}`),
+    e('participant', `participant:acme/app/${person.id}`),
+    e('blocked', `blocked:acme/app/${blockedItem.ref}`),
+    e('device', 'device:k1'),
+    e('decision', 'decision:d1:refused'),
+    e('decision', 'decision:d2:queued'),
+  ]
+  const secrets = [request.title, sampleTeamView.label, person.label, blockedItem.title, 'Phone', 'Add a second frontend agent', 'Rename the export endpoint', 'Not the right team.', en.people.blockedReasons[blockedItem.blocked!.reason]]
+
+  it.each([['English', en], ['Japanese', ja]] as const)('has no title, label, team, or reason in it (%s)', (_language, messages) => {
+    const notices = events.flatMap((event) => noticesFor([event], lookups, messages, on))
+    expect(notices).toHaveLength(events.length)
+    for (const notice of notices) {
+      for (const secret of secrets) expect(notice.plain, `${notice.message} -> ${notice.plain}`).not.toContain(secret)
+    }
+    // The page's own words still name them.
+    expect(notices[0]?.message).toContain(request.title)
+  })
+
+  it('says what the phone says for a push whose titles are hidden', () => {
+    expect(noticesFor([events[0]!], lookups, en, on)[0]?.plain).toBe('A request is waiting for you')
+    expect(noticesFor([events[3]!], lookups, en, on)[0]?.plain).toBe('A device is waiting to be added')
+    expect(noticesFor([events[4]!], lookups, en, on)[0]?.plain).toBe('A decision was refused')
+    expect(noticesFor([events[0]!], lookups, ja, on)[0]?.plain).toBe('あなたを待っている依頼があります')
+    expect(noticesFor([events[3]!], lookups, ja, on)[0]?.plain).toBe('端末が追加を待っています')
+    expect(noticesFor([events[4]!], lookups, ja, on)[0]?.plain).toBe('決定が断られました')
+  })
+
+  it('keeps a count as it is: it names nothing', () => {
+    const several = noticesFor([e('request', 'request:acme/app/r-1'), e('request', 'request:acme/app/r-2')], lookups, en, on)[0]
+    expect(several?.plain).toBe('2 requests now wait for you.')
+    expect(several?.plain).toBe(several?.message)
   })
 })

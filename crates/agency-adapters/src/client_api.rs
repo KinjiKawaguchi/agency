@@ -12,6 +12,7 @@ use crate::access::{AccessVerifier, Identity};
 use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
 use crate::launch::Launch;
 use crate::server::status_of;
+use agency_core::about;
 use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
@@ -57,6 +58,8 @@ pub trait Assets: Send + Sync {
 
 pub struct ClientApi {
     pub node: Arc<Node>,
+    /// Where the Client API writes a line for the node's log.
+    pub log: crate::Log,
     /// The write token embedded in the page. Random for each start of the node.
     pub token: String,
     /// The port the node listens on, for the `Host` check.
@@ -130,7 +133,7 @@ async fn admit(
     match access.verify(header_text(headers, ACCESS_HEADER)).await {
         Ok(identity) => Ok(Admitted::Access(identity)),
         Err(reason) => {
-            eprintln!("agency: refused an Access request ({reason})");
+            (api.log)(&format!("refused an Access request ({reason})"));
             Err((
                 StatusCode::FORBIDDEN,
                 "not signed in through Cloudflare Access",
@@ -149,7 +152,8 @@ fn is_same_secret(given: &str, expected: &str) -> bool {
             == 0
 }
 
-/// A write needs the page's token, a JSON body (a DELETE has none), and, through Access, the owner.
+/// A write needs the page's token, a JSON body (a DELETE has none), and the owner: on a node with an
+/// access setting, the owner signed in through Access, even on loopback.
 fn check_write(
     api: &ClientApi,
     admitted: &Admitted,
@@ -170,13 +174,17 @@ fn check_write(
             "the body must be application/json",
         ));
     }
-    let Admitted::Access(identity) = admitted else {
-        return Ok(());
-    };
-    if is_owner(api, identity) {
-        Ok(())
-    } else {
-        Err((StatusCode::FORBIDDEN, "only the node's owner may decide"))
+    match admitted {
+        // With an access setting the owner is who Access says it is, so a process of the same OS user
+        // on this machine cannot write as the owner. Checked against the setting itself, so a malformed
+        // one (which disables Access) does not make loopback the owner again.
+        Admitted::Local if api.node.config().access.is_some() => Err((
+            StatusCode::FORBIDDEN,
+            "this node is behind Access: writes come through its public host name, signed in as the owner",
+        )),
+        Admitted::Local => Ok(()),
+        Admitted::Access(identity) if is_owner(api, identity) => Ok(()),
+        Admitted::Access(_) => Err((StatusCode::FORBIDDEN, "only the node's owner may decide")),
     }
 }
 
@@ -230,6 +238,11 @@ async fn get_session(State(api): Shared) -> Response {
         write_token: api.token.clone(),
         now,
     }))
+}
+
+/// What this node is and speaks, so an app can tell whether the node or the app needs an update.
+async fn get_about() -> Response {
+    json_response(StatusCode::OK, &about::this_node())
 }
 
 /// The account and what it reaches; to the node's owner, also their other home nodes, which say where
@@ -524,6 +537,7 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 /// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
 pub fn router(api: Arc<ClientApi>) -> Router {
     Router::new()
+        .route("/api/about", get(get_about))
         .route("/api/me", get(get_me))
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))

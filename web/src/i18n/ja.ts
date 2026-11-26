@@ -47,6 +47,7 @@ export const ja: Messages = {
   overview: {
     title: '全体の状況',
     lead: (requests, teams) => (requests === 0 ? 'あなたを待っている依頼は、どのチームにもありません。' : `${teams} チームで、${requests} 件の依頼があなたを待っています。`),
+    leadPartial: (requests, teams, unread) => `${requests === 0 ? '答えたチームでは、あなたを待っている依頼はありません。' : `答えた ${teams} チームで、${requests} 件の依頼があなたを待っています。`}読み込めなかったチームが ${unread} あります。`,
     noTeams: 'この組織には、まだチームがありません。',
     waitingForYou: (count) => `あなたを待っている依頼 ${count} 件`,
     nothingWaits: 'あなたを待っている依頼はありません。',
@@ -79,6 +80,14 @@ export const ja: Messages = {
       return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
+    // The iPhone's words for a push whose titles are hidden (apple/Shared/ja.lproj), and the same for the kinds it has no push for.
+    hidden: {
+      request: 'あなたを待っている依頼があります',
+      participant: '参加者があなたの返事を待っています',
+      blocked: '止まった仕事があります',
+      device: '端末が追加を待っています',
+      decisionRefused: '決定が断られました',
+    },
     devicesMark: (count) => `承認待ち ${count} 件`,
     os: {
       title: 'このブラウザの通知',
@@ -136,6 +145,7 @@ export const ja: Messages = {
     allOrgs: 'すべての組織',
     allTitle: 'あなたのすべての組織',
     orgUnavailable: '読み込めません',
+    someUnread: '読み込めないチームがあります',
     title: (label) => `${label} の組織`,
     whole: '組織全体に戻る',
     chooseOrg: '組織',
@@ -265,6 +275,7 @@ export const ja: Messages = {
       thisNode: 'このホームノードの名前',
       thisHost: (address) => `このページは ${address} が配っていて、上の鍵はそのノードのものです。`,
       none: '一覧に、ほかのホームノードはありません。',
+      fromNode: 'このノードの設定にあります',
       name: '名前',
       address: 'アドレス',
       add: 'このホームノードを追加',
@@ -472,6 +483,7 @@ export const ja: Messages = {
     feed: {
       title: '今起きていること',
       empty: 'この 1 時間はまだ何もありません。',
+      notRead: 'まだフィードを読み込めていません。',
       added: (ref, title) => `新規: ${ref} ${title}`,
       changed: (ref, title, from, to) => `${ref} ${title}: ${from} → ${to}`,
       opened: (ref, title) => `プルリクエストを開きました: ${ref} ${title}`,

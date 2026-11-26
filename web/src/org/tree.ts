@@ -37,7 +37,7 @@ export interface DepartmentNode {
   head: Person | undefined
   children: UnitChild[]
   /** Requests that are the viewer's anywhere below. */
-  mine: number
+  mine: Mine
 }
 
 /** An org in the chart of every org: what the node says of it, and its units. */
@@ -46,9 +46,16 @@ export interface OrgNode {
   org: OrgRef
   /** Absent while the org's definition is loading or when it could not be read. */
   children: UnitChild[]
-  mine: number
+  mine: Mine
   state: 'ready' | 'loading' | 'failed'
 }
+
+/**
+ * The requests that are the viewer's below a unit: a number only once every team below has answered. While one is
+ * still being read the count is `loading`, and when one could not be read it is `unknown`: a sum of the teams that
+ * answered would pass for the whole.
+ */
+export type Mine = number | 'loading' | 'unknown'
 
 export type UnitChild = DepartmentNode | TeamNode | PersonNode | OrgNode
 
@@ -81,8 +88,18 @@ function teamNode(place: TeamPlace, teams: readonly Team[], orgId: string, loadi
   }
 }
 
-const mineOf = (children: readonly UnitChild[]): number =>
-  children.reduce((sum, child) => sum + (child.kind === 'team' ? (child.signals?.mine ?? 0) : child.kind === 'person' ? 0 : child.mine), 0)
+function mineOfChild(child: UnitChild): Mine {
+  if (child.kind === 'person') return 0
+  if (child.kind === 'team') return child.signals === undefined ? (child.isLoading ? 'loading' : 'unknown') : child.signals.mine
+  return child.mine
+}
+
+function mineOf(children: readonly UnitChild[]): Mine {
+  const counts = children.map(mineOfChild)
+  if (counts.includes('loading')) return 'loading'
+  if (counts.includes('unknown')) return 'unknown'
+  return counts.reduce<number>((sum, count) => sum + (typeof count === 'number' ? count : 0), 0)
+}
 
 /** A department's departments, teams, and people, in that order. `null` is the top of the organization. */
 function childrenOf(parent: string | null, definition: OrgDefinition, teams: readonly Team[], viewerAccount: string, loading: Loading): UnitChild[] {
@@ -128,7 +145,7 @@ export interface OrgInput {
 /** Every org of the account side by side, each with its departments, teams, and people, and the signals of the overview. */
 export function buildAllOrgsTree(orgs: readonly OrgInput[], teams: readonly Team[], viewerAccount: string, loading: Loading = new Set()): OrgNode[] {
   return orgs.map(({ org, definition, failed }): OrgNode => {
-    if (definition === undefined) return { kind: 'org', org, children: [], mine: 0, state: failed ? 'failed' : 'loading' }
+    if (definition === undefined) return { kind: 'org', org, children: [], mine: failed ? 'unknown' : 'loading', state: failed ? 'failed' : 'loading' }
     const children = childrenOf(null, definition, teams, viewerAccount, loading)
     return { kind: 'org', org, children, mine: mineOf(children), state: 'ready' }
   })

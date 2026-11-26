@@ -8,7 +8,7 @@ use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::{PushToken, VapidKey};
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
-use agency_proto::view::{AnswerWith, PersonStatus, Request, RequestKind};
+use agency_proto::view::{AnswerWith, EpicForecast, PersonStatus, Request, RequestKind};
 use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -109,6 +109,8 @@ pub struct MemoryRuntimeState {
     pub pending: Vec<(String, String)>,
     /// The people the view shows.
     pub people: Vec<PersonStatus>,
+    /// The epics the view shows.
+    pub epics: Vec<EpicForecast>,
     pub applied: Vec<RuntimeDecision>,
     /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
     /// without `tokenUsage`.
@@ -190,7 +192,7 @@ impl TeamRuntime for MemoryRuntime {
             people: state.people.clone(),
             requests,
             work: vec![],
-            epics: vec![],
+            epics: state.epics.clone(),
         })
     }
 

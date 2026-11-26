@@ -2,10 +2,10 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useApi } from '../api/context'
-import { devicesQuery, useTeams } from '../api/queries'
+import { devicesQuery, meQuery } from '../api/queries'
 import { enrollmentOf } from '../device/enrollment'
 import { useDeviceKey } from '../device/useDeviceKey'
-import { countWaitingOnOwner } from '../desk/items'
+import { useWaiting, type Waiting } from '../desk/useWaitingCount'
 import { useI18n } from '../i18n'
 import { LOCALES, LOCALE_NAMES, isLocale } from '../i18n/locale'
 import { isNativeApp } from '../nodes/homeNodes'
@@ -53,27 +53,34 @@ const GROUPS: readonly Group[] = [
   },
 ]
 
+/** The tab's count: a pill that is a placeholder while the teams are read, the number when it is known and above 0, and nothing for a 0 or for a count that cannot be known. */
+function WaitingCount({ waiting }: { waiting: Waiting }) {
+  if (waiting.status === 'loading') return <span className="nav-count skeleton-count" aria-hidden="true" />
+  return waiting.status === 'known' && waiting.count > 0 ? <span className="nav-count">{waiting.count}</span> : null
+}
+
 const isOn = (path: string, to: PagePath): boolean => path === to || path.startsWith(`${to}/`)
 
 export function AppBar() {
   const { t, locale, setLocale } = useI18n()
   const { theme, setTheme } = useTheme()
-  const { me, teams } = useTeams()
-  const { nodes } = useHomeNodes()
+  const waiting = useWaiting()
+  const { nodes, listed } = useHomeNodes()
   const api = useApi()
+  const me = useQuery(meQuery(api)).data
   const key = useDeviceKey()
   const devices = useQuery(devicesQuery(api))
   // The devices this one can approve: other devices' requests, and only once this device is added in some org.
+  const isReadingApprovals = key.status === 'ready' && devices.isPending
   const approvals = devices.data === undefined || key.status !== 'ready' || enrollmentOf(key.key.publicKey, devices.data).status !== 'enrolled' ? 0 : devices.data.requests.filter((request) => request.publicKey !== key.key.publicKey).length
   // Once the owner lists another home node, every tab says which one it is, so the work node cannot be taken for the personal one.
-  const nodeName = nodes.others.length === 0 || isNativeApp() ? undefined : (nodes.self ?? window.location.host)
-  const waiting = me === undefined ? 0 : countWaitingOnOwner(teams)
+  const nodeName = listed.length === 0 || isNativeApp() ? undefined : (nodes.self ?? window.location.host)
   const themeLabels = THEME_LABELS(t)
   const path = useRouterState({ select: (state) => state.location.pathname })
   const current = GROUPS.find((group) => group.pages.some((page) => isOn(path, page.to)))
 
   useEffect(() => {
-    document.title = waiting > 0 ? `(${waiting}) ${t.app.name}` : t.app.name
+    document.title = waiting.status === 'known' && waiting.count > 0 ? `(${waiting.count}) ${t.app.name}` : t.app.name
   }, [waiting, t.app.name])
 
   return (
@@ -88,7 +95,7 @@ export function AppBar() {
           {GROUPS.map((group) => (
             <Link key={group.key} to={group.pages[0]?.to ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
               {group.label(t)}
-              {group.key === 'desk' && waiting > 0 ? <span className="nav-count">{waiting}</span> : null}
+              {group.key === 'desk' ? <WaitingCount waiting={waiting} /> : null}
             </Link>
           ))}
         </nav>
@@ -105,7 +112,7 @@ export function AppBar() {
           </select>
           <Link className="me-link" to="/devices" aria-label={approvals > 0 ? `${t.nav.devices}, ${t.notices.devicesMark(approvals)}` : t.nav.devices} title={t.nav.devices}>
             {me === undefined ? t.nav.devices : <Face label={me.account.label} kind="human" size="sm" />}
-            {approvals > 0 ? <span className="me-count" aria-hidden="true">{approvals}</span> : null}
+            {isReadingApprovals ? <span className="me-count skeleton-count" aria-hidden="true" /> : approvals > 0 ? <span className="me-count" aria-hidden="true">{approvals}</span> : null}
           </Link>
         </div>
         {current === undefined || current.pages.length < 2 ? null : (

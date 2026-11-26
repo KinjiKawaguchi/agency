@@ -18,7 +18,7 @@ export const toTeam = (snapshot: TeamSnapshot): Team => ({
   viewer: snapshot.viewer,
   source: snapshot.source,
   mine: new Set(snapshot.mine),
-  waitingOnViewer: new Set(snapshot.waitingOnViewer ?? []),
+  waitingOnViewer: new Set(snapshot.waitingOnViewer ?? [] /* stand-in-ok(optional): the node leaves the list out when it is empty, in an answer that has come */),
 })
 
 export const teamKey = (team: Team): string => `${team.view.org}/${team.view.team}`

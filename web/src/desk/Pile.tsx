@@ -1,3 +1,4 @@
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { useState } from 'react'
 import { Face } from '../people/Face'
 import { useI18n } from '../i18n'
@@ -54,6 +55,19 @@ function PileGroup({ id, items, selected, orgLabelOf, onSelect }: PileProps & { 
         </button>
       ) : null}
     </div>
+  )
+}
+
+/** What stands in the pile while the teams are read: some rows, or one under the rows of the teams that have answered. */
+export function PileSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <Loading quiet={rows === 1}>
+      <div className="pile-skeleton">
+        {Array.from({ length: rows }, (_, index) => (
+          <Skeleton key={index} kind="box" />
+        ))}
+      </div>
+    </Loading>
   )
 }
 

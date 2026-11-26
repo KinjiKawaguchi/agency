@@ -115,7 +115,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 ```
 
 エージェントはログイン時に `agency serve` を起動し、止まったら起動し直します。
-ノードの出力は `~/.agency/logs/serve.log` に書かれます。
+ノードのログは `~/.agency/logs/node.jsonl` です（[ログ](#ログ)を参照）。`~/.agency/logs/serve.log` には、エージェントが受け取るもの（起動時の行とクラッシュ）が残ります。
 
 | したいこと | コマンド |
 |---|---|
@@ -141,7 +141,7 @@ systemctl --user enable --now agency-node
 ```
 
 ユニットはログイン時に（次のとおり linger を有効にすれば、マシンの起動時に）`agency serve` を起動し、止まったら 10 秒後に起動し直します。
-ノードの出力は `~/.agency/logs/serve.log` に書かれます。systemd が起動と停止をいつ行ったかは、`journalctl --user -u agency-node` でわかります。
+ノードのログは `~/.agency/logs/node.jsonl` です（[ログ](#ログ)を参照）。`~/.agency/logs/serve.log` には、ユニットが受け取るもの（起動時の行とクラッシュ）が残ります。systemd が起動と停止をいつ行ったかは、`journalctl --user -u agency-node` でわかります。
 
 | したいこと | コマンド |
 |---|---|
@@ -181,7 +181,7 @@ loginctl show-user "$USER" --property=Linger
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/serve.log
+tail -n 20 ~/.agency/logs/node.jsonl
 ```
 
 - `/api/me` には、アカウントと、チーム `app` を含む組織が `"location":"local"` 付きで出ます。
@@ -263,6 +263,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 ```
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
+- `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 - ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
@@ -448,6 +449,7 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 
 - **このディレクトリをバックアップし、共有するものには入れないでください。** データディレクトリのバックアップには数字が含まれるので、アカウント鍵と同じように扱います。
 - 数字は指標の動きを読むためのもので、会計用ではありません。
+- **読み取り。** `GET /api/orgs/<組織>/outcomes/readings`（数字と同じく所有者だけ）は、チームの計画が epic を狙わせた KPI が、その epic の出荷日の前後でどうだったかを返します。チームの view は完了した epic を限られた間（scrum harness では 30 日）しか載せないため、ノードは、狙われた epic が完了したと最初に見た日を `outcomes/<組織>.ships.jsonl`（同じディレクトリ、ファイルは `0600`。チーム、epic、時刻を持ち、数字は含みません）に書き、変更しません。数字と一緒に保管し、同じようにバックアップしてください。これがないと、チームの view から消えた epic の読み取りはできません。
 
 ## ノードの更新
 
@@ -479,11 +481,39 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 データディレクトリには手を加えません。
 ノードは起動のたびに書き込み用のトークンを作り直すため、開いていたページは次の書き込みの前に一度読み込み直します。
 
+### ログ
+
+ノードは、動いているあいだに伝えるべきことを `~/.agency/logs/node.jsonl` に、1 行に 1 つの JSON オブジェクトとして書きます。
+
+```json
+{"ts":"2026-11-26T04:55:22.123Z","level":"warn","event":"runtime","message":"team acme/app: the team runtime fails: …"}
+```
+
+- `ts` は UTC です。`level` は `error`、`warn`、`info`、`debug` のどれかで、`logging.level` で変えない限り、ノードは `info` とそれより緊急なものを書きます。
+- `event` は行を書いた部分の名前で、`start`、`runtime`、`refused`、`access`、`usage`、`push`、`placement`、`replicas`、`requests`、`outbox` のどれかです。`message` はノードについての文で、リクエストの本文、トークン、クエリ文字列は入りません。
+- ファイルが `maxSizeMib` を超えると、ノードはそれを `node-<UTC の時刻>.jsonl` として閉じ、新しいファイルを始めます。閉じたファイルのうち `maxAgeDays` 日より古いものと、新しい `maxFiles` 個より前のものは、ノードの起動時と、ファイルを閉じるたびに削除されます。ファイルを読めるのはノードのアカウントだけです。
+- ターミナルで動かすと、ノードは各行をそこにも表示します。ファイルに書けないときは、行は標準エラー出力へ行きます。launchd や systemd の下では、それが `serve.log` です。
+
+`config.json` に書いて、ノードを再起動します。どのフィールドも省けます。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。
+
+```json
+"logging": { "level": "info", "maxSizeMib": 20, "maxAgeDays": 14, "maxFiles": 50 }
+```
+
+| フィールド | 意味 | 値 | 既定値 |
+|---|---|---|---|
+| `level` | 書く行のうち、いちばん緊急でないレベル | `error`、`warn`、`info`、`debug` | `info` |
+| `maxSizeMib` | ファイルを閉じるサイズ（MiB） | 1 から 1024 | 20 |
+| `maxAgeDays` | 閉じたファイルを残す日数 | 1 から 365 | 14 |
+| `maxFiles` | 残す閉じたファイルの数 | 1 から 1000 | 50 |
+
+`serve.log` には、launchd や systemd が受け取るものが残ります。ノードの起動時に表示される行、ノードを止める失敗の行、クラッシュです。小さく、ローテーションはされません。
+
 ## トラブルシューティング
 
 ### ログの行
 
-ノードは `~/.agency/logs/serve.log` に次の行を書きます。
+ノードは `~/.agency/logs/node.jsonl` に次の行を書きます。表は各行を、ターミナルと `serve.log` が表示する `agency: <message>` の形で示します。`node.jsonl` では、`agency: ` のあとの文が、その行の `message` です。`cannot listen` と、ノードを止める失敗の行は、`serve.log` にだけあります。
 
 | 行 | 意味 |
 |---|---|

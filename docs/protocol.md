@@ -135,6 +135,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 |---|---|---|
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
+| GET | `/fed/v1/orgs/<org>/about` | A member's signed read of the org. Answers `About` (see "Discovery"): the release, the contracts and the capabilities of this node, and never `oldestApp`. A stranger, a signature for another path, a copy of a read already answered, and an org this node does not have are all refused alike (404) |
 | GET | `/fed/v1/orgs/<org>/versions?after=<n>` | A member's signed read of the path with its query. Answers `{ "versions": [<signed definition>, ...] }`: the versions after `n`, oldest first, at most 20 (a node further behind asks again); 404 when this node does not have them all |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
@@ -253,6 +254,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 | `activity` (optional) | `"since": <Timestamp>`, `"limit": <1 to 500>` | `Activity` (see "Activity") |
+| `participantMetrics` (optional) | `"days": <1 to 90>`, `"utcOffsetMinutes"?: <-720 to 840>` | `ParticipantMetrics` (see "Participant metrics") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses usage for 60 seconds (for the same range).
@@ -262,6 +264,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `activity` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. It runs at most one `activity` call per team at a time, and the answer is kept and refreshed as above (young for 10 seconds): the command is asked for the events after five minutes before the first reader's `since`, at the largest `limit`, and each reader gets the events after its own `since`, cut at its own `limit`, so readers with different questions start one process. A reader whose question the shared answer cannot give (it asks from before the shared answer began, or for more events than an answer the runtime cut holds) gets a run of its own.
+- `participantMetrics` is optional in the same way: the node calls it only when `describe` lists it, and a runtime without it is a team with no participant metrics, not an error. A runtime that lists it cuts the days at `utcOffsetMinutes` when the request has it.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## Token usage
@@ -277,6 +280,25 @@ PersonUsage { person: <runtime name>, costUsd: number, tokens: { input, output, 
 - `costUsd` is an estimate: tokens priced at API rates, in US dollars rounded to cents by the runtime, whatever actually pays for them (a subscription or an API key). It is the one exception to "numbers are non-negative integers": a non-negative JSON number. Token counts are non-negative integers.
 - The node computes nothing and stores nothing; every read asks the team's runtime. Before passing a report on, the node checks that `org`, `team`, and `days` are the ones it asked for, that `byDay` has at most `days` entries with strictly increasing dates, that every cost is finite and non-negative, and that every participant has a name. A report that fails is 503.
 - The shared sample is `testdata/tokenusage.sample.json`.
+
+## Participant metrics
+
+What a team runtime knows about each participant's days, and whose pull requests were whose. It is the optional op `participantMetrics` of agency-runtime/1, and it carries only what GitHub does not have: the times of the pull requests and of the issues (when one opened, merged, or moved to In Progress) are GitHub's, which the node reads for "Evaluation", so no second source of the same times exists. A work item's work type and epic are in the `TeamView`, and so are not here either.
+
+```
+ParticipantMetrics { org: Id, team: Id, days, generatedAt: Timestamp, utcOffsetMinutes, participants: ParticipantDays[], pullRequests: PullRequestAuthor[] }
+ParticipantDays    { name: <runtime name>, byDay: ParticipantDay[] }
+ParticipantDay     { date: Date, busySeconds, waitingSeconds, idleSeconds, costUsd: number, tokens: { input, output, cacheRead, cacheWrite } }
+PullRequestAuthor  { repo: "owner/name", number, by: <runtime name> }
+```
+
+- A report covers the last `days` calendar days (1 to 90), today included. The days are cut at `utcOffsetMinutes`, minutes east of UTC (-720 to 840): the offset the node gave in the request, which is its own time zone, so that a day here is a day of "Evaluation"; or, when the request has none, the runtime's own. The report says which one it used, and the node refuses a report that used another than the one it asked for.
+- `participants` are named by their runtime names, as in `TeamView` and `TokenUsage`, not by org member ids, and each appears once. `byDay` is oldest first; days with nothing in them may be left out.
+- The three times of a day add up to the time at least one of the participant's sessions was alive. When several sessions overlap, the overlap counts once, not once for each. `busySeconds` is the time at least one session was working. `waitingSeconds` is the rest of the time in which at least one session waited for a decision of a human. Only a human's decision is waiting: a session that waits for an agent participant, or for anything else, is idle in that time, so that two runtimes cannot split the same minute differently. `idleSeconds` is the rest: sessions were alive and none worked or waited. A moment that is both busy and waiting is busy. Time in which no session was alive is in none of them, so a day's three numbers may add up to less than the day. A day is cut at a fixed offset, so it lasts exactly 24 hours (86 400 seconds) whatever the clocks do, and the three numbers never add up to more than that.
+- `costUsd` and `tokens` add up over the participant's sessions, as in "Token usage" (an estimate at API rates, rounded to cents).
+- `pullRequests` lists a pull request only when the runtime knows whose session made it, for example from the session's own record that it opened that pull request. It never guesses, and a pull request it cannot attribute is left out. A pull request is named by `repo` and `number` on GitHub, so the node joins it to the pull requests it reads from GitHub without parsing an item reference (which stays opaque, see "Item references"). `by` is the participant's runtime name.
+- Before using a report, the node checks that `org`, `team`, and `days` are the ones it asked for; that `utcOffsetMinutes` is a time zone and the one asked for; that the days of each participant are in order, within the range, and no more than 24 hours of time in a day; that costs are finite and not negative; that a participant, and a pull request, is listed once, with a name and, for a pull request, an `owner/name` and a number above 0; and that the report lists at most 1000 participants and 10 000 pull requests. A report that fails is answered as an unavailable runtime, and nothing of it is used.
+- The shared sample is `testdata/participantmetrics.sample.json`. Its costs and tokens are those of `testdata/tokenusage.sample.json`, split by day.
 
 ## Evaluation
 
@@ -368,9 +390,9 @@ ReadingState "notShipped" | "shipDateUnknown" | "noBaseline" | "tooEarly" | "noF
 
 - `shippedOn` is the calendar day, in the node's time zone, of the epic's `doneAt` (the time its last child was finished, in its team's view). A reading is made for each aim, in the order of the definition.
 - The constants are part of the protocol, so that a screen and an agent that cite a reading agree: a number counts as **before** when it is dated on or before the ship day and not more than **90 days** earlier, and as **after** when it is dated at least **14 days** after the ship day (the effect needs time to show) and not more than **90 days** after it; a reading needs at least **3** numbers of the KPI in the 180 days around the ship day. `before` is the last number of its window and `after` the first of its own; `change` is `after.value - before.value`, and `changeRatio` is the change over `before.value`, left out when `before.value` is 0.
-- `state` says why a reading has numbers, or why it has none, and **numbers are given in `ready` and only there**: `notShipped` (the epic is not finished: nothing to compare); `shipDateUnknown` (no ship day is known: the harness could not know the time, or the epic is older than what the harness keeps and the node had not remembered it); `noBaseline` (no number in the 90 days up to the ship day); `tooEarly` (no number yet at least 14 days after, and the 90 days after the ship day are not over; `readableFrom` is the first day a number dated then would count); `noFollowUp` (the 90 days after the ship day are over and no number was dated at least 14 days after it: there is nothing to compare, and there will not be); `tooFew` (fewer than 3 numbers around the ship day: `points` says how many there are and `needs` how many are needed, 3); `ready`. A reading that refuses is the honest answer, not an error: a KPI the owner enters once a month will often be `tooFew` for a long time.
+- `state` says why a reading has numbers, or why it has none, and **numbers are given in `ready` and only there**: `notShipped` (the epic is not finished: nothing to compare); `shipDateUnknown` (no ship day is known: the epic is finished and the harness could not know the time, or the team's view does not list the epic, because it is older than what the harness keeps and the node had not remembered it, or its reference names nothing there, or the node has not read the view yet; nothing is guessed from an epic that is not listed); `noBaseline` (no number in the 90 days up to the ship day); `tooEarly` (no number yet at least 14 days after, and the 90 days after the ship day are not over; `readableFrom` is the first day a number dated then would count); `noFollowUp` (the 90 days after the ship day are over and no number was dated at least 14 days after it: there is nothing to compare, and there will not be); `tooFew` (fewer than 3 numbers around the ship day: `points` says how many there are and `needs` how many are needed, 3); `ready`. A reading that refuses is the honest answer, not an error: a KPI the owner enters once a month will often be `tooFew` for a long time.
 - `basis` is always `correlation`: the figure moved after the work shipped, which does **not** say that the work moved it. `overlapping` lists, in a `ready` reading (it is empty in every other state), the other epics (by item reference) that aim at the same KPI and shipped between `before` and `after`, in the order they shipped: their effects cannot be told apart from this one's, so the reading names them and does not try.
-- The node **remembers each epic's ship day**, because a team's view keeps a finished epic only for a limited time (30 days for the scrum harness) while the window runs 90 days past it: `outcomes/<org>.ships.jsonl` in its data directory (the same directory and modes as the numbers) holds `{ team, epic, shippedAt }`, written the first time the node sees the epic's `doneAt` and never changed. It is delivery data, not a business number, and is read only through the owner-only routes.
+- The node **remembers each epic's ship day**, because a team's view keeps a finished epic only for a limited time (30 days for the scrum harness) while the window runs 90 days past it: `outcomes/<org>.ships.jsonl` in its data directory (the same directory and modes as the numbers) holds `{ team, epic, shippedAt }`, written the first time the node sees the epic's `doneAt` and never changed, by the node's own loop and when the owner reads the readings, and only for epics that an aim names. It is delivery data, not a business number, and is read only through the owner-only routes.
 - Like every route of the numbers, it is owner-only. The shared sample, with made-up figures, is `testdata/readings.sample.json`.
 
 ## Client API
@@ -381,6 +403,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | Method | Path | Answer |
 |---|---|---|
 | GET | `/api/session` | `Session`: `writeToken`, the value writes send in `x-agency-token` (it changes each time the node starts; a client that gets 403 "missing or wrong write token" asks again once), and `now`, the node's time, which a client uses for an envelope's `at`. For clients that do not load the page; admitted like any read, so it exposes nothing the page does not |
+| GET | `/api/about` | `About` (see "Discovery"): the node's release, the contract versions it speaks, its capabilities, and `oldestApp` when it sets a floor |
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding. `hidesTitles` is `true` when the node keeps titles and labels off every notification (`hideTitles`, see "Push notifications"), so a client that shows them outside the app, such as a widget, leaves them out too; it is left out, never `false`, when the node does not To the node's owner only (a direct local request, or Access signed in as `ownerEmail`), also `homeNodes`: the owner's other home nodes, for their other accounts, as `homeNodes` in `config.json` lists them (`{ "label", "url" }`), absent when there are none. A `url` is a node origin, `https://<host>[:<port>]` or `http://` on the loopback (`localhost`, `127.0.0.1`, `[::1]`), with no path. The host is dot-joined labels of letters, digits, and hyphens, and the port is 1 to 65535. The node writes each url one way (the host lowercased, the scheme's default port and a trailing `/` left out) and compares them so: an entry with a label that is not 1 to 80 characters, another url, this node's own url, or a url listed twice is left out, and the node says so when it starts. The list only says where those nodes are: a client signs in to each and keeps a device key for each on its own, and nothing is copied between them |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
@@ -447,7 +470,8 @@ Writes (any method but GET and HEAD) also need:
 
 - the page's token in `x-agency-token`. The node picks a random token at each start and writes it into the served `index.html` in place of the placeholder `content="__AGENCY_TOKEN__"` of `<meta name="agency-token">`. A page on another site cannot send this header without a preflight, which the node never allows;
 - `Content-Type: application/json` (except for DELETE, which has no body) and a body of at most 64 KiB;
-- through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
+- through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices;
+- on a node with an `access` setting, even a malformed one, a direct local request may read but never write (403): the owner is who Access says it is, so a process of the same OS user on the node's machine cannot write as the owner. Without `access`, a direct local request is the owner, since nothing else could be; such a node protects nothing from processes of the same OS user.
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 A node with an `access` setting adds `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`) to every answer, so browsers reach its public host name over HTTPS only.
@@ -461,6 +485,21 @@ A web view in the iOS app cannot use passkeys for the Access team domain, so the
 - `GET /app/callback` is a universal link the app receives before it loads. If a browser loads it anyway, it gets a page with no script that reads nothing from the URL, admitted like any other page.
 - `GET /.well-known/apple-app-site-association` is served to anyone, without an Access sign-in, as `application/json` without a redirect: `{ "applinks": { "details": [{ "appIDs": [<appId>], "components": [{ "/": "/app/callback" }] }] }, "webcredentials": { "apps": [<appId>] } }`. Nothing in it comes from the request.
 - A native client keeps the handed-over token and sends it in `cf-access-token`. Once Access no longer accepts it, Access answers with a redirect to the team domain instead of the node's answer. The client never follows that redirect; it treats it as signed out and runs the handoff again.
+
+## Discovery
+
+What a node says about itself, so that an app or another node can check what it speaks before relying on something new. The rules for what may change, and what each contract's rollout is, are in [compatibility.md](compatibility.md); this is the wire shape.
+
+```
+About        { node: string, contracts: Contracts, capabilities: string[], oldestApp?: { [platform]: string } }
+Contracts    { federation: number[], signedText: number[], runtime: number[], clientApi: { current: number, oldest: number } }
+```
+
+- `node` is the node's release, `MAJOR.MINOR.PATCH`. `contracts` lists, for each contract, the versions this release speaks (two at once during an overlap); `clientApi` is the version it serves and the oldest it still serves.
+- `capabilities` are **strings**, so that a reader ignores a name it does not know (a newer node may list one). The names this release knows, and what each means, are in the table of compatibility.md ("Capabilities"); they start at what came after the first release. A test fails when an optional field is added to the org definition without one.
+- `oldestApp` (per platform, `ios` or `macos`) is the oldest app version the node serves, and is **absent while the node sets no floor**, which is until a breaking Client API change needs one. `GET /api/about` may carry it; the federation answer never does.
+- Readers ignore fields they do not know in an `About`.
+- `GET /api/about` is admitted like any Client API read. `GET /fed/v1/orgs/<org>/about` is a member's signed read of the org (checked as in "Signed reads", against that org's members, which is why the path names the org), so a stranger cannot learn a node's version. The shared sample is `testdata/about.sample.json`.
 
 ## Test vectors
 

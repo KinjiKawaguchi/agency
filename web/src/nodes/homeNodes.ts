@@ -49,6 +49,30 @@ export function parseNodeAddress(input: string): ParsedAddress {
 
 const cleanLabel = (label: string): string => [...label.trim()].slice(0, MAX_NODE_LABEL).join('')
 
+/** A home node the page lists: one the owner added in this browser, or one the node's configuration names (`Me.homeNodes`). */
+export interface ListedNode extends HomeNode {
+  isFromNode: boolean
+}
+
+/**
+ * What the page lists: the nodes the node's configuration names, then the ones the owner added here. An entry is
+ * read again by the page's own rule (`parseNodeAddress`), so one the page could not open is not listed; an origin
+ * is listed once (the node's entry first), and this node's own origin never. The node's labels are shown whole.
+ */
+export function listedNodes(own: HomeNodes, fromNode: ReadonlyArray<{ label: string; url: string }> | undefined, selfOrigin: string): ListedNode[] {
+  const seen = new Set<string>([selfOrigin])
+  const listed: ListedNode[] = []
+  const add = (label: string, address: string, isFromNode: boolean): void => {
+    const parsed = parseNodeAddress(address)
+    if (!parsed.ok || seen.has(parsed.origin)) return
+    seen.add(parsed.origin)
+    listed.push({ label: label.trim() === '' ? new URL(parsed.origin).host : label.trim(), origin: parsed.origin, isFromNode })
+  }
+  for (const one of fromNode ?? [] /* stand-in-ok(optional): the node leaves its list out for anyone but its owner, in an answer that has come */) add(one.label, one.url, true)
+  for (const one of own.others) add(one.label, one.origin, false)
+  return listed
+}
+
 /** Adds a node, or renames the one already listed at that origin. A node's own origin is not listed. */
 export function withNode(nodes: HomeNodes, label: string, origin: string, selfOrigin: string): HomeNodes {
   if (origin === selfOrigin) return nodes

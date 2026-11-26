@@ -57,10 +57,10 @@ const KINDS: readonly EventKind[] = ['request', 'participant', 'blocked', 'devic
 
 /** Order by Unicode code point, not by UTF-16 unit, so that every client orders the same way. */
 function compareCodePoints(a: string, b: string): number {
-  const left = Array.from(a, (character) => character.codePointAt(0) ?? 0)
-  const right = Array.from(b, (character) => character.codePointAt(0) ?? 0)
+  const left = Array.from(a, (character) => character.codePointAt(0) ?? 0 /* stand-in-ok(index): a character code, to order two strings */)
+  const right = Array.from(b, (character) => character.codePointAt(0) ?? 0 /* stand-in-ok(index): a character code, to order two strings */)
   for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
-    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    const difference = (left[index] ?? 0 /* stand-in-ok(index): a character code, to order two strings */) - (right[index] ?? 0)
     if (difference !== 0) return difference
   }
   return left.length - right.length

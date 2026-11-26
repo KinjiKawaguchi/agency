@@ -622,3 +622,9 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.pile-skeleton {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}

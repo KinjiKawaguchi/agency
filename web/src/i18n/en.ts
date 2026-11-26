@@ -52,6 +52,8 @@ export const en = {
     title: 'Overview',
     lead: (requests: number, teams: number) =>
       requests === 0 ? 'Nothing waits for you in any team.' : `${requests} ${requests === 1 ? 'request waits' : 'requests wait'} for you, in ${teams} ${teams === 1 ? 'team' : 'teams'}.`,
+    leadPartial: (requests: number, teams: number, unread: number) =>
+      `${requests === 0 ? 'Nothing waits for you in the teams that answered.' : `${requests} ${requests === 1 ? 'request waits' : 'requests wait'} for you, in ${teams} ${teams === 1 ? 'team' : 'teams'} that answered.`} ${unread} ${unread === 1 ? 'team' : 'teams'} could not be read.`,
     noTeams: 'This org has no teams yet.',
     waitingForYou: (count: number) => (count === 1 ? '1 request waits for you' : `${count} requests wait for you`),
     nothingWaits: 'Nothing waits for you.',
@@ -82,6 +84,14 @@ export const en = {
       return count === 1 ? `A decision${named} was ${state}.` : `${count} decisions were ${state}.`
     },
     more: (count: number) => `${count} more things are new.`,
+    // What a notice says outside the page when no title, label, or name may leave it: the iPhone's words for a push whose titles are hidden.
+    hidden: {
+      request: 'A request is waiting for you',
+      participant: 'A participant is waiting for you',
+      blocked: 'Work is blocked',
+      device: 'A device is waiting to be added',
+      decisionRefused: 'A decision was refused',
+    },
     devicesMark: (count: number) => `${count} waiting to be approved`,
     os: {
       title: 'Notifications in this browser',
@@ -139,6 +149,7 @@ export const en = {
     allOrgs: 'All organizations',
     allTitle: 'All your organizations',
     orgUnavailable: 'Could not be read',
+    someUnread: 'Some teams could not be read',
     title: (label: string) => `${label} organization`,
     whole: 'Back to the whole organization',
     chooseOrg: 'Organization',
@@ -268,6 +279,7 @@ export const en = {
       thisNode: 'Name of this home node',
       thisHost: (address: string) => `This page is served by ${address}, and the key above belongs to it.`,
       none: 'You have listed no other home node.',
+      fromNode: 'Set in this node’s configuration',
       name: 'Name',
       address: 'Address',
       add: 'Add this home node',
@@ -475,6 +487,7 @@ export const en = {
     feed: {
       title: 'What is happening',
       empty: 'Nothing in the last hour yet.',
+      notRead: 'The feed could not be read yet.',
       added: (ref: string, title: string) => `New: ${ref} ${title}`,
       changed: (ref: string, title: string, from: string, to: string) => `${ref} ${title}: ${from} → ${to}`,
       opened: (ref: string, title: string) => `Pull request opened: ${ref} ${title}`,

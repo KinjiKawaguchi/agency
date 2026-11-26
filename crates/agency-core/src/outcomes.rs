@@ -64,7 +64,7 @@ fn check_date(node: &Node, date: &Date) -> Result<()> {
 
 /// The numbers that count in a reading: for each KPI and day, the latest one entered (a later entry replaces
 /// an earlier, which stays in the history).
-fn effective(observations: Vec<Observation>) -> BTreeMap<(Id, String), Observation> {
+pub(crate) fn effective(observations: Vec<Observation>) -> BTreeMap<(Id, String), Observation> {
     let mut latest: BTreeMap<(Id, String), Observation> = BTreeMap::new();
     for one in observations {
         let key = (one.kpi.clone(), one.date.as_str().to_owned());

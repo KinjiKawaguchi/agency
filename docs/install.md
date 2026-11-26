@@ -109,7 +109,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 ```
 
 The agent starts `agency serve` at login and starts it again if it stops.
-The node's output goes to `~/.agency/logs/serve.log`.
+The node's log is `~/.agency/logs/node.jsonl` (see [The log](#the-log)); `~/.agency/logs/serve.log` keeps what the agent catches: the start lines and a crash.
 
 | To | Run |
 |---|---|
@@ -133,7 +133,7 @@ systemctl --user enable --now agency-node
 ```
 
 The unit starts `agency serve` when you log in (at boot, with lingering, below) and starts it again 10 seconds after it stops.
-The node's output goes to `~/.agency/logs/serve.log`, and `journalctl --user -u agency-node` shows when systemd started and stopped it.
+The node's log is `~/.agency/logs/node.jsonl` (see [The log](#the-log)); `~/.agency/logs/serve.log` keeps what the unit catches: the start lines and a crash. `journalctl --user -u agency-node` shows when systemd started and stopped it.
 
 | To | Run |
 |---|---|
@@ -172,7 +172,7 @@ If the browser is already added, the CLI device asks to be added instead: confir
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/serve.log
+tail -n 20 ~/.agency/logs/node.jsonl
 ```
 
 - `/api/me` lists the account, and the org with the team `app` and `"location":"local"`.
@@ -245,6 +245,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 ```
 
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
+- Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
 - To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
@@ -413,6 +414,7 @@ The org states what it measures (its KPIs) in its definition, with no number. Th
 
 - **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
 - The numbers are for reading how a measure moves, not for accounting.
+- **The readings.** `GET /api/orgs/<org>/outcomes/readings` (the owner only, like the numbers) says how each KPI a team's plan aims an epic at stood around the day the epic shipped. A team's view keeps a finished epic for a limited time (30 days for the scrum harness), so the node writes the day it first sees an aimed epic finished into `outcomes/<org>.ships.jsonl` (the same directory, the file `0600`; it holds a team, an epic and a time, and no number) and never changes it. Keep it with the numbers, and back it up the same way: without it, a reading of an epic that left the team's view cannot be made.
 
 ## Updating a node
 
@@ -444,11 +446,39 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
+### The log
+
+While it runs, the node writes what it has to say to `~/.agency/logs/node.jsonl`, one JSON object on each line:
+
+```json
+{"ts":"2026-11-26T04:55:22.123Z","level":"warn","event":"runtime","message":"team acme/app: the team runtime fails: …"}
+```
+
+- `ts` is UTC. `level` is `error`, `warn`, `info`, or `debug`; the node writes `info` and the more urgent ones unless `logging.level` says otherwise.
+- `event` names the part that wrote the line: `start`, `runtime`, `refused`, `access`, `usage`, `push`, `placement`, `replicas`, `requests`, or `outbox`. The `message` is a sentence about the node, never a request body, a token, or a query string.
+- When the file passes `maxSizeMib`, the node closes it as `node-<UTC time>.jsonl` and starts a new one. It deletes the closed files that are older than `maxAgeDays` days, and all but the newest `maxFiles` of them, when it starts and each time it closes a file. Only the node's account can read the files.
+- Run in a terminal, the node also prints each line there. When the file cannot be written, the lines go to standard error, which is `serve.log` under launchd or systemd.
+
+Set it in `config.json`, then restart the node. Every field is optional, and a value out of range stops the node at start and says which:
+
+```json
+"logging": { "level": "info", "maxSizeMib": 20, "maxAgeDays": 14, "maxFiles": 50 }
+```
+
+| Field | Meaning | Allowed | Default |
+|---|---|---|---|
+| `level` | The least urgent level that is written | `error`, `warn`, `info`, `debug` | `info` |
+| `maxSizeMib` | The size at which the file is closed, in MiB | 1 to 1024 | 20 |
+| `maxAgeDays` | How long a closed file is kept | 1 to 365 | 14 |
+| `maxFiles` | How many closed files are kept | 1 to 1000 | 50 |
+
+`serve.log` keeps what launchd or systemd catches: the lines printed when the node starts, the line of a failure that stops it, and a crash. It is small, and nothing rotates it.
+
 ## Troubleshooting
 
 ### Log lines
 
-The node writes these to `~/.agency/logs/serve.log`:
+The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `agency: <message>`, as a terminal and `serve.log` show it; in `node.jsonl` the text after `agency: ` is the `message` of the line. `cannot listen` and the line of a failure that stops the node are in `serve.log` only.
 
 | Line | Meaning |
 |---|---|

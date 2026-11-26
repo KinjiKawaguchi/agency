@@ -2,6 +2,7 @@
 //! team runtimes) goes through the ports in `ports`, so this crate never touches the wall clock, the
 //! network, or the filesystem. See docs/protocol.md.
 
+pub mod about;
 pub mod activity;
 pub mod client;
 pub mod config;
@@ -14,10 +15,12 @@ pub mod evaluation;
 pub mod funding_pick;
 pub mod invites;
 pub mod kpis;
+pub mod logging_config;
 pub mod node;
 pub mod notice;
 pub mod orgs;
 pub mod outbox;
+pub mod outcome_readings;
 pub mod outcomes;
 pub mod ports;
 pub mod push;
@@ -25,6 +28,7 @@ mod push_events;
 pub mod read_auth;
 pub mod readings;
 pub mod routes;
+pub mod ships;
 pub mod signed_decisions;
 pub mod teams;
 pub mod unseen;

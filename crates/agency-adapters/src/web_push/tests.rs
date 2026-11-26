@@ -9,6 +9,7 @@ use hkdf::Hkdf;
 use p256::ecdh::diffie_hellman;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 use p256::{PublicKey, SecretKey};
 use std::sync::Mutex;
 
@@ -383,9 +384,18 @@ fn keys_are_checked_to_be_a_browsers() {
     let (public, auth) = (B64.encode(browser.public()), B64.encode(browser.auth));
     assert!(check_keys(&public, &auth).is_ok());
     let off_curve = B64.encode([4u8; 65]);
+    // The same key as a compressed point (33 octets, 0x02 or 0x03 first) is on the curve and still refused.
+    let compressed = B64.encode(
+        browser
+            .secret
+            .public_key()
+            .to_encoded_point(true)
+            .as_bytes(),
+    );
     let short_auth = B64.encode([1u8; 15]);
     for (p256dh, secret) in [
         (off_curve.as_str(), auth.as_str()),
+        (compressed.as_str(), auth.as_str()),
         (public.as_str(), short_auth.as_str()),
         (public.as_str(), "***"),
         ("***", auth.as_str()),

@@ -26,6 +26,10 @@ export interface StreamSnapshot {
   failing: readonly string[]
   /** The teams whose node does not report activity (404): their feed is not late, it does not exist yet. */
   unreported: readonly string[]
+  /** The teams that have not been read yet, once: until then what is counted from the events is not the whole. */
+  pending: readonly string[]
+  /** The teams whose reads have all failed so far: nothing is known of them, which is not the same as nothing having happened. */
+  neverRead: readonly string[]
 }
 
 interface Options {
@@ -82,11 +86,13 @@ interface TeamFeed {
  */
 export class ActivityStream {
   private readonly options: Required<Options>
-  private snapshot: StreamSnapshot = { events: [], fresh: [], failing: [], unreported: [] }
+  private snapshot: StreamSnapshot = { events: [], fresh: [], failing: [], unreported: [], pending: [], neverRead: [] }
   private readonly listeners = new Set<(snapshot: StreamSnapshot) => void>()
   private readonly feeds: ReadonlyMap<string, TeamFeed>
   private readonly failing = new Set<string>()
   private readonly unreported = new Set<string>()
+  /** The teams that have answered once, with events or with the node saying it does not report activity. */
+  private readonly hasRead = new Set<string>()
   private isStopped = false
   private isPaused = true
   private readonly controllers = new Set<AbortController>()
@@ -100,6 +106,7 @@ export class ActivityStream {
   constructor(options: Options) {
     this.options = { now: Date.now, intervalMs: 10_000, firstWindowMs: 3_600_000, keep: 1_000, timeoutMs: 20_000, ...options }
     this.feeds = new Map(options.teams.map((team) => [key(team), { team, seen: new Set<string>(), cursor: undefined, rounds: 0, lastRoundAt: undefined, isFirstRead: true, timer: undefined, isReading: false }]))
+    this.snapshot = { ...this.snapshot, pending: [...this.feeds.keys()].toSorted() }
   }
 
   get current(): StreamSnapshot {
@@ -168,8 +175,9 @@ export class ActivityStream {
       this.prune(events)
       const now = this.options.now()
       this.arrivals = [...this.arrivals, ...(feed.isFirstRead || isAfterGap ? [] : added.map((tagged) => ({ tagged, at: now })))].filter((one) => now - one.at < FRESH_MS)
-      this.snapshot = { events, fresh: this.arrivals.map((one) => one.tagged), failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted() }
       feed.isFirstRead = false
+      const pending = [...this.feeds.entries()].filter(([, one]) => one.isFirstRead).map(([name]) => name).toSorted()
+      this.snapshot = { events, fresh: this.arrivals.map((one) => one.tagged), failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted(), pending, neverRead: [...this.failing].filter((name) => !this.hasRead.has(name)).toSorted() }
       for (const listener of this.listeners) listener(this.snapshot)
     } finally {
       feed.isReading = false
@@ -195,10 +203,12 @@ export class ActivityStream {
       }
       this.failing.delete(name)
       this.unreported.delete(name)
+      this.hasRead.add(name)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         this.unreported.add(name)
         this.failing.delete(name)
+        this.hasRead.add(name)
       } else this.failing.add(name)
     }
     return added

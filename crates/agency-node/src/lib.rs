@@ -9,8 +9,10 @@ use agency_adapters::funding::UsageFiles;
 use agency_adapters::github::{CachedDelivery, GithubDelivery};
 use agency_adapters::handoff;
 use agency_adapters::launch::Launch;
+use agency_adapters::logging::Logger;
 use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
+use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
 use agency_adapters::runtime::CommandRuntime;
 use agency_adapters::server;
@@ -18,6 +20,7 @@ use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
 use agency_core::config::NodeConfig;
+use agency_core::logging_config::LogLevel;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
 use agency_core::{Node, Ports};
@@ -44,14 +47,18 @@ pub struct Overrides {
 }
 
 /// APNs when the node has a push setting whose key can be read; otherwise nothing is sent to tokens.
-fn token_notifier(config: &NodeConfig, clock: Arc<dyn Clock>) -> Arc<dyn Notifier> {
+fn token_notifier(
+    config: &NodeConfig,
+    clock: Arc<dyn Clock>,
+    logger: &Logger,
+) -> Arc<dyn Notifier> {
     let Some(push) = config.push.clone() else {
         return Arc::new(NoNotifier);
     };
     match Apns::new(push, ApnsHosts::default(), clock) {
         Ok(apns) => Arc::new(apns),
         Err(error) => {
-            eprintln!("agency: push notifications are off: {error}");
+            logger.warn("push", &format!("push notifications are off: {error}"));
             Arc::new(NoNotifier)
         }
     }
@@ -85,23 +92,24 @@ fn notifier(
     config: &NodeConfig,
     data_dir: &std::path::Path,
     clock: Arc<dyn Clock>,
+    logger: &Logger,
 ) -> Arc<dyn Notifier> {
-    let tokens = token_notifier(config, clock.clone());
+    let tokens = token_notifier(config, clock.clone(), logger);
     let Some(web_config) = &config.web_push else {
         return tokens;
     };
     let key_path = data_dir.join("web-push-vapid.key");
     if let Err(error) = web_config.check() {
-        eprintln!("agency: web push is off: {error}");
+        logger.warn("push", &format!("web push is off: {error}"));
         return tokens;
     }
     if let Some(warning) = web_push_subject_warning(config) {
-        eprintln!("agency: {warning}");
+        logger.warn("push", &warning);
     }
     match WebPush::new(web_config, web_push_subject(config), &key_path, clock) {
         Ok(web) => Arc::new(WithWebPush { tokens, web }),
         Err(error) => {
-            eprintln!("agency: web push is off: {error}");
+            logger.warn("push", &format!("web push is off: {error}"));
             tokens
         }
     }
@@ -115,6 +123,7 @@ pub struct Opened {
     random: Arc<dyn Random>,
     certs: Option<Arc<dyn CertSource>>,
     launch: Option<Launch>,
+    logger: Logger,
 }
 
 /// Opens the node whose configuration and account key live in `data`.
@@ -124,16 +133,21 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
+    let config = data.load_config()?;
+    config.logging.check().map_err(anyhow::Error::msg)?;
+    let logger = Logger::open(data_dir.join("logs"), config.logging.clone(), clock.clone());
     let notifier = match overrides.notifier {
         Some(notifier) => notifier,
-        None => notifier(&data.load_config()?, &data_dir, clock.clone()),
+        None => notifier(&config, &data_dir, clock.clone(), &logger),
     };
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
-        runtime: overrides
-            .runtime
-            .unwrap_or_else(|| Arc::new(CommandRuntime::default())),
+        runtime: overrides.runtime.unwrap_or_else(|| {
+            Arc::new(CommandRuntime::with_log(
+                logger.sink(LogLevel::Warn, "runtime"),
+            ))
+        }),
         clock: clock.clone(),
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
@@ -157,6 +171,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         random,
         certs: overrides.certs,
         launch,
+        logger,
     })
 }
 
@@ -175,6 +190,11 @@ impl Assets for EmbeddedWeb {
 }
 
 impl Opened {
+    /// The node's log.
+    pub fn logger(&self) -> &Logger {
+        &self.logger
+    }
+
     /// Starts reading the usage of the funding sources that have a collector, for as long as the
     /// node runs.
     pub fn start_usage_collector(&self) {
@@ -182,6 +202,10 @@ impl Opened {
             self.node.clone(),
             self.data_dir.clone(),
             self.clock.clone(),
+            {
+                let sink = self.logger.sink(LogLevel::Warn, "usage");
+                Arc::new(move |line: String| sink(&line))
+            },
         ));
     }
 
@@ -199,11 +223,11 @@ impl Opened {
             return Ok(None);
         };
         if !is_valid_config(&config) {
-            eprintln!("agency: the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
+            self.logger.warn("access", "the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
             return Ok(None);
         }
         if config.app_id.is_some() && handoff::app_id(&config).is_none() {
-            eprintln!("agency: the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
+            self.logger.warn("access", "the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
         }
         let certs = match &self.certs {
             Some(certs) => certs.clone(),
@@ -233,13 +257,16 @@ impl Opened {
         let is_public = access.is_some();
         let api = ClientApi {
             node: self.node.clone(),
+            log: self.logger.sink(LogLevel::Warn, "access"),
             token,
             port,
             access,
             assets,
             launch: self.launch.clone(),
         };
-        let app = server::router(self.node.clone()).merge(client_api::router(Arc::new(api)));
+        let refusals = RefusalLog::new(self.logger.sink(LogLevel::Warn, "refused"));
+        let app = server::router_with_log(self.node.clone(), refusals)
+            .merge(client_api::router(Arc::new(api)));
         Ok(if is_public {
             app.layer(axum::middleware::map_response(strict_transport))
         } else {
