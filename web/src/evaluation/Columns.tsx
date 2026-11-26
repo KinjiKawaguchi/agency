@@ -2,6 +2,7 @@ import { useI18n } from '../i18n'
 import { ChartFrame } from './ChartFrame'
 import { positionOf } from './series'
 import { Tip } from './Tip'
+import { useDays } from './useDays'
 
 export interface Segment {
   key: string
@@ -30,15 +31,16 @@ interface ColumnsProps {
 /** Columns by day, each one a stack of its segments. A single segment makes a plain column chart. */
 export function Columns({ columns, max, format, label, describe, hasTotal = false }: ColumnsProps) {
   const { fmt } = useI18n()
+  const days = useDays(columns.length)
   return (
     <ChartFrame max={max} format={format} dates={columns.map((column) => column.date)} label={label}>
-      <div className="ev-cols">
+      <div className="ev-cols" onKeyDown={days.onKeyDown}>
         {columns.map((column, index) => {
           const total = column.segments.reduce((sum, segment) => sum + segment.value, 0)
           const isSingle = column.segments.length === 1
           const rows = column.segments.filter((segment) => isSingle || segment.value > 0)
           return (
-            <div key={column.date} className="ev-col" tabIndex={0} aria-label={describe(fmt.shortDate(column.date), total)}>
+            <div key={column.date} className="ev-col" {...days.itemProps(index)} aria-label={describe(fmt.shortDate(column.date), total)}>
               <div className="ev-stack" style={{ height: `${Math.min(total / max, 1) * 100}%` }}>
                 {column.segments.map((segment) => (segment.value > 0 ? <span key={segment.key} className="ev-slice" style={{ flex: segment.value, background: segment.color }} /> : null))}
               </div>
