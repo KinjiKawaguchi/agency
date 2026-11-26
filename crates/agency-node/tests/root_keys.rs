@@ -297,3 +297,39 @@ async fn the_presence_prompt_names_what_the_version_changes() {
         "{prompts:?}"
     );
 }
+
+#[tokio::test]
+async fn the_prompt_names_a_key_swap_a_role_and_counts_what_it_does_not_name() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let _ = bob;
+    alice.root_keys.ask_presence(true);
+    let other = agency_proto::AccountKey::from_seed([0x52; 32]).public();
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        let member = body
+            .people
+            .iter_mut()
+            .find(|one| one.id == id("bob"))
+            .unwrap();
+        member.public_key = other.clone();
+        member.role = Role::Answerer;
+        Ok(())
+    })
+    .unwrap();
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        for raw in ["a", "b", "c", "d", "e"] {
+            body.departments.push(department(raw));
+        }
+        Ok(())
+    })
+    .unwrap();
+    let prompts = alice.root_keys.prompts();
+    assert_eq!(
+        prompts[0],
+        "acme: replace the key of member bob, make bob an answerer"
+    );
+    assert_eq!(
+        prompts[1],
+        "acme: add department a (a), add department b (b), add department c (c), add department d (d), and 1 other changes: department"
+    );
+}

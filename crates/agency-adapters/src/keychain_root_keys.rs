@@ -82,8 +82,11 @@ impl RootKeys for KeychainRootKeys {
         Ok(public)
     }
 
+    /// A keychain that cannot answer (locked) is taken to hold the key: the node then still knows it is the
+    /// root, and the signature itself says the keychain is locked, instead of every root command saying
+    /// this node does not hold the root key.
     fn holds(&self, org: &Id, key: &PublicKey) -> bool {
-        self.store.has(&name(org, key)).unwrap_or(false)
+        self.store.has(&name(org, key)).unwrap_or(true)
     }
 
     fn needs_presence(&self) -> bool {
@@ -150,7 +153,10 @@ mod macos {
                 .service(SERVICE)
                 .account(name)
                 .load_attributes(true)
+                .skip_authenticated_items(true)
                 .limit(1);
+            // No dialog from a search: the node's server asks whether it holds a key, and must never put the
+            // keychain's unlock question on the owner's screen.
             match search.search() {
                 Ok(found) => Ok(!found.is_empty()),
                 Err(error) if error.code() == ITEM_NOT_FOUND => Ok(false),
@@ -161,8 +167,11 @@ mod macos {
         }
 
         fn get(&self, name: &str) -> Result<Vec<u8>, String> {
-            get_generic_password(SERVICE, name)
-                .map_err(|error| format!("the keychain did not give the root key: {error}"))
+            get_generic_password(SERVICE, name).map_err(|error| {
+                format!(
+                    "the keychain did not give the root key (was its question refused?): {error}"
+                )
+            })
         }
 
         fn delete(&self, name: &str) -> Result<(), String> {
@@ -205,7 +214,11 @@ mod macos {
             }
             match answer.recv_timeout(ANSWER_WITHIN) {
                 Ok(answer) => answer,
-                Err(_) => Err("nobody answered the prompt in time".into()),
+                Err(_) => {
+                    // The prompt does not stay up unanswered after the node gave up on it.
+                    unsafe { context.invalidate() };
+                    Err("nobody answered the prompt in time".into())
+                }
             }
         }
     }
@@ -341,6 +354,18 @@ mod tests {
         assert!(key.verify(b"one", &signatures[0]) && key.verify(b"two", &signatures[1]));
         let recorded = fake.0.lock().unwrap();
         assert_eq!((recorded.prompts.len(), recorded.reads), (1, 1));
+    }
+
+    #[test]
+    fn a_locked_keychain_still_holds_the_key_and_signing_says_it_is_locked() {
+        let fake = Fake::default();
+        let keys = KeychainRootKeys::new(Box::new(fake.clone()), Box::new(fake.clone()));
+        let org = Id::parse("acme").unwrap();
+        let key = keys.create(&org).unwrap();
+        fake.0.lock().unwrap().is_locked = true;
+        assert!(keys.holds(&org, &key), "the node is still the root");
+        let why = keys.sign(&org, &key, b"text", "x").unwrap_err();
+        assert!(why.contains("locked"), "{why}");
     }
 
     #[test]
