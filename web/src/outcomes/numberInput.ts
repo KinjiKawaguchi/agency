@@ -9,6 +9,7 @@ export interface NumberForm {
 }
 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)$/
 const MAX_NOTE = 200
 const MAX_VALUE = 1e15
 
@@ -32,7 +33,8 @@ export function checkNumber(form: NumberForm, kpi: string, today: string): { ok:
   const now = dayOf(today)
   if (date === undefined || now === undefined || date > shiftedDay(now, 1, 0) || date < shiftedDay(now, 0, -10)) return { ok: false, problem: 'date' }
   const written = form.value.trim()
-  const value = written === '' ? Number.NaN : Number(written)
+  // Digits, a sign, and a point: `Number` alone would also read 0x1F, 1e3, and Infinity, which are not what is meant by a figure typed here.
+  const value = DECIMAL.test(written) ? Number(written) : Number.NaN
   if (!Number.isFinite(value) || Math.abs(value) > MAX_VALUE) return { ok: false, problem: 'value' }
   const note = form.note.trim()
   // eslint-disable-next-line no-control-regex -- a control character in a note is exactly what is refused
@@ -40,13 +42,18 @@ export function checkNumber(form: NumberForm, kpi: string, today: string): { ok:
   return { ok: true, input: { kpi, date: form.date, value, ...(note === '' ? {} : { note }) } }
 }
 
-/** For each entry of a history (newest first), whether a later one for the same KPI and day has replaced it: the first stays in the history, and the later one wins. */
+/**
+ * For each entry of a history (newest first), whether a later one for the same KPI and day has replaced it: the first
+ * stays in the history, and the later one wins. Times are compared as instants: RFC 3339 texts do not sort as text once
+ * fractions of a second or a zone written other than Z come in (`...:05.5Z` is after `...:05Z` but sorts before it).
+ */
 export function replacedIn(entries: readonly NumberEntry[]): boolean[] {
-  const latest = new Map<string, string>()
+  const latest = new Map<string, number>()
   for (const entry of entries) {
     const key = `${entry.kpi}/${entry.date}`
+    const at = Date.parse(entry.enteredAt)
     const known = latest.get(key)
-    if (known === undefined || entry.enteredAt > known) latest.set(key, entry.enteredAt)
+    if (known === undefined || at > known) latest.set(key, at)
   }
-  return entries.map((entry) => entry.enteredAt < (latest.get(`${entry.kpi}/${entry.date}`) ?? entry.enteredAt))
+  return entries.map((entry) => Date.parse(entry.enteredAt) < (latest.get(`${entry.kpi}/${entry.date}`) ?? Number.POSITIVE_INFINITY))
 }

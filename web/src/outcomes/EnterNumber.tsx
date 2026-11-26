@@ -78,7 +78,11 @@ export function EnterNumber({ org, kpi, today }: Props) {
         <button className="btn small primary" type="submit" disabled={save.isPending}>
           {save.isPending ? text.saving : text.save}
         </button>
-        <button className="btn small" type="button" onClick={() => setIsOpen(false)}>
+        <button className="btn small" type="button" onClick={() => {
+            save.reset()
+            setProblem(undefined)
+            setIsOpen(false)
+          }}>
           {text.close}
         </button>
       </div>

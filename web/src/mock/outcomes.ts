@@ -37,7 +37,7 @@ export function createMockOutcomes(startedAt: Date) {
     const byDay = new Map<string, NumberEntry>()
     for (const entry of entries.filter((one) => one.kpi === kpi)) {
       const known = byDay.get(entry.date)
-      if (known === undefined || entry.enteredAt >= known.enteredAt) byDay.set(entry.date, entry)
+      if (known === undefined || Date.parse(entry.enteredAt) >= Date.parse(known.enteredAt)) byDay.set(entry.date, entry)
     }
     return [...byDay.values()].toSorted((a, b) => a.date.localeCompare(b.date))
   }
@@ -60,7 +60,7 @@ export function createMockOutcomes(startedAt: Date) {
     },
     history(kpi: string, limit: number): NumberEntry[] | Refusal {
       if (!kpis.includes(kpi)) return { status: 404, message: 'No such measure.' }
-      return entries.filter((one) => one.kpi === kpi).toSorted((a, b) => b.enteredAt.localeCompare(a.enteredAt)).slice(0, limit)
+      return entries.filter((one) => one.kpi === kpi).toSorted((a, b) => Date.parse(b.enteredAt) - Date.parse(a.enteredAt)).slice(0, limit)
     },
     enter(body: unknown): NumberEntry | Refusal {
       const given = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>

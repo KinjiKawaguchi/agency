@@ -30,7 +30,7 @@ export function NumberHistory({ org, kpi }: { org: string; kpi: KpiInfo }) {
       ) : (
         <ol className="oc-entries" aria-label={`${text.title}: ${kpi.label}`}>
           {entries.map((entry, index) => (
-            <li key={`${entry.date}/${entry.enteredAt}`} className={replaced[index] === true ? 'is-replaced' : undefined}>
+            <li key={`${entry.enteredAt}/${entry.date}/${index}`} className={replaced[index] === true ? 'is-replaced' : undefined}>
               <b>{fmt.shortDate(entry.date)}</b> {formatKpiValue(entry.value, kpi, locale, t.evaluation.units)}
               <span className="muted">
                 {' · '}
