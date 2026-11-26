@@ -6,7 +6,7 @@ use agency_core::orgs;
 use agency_core::views::refresh;
 use agency_core::ErrorKind;
 use agency_proto::org::{Department, Root, SignedOrg};
-use agency_proto::{Kind, OrgDefinition, Person, Role, Signed};
+use agency_proto::{Kind, OrgDefinition, Person, Signed};
 use common::{alice, id, joined_bob, memory_runtime, node, Running};
 
 fn current(running: &Running) -> SignedOrg {
@@ -33,7 +33,7 @@ async fn a_new_org_gets_a_root_key_of_its_own() {
     let member = doc.body.member(&id("alice")).unwrap();
     assert_eq!(
         member.public_key,
-        alice.node.key().public(),
+        Some(alice.node.key().public()),
         "the member keeps the account key"
     );
     assert_eq!(
@@ -45,15 +45,7 @@ async fn a_new_org_gets_a_root_key_of_its_own() {
 /// An org made the old way, with the account key as its root.
 fn org_with_the_account_key_as_root(running: &Running) {
     let key = running.node.key();
-    let me = Person {
-        id: id("alice"),
-        label: "Alice".into(),
-        account: id("alice"),
-        public_key: key.public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    };
+    let me = Person::new(id("alice"), "Alice", id("alice"), key.public());
     let body = OrgDefinition::new(
         id("legacy"),
         "Legacy".into(),
@@ -172,15 +164,12 @@ fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg
         Root::new(id("alice"), root.public()),
         running.node.now_text(),
     )
-    .with_people(vec![Person {
-        id: id("alice"),
-        label: "Alice".into(),
-        account: id("alice"),
-        public_key: agency_proto::AccountKey::from_seed([3; 32]).public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    }]);
+    .with_people(vec![Person::new(
+        id("alice"),
+        "Alice",
+        id("alice"),
+        agency_proto::AccountKey::from_seed([3; 32]).public(),
+    )]);
     let doc = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     running.node.store().save_org(&doc).unwrap();
     running

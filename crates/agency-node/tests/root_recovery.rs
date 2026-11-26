@@ -6,7 +6,7 @@ use agency_core::orgs;
 use agency_core::ErrorKind;
 use agency_proto::clock::Duration;
 use agency_proto::org::{PendingRoot, Root, SignedOrg, RECOVERY_WAIT_SECONDS};
-use agency_proto::{AccountKey, Kind, OrgDefinition, Person, Role, Signed};
+use agency_proto::{AccountKey, Kind, OrgDefinition, Person, Signed};
 use common::{id, memory_runtime, node, Running};
 
 struct Keys {
@@ -40,15 +40,12 @@ async fn carol_with_a_recovery_key(keys: &Keys) -> Running {
         Root::new(id("alice"), keys.root.public()).with_recovery(keys.recovery.public()),
         carol.node.now_text(),
     )
-    .with_people(vec![Person {
-        id: id("alice"),
-        label: "Alice".into(),
-        account: id("alice"),
-        public_key: AccountKey::from_seed([0x24; 32]).public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    }]);
+    .with_people(vec![Person::new(
+        id("alice"),
+        "Alice",
+        id("alice"),
+        AccountKey::from_seed([0x24; 32]).public(),
+    )]);
     let doc = sign(body, &keys.root);
     carol.node.store().save_org(&doc).unwrap();
     carol

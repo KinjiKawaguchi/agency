@@ -15,7 +15,7 @@ use agency_proto::org::{
     verify_genesis, verify_successor, Root, SignedOrg, Succession, TeamPlace, Versions,
     RECOVERY_WAIT_SECONDS,
 };
-use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Role, Signed};
+use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
     node.store()
@@ -236,15 +236,12 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         .root_keys()
         .create(&org)
         .map_err(|why| Error::internal(format!("cannot make a root key for {org}: {why}")))?;
-    let me = Person {
-        id: account.clone(),
-        label: config.account.label,
-        account: account.clone(),
-        public_key: node.key().public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    };
+    let me = Person::new(
+        account.clone(),
+        config.account.label,
+        account.clone(),
+        node.key().public(),
+    );
     let root = Root::new(account, root_key.clone());
     let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
     let doc = sign(node, body)?;

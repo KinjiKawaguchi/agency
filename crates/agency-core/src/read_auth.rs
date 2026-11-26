@@ -58,7 +58,12 @@ pub fn verify_read<'a>(
     })?;
     let person = definition.and_then(|definition| definition.member(&account));
     let key: &PublicKey = match person {
-        Some(person) => &person.public_key,
+        // A hosted member has no account key and never signs a read: the stand-in key fails it, as it does a
+        // stranger's.
+        Some(person) => person
+            .public_key
+            .as_ref()
+            .unwrap_or_else(|| unseen::stand_in_key()),
         None => unseen::stand_in_key(),
     };
     let message = Kind::Read.message(&read_text(method, path, &auth.date, &account));

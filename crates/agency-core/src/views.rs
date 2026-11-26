@@ -492,20 +492,19 @@ mod tests {
 
     /// An org of these members, with no seats or external parties yet.
     fn definition_with(members: &[&str]) -> OrgDefinition {
-        use agency_proto::org::{Person, Role, Root};
+        use agency_proto::org::{Person, Root};
         use agency_proto::AccountKey;
         let root = Root::new(id("alice"), AccountKey::from_seed([1; 32]).public());
         let people: Vec<Person> = members
             .iter()
             .enumerate()
-            .map(|(n, raw)| Person {
-                id: id(raw),
-                label: raw.to_uppercase(),
-                account: id(raw),
-                public_key: AccountKey::from_seed([10 + n as u8; 32]).public(),
-                department: None,
-                role: Role::Member,
-                devices: vec![],
+            .map(|(n, raw)| {
+                Person::new(
+                    id(raw),
+                    raw.to_uppercase(),
+                    id(raw),
+                    AccountKey::from_seed([10 + n as u8; 32]).public(),
+                )
             })
             .collect();
         OrgDefinition::new(

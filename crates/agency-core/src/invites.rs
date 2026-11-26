@@ -138,15 +138,14 @@ pub(crate) fn joined_body(
             "that account is already in the org",
         ));
     }
-    let person = Person {
-        id: request.account.clone(),
-        label: request.label.clone(),
-        account: request.account.clone(),
-        public_key: request.public_key.clone(),
-        department: record.department.clone(),
-        role: record.role,
-        devices: vec![],
-    };
+    let person = Person::new(
+        request.account.clone(),
+        request.label.clone(),
+        request.account.clone(),
+        request.public_key.clone(),
+    )
+    .with_department(record.department.clone())
+    .with_role(record.role);
     let mut body = OrgDefinition::successor_of(current, node.now_text());
     body.people.push(person);
     Ok(body)
