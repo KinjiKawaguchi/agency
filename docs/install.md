@@ -91,6 +91,7 @@ agency status
 The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
 The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
 Keep both on this machine, and out of anything that syncs or shares files.
+A backup of the data directory does not hold the root key. Back the root key up on its own, because without it nobody can change the org again: copy `~/.config/agency/root-keys/` to storage that is offline and encrypted (for example an encrypted disk image kept off this Mac), and copy it again after `agency root-rotate`, which makes a new key and removes the old one.
 An org made before root keys were kept apart uses `account.key` as its root until you move it to its own key with `agency root-rotate --org acme`.
 
 ### Run it with launchd

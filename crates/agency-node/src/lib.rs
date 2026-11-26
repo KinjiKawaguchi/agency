@@ -145,9 +145,13 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
             ))
         }),
         notifier,
-        root_keys: overrides
-            .root_keys
-            .unwrap_or_else(|| Arc::new(FileRootKeys::new(FileRootKeys::default_dir()))),
+        root_keys: overrides.root_keys.map_or_else(
+            || -> anyhow::Result<Arc<dyn RootKeys>> {
+                let dir = FileRootKeys::default_dir().map_err(anyhow::Error::msg)?;
+                Ok(Arc::new(FileRootKeys::new(dir)))
+            },
+            Ok,
+        )?,
     };
     let node = Arc::new(Node::open(ports, key)?);
     Ok(Opened {

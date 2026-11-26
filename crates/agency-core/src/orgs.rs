@@ -331,6 +331,13 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     let Some(current) = node.store().load_org(&org) else {
         return receive_first(node, doc);
     };
+    // A version this node already took, byte for byte, is answered as taken. It is checked by its
+    // digest against this node's own history before any signature: a version that named a new root is
+    // signed by the old one, which is no longer the root of the copy here.
+    let kept = node.store().load_org_version(&org, doc.body.version);
+    if kept.is_some_and(|kept| kept.digest() == doc.digest()) {
+        return Ok(());
+    }
     let root = &current.body.root;
     let key = (doc.signer == root.account).then_some(&root.public_key);
     if !unseen::check(&doc, Kind::Org, key) {
@@ -351,8 +358,10 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
         };
     }
     verify_successor(&current, &doc).map_err(Error::bad_request)?;
-    node.store().save_org(&doc)?;
+    // The trust moves first: if keeping the version then fails, a retry takes it again, and the trust
+    // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
+    node.store().save_org(&doc)?;
     forget_removed(node, &current.body, &doc.body)
 }
 

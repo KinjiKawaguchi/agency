@@ -19,14 +19,13 @@ impl FileRootKeys {
         Self { dir: dir.into() }
     }
 
-    /// `$XDG_CONFIG_HOME/agency/root-keys`, else `~/.config/agency/root-keys`.
-    pub fn default_dir() -> PathBuf {
-        let config = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")
-            });
-        config.join("agency").join("root-keys")
+    /// `$XDG_CONFIG_HOME/agency/root-keys`, else `~/.config/agency/root-keys`. Refused when neither
+    /// is set to an absolute path, so a root key is never written relative to wherever the node runs.
+    pub fn default_dir() -> Result<PathBuf, String> {
+        dir_from(
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("HOME"),
+        )
     }
 
     fn path(&self, org: &Id, key: &PublicKey) -> PathBuf {
@@ -52,6 +51,20 @@ impl FileRootKeys {
     }
 }
 
+/// The root keys' directory from `XDG_CONFIG_HOME` and `HOME`, of which only absolute paths count.
+fn dir_from(
+    xdg_config_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Result<PathBuf, String> {
+    let absolute = |value: Option<std::ffi::OsString>| {
+        value.map(PathBuf::from).filter(|path| path.is_absolute())
+    };
+    let config = absolute(xdg_config_home)
+        .or_else(|| absolute(home).map(|home| home.join(".config")))
+        .ok_or("neither XDG_CONFIG_HOME nor HOME is an absolute path, so there is no place for root keys")?;
+    Ok(config.join("agency").join("root-keys"))
+}
+
 fn private_dir(path: &Path) -> Result<(), String> {
     fs::DirBuilder::new()
         .recursive(true)
@@ -75,7 +88,15 @@ impl RootKeys for FileRootKeys {
             .open(&path)
             .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
         file.write_all((secret.encoded() + "\n").as_bytes())
+            .and_then(|()| file.sync_all())
             .map_err(|error| format!("cannot write {}: {error}", path.display()))?;
+        // The key must survive a power loss before anything is signed with it: after a rotation, peers
+        // may hold a version that names it, and it is then the org's only authority.
+        if let Some(parent) = path.parent() {
+            fs::File::open(parent)
+                .and_then(|dir| dir.sync_all())
+                .map_err(|error| format!("cannot sync {}: {error}", parent.display()))?;
+        }
         Ok(public)
     }
 
@@ -107,6 +128,33 @@ impl RootKeys for FileRootKeys {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn the_directory_comes_from_an_absolute_config_or_home_and_never_from_nothing() {
+        let some = |text: &str| Some(std::ffi::OsString::from(text));
+        assert_eq!(
+            dir_from(some("/cfg"), some("/home/alice")).unwrap(),
+            PathBuf::from("/cfg/agency/root-keys")
+        );
+        assert_eq!(
+            dir_from(None, some("/home/alice")).unwrap(),
+            PathBuf::from("/home/alice/.config/agency/root-keys")
+        );
+        assert_eq!(
+            dir_from(some("relative"), some("/home/alice")).unwrap(),
+            PathBuf::from("/home/alice/.config/agency/root-keys"),
+            "a relative XDG_CONFIG_HOME is ignored"
+        );
+        assert!(dir_from(None, None).is_err());
+        assert!(
+            dir_from(some(""), some("")).is_err(),
+            "empty is not a place"
+        );
+        assert!(
+            dir_from(None, some("home")).is_err(),
+            "nor is a relative home"
+        );
+    }
 
     #[test]
     fn a_key_is_kept_privately_read_only_to_sign_and_forgotten() {

@@ -172,3 +172,122 @@ async fn a_refused_signature_writes_nothing() {
     alice.root_keys.refuse(false);
     departments::add(&alice.node, &id("acme"), department("ops")).unwrap();
 }
+
+/// Version 1 of org `acme`, rooted in `root`, kept by `running` as an org it trusts.
+fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg {
+    let body = OrgDefinition {
+        kpis: vec![],
+        org: id("acme"),
+        label: "Acme".into(),
+        version: 1,
+        prev: None,
+        root: Root {
+            account: id("alice"),
+            public_key: root.public(),
+        },
+        departments: vec![],
+        people: vec![Person {
+            id: id("alice"),
+            label: "Alice".into(),
+            account: id("alice"),
+            public_key: agency_proto::AccountKey::from_seed([3; 32]).public(),
+            department: None,
+            role: Role::Member,
+            devices: vec![],
+        }],
+        teams: vec![],
+        revoked: vec![],
+        at: running.node.now_text(),
+    };
+    let doc = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    running.node.store().save_org(&doc).unwrap();
+    running
+        .node
+        .update_config(|config| config.trust(id("acme"), root.public().fingerprint()))
+        .unwrap();
+    doc
+}
+
+fn naming(
+    previous: &SignedOrg,
+    root: &agency_proto::AccountKey,
+    by: &agency_proto::AccountKey,
+) -> SignedOrg {
+    let mut body = OrgDefinition::successor_of(previous, previous.body.at.clone());
+    body.root.public_key = root.public();
+    Signed::sign(Kind::Org, body, id("alice"), by).unwrap()
+}
+
+fn trusted(running: &Running) -> String {
+    running
+        .node
+        .config()
+        .trusted_fingerprint(&id("acme"))
+        .unwrap()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn a_node_takes_one_rotation_signed_by_the_old_root_and_nothing_else() {
+    let carol = node("carol", memory_runtime().0).await;
+    let (old, new, other) = (
+        agency_proto::AccountKey::from_seed([0x11; 32]),
+        agency_proto::AccountKey::from_seed([0x22; 32]),
+        agency_proto::AccountKey::from_seed([0x33; 32]),
+    );
+    let v1 = kept_genesis(&carol, &old);
+
+    let by_new = naming(&v1, &new, &new);
+    assert!(
+        orgs::receive(&carol.node, by_new).await.is_err(),
+        "a naming version signed by the new key"
+    );
+    assert_eq!(
+        trusted(&carol),
+        old.public().fingerprint(),
+        "the trust did not move"
+    );
+    assert_eq!(current(&carol).digest(), v1.digest());
+
+    let v2 = naming(&v1, &new, &old);
+    assert!(
+        v2.verify(Kind::Org, &old.public()),
+        "v2 is signed by the old root"
+    );
+    assert_eq!(
+        current(&carol).body.root.public_key,
+        old.public(),
+        "the copy is rooted in the old key"
+    );
+    orgs::receive(&carol.node, v2.clone()).await.unwrap();
+    assert_eq!(trusted(&carol), new.public().fingerprint());
+    orgs::receive(&carol.node, v2.clone()).await.unwrap();
+    assert_eq!(
+        current(&carol).digest(),
+        v2.digest(),
+        "a replay of the same version changes nothing"
+    );
+
+    let fork = naming(&v1, &other, &old);
+    let refused = orgs::receive(&carol.node, fork).await.unwrap_err();
+    // Refused like anything not signed by the copy's root: after the rotation the old key is not it, so
+    // whoever signs with it (a stolen old key, too) learns nothing, not even the version kept here.
+    assert_eq!(
+        refused.kind,
+        ErrorKind::NotFound,
+        "a second v2 naming another root, signed by the old key"
+    );
+    assert_eq!(trusted(&carol), new.public().fingerprint());
+
+    let mut v3 = OrgDefinition::successor_of(&v2, v2.body.at.clone());
+    v3.label = "Acme Inc".into();
+    let by_old = Signed::sign(Kind::Org, v3.clone(), id("alice"), &old).unwrap();
+    assert!(
+        orgs::receive(&carol.node, by_old).await.is_err(),
+        "the old root signs no v3"
+    );
+    assert_eq!(current(&carol).digest(), v2.digest());
+    let by_new_root = Signed::sign(Kind::Org, v3, id("alice"), &new).unwrap();
+    orgs::receive(&carol.node, by_new_root).await.unwrap();
+    assert_eq!(current(&carol).body.label, "Acme Inc");
+}
