@@ -94,13 +94,15 @@ self.addEventListener('push', (event) => {
 })
 
 /** A path of the app and nothing else (never another origin, never `//host`), whatever the notification carried. */
-const pathOf = (value) => (typeof value === 'string' && /^\/(?!\/)/.test(value) ? value : '/desk')
+const pathOf = (value) => (typeof value === 'string' && /^\/(?![/\\\s])/.test(value) && !/[\u0000-\u001f\u007f]/.test(value) ? value : '/desk')
 
 async function openOrFocus(path) {
   const one = notice.windowToFocus(await windowsOfTheApp())
   if (one !== undefined) {
     await one.focus()
-    if (typeof one.navigate === 'function') await one.navigate(path).catch(() => undefined)
+    // A window that cannot be taken there (it is not controlled by this worker) is left as it is, and one is opened at the request.
+    const isMoved = typeof one.navigate === 'function' ? await one.navigate(path).then(() => true, () => false) : false
+    if (!isMoved) await self.clients.openWindow(path)
     return
   }
   await self.clients.openWindow(path)

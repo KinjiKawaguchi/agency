@@ -71,10 +71,12 @@ async function read(api: Api, browser: WebPushBrowser): Promise<WebPushState> {
 }
 
 async function subscribe(api: Api, browser: WebPushBrowser): Promise<WebPushState> {
-  const key = keyBytes((await api.vapidKey()).publicKey)
-  if (key === undefined) return failed(new Error('The node sent a key that is not one.'))
+  // The permission is asked first and at once, inside the click: Firefox and Safari take a request that comes after an
+  // await (the node's key is read) as not made by the person, and refuse it.
   const permission = browser.permission() === 'granted' ? 'granted' : await browser.requestPermission()
   if (permission !== 'granted') return permission === 'denied' ? { kind: 'denied' } : { kind: 'off' }
+  const key = keyBytes((await api.vapidKey()).publicKey)
+  if (key === undefined) return failed(new Error('The node sent a key that is not one.'))
   const { pushManager } = await browser.registration()
   const earlier = await pushManager.getSubscription()
   if (earlier !== null && !isMadeWith(earlier.options.applicationServerKey, key)) await earlier.unsubscribe()
@@ -90,6 +92,23 @@ async function unsubscribe(api: Api, browser: WebPushBrowser): Promise<WebPushSt
   if (input !== undefined) await api.removePushSubscription((await api.registerPushSubscription(input)).id)
   await subscription.unsubscribe()
   return { kind: 'off' }
+}
+
+/**
+ * Registers at the node the subscription this browser holds, when it holds one made with the node's key and still
+ * has the permission. It asks for nothing, and reads nothing from the node unless there is something to register.
+ * The page does it wherever the viewer is (not only on the Devices screen), so that a subscription the browser
+ * renewed while the app was closed is registered the next time any page of the app is opened.
+ */
+export async function registerHeldSubscription(api: Api, browser: WebPushBrowser): Promise<void> {
+  if (!isWebPushOffered(browser.support()) || browser.permission() !== 'granted') return
+  const subscription = await (await browser.registration()).pushManager.getSubscription()
+  if (subscription === null) return
+  const key = await api.vapidKey().then(
+    (found) => keyBytes(found.publicKey),
+    () => undefined,
+  )
+  if (key !== undefined) await stateWithSubscription(api, browser, subscription, key)
 }
 
 export function useWebPush(api: Api, browser: WebPushBrowser = realBrowser): { state: WebPushState; turnOn: () => void; turnOff: () => void } {

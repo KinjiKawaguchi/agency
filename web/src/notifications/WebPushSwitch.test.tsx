@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createApiClient } from '../api/client'
 import { MOCK_VAPID_KEY } from '../mock/webPush'
 import { keyBytes } from '../pwa/webPush'
 import { installFakeNotification, type FakeNotifications } from '../test/fakeNotification'
@@ -139,5 +140,73 @@ describe('the switch for notifications with the app closed', () => {
     renderApp({ path: '/devices', node: createTestNode({ webPush: true }), enrolled: true, locale: 'ja', webPushBrowser: fakePushBrowser().browser })
     expect(await screen.findByRole('button', { name: '閉じているときも通知する' })).toBeInTheDocument()
     expect(screen.getByText('アプリを閉じているとき')).toBeInTheDocument()
+  })
+
+  it('asks for the permission at once inside the click, before it has read the node’s key again', async () => {
+    const push = fakePushBrowser()
+    const node = createTestNode({ webPush: true })
+    let keyReads = 0
+    // The first read of the key (when the screen opens) answers; the next one, which the click makes, never does.
+    const client = createApiClient((request) => {
+      const isKey = new URL(request.url, 'http://mock.local').pathname === '/api/push/vapid'
+      if (isKey && (keyReads += 1) > 1) return new Promise<Response>(() => undefined)
+      return node.handle(request)
+    })
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node, client, enrolled: true, webPushBrowser: push.browser })
+    await user.click(await screen.findByRole('button', { name: TURN_ON }))
+    expect(push.askedPermission(), 'asked while the key is still being read').toBe(1)
+    expect(keyReads).toBe(2)
+    expect(push.subscribed()).toEqual([])
+  })
+})
+
+describe('a subscription the browser holds, wherever the viewer is', () => {
+  let fake: FakeNotifications
+  beforeEach(() => {
+    fake = installFakeNotification('granted')
+  })
+  afterEach(() => fake.restore())
+
+  it('is registered at the node by any page of the app, not only the Devices screen', async () => {
+    const push = fakePushBrowser({ permission: 'granted' })
+    push.holds()
+    const node = createTestNode({ webPush: true })
+    renderApp({ path: '/overview', node, enrolled: true, webPushBrowser: push.browser })
+    await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
+  })
+
+  it('is registered again when the worker says the browser renewed it, with the app open anywhere', async () => {
+    const push = fakePushBrowser({ permission: 'granted' })
+    push.holds()
+    const node = createTestNode({ webPush: true })
+    renderApp({ path: '/overview', node, enrolled: true, webPushBrowser: push.browser })
+    await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
+    push.holds()
+    push.renewed()
+    await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(2))
+  })
+
+  it('asks the node for nothing when the browser holds no subscription or has no permission', async () => {
+    const paths: string[] = []
+    const node = createTestNode({ webPush: true })
+    const client = createApiClient((request) => (paths.push(new URL(request.url, 'http://mock.local').pathname), node.handle(request)))
+    renderApp({ path: '/overview', node, client, enrolled: true, webPushBrowser: fakePushBrowser({ permission: 'granted' }).browser })
+    await screen.findByRole('heading', { level: 1, name: 'Overview' })
+    const refused = fakePushBrowser({ permission: 'denied' })
+    refused.holds()
+    renderApp({ path: '/overview', node, client, enrolled: true, webPushBrowser: refused.browser })
+    await screen.findAllByRole('heading', { level: 1, name: 'Overview' })
+    expect(paths.filter((path) => path.startsWith('/api/push'))).toEqual([])
+    expect(node.pushSubscriptions()).toEqual([])
+  })
+
+  it('does not ask the viewer for anything to register it', async () => {
+    const push = fakePushBrowser({ permission: 'granted' })
+    push.holds()
+    const node = createTestNode({ webPush: true })
+    renderApp({ path: '/overview', node, enrolled: true, webPushBrowser: push.browser })
+    await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
+    expect([push.askedPermission(), push.subscribed()]).toEqual([0, []])
   })
 })

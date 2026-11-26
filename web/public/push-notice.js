@@ -12,9 +12,21 @@
   const TITLE_CHARS = 120
   const BODY_CHARS = 240
 
+  // The words of the iPhone's alerts (apple/Shared/*.lproj/Localizable.strings) and of the page's own notices, so that one event
+  // reads the same on every surface; src/pwa/pushWorker.test.ts compares them with the iPhone's file.
   const WORDS = {
-    en: { app: 'Agency', request: 'A request is waiting for you', device: 'A device asks to be added', decision: 'A decision of yours was refused' },
-    ja: { app: 'Agency', request: '依頼があなたを待っています', device: '端末が追加を求めています', decision: 'あなたの決定が受け付けられませんでした' },
+    en: {
+      app: 'Agency',
+      request: 'A request is waiting for you',
+      device: (label) => (label === undefined ? 'A device is waiting to be added' : 'Device \u201c' + label + '\u201d is waiting to be added'),
+      decision: (title) => (title === undefined ? 'A decision was refused' : 'The decision on \u201c' + title + '\u201d was refused'),
+    },
+    ja: {
+      app: 'Agency',
+      request: 'あなたを待っている依頼があります',
+      device: (label) => (label === undefined ? '端末が追加を待っています' : '端末\u300c' + label + '\u300d\u304c追加を待っています'),
+      decision: (title) => (title === undefined ? '決定が断られました' : '\u300c' + title + '\u300d\u306e決定は断られました'),
+    },
   }
 
   const cut = (value, length) => (typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, length) : undefined)
@@ -91,7 +103,7 @@
       const body = cut(payload.body, BODY_CHARS)
       return title !== undefined && body !== undefined ? { title, body, tag, url } : { title: words.app, body: words.request, tag, url }
     }
-    return { title: words[kind], body: cut(payload.detail, BODY_CHARS) || '', tag, url }
+    return { title: words.app, body: words[kind](cut(payload.detail, BODY_CHARS)), tag, url }
   }
 
   /** Whether to show it: not while a window of the app is in front, where the page itself tells what is new. */

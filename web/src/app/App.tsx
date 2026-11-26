@@ -12,6 +12,7 @@ import { NativeBadge } from '../native/NativeBadge'
 import { NativePushRegistration } from '../native/NativePushRegistration'
 import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { WebPushBrowserProvider } from '../pwa/WebPushBrowserContext'
+import { WebPushRegistration } from '../pwa/WebPushRegistration'
 import type { WebPushBrowser } from '../pwa/useWebPush'
 import { ToastProvider } from '../shared/Toasts'
 import { createQueryClient } from './queryClient'
@@ -43,6 +44,7 @@ export function App({ client, history, locale, keyStore, queryClient: given, web
                 <ToastProvider>
                   <WebPushBrowserProvider browser={webPushBrowser}>
                     <NativePushRegistration />
+                    <WebPushRegistration />
                     <NativeBadge />
                     <RouterProvider router={router} />
                   </WebPushBrowserProvider>

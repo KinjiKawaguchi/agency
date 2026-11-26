@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { type FakeWindow, startWorker } from './fakeWorker'
 
@@ -42,14 +44,14 @@ describe('a notice pushed by the node', () => {
   it('says only what kind it is when the node left the text out, in the viewer’s language', async () => {
     const hidden = { agency: request.agency, badge: 1 }
     expect((await pushed(payload(hidden))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A request is waiting for you', tag: 'request/acme/app/r-1' } })
-    expect((await pushed(payload(hidden), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: '依頼があなたを待っています' } })
+    expect((await pushed(payload(hidden), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'あなたを待っている依頼があります' } })
   })
 
   it('words a device and a refused decision by kind, with the node’s label after it, and tags them as the page does', async () => {
     const device = (await pushed(payload({ agency: { type: 'device' }, detail: 'Pixel' }))).shown[0]
-    expect(device).toMatchObject({ title: 'A device asks to be added', options: { body: 'Pixel', tag: 'device', data: { url: '/devices' } } })
+    expect(device).toMatchObject({ title: 'Agency', options: { body: 'Device “Pixel” is waiting to be added', tag: 'device', data: { url: '/devices' } } })
     const decision = (await pushed(payload({ agency: { type: 'decision', org: 'acme', team: 'app', id: 'dec-1' } }))).shown[0]
-    expect(decision).toMatchObject({ title: 'A decision of yours was refused', options: { body: '', tag: 'decision/dec-1', data: { url: '/desk' } } })
+    expect(decision).toMatchObject({ title: 'Agency', options: { body: 'A decision was refused', tag: 'decision/dec-1', data: { url: '/desk' } } })
   })
 
   it('is shown as a plain notification when it is not one the app knows, and never fails', async () => {
@@ -72,6 +74,23 @@ describe('a notice pushed by the node', () => {
   it('is shown while a window is hidden or not in front, and not while one is in front', async () => {
     for (const windows of [[], [window()], [window({ focused: true, visibilityState: 'hidden' })]]) expect((await pushed(payload(request), windows)).shown).toHaveLength(1)
     for (const windows of [[window({ focused: true })], [window(), window({ focused: true })]]) expect((await pushed(payload(request), windows)).shown).toHaveLength(0)
+  })
+
+  it('words each kind as the iPhone’s alert does, in both languages, from its own strings file', async () => {
+    const strings = (language: 'en' | 'ja'): Map<string, string> => {
+      const text = readFileSync(join(process.cwd(), '..', 'apple', 'Shared', `${language}.lproj`, 'Localizable.strings'), 'utf8')
+      return new Map([...text.matchAll(/^"([A-Z_]+)" = "(.*)";$/gm)].map((found) => [found[1] ?? '', found[2] ?? '']))
+    }
+    const named = (template: string | undefined, text: string): string => (template ?? '').replace('%@', text)
+    for (const [language, tag] of [['en', 'en-US'], ['ja', 'ja-JP']] as const) {
+      const phone = strings(language)
+      const body = async (agency: unknown, extra: object = {}) => (await pushed(payload({ agency, ...extra }), [], tag)).shown[0]?.options.body
+      expect(await body({ org: 'acme', team: 'app', request: 'r-1' }), `${language} request`).toBe(phone.get('PUSH_REQUEST_WAITING_HIDDEN'))
+      expect(await body({ type: 'device' }), `${language} device`).toBe(phone.get('PUSH_DEVICE_WAITING_NO_LABEL'))
+      expect(await body({ type: 'device' }, { detail: 'Pixel' }), `${language} named device`).toBe(named(phone.get('PUSH_DEVICE_WAITING'), 'Pixel'))
+      expect(await body({ type: 'decision', org: 'acme', team: 'app', id: 'd-1' }), `${language} decision`).toBe(phone.get('PUSH_DECISION_REFUSED_NO_TITLE'))
+      expect(await body({ type: 'decision', org: 'acme', team: 'app', id: 'd-1' }, { detail: 'Ship it' }), `${language} named decision`).toBe(named(phone.get('PUSH_DECISION_REFUSED'), 'Ship it'))
+    }
   })
 
   it('cuts a long title and body', async () => {
@@ -102,8 +121,17 @@ describe('a tap on a notification', () => {
     expect((await tapped('/devices', [])).worker.opened).toEqual(['/devices'])
   })
 
+  it('opens a window at the request when the one in front cannot be taken there', async () => {
+    const stuck = window({ focused: true, navigate: () => Promise.reject(new Error('not controlled')) })
+    const { worker } = await tapped('/desk?item=acme%3Aapp%3Ar-1', [stuck])
+    expect([stuck.focusCalls, worker.opened]).toEqual([1, ['/desk?item=acme%3Aapp%3Ar-1']])
+    const noNavigate = window({ focused: true })
+    delete (noNavigate as { navigate?: unknown }).navigate
+    expect((await tapped('/devices', [noNavigate])).worker.opened).toEqual(['/devices'])
+  })
+
   it('opens only a path of the app: anything else leads to the desk', async () => {
-    for (const bad of ['https://evil.example/', '//evil.example/x', 'javascript:alert(1)', undefined, 7, '']) {
+    for (const bad of ['https://evil.example/', '//evil.example/x', '/\\evil.example/x', '/\t/evil.example/x', '/\n//evil.example', '/ /evil', '/desk\u0001x', '/desk\u007f', '/desk\u001f?item=1', 'javascript:alert(1)', undefined, 7, '']) {
       expect((await tapped(bad, [])).worker.opened, String(bad)).toEqual(['/desk'])
     }
   })
