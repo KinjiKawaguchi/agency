@@ -318,6 +318,7 @@ async fn a_team_node_that_answers_for_another_team_is_unavailable_and_the_others
         label: "ext".into(),
         department: None,
         node: lying_node().await,
+        plan: None,
     };
     agency_core::orgs::add_team(&alice.node, &id("acme"), place).unwrap();
 
