@@ -186,8 +186,13 @@ pub async fn accept_device_change(
     Ok(doc)
 }
 
-/// Keeps the version the root's node wrote, if it is the next one.
-async fn keep_returned(node: &Node, returned: SignedOrg) -> Result<()> {
+/// Keeps the version the root's node wrote. If this node is more than one version behind, it first
+/// takes the versions in between from the root's node.
+async fn keep_returned(node: &Node, root_node: &str, returned: SignedOrg) -> Result<()> {
+    let org = &returned.body.org;
+    if returned.body.version > load(node, org)?.body.version + 1 {
+        crate::orgs::catch_up(node, root_node, org, returned.body.version).await?;
+    }
     let _guard = node.write_lock().lock().await;
     let current = load(node, &returned.body.org)?;
     if returned.body.version > current.body.version {
@@ -220,7 +225,7 @@ async fn relay(
     match outcome {
         Outcome::Delivered => {
             if let Some(doc) = returned {
-                keep_returned(node, doc).await?;
+                keep_returned(node, &root_node, doc).await?;
             }
             Ok(DeviceChangeResult {
                 outcome: DeviceChangeOutcome::Delivered,

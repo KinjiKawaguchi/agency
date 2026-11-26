@@ -1,6 +1,7 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
+use crate::delivery::DeliveryFacts;
 use crate::devices::DeviceRequestRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
@@ -8,9 +9,11 @@ use crate::outbox::Parcel;
 use crate::push::{Notice, PushError};
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
+use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow};
 use agency_proto::clock::OffsetDateTime;
-use agency_proto::org::SignedOrg;
+use agency_proto::evaluation::Evaluation;
+use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -21,6 +24,12 @@ use async_trait::async_trait;
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
+
+    /// The node's time zone, as the offset from UTC now. The days of the delivery reports are its
+    /// calendar days. UTC unless the clock knows better.
+    fn utc_offset(&self) -> agency_proto::clock::UtcOffset {
+        agency_proto::clock::UtcOffset::UTC
+    }
 }
 
 pub trait Random: Send + Sync {
@@ -45,6 +54,8 @@ pub trait OrgStore {
     /// Replaces the current definition and keeps the previous versions as history.
     fn save_org(&self, doc: &SignedOrg) -> Result<()>;
     fn orgs(&self) -> Vec<SignedOrg>;
+    /// One version of an org's definition, from the history this node kept.
+    fn load_org_version(&self, org: &Id, version: u64) -> Option<SignedOrg>;
 }
 
 /// Invites, keyed by the SHA-256 of their code. The code itself is never stored.
@@ -94,6 +105,8 @@ pub trait PushStore {
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
+    /// Removes a team's replica. A replica that is not there is not an error.
+    fn delete_replica(&self, org: &Id, team: &Id) -> Result<()>;
 }
 
 pub trait Store:
@@ -167,12 +180,26 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<TokenUsage, PeerError>;
+    /// A team's delivery evaluation, from the node it runs on.
+    async fn get_evaluation(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Evaluation, PeerError>;
     async fn get_definition(
         &self,
         node: &str,
         path: &str,
         access: &DefinitionAccess,
     ) -> Result<SignedOrg, PeerError>;
+    /// The versions of an org's definition after one, by a signed read of `path` (`routes::versions`).
+    async fn get_versions(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Versions, PeerError>;
     async fn post_envelope(
         &self,
         node: &str,
@@ -212,6 +239,31 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
+    /// report activity answers 404.
+    async fn activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError>;
+}
+
+/// Why a team's delivery facts could not be read. The text is plain, and holds no secret and no address:
+/// it goes to clients.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeliveryError(pub String);
+
+/// Reads the facts a team's delivery numbers are worked out from (GitHub, through the machine's `gh`).
+#[async_trait]
+pub trait DeliverySource: Send + Sync {
+    /// The pull requests of `repos` merged since `since`, and the runs of CI on their default branches
+    /// from about then on, enough to tell what state each branch was in at `since`.
+    async fn facts(
+        &self,
+        repos: &[String],
+        since: OffsetDateTime,
+    ) -> Result<DeliveryFacts, DeliveryError>;
 }
 
 /// Reads how much of a funding source has been used.

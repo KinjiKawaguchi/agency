@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 const SAMPLE_USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
+const SAMPLE_ACTIVITY: &str = include_str!("../../../testdata/activity.sample.json");
 /// Fixed ports, so the node URLs inside the answers (and the signed documents that hold them) repeat.
 const ALICE_PORT: u16 = 7701;
 const BOB_PORT: u16 = 7702;
@@ -165,6 +166,9 @@ async fn nodes() -> (Running, Running, Arc<Mutex<MemoryRuntimeState>>) {
         let mut state = memory.lock().unwrap();
         state.requests.push(("r-2".into(), "Ship it?".into()));
         state.usage = Some(serde_json::from_str(SAMPLE_USAGE).unwrap());
+        let activity: agency_proto::activity::Activity =
+            serde_json::from_str(SAMPLE_ACTIVITY).unwrap();
+        state.activity = Some(activity.events);
         state.people = [("backend", "owner"), ("frontend", "reviewer")]
             .map(|(id, on)| serde_json::from_value(waiting_person(id, on)).unwrap())
             .into();
@@ -216,6 +220,14 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         (
             "usage",
             read(alice, "/api/orgs/acme/teams/app/usage?days=7").await,
+        ),
+        (
+            "activity",
+            read(
+                alice,
+                "/api/orgs/acme/teams/app/activity?since=2026-11-24T11:00:00Z",
+            )
+            .await,
         ),
         ("error", error),
     ];

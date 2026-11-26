@@ -1,0 +1,14 @@
+{
+  "org": "acme",
+  "team": "app",
+  "generatedAt": "2026-11-24T12:05:00Z",
+  "events": [
+    { "id": "b-0000000000a1", "at": "2026-11-24T11:05:00Z", "kind": "itemAdded", "ref": "app#30", "title": "Add a login page", "epic": "app#10" },
+    { "id": "b-0000000000a2", "at": "2026-11-24T11:20:00Z", "kind": "statusChanged", "ref": "app#12", "title": "Store sessions in the database", "from": "inProgress", "to": "release", "epic": "app#10" },
+    { "id": "m-0000000000b1", "at": "2026-11-24T11:25:00Z", "kind": "message", "from": "backend", "to": "reviewer", "summary": "Please review the session store" },
+    { "id": "b-0000000000a3", "at": "2026-11-24T11:30:00Z", "kind": "prOpened", "ref": "app#31", "title": "Store sessions in the database", "by": "backend", "issue": "app#12", "epic": "app#10" },
+    { "id": "b-0000000000a4", "at": "2026-11-24T12:00:00Z", "kind": "prMerged", "ref": "app#31", "title": "Store sessions in the database", "by": "backend", "issue": "app#12", "epic": "app#10", "leadSeconds": 1800 },
+    { "id": "m-0000000000b2", "at": "2026-11-24T12:01:00Z", "kind": "message", "from": "reviewer", "to": "backend", "summary": "" }
+  ],
+  "truncated": false
+}

@@ -21,7 +21,7 @@ const THEME_LABELS = (t: ReturnType<typeof useI18n>['t']): Record<Theme, string>
   dark: t.settings.themeDark,
 })
 
-type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation'
+type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live'
 
 interface Group {
   key: 'desk' | 'overview' | 'organization' | 'results'
@@ -48,6 +48,7 @@ const GROUPS: readonly Group[] = [
     pages: [
       { to: '/costs', label: (t) => t.nav.costs },
       { to: '/evaluation', label: (t) => t.nav.evaluation },
+      { to: '/live', label: (t) => t.nav.live },
     ],
   },
 ]

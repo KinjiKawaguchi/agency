@@ -12,6 +12,7 @@ use crate::access::{AccessVerifier, Identity};
 use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
 use crate::launch::Launch;
 use crate::server::status_of;
+use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
@@ -267,6 +268,33 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
+/// (default 200, at most 500), oldest first.
+async fn get_activity(
+    State(api): Shared,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let since = match query.get("since").map(|raw| Timestamp::parse(raw)) {
+        None => None,
+        Some(Ok(since)) => Some(since),
+        Some(Err(_)) => {
+            return refuse(
+                StatusCode::BAD_REQUEST,
+                "since must be an RFC 3339 UTC time",
+            )
+        }
+    };
+    let limit = match query.get("limit").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(limit)) => Some(limit),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "limit must be a number"),
+    };
+    let result =
+        async { team_activity(&api.node, &parse_id(&org)?, &parse_id(&team)?, since, limit).await };
+    respond(result.await)
+}
+
 /// A JSON body, or 400 naming what it should have been.
 fn json_body<T: serde::de::DeserializeOwned>(bytes: &Bytes, what: &str) -> Result<T, Error> {
     serde_json::from_slice(bytes).map_err(|_| Error::bad_request(format!("malformed {what}")))
@@ -425,6 +453,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
+        .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",
             post(post_envelope),

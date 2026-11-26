@@ -95,7 +95,7 @@ describe('evaluation', () => {
   it('is in the menu of the Results pages, after the costs', async () => {
     renderApp({ path: '/evaluation', evaluation: true })
     const links = within(await screen.findByRole('navigation', { name: 'Results pages' })).getAllByRole('link').map((link) => link.textContent)
-    expect(links).toEqual(['Costs', 'Evaluation'])
+    expect(links).toEqual(['Costs', 'Evaluation', 'Live'])
   })
 })
 

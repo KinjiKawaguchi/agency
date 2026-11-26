@@ -5,9 +5,11 @@ use crate::peers::{ACCOUNT, DATE, SIGNATURE};
 use crate::refusal_log::RefusalLog;
 use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::devices::accept_device_change;
+use agency_core::evaluation::hosted_evaluation;
 use agency_core::invites::accept_join;
-use agency_core::orgs::{read_definition, receive};
+use agency_core::orgs::{read_definition, read_versions, receive};
 use agency_core::read_auth::ReadAuth;
+use agency_core::routes;
 use agency_core::unseen;
 use agency_core::usage::hosted_usage;
 use agency_core::views::hosted_view;
@@ -118,6 +120,27 @@ async fn get_definition(
     respond(&fed, &method, &uri, result)
 }
 
+/// The versions of an org definition after `after`, for a member's signed read of the path with its
+/// query, so a node that missed versions can take them in order.
+async fn get_versions(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = parse_id(&org).and_then(|org| {
+        let after = query
+            .get("after")
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .ok_or_else(|| Error::bad_request("after must be a version number"))?;
+        let path = routes::versions(&org, after);
+        read_versions(&fed.node, &org, after, &read_auth(&headers), &path)
+    });
+    respond(&fed, &method, &uri, result)
+}
+
 async fn post_definition(
     State(fed): Shared,
     method: Method,
@@ -204,6 +227,27 @@ async fn get_usage(
     respond(&fed, &method, &uri, result.await)
 }
 
+/// The delivery evaluation of a team on this node, for a signed read by a member of its org. The
+/// signature covers the path with its `days` query.
+async fn get_evaluation(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        let days = query
+            .get("days")
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .ok_or_else(|| Error::bad_request("days must be a number"))?;
+        hosted_evaluation(&fed.node, &org, &team, days, &read_auth(&headers)).await
+    };
+    respond(&fed, &method, &uri, result.await)
+}
+
 async fn post_envelope(
     State(fed): Shared,
     method: Method,
@@ -235,10 +279,12 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
             "/fed/v1/orgs/{org}/definition",
             get(get_definition).post(post_definition),
         )
+        .route("/fed/v1/orgs/{org}/versions", get(get_versions))
         .route("/fed/v1/orgs/{org}/join", post(post_join))
         .route("/fed/v1/orgs/{org}/devices", post(post_device_change))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
+        .route("/fed/v1/teams/{org}/{team}/evaluation", get(get_evaluation))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(Arc::new(Fed { node, refusals }))

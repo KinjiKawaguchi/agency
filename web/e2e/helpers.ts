@@ -5,6 +5,8 @@ export interface NodeOptions {
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
   evaluation?: boolean
+  /** Serve the mock activity feed of the live screen (the real node does not yet). */
+  activity?: boolean
   /** Make the `site` team a stale copy that could not be refreshed. */
   siteError?: string
   /** What the node reports for an accepted decision. */
@@ -20,6 +22,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')

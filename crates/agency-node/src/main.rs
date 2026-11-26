@@ -209,6 +209,7 @@ fn init(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
+        delivery: vec![],
         access: None,
         push: None,
     })?;
@@ -295,7 +296,13 @@ fn status(node: &Node) {
 /// Says which teams run here while their org places them elsewhere, and how to fix it.
 fn warn_misplaced(node: &Node, write: impl Fn(String)) {
     for misplaced in orgs::misplaced_teams(node) {
-        let place = misplaced.place.unwrap_or_else(|| "nowhere".to_owned());
+        let Some(place) = misplaced.place else {
+            write(format!(
+                "team {}/{} is in this node's config.json, but org {} does not list it, so it is not served; if the org removed it, remove it from config.json",
+                misplaced.org, misplaced.team, misplaced.org
+            ));
+            continue;
+        };
         write(format!(
             "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
             misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()

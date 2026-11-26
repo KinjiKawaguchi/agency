@@ -46,6 +46,14 @@ fn alice() -> Fixture {
     let fixture = bare("alice");
     let node = &fixture.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
+    // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
+    let place = TeamPlace {
+        id: id("app"),
+        label: "app".into(),
+        department: None,
+        node: node.url(),
+    };
+    orgs::add_team(node, &id("acme"), place).unwrap();
     let hosted = HostedTeam {
         org: id("acme"),
         team: id("app"),
@@ -94,6 +102,7 @@ fn bare(account: &str) -> Fixture {
         teams: vec![],
         trusted: vec![],
         funding: vec![],
+        delivery: vec![],
         access: None,
         push: None,
     })
@@ -114,6 +123,7 @@ fn bare(account: &str) -> Fixture {
         random: Arc::new(CountingRandom::default()),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
+        delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
         notifier: Arc::new(NoNotifier),
     };
     let node = Node::open(ports, key).unwrap();

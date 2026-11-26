@@ -55,10 +55,12 @@ To change something, send a signed envelope to its writer.
 - Only the root key (`root`) can sign it. `signer` is `root.account`.
 - Versions start at 1 and grow by 1. `prev` is the hex SHA-256 (64 characters) of the canonical JSON of the previous signed version. Version 1 has no `prev`.
 - A node accepts only the next version of the one it has: the version is one higher, `prev` is the current version's fingerprint, and it is signed by the current root key. A new root is also signed by the previous root key.
+- A node that is more than one version behind (it was offline, or reads rarely) takes the versions in between first, in order, from the node it reads the definition from (`GET /fed/v1/orgs/<org>/versions?after=<n>`), checking each as above. It does so when a read of the definition shows a newer version, and when the root's node answers a device change with one. Every node keeps the versions it accepted, so the root's node can serve all of them.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
 - `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - Departments form a tree: a department's `parent` is another department of the org (or absent at the top), following parents never leads back to the department, and `head` is a member's `id`. A member's and a team's `department` is one of the org's departments. The root's node changes them with `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept` (and `team-add --department`), each a new version.
-- A team's `label` is changed with `agency team-set`, and a team leaves the definition with `agency team-remove`, each a new version written by the root's node. A node refuses `team-remove` for a team that is still in its own configuration: it runs a team from that configuration whatever the definition says, so removing the team from the definition first would leave it running outside its org.
+- A team's `label` is changed with `agency team-set`, and a team leaves the definition with `agency team-remove`, each a new version written by the root's node. A node refuses `team-remove` for a team that is still in its own configuration: it would be left running outside its org.
+- A node serves a team only while the team is in its own configuration **and** in the org's definition it holds. After the version that removes a team, its node answers reads and envelopes for it like for a team it does not run, until its owner takes it out of the configuration (`agency status` says so, and so does the start of `serve`). That version is queued for the removed team's node as well as for the nodes of the teams that remain, and a node that takes it deletes its replica of the removed team's view.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers). Either decides only the requests addressed to them (see "Requests"). An answerer also reads only those: a team's node serves an answerer a TeamView with just the requests addressed to it, and no people, work items, or epics, and does not serve it token usage (403).
 
@@ -124,6 +126,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 |---|---|---|
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
+| GET | `/fed/v1/orgs/<org>/versions?after=<n>` | A member's signed read of the path with its query. Answers `{ "versions": [<signed definition>, ...] }`: the versions after `n`, oldest first, at most 20 (a node further behind asks again); 404 when this node does not have them all |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |
@@ -185,11 +188,11 @@ ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
-                workType?: WorkType }
+                workType?: WorkType, doneAt?: Timestamp }
 WorkType      "newFeature" | "improvement" | "maintenance" | "debt" | "incident"
 BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
-                forecast?: { days, at: Timestamp }, basis }
+                forecast?: { days, at: Timestamp }, doneAt?: Timestamp, basis }
 ```
 
 Item references:
@@ -207,6 +210,7 @@ Participants (`people`, humans and agents):
 Work items:
 
 - `workType` is the board's "Work type" field of the item (see "Work type" in the glossary), as the team's runtime reads it. It is left out when the board has none; a runtime never guesses it, and whoever needs a type for an item without one (the node, when it splits effort by work type) works it out from the item's pull request itself. A value outside the five names fails the view's parse, like any other malformed field.
+- `doneAt` is when the item first reached `done`: the board's own time when the tracker has one, otherwise when the runtime first saw it (up to one refresh late). It is left out while the item is not done and when it is not known; an item that goes back and is done again keeps the first time. `EpicForecast.doneAt` is when the epic's last child reached `done`, present only once `done` equals `total`. A runtime may keep a finished epic in `epics` for a while so that this time can be read (the scrum harness keeps it 30 days): it has `done` equal to `total`, nothing `doing`, nothing remaining, and no `forecast`, and a client shows it as finished, after the open epics, and does not count it in what remains. `work` lists open items only, so `WorkItem.doneAt` appears only on an item still in the view. The node passes both on unchanged.
 
 Requests:
 
@@ -239,12 +243,14 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `view` | none | TeamView |
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
+| `activity` (optional) | `"since": <Timestamp>`, `"limit": <1 to 500>` | `Activity` (see "Activity") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses it for 5 seconds (a view) or 60 seconds (usage for the same range). A decision makes the next view run the command again.
 - The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay, and that the decider is the request's addressee). `by` is the org member who decided, and `byParticipant` the same decider as a participant of the team: their runtime name, in the same name space as a request's `to` (their key in the hosted team's `people`, otherwise `owner`). The node sends `byParticipant` with every decision; a runtime should refuse (404) a decision on a request whose `to` names another runtime name. The node maps a `to` it does not know to the owner, and the runtime does not know the map, so for such a request only a decision with `byParticipant` `owner` is the addressee's.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
+- `activity` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. It runs at most one `activity` call at a time.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## Token usage
@@ -284,7 +290,7 @@ TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWri
 - The period is the last `days` calendar days (1 to 90), today included. `from` and `until` are its first and last day, written like `byDay[].date`, in the time zone of the node that computed them: each team has its own (the time zone of the team's node), and every day of its `byDay` lies inside them, so a client draws a team against its own period. The answer's own `from` and `until` are the answering node's. `byDay` is oldest first, and days with nothing in them may be left out.
 - Counts and seconds are integers. Costs are estimates at API prices, as in "Token usage". An optional field is left out, never null.
 - A pull request counts on the day it merged. Its type is the Conventional Commits type of its title (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`); anything else, including `ci`, `build`, `perf`, `style`, is `other`.
-- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body says "This reverts commit". It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
+- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body has a line that starts with `This reverts commit <sha>` (what `git revert` writes) or `Reverts <owner/name>#<number>` (what GitHub's Revert button writes); a sentence that only mentions those words does not count. It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
 - **PR lead time** is opened to merged. **Issue lead time** is the issue's first move to In Progress on the board (else the pull request's first commit) to merged; a pull request with no closing issue has none.
 - **Main red**: for each push to the default branch, the commit's workflow runs decide (all workflows). A commit is red when a run failed or timed out and green when all passed or were skipped; a run cancelled by a newer push counts for nothing. Red lasts from the completion of the first red commit to the completion of the next green one, or to `generatedAt` while it is red. A span across midnight is split between the days. `longestRedSeconds` is the longest single span.
 - The summary's p90 is the nearest rank (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples, rounded down. A median or p90 is left out with no samples.
@@ -293,6 +299,28 @@ TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWri
 - A team whose answer cannot be had (not configured, its node unreachable, GitHub unavailable) is listed in `unavailable` with a reason in plain text, without a secret or an address, and the other teams are answered. A malformed answer from another node is such a failure.
 - Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
 - The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.
+
+## Activity
+
+What moved in a team lately, for a page that shows the work going forward: board events, pull requests, and which participant messaged which. Board events and message edges only; a message is told by its sender, its recipient, and the short summary its sender gave, and its body never leaves the team's runtime.
+
+```
+Activity      { org: Id, team: Id, generatedAt: Timestamp, events: ActivityEvent[], truncated: boolean }
+ActivityEvent { id, at: Timestamp, kind, ...the fields of its kind }
+itemAdded     { ref, title, assignee?, epic? }
+statusChanged { ref, title, from: WorkStatus, to: WorkStatus, epic? }
+prOpened      { ref, title, by?, issue?, epic? }
+prMerged      { ref, title, by?, issue?, epic?, leadSeconds?: integer }
+message       { from, to, summary }
+```
+
+- The events after `since`, at most `limit`, oldest first: every `at` is strictly after `since`, `at` never decreases, and events with the same `at` keep the runtime's order (by `id`). `truncated` is true when `limit` cut the list: there are events after the last one, and a read with `since` set to its `at` returns them (an event can share that time with the last one returned, so a client drops what it has by `id`).
+- `id` is 1 to 64 characters of `a-z`, `0-9`, and `-` (the runtime uses a prefix and hex digits), unique in an answer and stable across answers. `ref`, `epic`, and `issue` are item references; `by`, `from`, and `to` are names of the team's runtime (`to` need not be a participant of the team); titles and names are at most 200 characters, a `summary` at most 120 (empty when the sender gave none, never taken from the message). `epic` is the parent epic of the item. `leadSeconds` is the time from a pull request's opening to its merge, when both are known. `assignee` is given only when the runtime knows it at the time.
+- The times of `itemAdded`, `prOpened`, and `prMerged` are the times they happened; a `statusChanged` is the time the runtime first saw the change, up to one refresh interval late. The runtime keeps its log for a limited time (24 hours for the scrum harness); an older `since` answers what the log has.
+- A reader accepts an event of a kind it does not know as left out, so the feed keeps working when a runtime learns a new kind.
+- Before passing an answer on, the node checks that `org` and `team` are the ones it asked for, that there are at most `limit` events, their order and times as above, their ids, and the text limits. An answer that fails is 503.
+- An answerer reads none of it (403). The route for a team on this node is in "Client API"; for a team on another node it is not answered yet (404).
+- The shared sample is `testdata/activity.sample.json`.
 
 ## Client API
 
@@ -307,6 +335,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org |
+| GET | `/api/orgs/<org>/teams/<team>/activity?since=<time>&limit=<n>` | `Activity` for a team on this node (see "Activity"): the events after `since` (an RFC 3339 UTC time, default an hour ago), at most `limit` (1 to 500, default 200); anything else is 400. 404 when the team's runtime does not report activity or the team runs on another node, 403 for an answerer, 503 for an answer that is not valid |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through, and so does the 403 for a request on this node that is not the account's to decide; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`), and, for the node's owner only, `node` (below) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |

@@ -85,4 +85,16 @@ describe('people and work', () => {
       expect(rows()).toHaveLength(14)
     })
   })
+
+  it('marks an epic that has been finished, says when, shows no forecast for it, and puts it after the open ones', async () => {
+    renderApp({ path: '/people' })
+    // The section of a team that is still being read is replaced by its own once it is, so the epic is looked for on the page.
+    const goal = (await screen.findByText('Launch the landing page')).closest('.goal') as HTMLElement
+    expect(goal).toHaveClass('is-done')
+    expect(within(goal).getByText('Done')).toBeInTheDocument()
+    expect(goal.textContent).toMatch(/Done [A-Z][a-z]{2} \d+/)
+    expect(goal.textContent).not.toMatch(/Expected to finish/)
+    const app = (await screen.findByRole('heading', { level: 2, name: 'App team' })).closest('section') as HTMLElement
+    expect(app.querySelector('.goal.is-done')).toBeNull()
+  })
 })

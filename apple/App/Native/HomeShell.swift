@@ -3,26 +3,22 @@ import AgencyModel
 import AgencyUI
 import SwiftUI
 
-/// The app for one home node: the desk as native screens, and the screens that are still web pages
-/// behind the other tabs. One web view serves all of them and shows the page of the tab selected.
+/// The app for one home node: a tab for each native screen.
 struct HomeShell: View {
     let homeNode: HomeNodeURL
     let push: PushCoordinator
     let onChangeHomeNode: () -> Void
 
-    /// The tabs, in the order of the bar. A screen that is native has its own view in `screen(_:session:)`
-    /// and no `webPath`; one that is still a web page has the page's path and is served by the shared
-    /// web view. Making a screen native is a change to its case here and to the switch below, and to
-    /// nothing else in the shell.
+    /// The tabs, in the order of the bar. Each has its own view in `screen(_:session:)`.
     enum Tab: CaseIterable, Hashable {
-        case desk, overview, people, costs, devices
+        case desk, overview, people, results, devices
 
         var title: String {
             switch self {
             case .desk: Ja.Tabs.desk
             case .overview: Ja.Tabs.overview
             case .people: Ja.Tabs.people
-            case .costs: Ja.Tabs.costs
+            case .results: Ja.Tabs.results
             case .devices: Ja.Tabs.devices
             }
         }
@@ -32,31 +28,19 @@ struct HomeShell: View {
             case .desk: "tray.full"
             case .overview: "square.grid.2x2"
             case .people: "person.2"
-            case .costs: "yensign.circle"
+            case .results: "chart.line.uptrend.xyaxis"
             case .devices: "iphone"
-            }
-        }
-
-        /// The web client's page for this tab, or `nil` when the screen is native.
-        var webPath: String? {
-            switch self {
-            case .desk: nil
-            case .overview: nil
-            case .people: nil
-            case .costs: nil
-            case .devices: nil
             }
         }
     }
 
     @State private var session: NativeSession?
     @State private var flow: AccessSignInFlow?
-    @State private var web: NodeWebModel?
     @State private var tab: Tab = .desk
     @State private var openItemID: String?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showsSettings = false
     @State private var triedSignIn = false
-    @State private var accessTeamHost: String?
 
     var body: some View {
         Group {
@@ -68,9 +52,28 @@ struct HomeShell: View {
                             .tag(tab)
                     }
                 }
+                .overlay(alignment: .top) {
+                    NewsBannerStack(
+                        banners: session.news.banners,
+                        onOpen: { open($0, session: session) },
+                        onClose: { session.news.dismiss() }
+                    )
+                    .animation(.default, value: session.news.banners)
+                }
+                .task(id: scenePhase) { await watchNews(session) }
+                .task(id: session.news.banners) { await dismissBannersSoon(session) }
+                .onChange(of: session.notifications.preferences.pushKinds) {
+                    if let registration = push.registration { Task { await session.registerPush(registration) } }
+                }
+                .onChange(of: tab) { _, tab in
+                    // The devices screen shows a device that asks to be added by itself.
+                    session.news.suppressedKinds = tab == .devices ? [.device] : []
+                }
                 .sheet(isPresented: $showsSettings) {
                     SettingsSheet(
                         host: homeNode.host,
+                        notifications: session.notifications,
+                        nodeSendsPushKinds: session.nodeSendsPushKinds,
                         onChangeHomeNode: {
                             showsSettings = false
                             Task { await leave() }
@@ -84,9 +87,7 @@ struct HomeShell: View {
             }
         }
         .task { start() }
-        .onChange(of: tab) { _, tab in openWeb(tab) }
         .onChange(of: push.registration) { _, registration in
-            web?.updatePush(registration)
             if let registration, let session { Task { await session.registerPush(registration) } }
         }
         .onChange(of: push.pendingLink) { takeLink() }
@@ -104,7 +105,7 @@ struct HomeShell: View {
         .onChange(of: session.desk.loading) { _, loading in loaded(loading, session) }
     }
 
-    /// The screen of a tab: a native view where there is one, otherwise the web page.
+    /// The screen of a tab.
     @ViewBuilder
     private func screen(_ tab: Tab, session: NativeSession) -> some View {
         switch tab {
@@ -120,19 +121,10 @@ struct HomeShell: View {
                 store: session.people, onOpenDesk: { self.tab = .desk },
                 onSignInAgain: { Task { await session.signInAgain() } }
             )
-        case .costs:
-            CostsScreen(store: session.costs, onSignInAgain: { Task { await session.signInAgain() } })
+        case .results:
+            ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: { Task { await session.signInAgain() } })
         case .devices:
             DevicesScreen(store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Device.noKey })
-        }
-    }
-
-    @ViewBuilder
-    private func webScreen(_ tab: Tab) -> some View {
-        if self.tab == tab, let web {
-            WebTabView(model: web, onChangeHomeNode: { Task { await leave() } })
-        } else {
-            Color.clear
         }
     }
 
@@ -149,35 +141,51 @@ struct HomeShell: View {
         self.flow = flow
         let session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow)
         self.session = session
-        accessTeamHost = AccessTeamStore(host: homeNode.host).host
         takeLink()
-        Task { await learnAccessTeam(session) }
     }
 
-    /// Asks the node where it sends a browser that is not signed in, and pins that Access team.
-    private func learnAccessTeam(_ session: NativeSession) async {
-        guard let team = await session.discoverAccessTeam() else { return }
-        AccessTeamStore(host: homeNode.host).save(team)
-        accessTeamHost = team
-        web?.pinAccessTeam(team)
-    }
-
-    private func openWeb(_ tab: Tab) {
-        guard let path = tab.webPath, let flow else { return }
-        if let web {
-            web.openPath(path)
-        } else {
-            web = NodeWebModel(
-                homeNode: homeNode, push: push.registration, accessSignIn: flow, accessTeamHost: accessTeamHost, path: path
-            )
+    /// Reads the news while the app is in front: now, and every 30 seconds.
+    private func watchNews(_ session: NativeSession) async {
+        guard scenePhase == .active else { return }
+        while !Task.isCancelled {
+            await session.news.poll()
+            try? await Task.sleep(for: .seconds(30))
         }
     }
 
-    /// A notification was tapped: open the request on the desk.
+    /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
+    private func dismissBannersSoon(_ session: NativeSession) async {
+        guard !session.news.banners.isEmpty else { return }
+        try? await Task.sleep(for: .seconds(7))
+        if !Task.isCancelled { session.news.dismiss() }
+    }
+
+    /// A banner was tapped: go where it leads.
+    private func open(_ banner: NewsBanner, session: NativeSession) {
+        session.news.dismiss()
+        switch banner.destination {
+        case .desk(let itemID):
+            tab = .desk
+            openItemID = itemID
+        case .people:
+            tab = .people
+        case .devices:
+            tab = .devices
+        }
+    }
+
+    /// A notification was tapped: go where it leads.
     private func takeLink() {
         guard session != nil, let link = push.takePendingLink() else { return }
-        tab = .desk
-        openItemID = DeskItem.key(org: link.org, team: link.team, request: link.request)
+        switch link {
+        case .request(let request):
+            tab = .desk
+            openItemID = DeskItem.key(org: request.org, team: request.team, request: request.request)
+        case .devices:
+            tab = .devices
+        case .decision:
+            tab = .desk
+        }
     }
 
     private func loaded(_ loading: DeskStore.Loading, _ session: NativeSession) {
@@ -215,7 +223,7 @@ struct HomeShell: View {
     /// The number on the icon and the sign-in belong to the node that is being left.
     private func leave() async {
         push.setBadge(0)
-        await flow?.forget()
+        flow?.forget()
         onChangeHomeNode()
     }
 }

@@ -78,6 +78,21 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/usage?days=\(days)")
     }
 
+    /// How fast each team of an org ships over the last `days` days (1 to 90). A node that does not serve it answers 404.
+    public func evaluation(org: String, days: Int) async throws -> Evaluation {
+        try await get("/api/orgs/\(Self.segment(org))/evaluation?days=\(days)")
+    }
+
+    /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
+    public func effort(org: String, days: Int) async throws -> Effort {
+        try await get("/api/orgs/\(Self.segment(org))/effort?days=\(days)")
+    }
+
+    /// What the org intends for each of its teams, from its definition. A team without a valid plan has none here.
+    public func orgPlans(org: String) async throws -> OrgPlans {
+        try await get("/api/orgs/\(Self.segment(org))")
+    }
+
     public func decisions(limit: Int = 50) async throws -> DecisionLog {
         try await get("/api/decisions?limit=\(limit)")
     }
@@ -123,11 +138,17 @@ public actor NodeClient {
 
     /// Tells the node this phone's push token (`PushTokenInput`). Registering a known token updates it.
     /// `environment` is `production` or `sandbox`, as the app was signed; `label` is 1 to 80 characters.
+    /// `events` names the kinds the token wants (`request`, `device`, `decision`); without it the node sends
+    /// requests only, and an empty list means none.
     @discardableResult
-    public func registerPushToken(token: String, environment: String, label: String) async throws -> RegisteredPushToken {
-        let body = Data(try CanonicalJSON.encode(.object([
+    public func registerPushToken(
+        token: String, environment: String, label: String, events: [String]? = nil
+    ) async throws -> RegisteredPushToken {
+        var members: [JSONValue.Member] = [
             .init("token", .string(token)), .init("environment", .string(environment)), .init("label", .string(label)),
-        ])).utf8)
+        ]
+        if let events { members.append(.init("events", .array(events.map { .string($0) }))) }
+        let body = Data(try CanonicalJSON.encode(.object(members)).utf8)
         return try await write("POST", "/api/push/tokens", body: body)
     }
 

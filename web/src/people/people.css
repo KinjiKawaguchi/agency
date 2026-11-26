@@ -216,7 +216,27 @@
 }
 
 .goal-title {
+  flex: 1;
   font-weight: 600;
+}
+
+/* A finished epic is marked done and drawn quieter than the ones still open. */
+.goal-done {
+  align-self: start;
+  padding: 0 9px;
+  border-radius: 10px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.goal.is-done {
+  background: var(--raised);
+}
+
+.goal.is-done .goal-title {
+  color: var(--ink-2);
 }
 
 .goal-count {

@@ -4,10 +4,11 @@ use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
-use agency_proto::runtime::{Decided, Describe, RuntimeError, TOKEN_USAGE_OP};
+use agency_proto::activity::Activity;
+use agency_proto::runtime::{Decided, Describe, RuntimeError, ACTIVITY_OP, TOKEN_USAGE_OP};
 use agency_proto::{
-    Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, TokenUsage,
-    RUNTIME_VERSION,
+    Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, Timestamp,
+    TokenUsage, RUNTIME_VERSION,
 };
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
@@ -140,6 +141,8 @@ pub struct CommandRuntime {
     described: Mutex<HashMap<(Id, Id), Describe>>,
     views: Shared<TeamView>,
     usage: Shared<TokenUsage>,
+    /// Activity reads differ by `since` and `limit`, so they are not shared; they run one at a time.
+    activity_gate: tokio::sync::Mutex<()>,
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
     health: Mutex<HashMap<(Id, Id), Option<String>>>,
     log: Log,
@@ -161,6 +164,7 @@ impl CommandRuntime {
             described: Mutex::default(),
             views: Shared::new(VIEW_KEPT),
             usage: Shared::new(USAGE_KEPT),
+            activity_gate: tokio::sync::Mutex::new(()),
             health: Mutex::default(),
             log,
         }
@@ -281,6 +285,32 @@ impl TeamRuntime for CommandRuntime {
             .await
         };
         let result = self.usage.get(team, days, run).await;
+        self.observe(team, &result);
+        result
+    }
+
+    /// Called only if the runtime listed `activity` in `describe`; otherwise 404.
+    async fn activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError> {
+        let _one_at_a_time = self.activity_gate.lock().await;
+        let run = async {
+            if !self.ensure_described(team).await?.supports(ACTIVITY_OP) {
+                return Err(RuntimeError {
+                    status: 404,
+                    message: "the team runtime does not report activity".into(),
+                });
+            }
+            let call_with = RuntimeCall::Activity {
+                since: since.clone(),
+                limit,
+            };
+            call(&team.runtime, &request(team, call_with)).await
+        };
+        let result = run.await;
         self.observe(team, &result);
         result
     }

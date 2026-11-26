@@ -1,0 +1,6 @@
+/* The alerts the node sends for a device that asks to be added, and for a refused decision (docs/protocol.md, "Push"). */
+"PUSH_DEVICE_WAITING" = "Device “%@” is waiting to be added";
+"PUSH_DEVICE_WAITING_NO_LABEL" = "A device is waiting to be added";
+"PUSH_DECISION_REFUSED" = "The decision on “%@” was refused";
+"PUSH_DECISION_REFUSED_NO_TITLE" = "A decision was refused";
+"PUSH_REQUEST_WAITING_HIDDEN" = "A request is waiting for you";
