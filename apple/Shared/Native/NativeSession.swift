@@ -103,6 +103,8 @@ final class NativeSession {
         case .signedIn:
             await desk.refresh()
             await pairing?.refresh()
+            // A member the node hosts has the desk and the devices: the owner's screens are not offered, and what they read would be refused.
+            guard !desk.standing.isGuest else { break }
             await overview.refresh()
             await people.refresh()
             await costs.refresh()

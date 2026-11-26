@@ -39,6 +39,8 @@ private struct ShellChrome: ViewModifier {
             // These follow the desk whichever screen is open: the Mac's sidebar keeps only the open screen alive.
             .onChange(of: model.session?.desk.waitingCount) { _, count in if let count { model.nodes.recordWaiting(count, for: model.homeNode) } }
             .onChange(of: model.session?.desk.loading) { _, loading in if let loading { model.deskLoaded(loading) } }
+            // Which screens are offered follows what the node says the viewer is.
+            .onChange(of: model.session?.desk.standing, initial: true) { _, standing in if let standing { model.router.standing = standing } }
             .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
