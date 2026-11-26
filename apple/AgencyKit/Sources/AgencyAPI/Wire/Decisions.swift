@@ -17,7 +17,7 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     public let title: String?
     public let text: String
     public let choice: String?
-    public let choiceLabel: String?
+    @ShownIfPresent public private(set) var choiceLabel: String?
     /// The seat or external party the decision answered for, when it did: the node worked it out when it applied the decision, and
     /// no client says it. Present only for a team on the node that applied it.
     public let relayedFor: RelayedFor?
@@ -37,7 +37,7 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
 /// The seat or external party a decision answered for: its id, and its label as the org's definition had it when the decision was applied.
 public struct RelayedFor: Decodable, Equatable, Sendable {
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
 
     public init(id: String, label: String) {
         self.id = id
