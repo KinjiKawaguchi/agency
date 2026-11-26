@@ -47,7 +47,9 @@ final class NativeSession {
     /// - Parameter deviceLabel: what this device is called in the list of devices (`iPhone`, `Mac`).
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String) {
         self.signIn = signIn
-        let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
+        let client = NodeClient(
+            transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
+        )
         self.client = client
         let signer: SecureEnclaveSigner?
         var problem: String?
