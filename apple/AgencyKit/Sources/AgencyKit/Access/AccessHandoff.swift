@@ -115,21 +115,22 @@ public struct AccessHandoff: Equatable, Sendable {
     }
 }
 
-enum Base64URL {
+/// Unpadded base64 with `-` and `_`, as the node writes the secrets of the sign-in.
+public enum Base64URL {
     private static let alphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".unicodeScalars)
 
-    static func isAlphabet(_ text: Substring) -> Bool {
+    public static func isAlphabet(_ text: Substring) -> Bool {
         text.unicodeScalars.allSatisfy(alphabet.contains)
     }
 
-    static func encode(_ bytes: [UInt8]) -> String {
+    public static func encode(_ bytes: [UInt8]) -> String {
         Data(bytes).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
 
-    static func decode(_ text: String) -> Data? {
+    public static func decode(_ text: String) -> Data? {
         var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
         return Data(base64Encoded: base64)
