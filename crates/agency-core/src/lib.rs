@@ -4,7 +4,9 @@
 
 pub mod about;
 pub mod activity;
+pub mod capabilities;
 pub mod client;
+pub mod clients_seen;
 pub mod config;
 pub mod decisions;
 pub mod delivery;

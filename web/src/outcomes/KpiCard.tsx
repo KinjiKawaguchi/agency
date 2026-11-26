@@ -2,10 +2,14 @@ import { daysEnding, niceMax } from '../evaluation/series'
 import { TrendChart } from '../evaluation/TrendChart'
 import type { KpiSeries } from '../api/outcomesApi'
 import { useI18n } from '../i18n'
-import { formatKpiAxis, formatKpiChange, formatKpiValue } from './format'
+import { CostOnTheseDays } from './CostOnTheseDays'
+import { EnterNumber } from './EnterNumber'
+import { NumberHistory } from './NumberHistory'
+import { formatKpiAxis, formatKpiChange, formatKpiValue, isWrittenAsZero } from './format'
 import { movementOf } from './movement'
 
 interface KpiCardProps {
+  org: string
   series: KpiSeries
   /** The period the numbers are drawn over: its last day, and how many days. */
   until: string
@@ -16,13 +20,14 @@ interface KpiCardProps {
 const isDrawable = (values: readonly number[]): boolean => values.every((value) => value >= 0)
 
 /** One KPI: its latest number, how it moved from the baseline, and its numbers over the period with a gap on each day that has none. */
-export function KpiCard({ series, until, days }: KpiCardProps) {
+export function KpiCard({ org, series, until, days }: KpiCardProps) {
   const { t, fmt, locale } = useI18n()
   const text = t.outcomes
   const { kpi, points, before } = series
   const latest = points.at(-1)
   const show = (value: number): string => formatKpiValue(value, kpi, locale, t.evaluation.units)
-  const movement = latest !== undefined && before !== undefined ? movementOf(before.value, latest.value, kpi.goodWhen) : undefined
+  const units = t.evaluation.units
+  const movement = latest !== undefined && before !== undefined ? movementOf(before.value, latest.value, kpi.goodWhen, isWrittenAsZero(latest.value - before.value, kpi, locale, units)) : undefined
   const dates = daysEnding(until, days)
   const byDate = new Map(points.map((point) => [point.date, point.value]))
   const values = dates.map((date) => byDate.get(date) ?? null)
@@ -69,6 +74,11 @@ export function KpiCard({ series, until, days }: KpiCardProps) {
           ))}
         </ul>
       )}
+      {points.length === 0 ? null : <CostOnTheseDays org={org} dates={dates} />}
+      <div className="oc-actions">
+        <EnterNumber org={org} kpi={kpi} today={until} />
+        <NumberHistory org={org} kpi={kpi} />
+      </div>
     </article>
   )
 }

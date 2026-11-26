@@ -7,7 +7,7 @@ use crate::ports::DefinitionAccess;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
-use agency_proto::org::{verify_successor, SignedOrg};
+use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
 
@@ -195,7 +195,7 @@ pub async fn join(
                 format!("the join was refused: {error}"),
             )
         })?;
-    verify_successor(&current, &joined).map_err(Error::bad_request)?;
+    verify_root_successor(&current, &joined).map_err(Error::bad_request)?;
     if joined.body.member(&config.account.id).is_none() {
         return Err(Error::bad_request(
             "the returned org definition does not include this account",

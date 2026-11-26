@@ -60,10 +60,7 @@ fn org_with_the_account_key_as_root(running: &Running) {
         label: "Legacy".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: key.public(),
-        },
+        root: Root::new(id("alice"), key.public()),
         departments: vec![],
         people: vec![me],
         teams: vec![],
@@ -181,10 +178,7 @@ fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: root.public(),
-        },
+        root: Root::new(id("alice"), root.public()),
         departments: vec![],
         people: vec![Person {
             id: id("alice"),

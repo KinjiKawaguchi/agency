@@ -24,8 +24,20 @@ public enum OrgReadings: Equatable, Sendable {
 public struct OrgOutcomes: Equatable, Identifiable, Sendable {
     public let id: String
     public let label: String
+    /// The period's first and last calendar day in the node's time zone, which a trend is drawn between.
+    public let from: String
+    public let until: String
     public let cards: [KpiCard]
     public let readings: OrgReadings
+
+    public init(id: String, label: String, from: String, until: String, cards: [KpiCard], readings: OrgReadings) {
+        self.id = id
+        self.label = label
+        self.from = from
+        self.until = until
+        self.cards = cards
+        self.readings = readings
+    }
 }
 
 /// The owner's numbers for what each org measures, over a period the person chooses.
@@ -132,7 +144,10 @@ public final class OutcomesStore {
             return .failed(DeskStore.reason(error))
         }
         let readings = await readReadings(org, kpis: outcomes.series.map(\.kpi), source: source, retry: retry)
-        return .answer(OrgOutcomes(id: id, label: org.label, cards: outcomes.series.map { KpiCard(series: $0, until: outcomes.until) }, readings: readings))
+        return .answer(OrgOutcomes(
+            id: id, label: org.label, from: outcomes.from, until: outcomes.until,
+            cards: outcomes.series.map { KpiCard(series: $0, until: outcomes.until) }, readings: readings
+        ))
     }
 
     private static func readReadings(_ org: OrgRef, kpis: [Kpi], source: any OutcomesSource, retry: RetryPolicy) async -> OrgReadings {

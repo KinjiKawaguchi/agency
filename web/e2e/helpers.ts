@@ -23,6 +23,8 @@ export interface NodeOptions {
   outcomes?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
+  /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
+  guest?: string
 }
 
 /** Starts the mock node over, with its sample data and the given options. */
@@ -38,6 +40,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.outcomes === true) query.set('outcomes', '1')
   if (options.webPush === true) query.set('webPush', '1')
   if (options.homeNodes === true) query.set('homeNodes', '1')
+  if (options.guest !== undefined) query.set('guest', options.guest)
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
     if (options.claim.fails !== undefined) query.set('claimFails', options.claim.fails)

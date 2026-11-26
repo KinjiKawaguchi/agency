@@ -110,7 +110,7 @@ function OrgOutcomes({ org, days, teamLabels }: { org: string; days: number; tea
         {series.length === 0 ? <p className="empty">{t.outcomes.noMeasures}</p> : null}
         <div className="oc-grid">
           {series.map((one) => (
-            <KpiCard key={one.kpi.id} series={one} until={until} days={numbers.data.days} />
+            <KpiCard key={one.kpi.id} org={org} series={one} until={until} days={numbers.data.days} />
           ))}
         </div>
       </section>

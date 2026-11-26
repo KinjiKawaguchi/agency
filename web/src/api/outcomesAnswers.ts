@@ -3,7 +3,7 @@
 // client turns it into a 503, "could not answer"); a value this client does not know (a unit, a `goodWhen`, a state)
 // does not: it is kept as unknown. Nothing is ever filled in: a missing number stays missing.
 import { MalformedAnswer } from './evaluationAnswers'
-import { READING_STATES, type KpiInfo, type KpiSeries, type KpiUnit, type NumberOnDay, type Outcomes, type Reading, type ReadingStateName, type Readings } from './outcomesApi'
+import { READING_STATES, type KpiInfo, type KpiSeries, type KpiUnit, type NumberEntry, type NumberOnDay, type Outcomes, type Reading, type ReadingStateName, type Readings } from './outcomesApi'
 
 type Raw = Record<string, unknown>
 
@@ -103,6 +103,24 @@ function reading(raw: unknown): Reading {
     ...(changeRatio === undefined ? {} : { changeRatio }),
   }
 }
+
+/** One entered number, as the node answers a write and lists a history. A source this client does not know is read as a connector of that name. */
+export function readNumberEntry(raw: unknown): NumberEntry {
+  const given = asObject(raw, 'number')
+  const source = asObject(given.source, 'source')
+  const note = optional(given.note, (value) => text(value, 'note'))
+  return {
+    kpi: text(given.kpi, 'KPI'),
+    date: day(given.date, 'date'),
+    value: figure(given.value, 'value'),
+    source: source.kind === 'manual' ? { kind: 'manual' } : { kind: 'connector', name: typeof source.name === 'string' && source.name !== '' ? source.name : text(source.kind, 'source') },
+    enteredAt: text(given.enteredAt, 'entry time'),
+    enteredBy: text(given.enteredBy, 'entered by'),
+    ...(note === undefined ? {} : { note }),
+  }
+}
+
+export const readNumberHistory = (raw: unknown): NumberEntry[] => asList(raw, 'history').map(readNumberEntry)
 
 export function readReadings(raw: unknown): Readings {
   const given = asObject(raw, 'answer')

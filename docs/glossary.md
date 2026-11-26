@@ -27,6 +27,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 - **Org** (組織). A set of departments, members, and teams under one root key. Its definition is the signed `OrgDefinition`.
 - **Root key** (ルート鍵). The Ed25519 key that signs an org's definition versions. It is held by the root's node (`root` in the definition names its account and key).
+- **Recovery key** (回復用の鍵). A second key of an org, named in `root.recovery`, that no machine keeps: the owner keeps it as written **recovery words** (回復用の単語). It may only move the root key or itself, and only after a **recovery** (ルート鍵の回復) waits 72 hours, in which the root key cancels it by signing any version.
 - **Org definition** (組織定義) and its **versions**. The signed body listing the org's departments, members, teams, and revoked keys. Version 1 starts it; each next version is one higher and refers to the one before (`prev`). Every piece is written only by the root key.
 - **Department** (部署). A unit of the org that groups members and teams, with an optional parent and an optional head (a member).
 - **Team** (チーム). One harness, running on exactly one node: the *team's node* (`teams[].node`). Requests, activity, and the board belong to a team, and the team's node is their only writer.
@@ -93,6 +94,9 @@ What the org's work achieves, as numbers about the business or the product, not 
 - **Observation** (実績値). One number for a KPI on one day, with where it came from (entered by hand, or from a connector), who entered it, and when. It is kept on the owner's node only, never in the definition, and only the owner reads it.
 - **Reading** (読み取り). How a KPI's numbers stand around the day the epic an aim names shipped: the last number on or before that day, the first at least 14 days after it, and their change. It is a *correlation*, never a cause, and it refuses (with a state that says why) when there is too little to read. Read at `/api/orgs/<org>/outcomes/readings`, owner only.
 - **Aim** (狙い). What a team's plan says an epic is meant to move: `plan.aims[]` pairs an epic (by its item reference) with a KPI of the org.
+- **Reading state** (読み取りの状態). Why a reading has numbers, or why it has none. The values of `state` on the wire are `ready`, `notShipped`, `shipDateUnknown`, `noBaseline`, `tooEarly`, `noFollowUp`, and `tooFew` (they are identifiers, not screen text); only `ready` has numbers. Each of the others is said on screen by a sentence of the client that tells what is missing, in `outcomes.readings.states` of the web's catalogs and in the Apple apps' wording of the same, and `ready` has no state sentence: it shows its two numbers, the change, and the correlation line. A screen draws no trend and no 0 for a state that refuses.
+- **Movement** (動き). The change of a KPI's number, worded by direction (rose 上がった, fell 下がった, unchanged 変わらず) and, from the KPI's `goodWhen`, as better (良い方) or worse (悪い方); a KPI with a `goodWhen` a client does not know is not coloured, and a change that is written as 0 in the KPI's unit is unchanged. A reading's movement is never worded as caused by the work: the screens say 「完了のあとで数値が動きました。この仕事が動かしたとは言えません。」 (English: "The figure moved after the work shipped. That does not say the work moved it.").
+- **Outcomes page** (成果の指標; English "Outcomes"). The owner's screen of the KPIs' numbers and the readings. Its Japanese name is not 成果 alone, because the Results group of the menu it sits in (English "Results", 成果) has that name.
 
 ## Do not use
 
