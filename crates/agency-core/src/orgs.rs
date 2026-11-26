@@ -36,11 +36,8 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
     if key == &node.key().public() {
         return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
     }
-    let purpose = format!(
-        "Sign version {} of {}",
-        body.version,
-        agency_proto::org::printable(&body.label)
-    );
+    let before = node.store().load_org(&body.org);
+    let purpose = crate::change_words::describe(before.as_ref().map(|doc| &doc.body), &body);
     let org = body.org.clone();
     sign_by(node, body, &|text: &[u8]| {
         node.root_keys().sign(&org, key, text, &purpose)
@@ -131,7 +128,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
     let root = &doc.body.root;
     root.account == node.account()
         && (root.public_key == node.key().public()
-            || node.root_keys().holds(&doc.body.org, &root.public_key))
+            || node.root_keys().may_hold(&doc.body.org, &root.public_key))
 }
 
 /// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that
@@ -263,6 +260,14 @@ pub fn rotate_root(node: &Node, org: &Id) -> Result<SignedOrg> {
         return Err(Error::new(
             ErrorKind::Forbidden,
             format!("this node does not hold the root key of org {org}"),
+        ));
+    }
+    if node.root_keys().needs_recovery() && current.body.root.recovery.is_none() {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "a root key kept here cannot be copied out, so org {org} needs a recovery key first: run `agency root-recovery --org {org}`"
+            ),
         ));
     }
     let old = current.body.root.public_key.clone();
