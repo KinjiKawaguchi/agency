@@ -104,11 +104,13 @@ pub fn addressed_party<'a>(
 }
 
 /// The seat or external party a request is addressed to on a team elsewhere, as the team's node said the
-/// reader answers for it, with its id and its label as `definition` has it. `None` when `to` names no such
-/// party, or the definition has no seat or external party with that id.
+/// reader answers for it, with its id and its label as `definition` has it. When the definition has no such
+/// seat or external party yet (this node has not read the version that added it), the label is the id: the
+/// request is still the reader's to answer, and what it is for can still be said. `None` when `to` names no
+/// party the reader answers for.
 pub fn remote_addressed_party<'a>(
     definition: &'a OrgDefinition,
-    answers_for: &[AnswersFor],
+    answers_for: &'a [AnswersFor],
     to: Option<&str>,
 ) -> Option<(&'a Id, &'a str)> {
     let answered = answers_for
@@ -121,6 +123,7 @@ pub fn remote_addressed_party<'a>(
         .find(|one| one.id == answered.id);
     seat.map(|one| (&one.id, one.label.as_str()))
         .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
+        .or(Some((&answered.id, answered.id.as_str())))
 }
 
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team

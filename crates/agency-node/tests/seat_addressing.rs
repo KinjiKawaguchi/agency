@@ -391,6 +391,42 @@ async fn the_decision_log_of_a_team_elsewhere_keeps_whom_the_decision_answered_f
     assert_eq!(by_target("r-4").relayed_for, None);
 }
 
+/// The team's node knows a seat this node's definition of the org does not have yet.
+#[tokio::test]
+async fn a_party_the_definition_does_not_have_yet_is_said_by_its_id() {
+    let (_alice, _, bob, _) = world().await;
+    let (acme, app) = (id("acme"), id("app"));
+    refresh(&bob.node).await.unwrap();
+    let mut replica = bob.node.store().load_replica(&acme, &app).unwrap();
+    for one in &mut replica.answers_for {
+        if one.name == "finance" {
+            one.id = id("newseat");
+        }
+    }
+    bob.node
+        .store()
+        .save_replica(&acme, &app, &replica)
+        .unwrap();
+
+    let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
+    assert!(
+        snapshot.mine.contains(&"r-1".to_owned()),
+        "still bob's to answer"
+    );
+    assert_eq!(
+        snapshot.relayed_for.get("r-1").map(String::as_str),
+        Some("newseat")
+    );
+    let key = device(&bob).await;
+    assert_eq!(decide(&bob, &key, "r-1").await, Decided::Delivered);
+    let log = decision_log(&bob.node, None);
+    let relayed = log.entries[0].relayed_for.as_ref().unwrap();
+    assert_eq!(
+        (relayed.id.as_str(), relayed.label.as_str()),
+        ("newseat", "newseat")
+    );
+}
+
 #[tokio::test]
 async fn a_decision_sent_before_the_node_has_read_the_team_is_logged_without_a_party() {
     let (_alice, _, bob, _) = world().await;
