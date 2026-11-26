@@ -122,19 +122,13 @@ fn person(account: &str, key: PublicKey) -> Person {
 }
 
 fn org(root: PublicKey, bob: PublicKey) -> OrgDefinition {
-    OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), root.clone()),
-        departments: vec![],
-        people: vec![person("alice", root), person("bob", bob)],
-        teams: vec![],
-        revoked: vec![],
-        at: AT.into(),
-    }
+    OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), root.clone()),
+        AT.into(),
+    )
+    .with_people(vec![person("alice", root), person("bob", bob)])
 }
 
 #[test]

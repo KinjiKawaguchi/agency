@@ -54,19 +54,13 @@ fn org_with_the_account_key_as_root(running: &Running) {
         role: Role::Member,
         devices: vec![],
     };
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("legacy"),
-        label: "Legacy".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), key.public()),
-        departments: vec![],
-        people: vec![me],
-        teams: vec![],
-        revoked: vec![],
-        at: running.node.now_text(),
-    };
+    let body = OrgDefinition::new(
+        id("legacy"),
+        "Legacy".into(),
+        Root::new(id("alice"), key.public()),
+        running.node.now_text(),
+    )
+    .with_people(vec![me]);
     let doc = Signed::sign(Kind::Org, body, id("alice"), key).unwrap();
     running.node.store().save_org(&doc).unwrap();
     running
@@ -172,27 +166,21 @@ async fn a_refused_signature_writes_nothing() {
 
 /// Version 1 of org `acme`, rooted in `root`, kept by `running` as an org it trusts.
 fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg {
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), root.public()),
-        departments: vec![],
-        people: vec![Person {
-            id: id("alice"),
-            label: "Alice".into(),
-            account: id("alice"),
-            public_key: agency_proto::AccountKey::from_seed([3; 32]).public(),
-            department: None,
-            role: Role::Member,
-            devices: vec![],
-        }],
-        teams: vec![],
-        revoked: vec![],
-        at: running.node.now_text(),
-    };
+    let body = OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), root.public()),
+        running.node.now_text(),
+    )
+    .with_people(vec![Person {
+        id: id("alice"),
+        label: "Alice".into(),
+        account: id("alice"),
+        public_key: agency_proto::AccountKey::from_seed([3; 32]).public(),
+        department: None,
+        role: Role::Member,
+        devices: vec![],
+    }]);
     let doc = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     running.node.store().save_org(&doc).unwrap();
     running
