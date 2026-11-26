@@ -59,7 +59,7 @@ pub fn closed_files(dir: &Path) -> Vec<Closed> {
             })
         })
         .collect();
-    files.sort_by(|a, b| (b.at, b.nth).cmp(&(a.at, a.nth)));
+    files.sort_by_key(|file| std::cmp::Reverse((file.at, file.nth)));
     files
 }
 
