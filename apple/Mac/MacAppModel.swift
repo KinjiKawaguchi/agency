@@ -15,7 +15,7 @@ final class MacAppModel: HomeNodeSwitching {
     private(set) var shell: ShellModel?
     @ObservationIgnored private var reading: Task<Void, Never>?
 
-    init(push: PushCoordinator, store: HomeNodeStore = HomeNodeStore()) {
+    init(push: PushCoordinator, store: HomeNodeStore = HomeNodeStore(badges: BadgeKeeper())) {
         self.push = push
         self.store = store
     }
@@ -59,6 +59,7 @@ final class MacAppModel: HomeNodeSwitching {
     func note(nodeID: String?, of node: HomeNodeURL) { store.note(nodeID: nodeID, of: node) }
     func nodeID(of node: HomeNodeURL) -> String { store.nodeID(of: node) }
     func hasSaidID(of node: HomeNodeURL) -> Bool { store.hasSaidID(of: node) }
+    func recordWaiting(_ count: Int, for node: HomeNodeURL) { store.recordWaiting(count, for: node) }
 
     func forget(_ node: HomeNodeURL) { store.forget(node) }
 
@@ -88,7 +89,7 @@ final class MacAppModel: HomeNodeSwitching {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, let desk = shell?.session?.desk else { continue }
                 await desk.refresh()
-                if let count = desk.knownWaitingCount { push.setBadge(count) }
+                if let count = desk.knownWaitingCount, let homeNode = shell?.homeNode { store.recordWaiting(count, for: homeNode) }
             }
         }
     }
