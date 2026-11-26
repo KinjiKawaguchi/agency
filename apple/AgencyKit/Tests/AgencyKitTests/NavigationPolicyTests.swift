@@ -4,7 +4,7 @@ import Testing
 
 @Suite("NavigationPolicy")
 struct NavigationPolicyTests {
-    private let policy = NavigationPolicy(homeNode: try! HomeNodeURL(validating: "https://node.example.com"))
+    private let policy = NavigationPolicy(homeNode: try! HomeNodeURL(validating: "https://node.example.com"), accessTeamHost: "acme.cloudflareaccess.com")
 
     private func decision(_ address: String, policy: NavigationPolicy? = nil) -> NavigationDecision {
         (policy ?? self.policy).decide(for: URL(string: address)!)
@@ -21,6 +21,35 @@ struct NavigationPolicyTests {
     func accessLoginStays() {
         #expect(decision("https://acme.cloudflareaccess.com/cdn-cgi/access/login/node.example.com?kid=1") == .allowInApp)
         #expect(decision("https://acme.cloudflareaccess.com/cdn-cgi/access/callback?code=1") == .allowInApp)
+    }
+
+    @Test("the login page of another Access team goes to Safari, and so does every page of it", arguments: [
+        "https://other.cloudflareaccess.com/cdn-cgi/access/login/node.example.com?kid=1",
+        "https://other.cloudflareaccess.com/cdn-cgi/access/callback?code=1",
+        "https://other.cloudflareaccess.com/",
+        "https://sub.acme.cloudflareaccess.com/",
+    ])
+    func otherTeams(address: String) {
+        #expect(decision(address) == .openExternally)
+    }
+
+    @Test("until the node's team is known no Access page stays in the app")
+    func teamUnknown() throws {
+        let unknown = NavigationPolicy(homeNode: try HomeNodeURL(validating: "https://node.example.com"))
+        #expect(unknown.accessTeamHost == nil)
+        #expect(decision("https://acme.cloudflareaccess.com/cdn-cgi/access/login/node.example.com", policy: unknown) == .openExternally)
+        #expect(decision("https://node.example.com/x", policy: unknown) == .allowInApp)
+    }
+
+    @Test("a team host that is not one is ignored, and the case of a host does not matter")
+    func teamHostForms() throws {
+        let node = try HomeNodeURL(validating: "https://node.example.com")
+        for bad in ["evil.example", "cloudflareaccess.com", ".cloudflareaccess.com", "a.b.cloudflareaccess.com", "-x.cloudflareaccess.com", ""] {
+            #expect(NavigationPolicy(homeNode: node, accessTeamHost: bad).accessTeamHost == nil, "\(bad)")
+        }
+        let upper = NavigationPolicy(homeNode: node, accessTeamHost: "ACME.cloudflareaccess.com")
+        #expect(upper.accessTeamHost == "acme.cloudflareaccess.com")
+        #expect(decision("https://Acme.CloudflareAccess.com/cdn-cgi/access/login/x", policy: upper) == .allowInApp)
     }
 
     @Test("look-alikes of the Access domain go to Safari", arguments: [
@@ -78,7 +107,7 @@ struct NavigationPolicyTests {
 
 @Suite("NavigationPolicy Access login page")
 struct AccessLoginPageTests {
-    private let policy = NavigationPolicy(homeNode: try! HomeNodeURL(validating: "https://node.example.com"))
+    private let policy = NavigationPolicy(homeNode: try! HomeNodeURL(validating: "https://node.example.com"), accessTeamHost: "acme.cloudflareaccess.com")
 
     @Test("the login page of an Access team is recognized", arguments: [
         "https://acme.cloudflareaccess.com/cdn-cgi/access/login/node.example.com?kid=1&redirect_url=%2F",
@@ -89,6 +118,7 @@ struct AccessLoginPageTests {
     }
 
     @Test("other pages are not", arguments: [
+        "https://other.cloudflareaccess.com/cdn-cgi/access/login/node.example.com",
         "https://acme.cloudflareaccess.com/cdn-cgi/access/logout",
         "https://acme.cloudflareaccess.com/cdn-cgi/access/callback?code=1",
         "https://acme.cloudflareaccess.com/",

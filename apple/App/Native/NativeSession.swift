@@ -17,15 +17,15 @@ final class NativeSession {
     private(set) var signInProblem: String?
 
     @ObservationIgnored private let client: NodeClient
+    @ObservationIgnored private let transport: URLSessionTransport
     @ObservationIgnored private let signIn: AccessSignInFlow
     @ObservationIgnored private var registeredPush: PushRegistration?
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
-        let client = NodeClient(
-            transport: URLSessionTransport(homeNode: homeNode),
-            accessToken: { tokens.current()?.value }
-        )
+        let transport = URLSessionTransport(homeNode: homeNode)
+        self.transport = transport
+        let client = NodeClient(transport: transport, accessToken: { tokens.current()?.value })
         self.client = client
         let signer: SecureEnclaveSigner?
         var problem: String?
@@ -42,6 +42,12 @@ final class NativeSession {
             sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
             storage: DraftDefaultsStorage(host: homeNode.host)
         )
+    }
+
+    /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
+    /// only Access host the web view may show.
+    func discoverAccessTeam() async -> String? {
+        await transport.accessRedirectLocation().flatMap(AccessTeam.host(fromRedirect:))
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.

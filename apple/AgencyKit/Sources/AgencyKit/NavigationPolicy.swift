@@ -12,19 +12,25 @@ public enum NavigationDecision: Equatable, Sendable {
 
 /// Decides which pages may load inside the web view, which carries the owner's sign-in.
 ///
-/// Only the home node and the Cloudflare Access login pages stay in the app. Every other web
-/// address opens in Safari, so a link inside a message can never show a foreign page in a view that
-/// holds the owner's session.
+/// Only the home node and the login pages of the node's own Cloudflare Access team stay in the app.
+/// Every other web address opens in Safari, so a link inside a message can never show a foreign page
+/// (another Access team's included) in a view that holds the owner's session. Until the team is
+/// known (`AccessTeam`), no Access page stays in the app.
 public struct NavigationPolicy: Equatable, Sendable {
     public static let accessDomainSuffix = ".cloudflareaccess.com"
-    static let accessLoginPath = "/cdn-cgi/access/login"
+    public static let accessLoginPath = "/cdn-cgi/access/login"
 
     private static let externalSchemes: Set<String> = ["http", "https", "mailto", "tel"]
 
     public let homeNode: HomeNodeURL
+    /// `<team>.cloudflareaccess.com` of the node's Access team, once learned.
+    public let accessTeamHost: String?
 
-    public init(homeNode: HomeNodeURL) {
+    /// - Parameter accessTeamHost: the node's Access team host. A value that is not a team host is ignored.
+    public init(homeNode: HomeNodeURL, accessTeamHost: String? = nil) {
         self.homeNode = homeNode
+        let host = accessTeamHost?.lowercased()
+        self.accessTeamHost = host.flatMap { AccessTeam.isTeamHost($0) ? $0 : nil }
     }
 
     public func decide(for url: URL) -> NavigationDecision {
@@ -42,10 +48,9 @@ public struct NavigationPolicy: Equatable, Sendable {
         return .openExternally
     }
 
-    /// `<team>.cloudflareaccess.com`, where one-time PIN sign-in happens, before it sends the
-    /// browser back to the node.
+    /// The node's own team domain, where sign-in happens before Access sends the browser back to the node.
     private func isAccessLogin(scheme: String, host: String, port: Int) -> Bool {
-        scheme == "https" && port == 443 && host.hasSuffix(Self.accessDomainSuffix)
+        scheme == "https" && port == 443 && host == accessTeamHost
     }
 
     /// The page Access sends a signed-out browser to (`/cdn-cgi/access/login/<node host>`), as
