@@ -21,6 +21,9 @@ extension DeviceChangeSender: DeviceAdder {}
 @MainActor
 @Observable
 public final class DevicesStore {
+    /// How often the open screen asks the node again for its devices and their requests.
+    public static let pollSeconds = 4
+
     public private(set) var rows: [DeviceFacts.Row] = []
     /// Requests to add some other device, which this one can confirm.
     public private(set) var requests: [DeviceRequest] = []
