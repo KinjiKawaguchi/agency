@@ -1,0 +1,14 @@
+{
+  "subscriptions": [
+    {
+      "endpoint": "https://updates.push.services.mozilla.com/…-example",
+      "events": [
+        "request"
+      ],
+      "id": "bf7a86e61daa8de8",
+      "keyId": "a1b2c3d4e5f6",
+      "label": "Firefox on a laptop",
+      "registeredAt": "2026-11-24T12:00:00Z"
+    }
+  ]
+}

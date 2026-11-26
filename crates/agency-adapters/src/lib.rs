@@ -22,6 +22,7 @@ mod swr;
 pub use swr::ReadCounts;
 pub mod system;
 pub mod usage_collector;
+pub mod web_push;
 
 /// Where an adapter writes lines for the node's log.
 pub type Log = Box<dyn Fn(&str) + Send + Sync>;
