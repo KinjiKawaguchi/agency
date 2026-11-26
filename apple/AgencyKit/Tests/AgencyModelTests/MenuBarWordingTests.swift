@@ -28,7 +28,7 @@ struct MenuBarWordingTests {
     func status() {
         #expect(Ja.MenuBar.status(.noHomeNode) == "ホームノードが設定されていません")
         #expect(Ja.MenuBar.status(.notRead) == "まだ読み込んでいません")
-        #expect(Ja.MenuBar.status(.readFailed) == "読めませんでした")
+        #expect(Ja.MenuBar.status(.readFailed) == "読み込めませんでした")
         #expect(Ja.MenuBar.status(.count(0, isStale: false)) == "あなたを待っている依頼はありません")
         #expect(Ja.MenuBar.status(.count(2, isStale: false)) == "2 件があなたを待っています")
         #expect(Ja.MenuBar.status(.count(2, isStale: true)) == "2 件があなたを待っています")
@@ -40,7 +40,7 @@ struct MenuBarWordingTests {
         #expect(!Ja.MenuBar.isDim(.count(2, isStale: false)))
         #expect(Ja.MenuBar.isDim(.readFailed))
         #expect(!Ja.MenuBar.isDim(.noHomeNode) && !Ja.MenuBar.isDim(.notRead))
-        #expect(Ja.MenuBar.note(.count(2, isStale: true)) == "最新の数は読めませんでした。前に読んだときの数です")
+        #expect(Ja.MenuBar.note(.count(2, isStale: true)) == "最新の数を読み込めませんでした。前に読み込んだときの数です")
         #expect(Ja.MenuBar.note(.count(2, isStale: false)) == nil)
         #expect(Ja.MenuBar.note(.readFailed) == nil, "its first line already says it")
     }
@@ -50,7 +50,7 @@ struct MenuBarWordingTests {
         #expect(Ja.MenuBar.accessibility(.notRead) == "Agency: まだ読み込んでいません")
         #expect(Ja.MenuBar.accessibility(.noHomeNode) == "Agency: ホームノードが設定されていません")
         #expect(Ja.MenuBar.accessibility(.count(4, isStale: false)) == "Agency: 4 件があなたを待っています")
-        #expect(Ja.MenuBar.accessibility(.count(4, isStale: true)) == "Agency: 4 件があなたを待っています。最新の数は読めませんでした。前に読んだときの数です")
+        #expect(Ja.MenuBar.accessibility(.count(4, isStale: true)) == "Agency: 4 件があなたを待っています。最新の数を読み込めませんでした。前に読み込んだときの数です")
     }
 }
 

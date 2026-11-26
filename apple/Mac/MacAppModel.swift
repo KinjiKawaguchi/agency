@@ -34,9 +34,7 @@ final class MacAppModel {
     /// What the menu-bar item says: no home node, not read yet, a read that failed, or the last number the node gave (0 included).
     var menuState: MenuBarState {
         let desk = shell?.session?.desk
-        let isFailed: Bool
-        if case .failed? = desk?.loading { isFailed = true } else { isFailed = false }
-        return MenuBarState(hasHomeNode: store.homeNode != nil, known: desk?.knownWaitingCount, isFailed: isFailed)
+        return MenuBarState(hasHomeNode: store.homeNode != nil, known: desk?.knownWaitingCount, isFailed: desk?.isReadFailing == true)
     }
 
     private func open(_ homeNode: HomeNodeURL) {

@@ -31,8 +31,8 @@ extension Ja {
         public static let quit = "Agency を終了"
         public static let noHomeNode = "ホームノードが設定されていません"
         public static let notRead = "まだ読み込んでいません"
-        public static let readFailed = "読めませんでした"
-        public static let staleNote = "最新の数は読めませんでした。前に読んだときの数です"
+        public static let readFailed = "読み込めませんでした"
+        public static let staleNote = "最新の数を読み込めませんでした。前に読み込んだときの数です"
         public static let nothingWaiting = "あなたを待っている依頼はありません"
         public static func waiting(_ count: Int) -> String { "\(count) 件があなたを待っています" }
 

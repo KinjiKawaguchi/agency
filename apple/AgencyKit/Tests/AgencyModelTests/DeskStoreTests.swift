@@ -189,6 +189,62 @@ struct DeskStoreTests {
         #expect(store.knownWaitingCount == 0)
     }
 
+    @Test("a failed read is remembered: it stays set while the next refresh is under way, and a read that finishes whole clears it")
+    func readFailing() async throws {
+        let store = makeStore()
+        #expect(!store.isReadFailing)
+        await store.refresh()
+        #expect(!store.isReadFailing)
+
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.isReadFailing)
+
+        source.set(me: .success(Fixture.decode(Me.self, "me")))
+        source.holdNextMe()
+        let refreshing = Task { await store.refresh() }
+        while !source.isHolding { await Task.yield() }
+        #expect(store.loading == .loading)
+        #expect(store.isReadFailing, "a refresh under way is not a read that worked")
+        source.release()
+        await refreshing.value
+        #expect(!store.isReadFailing)
+    }
+
+    @Test("an expired sign-in and a sign-in that was never made are failed reads too")
+    func readFailingForTheSignIn() async {
+        let store = makeStore()
+        source.set(me: .failure(NodeError.sessionExpired))
+        await store.refresh()
+        #expect(store.isReadFailing)
+        source.set(me: .success(Fixture.decode(Me.self, "me")))
+        await store.refresh()
+        #expect(!store.isReadFailing)
+        source.set(me: .failure(NodeError.notSignedIn))
+        await store.refresh()
+        #expect(store.isReadFailing)
+    }
+
+    @Test("a read that finished with a team that could not be read is a failing read: the number is not the whole desk")
+    func partialReadIsFailing() async throws {
+        let two = """
+        {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[
+        {"id":"app","label":"app","location":"local","viewer":"owner"},{"id":"web","label":"web","location":"remote","viewer":"owner"}]}]}
+        """
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(two.utf8))))
+        source.set { _, team in
+            if team == "web" { throw NodeError.http(status: 503, message: "no replica yet") }
+            return Fixture.decode(TeamSnapshot.self, "team-snapshot-local")
+        }
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.loading == .loaded)
+        #expect(store.isReadFailing)
+        source.set { _, _ in Fixture.decode(TeamSnapshot.self, "team-snapshot-local") }
+        await store.refresh()
+        #expect(!store.isReadFailing)
+    }
+
     @Test("during the first read a team that has answered is shown, and the number is still unknown until the read has finished")
     func firstReadPartial() async throws {
         let two = """

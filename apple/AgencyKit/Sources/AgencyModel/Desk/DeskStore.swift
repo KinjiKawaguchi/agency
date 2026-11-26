@@ -88,6 +88,12 @@ public final class DeskStore {
     /// make the desk unread again.
     public private(set) var hasAnswered = false
 
+    /// Whether the last read that finished failed, wholly (the account, the sign-in) or in part (a team that could not be
+    /// read, so the number is not the whole desk). Set when a read fails and cleared when one finishes without a
+    /// failure; a read under way leaves it as it was, so a place that shows the number (the Mac's menu bar) does not
+    /// look current while the next read of a node that is down is still waiting.
+    public private(set) var isReadFailing = false
+
     /// Whether the node has answered: a read finished, or a team's view was read. Before that the lists are empty because
     /// nothing was read, not because nothing is there, and a screen shows that it is loading, not an empty desk.
     public var hasAnswer: Bool { hasAnswered || !teams.isEmpty }
@@ -121,14 +127,18 @@ public final class DeskStore {
             await refreshRecent()
             needsSignIn = false
             hasAnswered = true
+            isReadFailing = !teamFailures.isEmpty
             loading = .loaded
         } catch NodeError.sessionExpired {
             needsSignIn = true
+            isReadFailing = true
             loading = .failed("The sign-in has ended.")
         } catch NodeError.notSignedIn {
             needsSignIn = true
+            isReadFailing = true
             loading = .failed("Not signed in.")
         } catch {
+            isReadFailing = true
             loading = .failed(Self.reason(error))
         }
     }
