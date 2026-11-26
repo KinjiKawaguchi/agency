@@ -9,7 +9,7 @@ use crate::push_events::{
     decision_candidates, device_candidates, recovery_candidates, root_change_candidates,
 };
 use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
-use crate::views::{mine, runtime_view, Reader};
+use crate::views::{mine, runtime_view, Reader, Replica};
 use crate::web_push::{record_sends, Sent};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
@@ -178,11 +178,18 @@ async fn waiting_in(
         (view, mine)
     } else {
         let replica = node.store().load_replica(org, team).unwrap_or_default();
-        let Some(view) = replica.view else {
+        let Replica {
+            view,
+            viewer,
+            answers_for,
+            ..
+        } = replica;
+        let Some(view) = view else {
             return vec![];
         };
         let reader = Reader::Remote {
-            viewer: replica.viewer.as_deref(),
+            viewer: viewer.as_deref(),
+            answers_for: &answers_for,
         };
         let mine = mine(&view, &reader);
         (view, mine)

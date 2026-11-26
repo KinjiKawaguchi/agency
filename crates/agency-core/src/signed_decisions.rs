@@ -8,8 +8,10 @@ use crate::devices::DeviceSigner;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
+use crate::views::{is_addressed_to, remote_addressed_party, Reader};
+use agency_proto::client::RelayedFor;
 use agency_proto::device::envelope_signer;
-use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Kind, Payload, Signed};
+use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, Payload, Signed};
 
 /// Relays a decision signed by one of this node's account's devices to its team.
 pub async fn decide_signed(
@@ -47,6 +49,10 @@ pub async fn decide_signed(
     let is_local = node.runs_here(org, team);
     let record = DecisionRecord::of(envelope, note, is_local);
     if !is_local {
+        let record = DecisionRecord {
+            relayed_for: remote_relayed_for(node, &doc.body, org, team, envelope),
+            ..record
+        };
         return send_envelope(node, place.node, signed, record).await;
     }
     let (accepted, relayed_for) = accept_envelope_for(node, org, team, signed).await?;
@@ -58,6 +64,33 @@ pub async fn decide_signed(
         node.store().append_decision(&record)?;
     }
     Ok(Decided::Applied)
+}
+
+/// Whom a decision for a team on another node answers for, as this node's last replica of the team and its
+/// definition of the org have it: the seat or external party the decided request is addressed to, when the
+/// team's node said the signer answers for it. The team's node decides whether to accept the decision; this
+/// is only what the decision log says it was made for.
+fn remote_relayed_for(
+    node: &Node,
+    definition: &OrgDefinition,
+    org: &Id,
+    team: &Id,
+    envelope: &Envelope,
+) -> Option<RelayedFor> {
+    let replica = node.store().load_replica(org, team)?;
+    let reader = Reader::of_replica(&replica);
+    let view = replica.view.as_ref()?;
+    let request = view.requests.iter().find(|request| {
+        request.answer_with.kind == envelope.kind
+            && request.answer_with.target == envelope.target
+            && is_addressed_to(&reader, request)
+    })?;
+    let (id, label) =
+        remote_addressed_party(definition, &replica.answers_for, request.to.as_deref())?;
+    Some(RelayedFor {
+        id: id.clone(),
+        label: label.to_owned(),
+    })
 }
 
 /// Decides with the CLI device: builds the envelope, signs it with the device key, and relays it.

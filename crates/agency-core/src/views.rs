@@ -9,7 +9,7 @@ use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
-use agency_proto::view::{FederatedView, Request, WaitingOn};
+use agency_proto::view::{AnswersFor, FederatedView, Request, WaitingOn};
 use agency_proto::{Id, OrgDefinition, Role, TeamView};
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,10 @@ pub struct Replica {
     /// This node's account's name in the team runtime, as the team's node reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
+    /// The seats and external parties this node's account answers for in the team, as the team's node
+    /// reported them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers_for: Vec<AnswersFor>,
 }
 
 /// A person's name in a hosted team's runtime: their entry in `people`, or `owner` for the team's owner.
@@ -46,8 +50,22 @@ pub enum Reader<'a> {
         person: &'a Id,
         definition: &'a OrgDefinition,
     },
-    /// A team on another node: the reader's runtime name there, as that node reported it.
-    Remote { viewer: Option<&'a str> },
+    /// A team on another node: the reader's runtime name there and the seats and external parties they
+    /// answer for there, as that node reported them.
+    Remote {
+        viewer: Option<&'a str>,
+        answers_for: &'a [AnswersFor],
+    },
+}
+
+impl<'a> Reader<'a> {
+    /// The reader of a team on another node, from the last replica of it.
+    pub fn of_replica(replica: &'a Replica) -> Self {
+        Reader::Remote {
+            viewer: replica.viewer.as_deref(),
+            answers_for: &replica.answers_for,
+        }
+    }
 }
 
 /// The members who answer a request that is addressed to `addressee` on the team `hosted`: the member
@@ -85,10 +103,31 @@ pub fn addressed_party<'a>(
         .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
 }
 
+/// The seat or external party a request is addressed to on a team elsewhere, as the team's node said the
+/// reader answers for it, with its id and its label as `definition` has it. `None` when `to` names no such
+/// party, or the definition has no seat or external party with that id.
+pub fn remote_addressed_party<'a>(
+    definition: &'a OrgDefinition,
+    answers_for: &[AnswersFor],
+    to: Option<&str>,
+) -> Option<(&'a Id, &'a str)> {
+    let answered = answers_for
+        .iter()
+        .find(|one| Some(one.name.as_str()) == to)?;
+    let seat = definition.seats.iter().find(|one| one.id == answered.id);
+    let external = definition
+        .externals
+        .iter()
+        .find(|one| one.id == answered.id);
+    seat.map(|one| (&one.id, one.label.as_str()))
+        .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
+}
+
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team
 /// here, the reader answers the request when its addressee is the reader, or a seat or external party the
 /// reader answers for (an absent or unmapped `to` goes to the team's owner); on a team elsewhere, `to` is
-/// the reader's runtime name, or it is absent and that name is `owner`. The team node's check of a decision
+/// the reader's runtime name, or it is absent and that name is `owner`, or it is the name of a seat or
+/// external party the team's node says the reader answers for. The team node's check of a decision
 /// and every reader's list of their requests both go through it, so no one is shown a request they could
 /// not answer, and no one answers one they cannot see.
 pub fn is_addressed_to(reader: &Reader, request: &Request) -> bool {
@@ -100,9 +139,12 @@ pub fn is_addressed_to(reader: &Reader, request: &Request) -> bool {
             definition,
         } => answerers(definition, hosted, hosted.addressee(to)).contains(person),
         Reader::Remote {
-            viewer: Some(viewer),
-        } => to.unwrap_or("owner") == *viewer,
-        Reader::Remote { viewer: None } => false,
+            viewer,
+            answers_for,
+        } => {
+            let is_own = viewer.is_some_and(|viewer| to.unwrap_or("owner") == viewer);
+            is_own || answers_for.iter().any(|one| Some(one.name.as_str()) == to)
+        }
     }
 }
 
@@ -173,10 +215,33 @@ pub async fn hosted_view(
             return Err(unseen::refused("a read in an org this node does not have"))
         }
     };
+    let answers_for = match definition {
+        Some(definition) => answers_for(definition, &hosted, &reader.id),
+        None => vec![],
+    };
     Ok(FederatedView {
         view,
         viewer: viewer_name(&hosted, &reader.id),
+        answers_for,
     })
+}
+
+/// The seats and external parties of the org that the team's `people` name and that `person` answers for
+/// on the team `hosted`, by the name the team's runtime knows each by.
+fn answers_for(definition: &OrgDefinition, hosted: &HostedTeam, person: &Id) -> Vec<AnswersFor> {
+    hosted
+        .people
+        .iter()
+        .filter(|(_, id)| {
+            let is_party = definition.seats.iter().any(|one| &one.id == *id)
+                || definition.externals.iter().any(|one| &one.id == *id);
+            is_party && answerers(definition, hosted, id).contains(&person)
+        })
+        .map(|(name, id)| AnswersFor {
+            name: name.clone(),
+            id: id.clone(),
+        })
+        .collect()
 }
 
 /// What an answerer reads of a team: only the requests addressed to them, which they need to answer,
@@ -230,10 +295,14 @@ async fn fetch_view(
         message,
         is_not_found: false,
     };
+    fetched
+        .check_answers_for()
+        .map_err(|over| other(format!("sent an answer beyond the limits: {over}")))?;
     let view = check_view(fetched.view, org, &place.id).map_err(other)?;
     Ok(FederatedView {
         view,
         viewer: fetched.viewer,
+        answers_for: fetched.answers_for,
     })
 }
 
@@ -250,6 +319,7 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
             error: None,
             view: Some(fetched.view),
             viewer: fetched.viewer,
+            answers_for: fetched.answers_for,
         },
         Err(failure) => {
             if failure.is_not_found {
@@ -462,7 +532,10 @@ mod tests {
         for (name, reader, to, expected) in cases {
             assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");
         }
-        let elsewhere = |viewer| Reader::Remote { viewer };
+        let elsewhere = |viewer| Reader::Remote {
+            viewer,
+            answers_for: &[],
+        };
         let cases = [
             (
                 "their name",
@@ -484,6 +557,49 @@ mod tests {
                 false,
             ),
             ("not addressed by the team", elsewhere(None), None, false),
+        ];
+        for (name, reader, to, expected) in cases {
+            assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");
+        }
+        let answers_for = [AnswersFor {
+            name: "finance".into(),
+            id: id("carol"),
+        }];
+        let answering = |viewer| Reader::Remote {
+            viewer,
+            answers_for: &answers_for,
+        };
+        let cases = [
+            (
+                "a seat they answer for, with a name",
+                answering(Some("reviewer")),
+                Some("finance"),
+                true,
+            ),
+            (
+                "a seat they answer for, without a name in the team",
+                answering(None),
+                Some("finance"),
+                true,
+            ),
+            (
+                "a seat they do not answer for",
+                answering(Some("reviewer")),
+                Some("tax"),
+                false,
+            ),
+            (
+                "their own name still",
+                answering(Some("reviewer")),
+                Some("reviewer"),
+                true,
+            ),
+            (
+                "absent to goes to the owner, not to a seat",
+                answering(None),
+                None,
+                false,
+            ),
         ];
         for (name, reader, to, expected) in cases {
             assert_eq!(is_addressed_to(&reader, &request(to)), expected, "{name}");

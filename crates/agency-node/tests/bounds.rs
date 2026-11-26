@@ -73,6 +73,13 @@ fn view_of_far(edit: impl FnOnce(&mut Value)) -> String {
     json!({ "view": view }).to_string()
 }
 
+/// The fake team node's answer with these `answersFor` entries next to the view.
+fn answering_for(entries: Vec<Value>) -> String {
+    let mut answer: Value = serde_json::from_str(&view_of_far(|_| {})).unwrap();
+    answer["answersFor"] = Value::Array(entries);
+    answer.to_string()
+}
+
 fn replica(alice: &Running) -> Replica {
     alice
         .node
@@ -107,6 +114,20 @@ async fn an_answer_too_long_or_beyond_the_view_limits_is_not_kept() {
             Answer::Json(view_of_far(|view| {
                 view["requests"][0]["title"] = json!("x".repeat(201));
             })),
+        ),
+        (
+            "beyond the limits",
+            Answer::Json(answering_for(
+                (0..201)
+                    .map(|n| json!({ "name": format!("seat-{n}"), "id": "carol" }))
+                    .collect(),
+            )),
+        ),
+        (
+            "beyond the limits",
+            Answer::Json(answering_for(vec![
+                json!({ "name": "x".repeat(201), "id": "carol" }),
+            ])),
         ),
     ];
     for (expected, sent) in cases {
