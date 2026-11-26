@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { type FakeWindow, startWorker } from '../test/fakeWorker'
+import { hiddenRanges, sharedHidden } from '../test/hiddenChars'
+import { printable } from '../shared/printable'
 
 const network = () => Promise.resolve(new Response('x'))
 const payload = (value: unknown): string => JSON.stringify(value)
@@ -152,6 +154,29 @@ describe('a subscription the browser ended', () => {
     const worker = startWorker(network, { windows: [open] })
     await worker.run('pushsubscriptionchange')
     expect([worker.subscribed, open.messages]).toEqual([[], [{ type: 'push-subscription-changed' }]])
+  })
+})
+
+describe('a label in a notice, against the shared cases of the page’s own helper', () => {
+  const bodyOf = async (detail: string) => (await pushed(payload({ agency: { type: 'device' }, detail }))).shown[0]?.options.body
+
+  it('says each case of the shared file as the page does: a mark for each hidden character, first, and the trim after it', async () => {
+    for (const one of sharedHidden.cases) {
+      const shown = printable(one.text).trim().slice(0, 240)
+      expect(await bodyOf(one.text), JSON.stringify(one.text)).toBe(shown === '' ? 'A device is waiting to be added' : `Device “${shown}” is waiting to be added`)
+      expect(printable(one.text), 'the shared file and the page agree').toBe(one.printable)
+    }
+  })
+
+  it('says a mark for every code point of every range, in the middle of a label and at its ends', async () => {
+    for (const [from, to] of hiddenRanges) {
+      for (let code = from; code <= to; code++) {
+        const hidden = String.fromCodePoint(code)
+        expect(await bodyOf(`a${hidden}b`), `U+${code.toString(16)} inside`).toBe('Device “a?b” is waiting to be added')
+        expect(await bodyOf(`a${hidden}`), `U+${code.toString(16)} last`).toBe('Device “a?” is waiting to be added')
+        expect(await bodyOf(`${hidden}a`), `U+${code.toString(16)} first`).toBe('Device “?a” is waiting to be added')
+      }
+    }
   })
 })
 

@@ -1,15 +1,10 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { hiddenRanges, sharedHidden } from '../test/hiddenChars'
 import { labelsMadePrintable, printable } from './printable'
 
 // The set and the cases are in one file that the other clients and the node read too (testdata/label-hidden-chars.json), so that
 // no one of them can drift from the others.
-const shared = JSON.parse(readFileSync(join(process.cwd(), '..', 'testdata', 'label-hidden-chars.json'), 'utf8')) as {
-  mark: string
-  hidden: Array<[string, string]>
-  cases: Array<{ text: string; printable: string }>
-}
-const ranges = shared.hidden.map(([from, to]) => [Number.parseInt(from, 16), Number.parseInt(to, 16)] as const)
+const shared = sharedHidden
+const ranges = hiddenRanges
 const isHidden = (code: number): boolean => ranges.some(([from, to]) => code >= from && code <= to)
 
 describe('text that someone else wrote, made printable', () => {
