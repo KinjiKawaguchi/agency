@@ -35,6 +35,7 @@ async fn a_redirect_from_another_node_is_not_followed() {
         label: "Far".into(),
         department: None,
         node: far_url,
+        plan: None,
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     refresh(&alice.node).await.unwrap();

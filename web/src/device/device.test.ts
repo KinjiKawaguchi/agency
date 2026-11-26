@@ -22,6 +22,7 @@ const parse = (canonical: string): Json => JSON.parse(canonical) as Json
 describe('canonical JSON', () => {
   it.each([
     ['org', vectors.org.canonical],
+    ['org with a team plan', vectors.orgWithPlan.canonical],
     ['device change', vectors.deviceChange.canonical],
     ['envelope', vectors.envelope.canonical],
     ['comment envelope', vectors.commentEnvelope.canonical],

@@ -197,6 +197,7 @@ async fn refuses_a_report_from_a_team_node_of_another_team_or_range() {
         label: "ext".into(),
         department: None,
         node: lying_node().await,
+        plan: None,
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     let latest = alice.node.store().load_org(&id("acme")).unwrap();

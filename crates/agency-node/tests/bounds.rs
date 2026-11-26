@@ -91,6 +91,7 @@ async fn an_answer_too_long_or_beyond_the_view_limits_is_not_kept() {
         label: "Far".into(),
         department: None,
         node: far,
+        plan: None,
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
 

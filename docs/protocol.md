@@ -46,7 +46,8 @@ To change something, send a signed envelope to its writer.
   "departments": [{ "id": "dev", "label": "Development", "parent": null, "head": "owner" }],
   "people": [{ "id": "owner", "label": "Alice", "account": "alice", "publicKey": "...", "department": "dev", "role": "member",
               "devices": [{ "id": "laptop", "label": "Laptop", "publicKey": "...", "addedAt": "2026-11-24T12:00:00Z" }] }],
-  "teams": [{ "id": "app", "label": "app", "department": "dev", "node": "https://alice.example" }],
+  "teams": [{ "id": "app", "label": "app", "department": "dev", "node": "https://alice.example",
+              "plan": { "allocation": { "newFeature": 40, "improvement": 20, "maintenance": 20, "debt": 15, "incident": 5 }, "weeklyBudgetUsd": 500 } }],
   "revoked": ["<revoked public key>"],
   "at": "2026-11-24T12:00:00Z"
 }
@@ -58,6 +59,7 @@ To change something, send a signed envelope to its writer.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
 - `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - Departments form a tree: a department's `parent` is another department of the org (or absent at the top), following parents never leads back to the department, and `head` is a member's `id`. A member's and a team's `department` is one of the org's departments. The root's node changes them with `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept` (and `team-add --department`), each a new version.
+- `teams[].plan` is what the org intends for a team, and is absent when it states nothing. `allocation` is the percent of the team's effort for each kind of work (`newFeature`, `improvement`, `maintenance`, `debt`, `incident`), five non-negative integers that add up to 100. `weeklyBudgetUsd` is the weekly spend the org intends, in whole US dollars, estimated at API prices like `TokenUsage.costUsd`; it is an integer because the definition is signed as canonical JSON. A plan has both. The root's node sets it with `agency team-plan` (`--none` clears it). A node that does not know `plan` refuses the versions that carry one, so every node of the org must understand it before the root sets one.
 - `teams[].node` is the origin where other nodes reach a team. The node that runs a team knows it from its own configuration, not from this field, so a team keeps running and being served if the field still names an old origin of its node. That node reports the mismatch. The root's node fixes it with a new version that changes only that team's `node` (`agency team-move`).
 - `role`: `member` (reads and answers) or `answerer` (only answers). Either decides only the requests addressed to them (see "Requests"). An answerer also reads only those: a team's node serves an answerer a TeamView with just the requests addressed to it, and no people, work items, or epics, and does not serve it token usage (403).
 

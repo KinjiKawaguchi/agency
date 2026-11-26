@@ -295,6 +295,7 @@ async fn the_outbox_retries_only_when_the_backoff_is_due() {
         label: "Far".into(),
         department: None,
         node: NOWHERE.into(),
+        plan: None,
     };
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     let (key, key_id) = (laptop(), laptop().public().device_id());
