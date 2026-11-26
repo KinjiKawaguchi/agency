@@ -45,11 +45,12 @@ function noise(seed: string): number {
 
 /** The place each team gathers around: the teams spread on a circle around the middle. */
 export function anchorsOf(teams: readonly string[], { width, height }: Size): Map<string, { x: number; y: number }> {
-  const radius = teams.length < 2 ? 0 : Math.min(width, height) * 0.3
+  // An ellipse that follows the picture's shape, starting on the left, so that two teams sit side by side.
+  const [radiusX, radiusY] = teams.length < 2 ? [0, 0] : [width * 0.27, height * 0.3]
   return new Map(
     teams.map((team, index) => {
-      const angle = (index / Math.max(teams.length, 1)) * 2 * Math.PI - Math.PI / 2
-      return [team, { x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius }]
+      const angle = (index / Math.max(teams.length, 1)) * 2 * Math.PI + Math.PI
+      return [team, { x: width / 2 + Math.cos(angle) * radiusX, y: height / 2 + Math.sin(angle) * radiusY }]
     }),
   )
 }
