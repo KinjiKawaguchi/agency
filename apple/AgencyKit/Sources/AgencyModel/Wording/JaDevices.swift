@@ -35,3 +35,18 @@ extension Ja {
         }
     }
 }
+
+extension Ja {
+    /// Whether APNs takes the notices the node sends this phone, in the words of the web's card for a browser (`notices.os.push`), with APNs
+    /// in the place of the browser's push service. The reason is the node's own text (the status and reason code APNs answered), never
+    /// APNs' own words.
+    public enum PushDelivery {
+        public static func isFailing(_ when: String, _ reason: String) -> String {
+            "この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（\(when)）: \(reason)。ノードは最大 1 日のあいだ再送します。失敗が続くときは、端末の通知の設定を確かめてください。"
+        }
+
+        public static func lastTaken(_ when: String) -> String { "最後に受け付けた通知は \(when) のものです。" }
+        public static let neverTaken = "まだ 1 件も受け付けていません。"
+    }
+}
+
