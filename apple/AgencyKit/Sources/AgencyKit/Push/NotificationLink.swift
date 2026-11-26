@@ -4,7 +4,7 @@ import Foundation
 ///
 /// A request's payload has no `type` (`{ "agency": { "org", "team", "request" } }`); the others name it:
 /// `{ "agency": { "type": "device" } }`, `{ "agency": { "type": "decision", "org", "team", "id" } }` and
-/// `{ "agency": { "type": "recovery", "org" } }`.
+/// `{ "agency": { "type": "recovery", "org" } }` and `{ "agency": { "type": "root", "org", "id" } }`.
 public enum NotificationLink: Equatable, Sendable {
     case request(RequestLink)
     /// A device asks to be added: the devices screen.
@@ -13,6 +13,8 @@ public enum NotificationLink: Equatable, Sendable {
     case decision(org: String, team: String, id: String)
     /// A recovery of an org was started: the desk, where it is said at the top.
     case recovery(org: String)
+    /// A change someone asked the root key to sign is held for the owner: the desk, where the item for what waits is.
+    case root(org: String)
 
     /// The org the notification is about, when it names one.
     public var org: String? {
@@ -20,6 +22,7 @@ public enum NotificationLink: Equatable, Sendable {
         case .request(let link): link.org
         case .decision(let org, _, _): org
         case .recovery(let org): org
+        case .root(let org): org
         case .devices: nil
         }
     }
@@ -42,6 +45,10 @@ public enum NotificationLink: Equatable, Sendable {
         case let type as String where type == "recovery":
             guard let org = RequestLink.identifier(keys["org"]) else { return nil }
             self = .recovery(org: org)
+        case let type as String where type == "root":
+            // The held change's handle (`id`) is the node's; the desk shows what waits, so only the org is kept.
+            guard let org = RequestLink.identifier(keys["org"]) else { return nil }
+            self = .root(org: org)
         default:
             return nil
         }
