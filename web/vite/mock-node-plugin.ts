@@ -38,6 +38,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     evaluation: evaluation === '1',
     activity: activity === '1',
     outcomes: outcomes === '1',
+    // The owner's sample numbers are of fixed days; the cost beside them is drawn over the same days.
+    ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.

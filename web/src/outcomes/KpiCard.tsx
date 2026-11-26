@@ -2,6 +2,7 @@ import { daysEnding, niceMax } from '../evaluation/series'
 import { TrendChart } from '../evaluation/TrendChart'
 import type { KpiSeries } from '../api/outcomesApi'
 import { useI18n } from '../i18n'
+import { CostOnTheseDays } from './CostOnTheseDays'
 import { EnterNumber } from './EnterNumber'
 import { NumberHistory } from './NumberHistory'
 import { formatKpiAxis, formatKpiChange, formatKpiValue, isWrittenAsZero } from './format'
@@ -73,6 +74,7 @@ export function KpiCard({ org, series, until, days }: KpiCardProps) {
           ))}
         </ul>
       )}
+      {points.length === 0 ? null : <CostOnTheseDays org={org} dates={dates} />}
       <div className="oc-actions">
         <EnterNumber org={org} kpi={kpi} today={until} />
         <NumberHistory org={org} kpi={kpi} />
