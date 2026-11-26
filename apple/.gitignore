@@ -5,6 +5,8 @@ Local.xcconfig
 *.xcodeproj
 App/Info.plist
 App/Agency.entitlements
+Mac/Info.plist
+Mac/Agency.entitlements
 
 # Build output.
 build/

@@ -124,6 +124,7 @@ public enum Ja {
         public static let adding = "申し込み中…"
         public static let ready = "この端末は追加されています。"
         public static let label = "iPhone"
+        public static let macLabel = "Mac"
         public static let reset = "この端末の鍵を作り直す"
         public static let resetConfirm = "作り直す"
 

@@ -10,6 +10,9 @@ apple/
   Shared/               The app code every platform uses: first-launch setup, the session, the shell's
                         model and screens (`Shell/`), the sign-in, the Keychain, the Secure Enclave key, push,
                         the alert strings. Nothing here imports UIKit or AppKit.
+  Mac/                  What is the Mac's alone: the app entry and delegate, the sidebar, the window the
+                        sign-in sheet opens over, asking for a push token, the app icon, the sandbox
+                        entitlements (the `AgencyMac` target).
   App/                  What is the iPhone's alone: the app entry and delegate, the tab bar, the window the
                         sign-in sheet opens over, asking for a push token, the app icon, Info.plist.
   Config/Shared.xcconfig  Defaults; includes Local.xcconfig when it exists.
@@ -65,6 +68,15 @@ The evaluation page of 成果 mirrors the web client's (`web/src/evaluation`): f
 ## The native org chart
 
 The org chart page of 組織 mirrors the web client's (`web/src/org`, the chart of every org of agency#145): with several orgs and none chosen, every org under the account, each with its departments (nested by parent), its teams and its members; with one org (or one chosen), that org's own chart, and a department opens its own chart ("back to the whole organization" returns). On a phone it is the indented list the web draws on a small screen. Each team's box carries the overview's signals, worked out by `TeamSummary` so the two screens cannot disagree: the requests that are the viewer's (the node's `mine`, rolled up into each department and org), stuck, idle, how many participants work, its participants as faces (six, then "+N"), and "old data" when its data is a copy that could not be renewed; a team that could not be read says so in its box, one still being read is grey bars. An org whose definition cannot be read is shown as such and the others are still drawn. A tap on a team opens the desk when it has requests waiting, else the overview. It reads `GET /api/me`, `GET /api/orgs/<org>` for every org (`OrgDefinition`) and the team views the overview reads (`TeamReader`, with the retry rule of the page above); a node route that combined them would save the phone those reads but would be a protocol addition. `AgencyModel/OrgChart` holds what it decides, ported with the web's test cases (`OrgTreeBuilder`, `OrgChartRow`, `TeamBoxText`, `OrgChartStore`).
+
+## The Mac app
+
+The `AgencyMac` target (macOS 14.4 or later, the same reason as iOS 17.4: the https callback of the sign-in session) is the same app on a Mac: the same session, screens, news, and push kinds from `Shared/` and the package, a sidebar instead of a tab bar (`Mac/HomeShell.swift`), and the sandbox of the Mac App Store, because it is distributed through TestFlight for Mac and not outside Apple (no Developer ID, no notarization). It has the iPhone's name and bundle ID, so it is one record in App Store Connect with the Mac added, and the node's association file (`access.appId`) and push topic need no change.
+
+- **The key.** Each Mac makes its own P-256 key in the Secure Enclave, one for each home node, and is added as another device through the same pairing (approve it from a device that is already added). The rule differs from the iPhone's on purpose: the iPhone's key needs Face ID alone (`.biometryCurrentSet`); the Mac's key needs Touch ID **or the Mac's password** (`.biometryCurrentSet` or `.devicePasscode`), because a Mac may have no Touch ID, or be used closed with an external keyboard, where a Touch-ID-only key could never sign. It is still a Secure Enclave key that cannot be read, and each signature still asks for the person. The settings and the confirmation lines say "Touch ID か Mac のパスワード" there.
+- **Keychain.** The Mac uses the data protection keychain (`kSecUseDataProtectionKeychain`), which the sandboxed app reaches through its `keychain-access-groups` entitlement; the login keychain would ignore the accessibility class and ask the person for access.
+- **Push and the Dock.** The same coordinator asks for permission and registers for remote notifications (`com.apple.developer.aps-environment` in the entitlements); the push label is `Mac`, never the computer's name. The badge on the Dock icon is the number of requests waiting.
+- **Not on the Mac yet:** a menu-bar item, the Settings window on ⌘, (the settings are the sheet behind the gear, as on the iPhone), the widgets.
 
 ## A read that is not ready yet
 
