@@ -111,6 +111,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 
 1. The root key's node creates an invite. Invite link: `agency:join?node=<node origin>&org=<org>&fp=<root key fingerprint>&code=<code>`. The code is 16 random bytes as base64url. The node keeps only the code's SHA-256. An invite expires after 7 days and can be used once.
 2. The invited account's home node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
+   An org id names one org on a node. If the node already has an org with the link's id (a stored definition, or a trusted root fingerprint) under another root key, it refuses the link and changes nothing: joining would replace its definition and its trust for that id, and with them the teams it hosts there. A node also never creates an org with an id it already trusts.
 3. When the invited person accepts, their node signs a join request and sends it to `POST <node>/fed/v1/orgs/<org>/join`. Body: `{ "org", "code", "account", "label", "publicKey", "at" }`. The signature is checked with the body's `publicKey`, and `at` must be within 10 minutes of the root node's clock.
 4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the new member added at the place the invite set (department, role), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox.
 

@@ -54,7 +54,8 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
 
 /// Creates an org with this node's account as its root key and only member.
 pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
-    if node.store().load_org(&org).is_some() {
+    let is_known = node.config().trusted_fingerprint(&org).is_some();
+    if is_known || node.store().load_org(&org).is_some() {
         return Err(Error::new(
             ErrorKind::Conflict,
             format!("org {org} already exists"),
