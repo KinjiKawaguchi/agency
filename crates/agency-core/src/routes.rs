@@ -24,6 +24,11 @@ pub fn join(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/join")
 }
 
+/// A join the root's node holds for its owner, by its handle.
+pub fn held_join(org: &Id, pending: &str) -> String {
+    format!("/fed/v1/orgs/{org}/joins/{pending}")
+}
+
 pub fn view(org: &Id, team: &Id) -> String {
     format!("/fed/v1/teams/{org}/{team}/view")
 }

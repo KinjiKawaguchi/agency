@@ -4,7 +4,9 @@
 
 pub mod about;
 pub mod activity;
+pub mod capabilities;
 pub mod client;
+pub mod clients_seen;
 pub mod config;
 pub mod decisions;
 pub mod delivery;
@@ -23,9 +25,11 @@ pub mod outbox;
 pub mod outcome_readings;
 pub mod outcomes;
 pub mod peer_about;
+pub mod pending_root;
 pub mod ports;
 pub mod push;
 mod push_events;
+pub mod push_retries;
 pub mod read_auth;
 pub mod readings;
 pub mod recovery;

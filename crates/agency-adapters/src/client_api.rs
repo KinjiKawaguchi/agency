@@ -19,6 +19,7 @@ use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
 };
+use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
@@ -29,6 +30,8 @@ use agency_proto::client::{
     DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
     SignedDecisionInput,
 };
+use agency_proto::client_version::{self, Platform};
+use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Request, State};
@@ -42,7 +45,7 @@ use serde_json::json;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 mod outcomes;
 
@@ -71,6 +74,8 @@ pub struct ClientApi {
     /// The running program and its data directory, for the command a client shows the owner. `None`
     /// when they cannot be written out as text; clients then show their own wording.
     pub launch: Option<Launch>,
+    /// When each app version was last noted, so a client that calls often costs no write (see `note_client`).
+    pub client_notes: Mutex<HashMap<(Platform, String), OffsetDateTime>>,
     /// The codes the app handoff made and that wait to be redeemed.
     pub handoff: handoff::Codes,
 }
@@ -223,9 +228,42 @@ async fn guard(
             return refuse(status, message);
         }
     }
+    note_client(&api, request.headers());
     request.extensions_mut().insert(admitted);
     next.run(request).await
 }
+
+/// Notes the app that made an admitted request, from its `x-agency-client` header: at most once an hour for
+/// each version, so a client that calls often costs no write. A header that does not read is ignored; a
+/// failure to note it never fails the request.
+fn note_client(api: &ClientApi, headers: &HeaderMap) {
+    let Some(seen) = header_text(headers, client_version::HEADER).and_then(client_version::parse)
+    else {
+        return;
+    };
+    let now = api.node.now();
+    {
+        let mut noted = api
+            .client_notes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let key = (seen.platform, seen.version.clone());
+        if noted.get(&key).is_some_and(|at| now - *at < NOTE_EVERY) {
+            return;
+        }
+        if noted.len() >= NOTED_KEPT {
+            noted.clear();
+        }
+        noted.insert(key, now);
+    }
+    if let Err(error) = clients_seen::note(&api.node, &seen) {
+        (api.log)(&format!("could not record an app version ({error})"));
+    }
+}
+
+/// How long a version is left before it is noted again, and how many versions the throttle remembers.
+const NOTE_EVERY: Duration = Duration::hours(1);
+const NOTED_KEPT: usize = 256;
 
 /// A malformed id in the path is reported like a missing one.
 fn parse_id(raw: &str) -> Result<Id, Error> {
@@ -256,6 +294,12 @@ async fn get_me(State(api): Shared, Extension(admitted): Extension<Admitted>) ->
     if is_owner_request(&api, &admitted) {
         let listed = home_nodes(&api.node.config()).0;
         answer.home_nodes = (!listed.is_empty()).then_some(listed);
+        let held = match agency_core::pending_root::waiting(&api.node) {
+            Ok(held) => held,
+            Err(error) => return refuse(status_of(error.kind), &error.message),
+        };
+        answer.root_changes =
+            (!held.is_empty()).then(|| held.iter().map(|one| one.as_ref_for_desk()).collect());
     }
     json_response(StatusCode::OK, &answer)
 }

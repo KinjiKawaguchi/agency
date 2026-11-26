@@ -154,3 +154,27 @@ describe('a subscription the browser ended', () => {
     expect([worker.subscribed, open.messages]).toEqual([[], [{ type: 'push-subscription-changed' }]])
   })
 })
+
+describe('a recovery of an org that was started', () => {
+  const recovery = { agency: { type: 'recovery', org: 'acme' }, badge: 0, title: 'A recovery of acme was started', body: 'It takes effect at Dec 1, 9:30 AM. If you did not start it, sign any version of the org now.' }
+
+  it('is shown with the node’s own words, tagged by the org, and leads to the desk, where the notice is', async () => {
+    expect((await pushed(payload(recovery))).shown).toEqual([{ title: recovery.title, options: { body: recovery.body, icon: '/icons/icon-192.png', tag: 'recovery/acme', data: { url: '/desk' } } }])
+  })
+
+  it('names the org in the viewer’s language when the node left its words out', async () => {
+    const bare = { agency: recovery.agency, badge: 0 }
+    expect((await pushed(payload(bare))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A recovery of acme was started', tag: 'recovery/acme' } })
+    expect((await pushed(payload(bare), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme のルート鍵の回復が始まりました' } })
+  })
+
+  it('names no org, and has no tag, when the id is not a plain one', async () => {
+    const odd = { agency: { type: 'recovery', org: 'a/b' }, badge: 0 }
+    expect((await pushed(payload(odd))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A recovery of an org was started', data: { url: '/desk' } } })
+    expect((await pushed(payload(odd))).shown[0]?.options.tag).toBeUndefined()
+  })
+
+  it('is not taken for a request, whose address it does not have', async () => {
+    expect((await pushed(payload({ agency: { type: 'recovery', org: 'acme', team: 'app', request: 'r-1' }, badge: 0 }))).shown[0]?.options.data.url).toBe('/desk')
+  })
+})

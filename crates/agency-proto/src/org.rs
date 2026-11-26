@@ -220,6 +220,7 @@ impl Allocation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+#[non_exhaustive]
 pub struct OrgDefinition {
     pub org: Id,
     pub label: String,
@@ -266,7 +267,8 @@ pub fn is_node_origin(raw: &str) -> bool {
     })
 }
 
-pub(crate) fn label_ok(label: &str) -> bool {
+/// A label: 1 to 80 characters, none of them a control character.
+pub fn label_ok(label: &str) -> bool {
     let count = label.chars().count();
     (1..=80).contains(&count) && !label.chars().any(char::is_control)
 }
@@ -282,6 +284,39 @@ fn unique_keys<'a>(keys: impl Iterator<Item = &'a PublicKey>) -> bool {
 }
 
 impl OrgDefinition {
+    /// Version 1 of an org: no departments, people, teams, KPIs, or revoked keys yet. Built through this and
+    /// its `with_` methods, never by a struct literal, so a new field gets its default in one place.
+    pub fn new(org: Id, label: String, root: Root, at: String) -> Self {
+        Self {
+            org,
+            label,
+            version: 1,
+            prev: None,
+            root,
+            departments: vec![],
+            people: vec![],
+            teams: vec![],
+            revoked: vec![],
+            kpis: vec![],
+            at,
+        }
+    }
+
+    pub fn with_departments(self, departments: Vec<Department>) -> Self {
+        Self {
+            departments,
+            ..self
+        }
+    }
+
+    pub fn with_people(self, people: Vec<Person>) -> Self {
+        Self { people, ..self }
+    }
+
+    pub fn with_teams(self, teams: Vec<TeamPlace>) -> Self {
+        Self { teams, ..self }
+    }
+
     /// A member: listed in the definition, with a key that is not revoked.
     pub fn member(&self, account: &Id) -> Option<&Person> {
         self.people

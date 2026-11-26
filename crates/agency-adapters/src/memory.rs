@@ -6,7 +6,7 @@ use agency_core::push::{Notice, PushError};
 use agency_core::web_push::WebSubscription;
 use agency_proto::activity::{Activity, ActivityEvent};
 use agency_proto::client::{PushToken, VapidKey};
-use agency_proto::clock::{Duration, OffsetDateTime};
+use agency_proto::clock::{Duration, OffsetDateTime, UtcOffset};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, EpicForecast, PersonStatus, Request, RequestKind};
 use agency_proto::{clock, EnvelopeKind, RuntimeDecision, TeamView, Timestamp, TokenUsage};
@@ -17,13 +17,22 @@ use std::sync::{Arc, Mutex};
 
 /// A clock that stays where it is until `advance` or `set`.
 #[derive(Clone)]
-pub struct ManualClock(Arc<Mutex<OffsetDateTime>>);
+pub struct ManualClock(Arc<Mutex<OffsetDateTime>>, Arc<Mutex<UtcOffset>>);
 
 impl ManualClock {
     pub fn at(raw: &str) -> Self {
-        Self(Arc::new(Mutex::new(
-            clock::parse(raw).expect("an RFC 3339 time"),
-        )))
+        Self(
+            Arc::new(Mutex::new(clock::parse(raw).expect("an RFC 3339 time"))),
+            Arc::new(Mutex::new(UtcOffset::UTC)),
+        )
+    }
+
+    /// Puts the clock in a time zone, UTC until it is set (the days of the delivery reports are its days).
+    pub fn set_utc_offset(&self, offset: UtcOffset) {
+        *self
+            .1
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = offset;
     }
 
     pub fn advance(&self, by: Duration) {
@@ -47,6 +56,13 @@ impl Clock for ManualClock {
     fn now(&self) -> OffsetDateTime {
         *self
             .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn utc_offset(&self) -> UtcOffset {
+        *self
+            .1
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -112,6 +128,11 @@ pub struct MemoryRuntimeState {
     /// The epics the view shows.
     pub epics: Vec<EpicForecast>,
     pub applied: Vec<RuntimeDecision>,
+    /// The participant metrics it reports, with `days` set to the range asked for, and its own time zone as
+    /// it is; `None` answers 404 like a runtime without `participantMetrics`. The ranges and time zones
+    /// asked for are in `participant_asks`.
+    pub participants: Option<agency_proto::participant_metrics::ParticipantMetrics>,
+    pub participant_asks: Vec<(u32, i32)>,
     /// The usage it reports, with `days` set to the range asked for; `None` answers 404 like a runtime
     /// without `tokenUsage`.
     pub usage: Option<TokenUsage>,
@@ -229,6 +250,23 @@ impl TeamRuntime for MemoryRuntime {
         })
     }
 
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        days: u32,
+        utc_offset_minutes: i32,
+    ) -> Result<agency_proto::participant_metrics::ParticipantMetrics, RuntimeError> {
+        let mut state = self.0.lock().map_err(|_| poisoned())?;
+        state.participant_asks.push((days, utc_offset_minutes));
+        let metrics = state.participants.clone().map(|metrics| {
+            agency_proto::participant_metrics::ParticipantMetrics { days, ..metrics }
+        });
+        metrics.ok_or_else(|| RuntimeError {
+            status: 404,
+            message: "the memory runtime does not report participant metrics".into(),
+        })
+    }
+
     async fn activity(
         &self,
         team: &HostedTeam,
@@ -284,6 +322,8 @@ pub struct MemoryNotifierState {
     pub desk_attempts: usize,
     pub gone: Vec<String>,
     pub failing: bool,
+    /// Tokens and subscription ids whose sends fail (not gone: a push service having a bad minute); the others are taken.
+    pub refusing: Vec<String>,
     /// The VAPID key of a node with Web Push; none for a node without it.
     pub web_key: Option<VapidKey>,
     /// What was sent to browser subscriptions: the subscription's id and the notice.
@@ -300,7 +340,7 @@ impl Notifier for MemoryNotifier {
             .0
             .lock()
             .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
-        if state.failing {
+        if state.failing || state.refusing.contains(&token.token) {
             return Err(PushError::Failed("APNs did not answer".into()));
         }
         if state.gone.contains(&token.token) {
@@ -343,7 +383,7 @@ impl Notifier for MemoryNotifier {
             .0
             .lock()
             .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
-        if state.failing {
+        if state.failing || state.refusing.contains(&subscription.id) {
             return Err(PushError::Failed("a push service did not answer".into()));
         }
         if state.gone.contains(&subscription.id) {
@@ -371,6 +411,9 @@ struct MemoryRootKeysState {
     keys: Vec<(agency_proto::Id, agency_proto::AccountKey)>,
     is_refusing: bool,
     signed: usize,
+    /// Stands for a keychain: signing asks for presence, and each prompt's words are kept.
+    is_asking: bool,
+    prompts: Vec<String>,
     is_needing_recovery: bool,
 }
 
@@ -398,6 +441,16 @@ impl MemoryRootKeys {
     /// How many signatures were made.
     pub fn signed(&self) -> usize {
         self.state.lock().unwrap().signed
+    }
+
+    /// Makes signing ask for presence, as a keychain does.
+    pub fn ask_presence(&self, is_asking: bool) {
+        self.state.lock().unwrap().is_asking = is_asking;
+    }
+
+    /// The words of each presence prompt so far.
+    pub fn prompts(&self) -> Vec<String> {
+        self.state.lock().unwrap().prompts.clone()
     }
 }
 
@@ -436,9 +489,12 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
         org: &agency_proto::Id,
         key: &agency_proto::PublicKey,
         message: &[u8],
-        _purpose: &str,
+        purpose: &str,
     ) -> Result<String, String> {
         let mut state = self.state.lock().unwrap();
+        if state.is_asking {
+            state.prompts.push(purpose.to_owned());
+        }
         if state.is_refusing {
             return Err("the owner did not confirm".into());
         }
@@ -451,6 +507,39 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
             .ok_or_else(|| format!("no root key of {org} here"))?;
         state.signed += 1;
         Ok(signature)
+    }
+
+    fn needs_presence(&self) -> bool {
+        self.state.lock().unwrap().is_asking
+    }
+
+    fn with_signer(
+        &self,
+        org: &agency_proto::Id,
+        key: &agency_proto::PublicKey,
+        purpose: &str,
+        work: &mut dyn FnMut(&agency_core::ports::RootSigner) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let secret = {
+            let mut state = self.state.lock().unwrap();
+            if state.is_asking {
+                state.prompts.push(purpose.to_owned());
+            }
+            if state.is_refusing {
+                return Err("the owner did not confirm".into());
+            }
+            let found = state
+                .keys
+                .iter()
+                .find(|(one, kept)| one == org && &kept.public() == key);
+            let (_, kept) = found.ok_or_else(|| format!("no root key of {org} here"))?;
+            agency_proto::AccountKey::from_seed(kept.seed())
+        };
+        let signer = |message: &[u8]| {
+            self.state.lock().unwrap().signed += 1;
+            Ok(secret.sign(message))
+        };
+        work(&signer)
     }
 
     fn forget(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> Result<(), String> {

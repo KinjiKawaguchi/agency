@@ -8,7 +8,10 @@ use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
 use agency_proto::activity::{Activity, MAX_LIMIT};
 use agency_proto::clock;
-use agency_proto::runtime::{Decided, Describe, RuntimeError, ACTIVITY_OP, TOKEN_USAGE_OP};
+use agency_proto::participant_metrics::ParticipantMetrics;
+use agency_proto::runtime::{
+    Decided, Describe, RuntimeError, ACTIVITY_OP, PARTICIPANT_METRICS_OP, TOKEN_USAGE_OP,
+};
 use agency_proto::{
     Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, Timestamp,
     TokenUsage, RUNTIME_VERSION,
@@ -158,6 +161,8 @@ struct Inner {
     described: Mutex<HashMap<(Id, Id), Describe>>,
     views: Swr<TeamView>,
     usage: Shared<TokenUsage>,
+    /// Participant metrics, kept for each range and time zone like usage.
+    participants: Shared<ParticipantMetrics>,
     /// A window of a team's activity, cut for each reader (see `Window`).
     activity: Swr<Window>,
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
@@ -189,6 +194,7 @@ impl CommandRuntime {
             described: Mutex::default(),
             views: Swr::new(VIEW_KEPT, MAX_STALE),
             usage: Shared::new(USAGE_KEPT),
+            participants: Shared::new(USAGE_KEPT),
             activity: Swr::new(ACTIVITY_KEPT, MAX_STALE),
             health: Mutex::default(),
             log,
@@ -209,6 +215,7 @@ impl CommandRuntime {
         let inner = self.configuring();
         inner.views = Swr::new(view, MAX_STALE);
         inner.usage = Shared::new(usage);
+        inner.participants = Shared::new(usage);
         self
     }
 
@@ -420,6 +427,39 @@ impl TeamRuntime for CommandRuntime {
             .await
         };
         let result = self.inner.usage.get(team, days, run).await;
+        self.inner.observe(team, &result);
+        result
+    }
+
+    /// Called only if the runtime listed `participantMetrics` in `describe`; otherwise 404. Kept for each
+    /// range and time zone, like usage.
+    async fn participant_metrics(
+        &self,
+        team: &HostedTeam,
+        days: u32,
+        utc_offset_minutes: i32,
+    ) -> Result<ParticipantMetrics, RuntimeError> {
+        let run = async {
+            if !self
+                .inner
+                .ensure_described(team)
+                .await?
+                .supports(PARTICIPANT_METRICS_OP)
+            {
+                return Err(RuntimeError {
+                    status: 404,
+                    message: "the team runtime does not report participant metrics".into(),
+                });
+            }
+            let asked = RuntimeCall::ParticipantMetrics {
+                days,
+                utc_offset_minutes: Some(utc_offset_minutes),
+            };
+            call(&team.runtime, &request(team, asked)).await
+        };
+        // The range and the time zone make one key: a time zone is at most 1560 minutes wide.
+        let variant = days * 2048 + u32::try_from(utc_offset_minutes + 720).unwrap_or(0);
+        let result = self.inner.participants.get(team, variant, run).await;
         self.inner.observe(team, &result);
         result
     }

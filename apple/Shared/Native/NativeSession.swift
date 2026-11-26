@@ -115,6 +115,9 @@ final class NativeSession {
         }
     }
 
+    /// The account as the node last said it (through the shared cache), or `nil` when it cannot be read now.
+    func readAccount() async -> Me? { try? await cache.me() }
+
     /// Writes the desk for the widgets, once the node has said whether it keeps titles off devices. When the node cannot be
     /// asked nothing is written, so no title leaves the app on a guess.
     func publishWidgets() async {

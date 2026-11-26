@@ -1,15 +1,19 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
+use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, ConfigStore, DecisionLogStore, DeviceRequestStore, InviteStore,
-    OrgStore, OutboxStore, OutcomeStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, ClientsSeenStore, ConfigStore, DecisionLogStore, DeviceRequestStore,
+    InviteStore, OrgStore, OutboxStore, OutcomeStore, PendingRootStore, PushStore, ReplicaStore,
+    ShipLedger, ShipRecord,
 };
+use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
@@ -18,6 +22,7 @@ use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
 use serde::{de::DeserializeOwned, Serialize};
+use sha2::Digest;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -175,6 +180,16 @@ impl DataDir {
             .join(format!("{version:06}.recovery-start.json"))
     }
 
+    /// A held change's file, named by the SHA-256 of its handle: a handle is only ever compared, never
+    /// listed in a path an error could show.
+    fn pending_root_path(&self, id: &str) -> PathBuf {
+        let name: String = sha2::Sha256::digest(id.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        self.dir("pending-root").join(format!("{name}.json"))
+    }
+
     fn org_version_path(&self, org: &Id, version: u64) -> PathBuf {
         self.dir("orgs")
             .join(format!("{org}.history"))
@@ -238,6 +253,35 @@ impl OrgStore for DataDir {
     }
 }
 
+impl PendingRootStore for DataDir {
+    fn put_pending_root(&self, change: &PendingRootChange) -> Result<()> {
+        write_json(&self.pending_root_path(&change.id), change)
+    }
+
+    fn pending_roots(&self) -> Vec<PendingRootChange> {
+        read_all(&self.dir("pending-root"))
+    }
+
+    fn remove_pending_root(&self, id: &str) -> Result<()> {
+        remove(&self.pending_root_path(id))
+    }
+
+    fn put_waiting_join(&self, join: &WaitingJoin) -> Result<()> {
+        write_json(
+            &self.dir("waiting-joins").join(format!("{}.json", join.org)),
+            join,
+        )
+    }
+
+    fn waiting_joins(&self) -> Vec<WaitingJoin> {
+        read_all(&self.dir("waiting-joins"))
+    }
+
+    fn remove_waiting_join(&self, org: &Id) -> Result<()> {
+        remove(&self.dir("waiting-joins").join(format!("{org}.json")))
+    }
+}
+
 impl InviteStore for DataDir {
     fn load_invite(&self, digest: &str) -> Option<InviteRecord> {
         read_json(&self.dir("invites").join(format!("{digest}.json")))
@@ -285,6 +329,17 @@ impl OutboxStore for DataDir {
 
     fn refused_parcels(&self) -> Vec<Parcel> {
         read_all(&self.dir("refused"))
+    }
+}
+
+impl ClientsSeenStore for DataDir {
+    /// `clients-seen.json`: no account and no device in it, so it is no more private than the rest.
+    fn clients_seen(&self) -> ClientsSeen {
+        read_json(&self.0.join("clients-seen.json")).unwrap_or_default()
+    }
+
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()> {
+        write_json(&self.0.join("clients-seen.json"), seen)
     }
 }
 
@@ -406,6 +461,14 @@ impl PushStore for DataDir {
 
     fn save_push_tokens(&self, tokens: &[PushToken]) -> Result<()> {
         write_json(&self.0.join("push-tokens.json"), tokens)
+    }
+
+    fn push_retries(&self) -> Vec<Retry> {
+        read_json(&self.0.join("push-retries.json")).unwrap_or_default()
+    }
+
+    fn save_push_retries(&self, retries: &[Retry]) -> Result<()> {
+        write_json(&self.0.join("push-retries.json"), retries)
     }
 
     fn web_subscriptions(&self) -> Vec<WebSubscription> {

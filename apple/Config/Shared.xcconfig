@@ -4,6 +4,8 @@ PRODUCT_BUNDLE_IDENTIFIER = org.example.agency
 DEVELOPMENT_TEAM =
 // The node host the app is associated with; a placeholder that never resolves.
 AGENCY_ASSOCIATED_HOST = agency.invalid
+// A second host, or a wildcard such as *.example.com; unused while it is this placeholder.
+AGENCY_ASSOCIATED_HOST_2 = agency.invalid
 // The source of a build; apple/scripts/testflight.sh gives the real values.
 AGENCY_BUILD_COMMIT = unknown
 AGENCY_BUILD_DESCRIBE = unknown

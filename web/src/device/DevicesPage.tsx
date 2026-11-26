@@ -12,8 +12,11 @@ import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
 import { KeyKeepingNotes } from './KeyKeepingNotes'
 import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
+import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
+import { isHeldFor } from '../rootchange/held'
+import { answerOf } from '../rootchange/provisional'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
@@ -83,6 +86,10 @@ function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; dev
   const queryClient = useQueryClient()
   const toast = useToast()
   const me = useQuery(meQuery(api))
+  const pendingWords = `${t.devices.pendingRoot[0]}agency root-sign${t.devices.pendingRoot[1]}`
+  const [heldHere, setHeld] = useState<readonly string[]>([]) /* stand-in-ok(device): what this click was told by the node, kept in this card; the node's own answer is read from `Me` below */
+  // What this click was told, or else what the node says it holds: so that a reload does not offer the same approval again.
+  const held = heldHere.length > 0 ? heldHere : me.data !== undefined && isHeldFor(me.data, request) ? [pendingWords] : []
   const confirm = useMutation({
     mutationFn: async () => {
       if (me.data === undefined) throw new Error(t.devices.accountUnknown)
@@ -93,11 +100,21 @@ function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; dev
         return signerId === undefined ? [] : [{ org, signerId }]
       })
       if (orgs.length === 0) throw new Error(t.devices.nowhereToAdd)
+      const waiting: string[] = []
       for (const { org, signerId } of orgs) {
-        await api.submitDeviceChange(await signChange(deviceKey, signerId, addChangeFor(request, org, me.data.account.id, new Date())))
+        const result = await api.submitDeviceChange(await signChange(deviceKey, signerId, addChangeFor(request, org, me.data.account.id, new Date())))
+        const answer = answerOf(result)
+        if (answer.status === 'done') continue
+        waiting.push(answer.status === 'pending' ? pendingWords : answer.message)
+        // Kept as it comes, so that a later org's failure does not take away what the root's node already holds.
+        setHeld([...waiting])
       }
+      return waiting
     },
-    onSuccess: () => toast(t.devices.confirmed(request.label)),
+    // A change the root key's node holds for its owner is neither added nor refused: it is said as it is, not as a success.
+    onSuccess: (waiting) => {
+      if (waiting.length === 0) toast(t.devices.confirmed(request.label))
+    },
     onError: (failure) => toast(t.devices.confirmFailed(messageOf(failure)), 'error'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: DEVICES_KEY }),
   })
@@ -108,7 +125,14 @@ function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; dev
       </p>
       <PairingCode code={request.pairingCode} label={t.devices.codeOf(request.label)} />
       <p className="device-compare-note">{t.devices.compare}</p>
-      <button className="btn primary" type="button" disabled={confirm.isPending || me.data === undefined} onClick={() => confirm.mutate()}>
+      {held.length === 0 ? null : (
+        <div className="device-lead" role="status">
+          {[...new Set(held)].map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
+      <button className="btn primary" type="button" disabled={confirm.isPending || me.data === undefined || held.length > 0} onClick={() => confirm.mutate()}>
         {confirm.isPending ? t.devices.confirming : t.devices.confirm}
       </button>
     </li>
@@ -191,6 +215,7 @@ function Unsupported() {
 export function DevicesPage() {
   const { t } = useI18n()
   const key = useDeviceKey()
+  const standing = useStanding()
   return (
     <>
       <h1 className="page-title">{t.devices.title}</h1>
@@ -199,7 +224,7 @@ export function DevicesPage() {
       {key.status === 'unsupported' ? <Unsupported /> : null}
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
-      <HomeNodesCard />
+      {standing.status === 'guest' ? null : <HomeNodesCard />}
       <OsNoticesCard />
       <InstallCard />
     </>

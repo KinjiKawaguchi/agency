@@ -3,7 +3,7 @@
 //! Nothing is stored here; a read of GitHub is kept for a short while by the adapter, not by this module.
 use crate::client::membership;
 use crate::config::HostedTeam;
-use crate::delivery::{evaluate, Input, Period};
+use crate::delivery::{attribute, evaluate, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
@@ -13,6 +13,7 @@ use crate::unseen;
 use crate::usage::check_days;
 use agency_proto::evaluation::{Evaluation, TeamUnavailable};
 use agency_proto::org::TeamPlace;
+use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::usage::DEFAULT_USAGE_DAYS;
 use agency_proto::{Date, Id, Role, Timestamp};
 
@@ -55,6 +56,26 @@ async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, 
         .collect()
 }
 
+/// The team's participants over the period, if its runtime reports them and what it reports is what was
+/// asked for (the team, the range, and the node's time zone, so that its days are the evaluation's days).
+/// Without it the numbers are the same as before: they do not wait for participants.
+async fn participants_of(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+    offset_minutes: i32,
+) -> Option<ParticipantMetrics> {
+    let report = node
+        .runtime()
+        .participant_metrics(hosted, days, offset_minutes)
+        .await
+        .ok()?;
+    report
+        .check(&hosted.org, &hosted.team, days, Some(offset_minutes))
+        .ok()?;
+    Some(report)
+}
+
 /// The repositories of a hosted team, if its configuration names any.
 fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
     hosted
@@ -66,8 +87,15 @@ fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
 
 /// The evaluation of a team on this node over the last `days` days, as the answer of one team: the team
 /// in `teams`, or in `unavailable` with the reason it has no numbers. It does not fail: a team that cannot
-/// be evaluated is a result that a screen shows, not an error that blanks it.
-pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Evaluation {
+/// be evaluated is a result that a screen shows, not an error that blanks it. What each participant did
+/// is the team owner's to read: it is worked out, and runs the team's runtime, only when `reader` (an org
+/// member id) is the team's owner.
+pub async fn evaluate_hosted(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+    reader: &Id,
+) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
     let Some(repos) = repositories(hosted) else {
@@ -79,6 +107,11 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };
     let costs = daily_costs(node, hosted, days).await;
+    let offset_minutes = i32::from(node.utc_offset().whole_minutes());
+    let participants = match reader == &hosted.owner {
+        true => participants_of(node, hosted, days, offset_minutes).await,
+        false => None,
+    };
     let input = Input {
         now,
         offset: node.utc_offset(),
@@ -87,13 +120,18 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
         runs: &facts.runs,
         cost_by_day: &costs,
     };
+    let mut team = evaluate(hosted.team.clone(), &input);
+    if let Some(report) = &participants {
+        (team.participants, team.unattributed_merged) =
+            attribute(report, &facts.pull_requests, &period);
+    }
     Evaluation {
         org: hosted.org.clone(),
         days,
         from: period.first(),
         until: period.last(),
         generated_at: generated_at(node),
-        teams: vec![evaluate(hosted.team.clone(), &input)],
+        teams: vec![team],
         unavailable: vec![],
     }
 }
@@ -159,7 +197,7 @@ pub async fn org_evaluation(node: &Node, org: &Id, days: Option<u32>) -> Result<
     };
     for place in &doc.body.teams {
         let one = match node.hosted(org, &place.id) {
-            Some(hosted) => Ok(evaluate_hosted(node, &hosted, days).await),
+            Some(hosted) => Ok(evaluate_hosted(node, &hosted, days, &person.id).await),
             None => remote_evaluation(node, org, place, days).await,
         };
         match one {
@@ -203,5 +241,5 @@ pub async fn hosted_evaluation(
             "an answerer does not read the team's evaluation",
         ));
     }
-    Ok(evaluate_hosted(node, &hosted, check_days(days)?).await)
+    Ok(evaluate_hosted(node, &hosted, check_days(days)?, &reader.id).await)
 }

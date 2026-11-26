@@ -42,6 +42,25 @@ struct EvaluationSnapshotTests {
 
     // MARK: Renderings
 
+    @Test("a team's participants drawn after its charts: the three-part bar, the words, a participant with no session, and the unattributed line")
+    func participants() throws {
+        func sample(from file: String = #filePath) throws -> TeamEvaluationReport {
+            var url = URL(fileURLWithPath: file)
+            for _ in 0..<5 { url.deleteLastPathComponent() }
+            let data = try Data(contentsOf: url.appendingPathComponent("testdata/evaluation.sample.json"))
+            let evaluation = try JSONDecoder().decode(Evaluation.self, from: data)
+            return TeamEvaluationReport(numbers: evaluation.teams[0], label: UIFixtures.unbrokenID, days: evaluation.days)
+        }
+        let report = try sample()
+        let section = try #require(report.participants)
+        for scheme in [ColorScheme.light, .dark] {
+            expectFits(Snapshot.capture("evaluation-participants", ParticipantsView(section: section), scheme: scheme), "participants, \(scheme)")
+        }
+        let ghost = #"{"team":"app","from":"2026-11-11","until":"2026-11-24","summary":{"merged":{"feat":1},"mainRedSeconds":0,"longestRedSeconds":0,"reverts":0},"byDay":[],"participants":[{"name":"\#(UIFixtures.unbrokenID)","busySeconds":0,"waitingSeconds":0,"idleSeconds":0,"costUsd":0.5,"tokens":{"input":1,"output":2,"cacheRead":3,"cacheWrite":4},"merged":0}]}"#
+        let numbers = try JSONDecoder().decode(TeamEvaluation.self, from: Data(ghost.utf8))
+        expectFits(Snapshot.capture("evaluation-participants-ghost", ParticipantsView(section: try #require(ParticipantsSection(numbers: numbers)))), "no session")
+    }
+
     @Test("a month of a team with a long name, and a team that could not answer, fit the screen in light and dark")
     func month() {
         let state = EvaluationState.ready(

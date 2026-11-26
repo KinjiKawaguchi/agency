@@ -8,7 +8,7 @@ use agency_proto::{AccountKey, Id};
 use anyhow::{bail, Context, Result};
 use bip39::Mnemonic;
 use clap::Args;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
 
 /// How many of the words the owner types back before the recovery key is named in the org.
 const WORDS_TYPED_BACK: [usize; 3] = [3, 11, 20];
@@ -20,8 +20,12 @@ pub struct RootRecovery {
     #[arg(long)]
     org: String,
     /// Replaces the recovery key that the org has; asks for its words first
-    #[arg(long)]
+    #[arg(long, conflicts_with = "same_words_as")]
     replace: bool,
+    /// Uses the recovery words of this other org instead of new ones, after you type them: one set of words
+    /// for both, so whoever has them can start a recovery of both (each still waits 72 hours)
+    #[arg(long, value_name = "OTHER_ORG")]
+    same_words_as: Option<String>,
 }
 
 /// Starts a recovery of an org with its recovery words, naming a new root key made on this node; with
@@ -47,10 +51,17 @@ fn id(raw: &str) -> Result<Id> {
 }
 
 /// The 24 words of `key`'s seed: the BIP-39 English list, whose last word carries a checksum.
-pub fn words_of(key: &AccountKey) -> String {
-    Mnemonic::from_entropy(&key.seed())
-        .map(|words| words.to_string())
-        .unwrap_or_default()
+pub fn words_of(key: &AccountKey) -> Result<Vec<String>> {
+    let words = Mnemonic::from_entropy(&key.seed())
+        .map_err(|why| anyhow::anyhow!("cannot make the recovery words: {why}"))?;
+    let list: Vec<String> = words.words().map(str::to_owned).collect();
+    if list.len() != 24 {
+        bail!(
+            "cannot make the recovery words: {} instead of 24",
+            list.len()
+        );
+    }
+    Ok(list)
 }
 
 /// The key 24 words stand for. A mistyped or misplaced word fails the checksum.
@@ -69,32 +80,92 @@ pub fn key_of(words: &str) -> Result<AccountKey> {
     Ok(AccountKey::from_seed(seed))
 }
 
-fn read_line(prompt: &str) -> Result<String> {
-    print!("{prompt}");
-    std::io::stdout().flush()?;
+/// Turns the terminal's echo off while it lives, and back on when it is dropped, an error or a panic
+/// included. Nothing happens when standard input is not a terminal (a pipe from a password manager).
+struct NoEcho {
+    is_off: bool,
+}
+
+impl NoEcho {
+    fn start() -> Self {
+        let is_terminal = std::io::stdin().is_terminal();
+        let is_off = is_terminal && stty("-echo");
+        Self { is_off }
+    }
+}
+
+impl Drop for NoEcho {
+    fn drop(&mut self) {
+        if self.is_off {
+            stty("echo");
+            eprintln!();
+        }
+    }
+}
+
+fn stty(setting: &str) -> bool {
+    std::process::Command::new("stty")
+        .arg(setting)
+        .stdin(std::process::Stdio::inherit())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// Reads one line without showing it, after a prompt on standard error.
+fn read_secret(prompt: &str) -> Result<String> {
+    eprint!("{prompt}");
+    std::io::stderr().flush()?;
+    let _quiet = NoEcho::start();
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line)?;
     Ok(line.trim().to_owned())
 }
 
 fn ask_words(what: &str) -> Result<AccountKey> {
-    key_of(&read_line(&format!(
-        "The {what} recovery words, separated by spaces: "
+    key_of(&read_secret(&format!(
+        "The {what} recovery words, separated by spaces (not shown): "
     ))?)
+}
+
+/// The terminal's alternate screen while it lives, so that the words leave no trace in the scrollback once
+/// it is dropped. Nothing happens when standard output is not a terminal.
+struct AlternateScreen {
+    is_on: bool,
+}
+
+impl AlternateScreen {
+    fn start() -> Self {
+        let is_on = std::io::stdout().is_terminal();
+        if is_on {
+            print!("\x1b[?1049h\x1b[H");
+            let _ = std::io::stdout().flush();
+        }
+        Self { is_on }
+    }
+}
+
+impl Drop for AlternateScreen {
+    fn drop(&mut self) {
+        if self.is_on {
+            print!("\x1b[?1049l");
+            let _ = std::io::stdout().flush();
+        }
+    }
 }
 
 /// Shows `key`'s words and has the owner type a few back, so that words written down wrong are found now.
 fn show_words(key: &AccountKey) -> Result<()> {
-    let words = words_of(key);
-    let list: Vec<&str> = words.split(' ').collect();
+    let list = words_of(key)?;
+    let _screen = AlternateScreen::start();
     println!("Write these 24 words down, on paper, and keep them away from this machine:\n");
     for (number, word) in list.iter().enumerate() {
         println!("{:>2}. {word}", number + 1);
     }
     println!("\nThey are shown only now. Whoever has them can start a recovery of the org.");
     for number in WORDS_TYPED_BACK {
-        let typed = read_line(&format!("Word {number}: "))?;
-        if !typed.eq_ignore_ascii_case(list[number - 1]) {
+        let typed = read_secret(&format!("Word {number} (not shown): "))?;
+        let shown = list.get(number - 1).map(String::as_str).unwrap_or_default();
+        if !typed.eq_ignore_ascii_case(shown) {
             bail!("word {number} is not what was shown; nothing was changed, so run this again");
         }
     }
@@ -103,6 +174,16 @@ fn show_words(key: &AccountKey) -> Result<()> {
 
 pub async fn root_recovery(node: &Node, args: RootRecovery) -> Result<()> {
     let org = id(&args.org)?;
+    if let Some(other) = &args.same_words_as {
+        let other = id(other)?;
+        let words = ask_words(&format!("{other} org's"))?;
+        let doc = recovery::add_same_as(node, &org, &other, &words)?;
+        println!(
+            "Org {org} has the recovery key of {other} (version {}): the same words recover both.",
+            doc.body.version
+        );
+        return Ok(());
+    }
     let new = AccountKey::generate();
     if !args.replace {
         show_words(&new)?;
@@ -163,7 +244,7 @@ mod tests {
     #[test]
     fn words_stand_for_the_key_and_a_wrong_word_fails_the_checksum() {
         let key = AccountKey::from_seed([0x41; 32]);
-        let words = words_of(&key);
+        let words = words_of(&key).unwrap().join(" ");
         assert_eq!(words.split(' ').count(), 24);
         assert_eq!(key_of(&words).unwrap().public(), key.public());
         let spaced = format!("  {}  ", words.to_uppercase().replace(' ', "   "));

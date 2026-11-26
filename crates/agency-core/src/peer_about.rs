@@ -112,6 +112,17 @@ pub async fn refresh(node: &Node, definition: &OrgDefinition) -> Result<()> {
     Ok(())
 }
 
+/// Reads one node now and keeps what it said, for a node that an edit is about to bring into the org (a first
+/// team on it, or a team moved to it): the root cannot read a node it does not know until a team names it, but a
+/// node that joined the org holds its definition and so can answer. The next `refresh` forgets the entry if no
+/// team names the node by then.
+pub async fn read_origin(node: &Node, org: &Id, origin: &str) -> Result<()> {
+    let mut kept = node.store().peer_abouts(org);
+    let next = read_one(node, org, origin, kept.get(origin)).await;
+    kept.insert(origin.to_owned(), next);
+    node.store().save_peer_abouts(org, &kept)
+}
+
 /// A call to `origin` answered 404: its entry is read again once ten minutes have passed since the last
 /// try, since the peer may not be the release it was read as. A peer never read is read anyway.
 pub fn note_not_found(node: &Node, org: &Id, origin: &str) -> Result<()> {

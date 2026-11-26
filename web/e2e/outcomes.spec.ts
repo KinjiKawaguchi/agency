@@ -32,6 +32,7 @@ for (const [theme, width, height] of [['light', 1280, 900], ['dark', 390, 844]] 
     await expect(page.getByRole('heading', { level: 1, name: 'Outcomes' })).toBeVisible()
     await expect(page.getByRole('article', { name: 'Monthly revenue' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'Readings' })).toBeVisible()
+    await expect(page.getByRole('article', { name: 'Monthly revenue' }).getByText('Cost on the same days')).toBeVisible()
     await expect(page.getByText('Too early: a change needs 14 days to show. It can be read from Dec 4.')).toBeVisible()
     await page.screenshot({ path: `${DIRECTORY}/outcomes-${theme}-${width}.png`, fullPage: true, animations: 'disabled' })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)

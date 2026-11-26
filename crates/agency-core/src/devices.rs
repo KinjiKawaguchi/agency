@@ -5,15 +5,18 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
 use crate::outbox::{enqueue, outcome_of, settle, Outcome, Parcel, ParcelBody};
+use crate::pending_root::{hold, must_hold, RootChange};
 use crate::routes;
 use crate::unseen;
 use agency_proto::client::{
     DeviceChangeOutcome, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput,
     OrgDevices,
 };
+use agency_proto::clock::OffsetDateTime;
 use agency_proto::clock::{self, Duration};
 use agency_proto::device::{check_device_change, device_change_key};
 use agency_proto::org::{verify_root_successor, SignedOrg};
+use agency_proto::root_change::RootAnswer;
 use agency_proto::{
     AccountKey, Device, DeviceChange, DeviceOp, Id, Kind, OrgDefinition, PublicKey, Signed,
     Timestamp,
@@ -139,7 +142,7 @@ pub async fn accept_device_change(
     node: &Node,
     org: &Id,
     signed: Signed<DeviceChange>,
-) -> Result<SignedOrg> {
+) -> Result<RootAnswer> {
     let _guard = node.write_lock().lock().await;
     let current = node.store().load_org(org);
     let key = current
@@ -176,14 +179,29 @@ pub async fn accept_device_change(
             format!("this node does not hold the root key of org {org}"),
         ));
     }
-    let changed =
-        check_device_change(&current.body, &signed, node.now()).map_err(Error::bad_request)?;
-    let mut body = OrgDefinition::successor_of(&current, node.now_text());
-    body.people = changed.people;
-    body.revoked = changed.revoked;
+    let body = changed_body(node, &current, &signed, node.now())?;
+    if must_hold(node, &current) {
+        let change = Box::new(signed);
+        return hold(node, org, RootChange::Device { change });
+    }
     let doc = sign(node, body)?;
     publish(node, &doc)?;
-    Ok(doc)
+    Ok(RootAnswer::Signed(Box::new(doc)))
+}
+
+/// The next version with the device change applied, checked as it was when it was `received`.
+pub(crate) fn changed_body(
+    node: &Node,
+    current: &SignedOrg,
+    signed: &Signed<DeviceChange>,
+    received: OffsetDateTime,
+) -> Result<OrgDefinition> {
+    let changed =
+        check_device_change(&current.body, signed, received).map_err(Error::bad_request)?;
+    let mut body = OrgDefinition::successor_of(current, node.now_text());
+    body.people = changed.people;
+    body.revoked = changed.revoked;
+    Ok(body)
 }
 
 /// Keeps the version the root's node wrote. If this node is more than one version behind, it first
@@ -223,15 +241,23 @@ async fn relay(
     let outcome = outcome_of(sent);
     settle(node, &parcel, &outcome)?;
     match outcome {
-        Outcome::Delivered => {
-            if let Some(doc) = returned {
-                keep_returned(node, &root_node, doc).await?;
+        Outcome::Delivered => match returned {
+            Some(RootAnswer::Pending(pending)) => Ok(DeviceChangeResult {
+                outcome: DeviceChangeOutcome::Pending,
+                message: Some(pending.message),
+            }),
+            Some(RootAnswer::Signed(doc)) => {
+                keep_returned(node, &root_node, *doc).await?;
+                Ok(DeviceChangeResult {
+                    outcome: DeviceChangeOutcome::Delivered,
+                    message: None,
+                })
             }
-            Ok(DeviceChangeResult {
+            None => Ok(DeviceChangeResult {
                 outcome: DeviceChangeOutcome::Delivered,
                 message: None,
-            })
-        }
+            }),
+        },
         Outcome::Unreachable(message) => Ok(DeviceChangeResult {
             outcome: DeviceChangeOutcome::Queued,
             message: Some(message),
@@ -263,10 +289,15 @@ pub async fn submit_device_change(
         .ok_or_else(|| Error::not_found("not found"))?;
     check_device_change(&current.body, &signed, node.now()).map_err(Error::bad_request)?;
     if is_root(node, &current) {
-        accept_device_change(node, &org, signed).await?;
-        return Ok(DeviceChangeResult {
-            outcome: DeviceChangeOutcome::Applied,
-            message: None,
+        return Ok(match accept_device_change(node, &org, signed).await? {
+            RootAnswer::Signed(_) => DeviceChangeResult {
+                outcome: DeviceChangeOutcome::Applied,
+                message: None,
+            },
+            RootAnswer::Pending(pending) => DeviceChangeResult {
+                outcome: DeviceChangeOutcome::Pending,
+                message: Some(pending.message),
+            },
         });
     }
     let root_node = node

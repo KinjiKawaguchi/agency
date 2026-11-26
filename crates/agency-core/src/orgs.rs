@@ -1,10 +1,12 @@
 //! Org definitions. The node with the root key signs each new version and sends it, through the outbox,
 //! to the nodes of the org's teams. Other nodes accept only the next version of the one they have, or a
 //! first copy signed by a root key they trust.
+use crate::capabilities;
 use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
+use crate::ports::RootSigner;
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
@@ -31,28 +33,26 @@ pub(crate) fn sign(node: &Node, body: OrgDefinition) -> Result<SignedOrg> {
 /// account key for an org made before root keys were kept apart. A rotation signs the version that
 /// names the new root with the current one.
 fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOrg> {
-    // A version the root signs never carries a waiting recovery, so signing any version cancels it.
-    let body = OrgDefinition {
-        root: Root {
-            pending: None,
-            ..body.root
-        },
-        ..body
-    };
-    body.validate().map_err(Error::bad_request)?;
-    let signer = node.account();
     if key == &node.key().public() {
-        return Signed::sign(Kind::Org, body, signer, node.key())
-            .map_err(|error| Error::internal(error.to_string()));
+        return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
     }
-    let (org, purpose) = (
-        body.org.clone(),
-        format!("Sign version {} of {}", body.version, body.label),
-    );
-    let signed = Signed::sign_with(Kind::Org, body, signer, |text| {
+    let purpose = format!("Sign version {} of {}", body.version, body.label);
+    let org = body.org.clone();
+    sign_by(node, body, &|text: &[u8]| {
         node.root_keys().sign(&org, key, text, &purpose)
     })
-    .map_err(|error| Error::internal(error.to_string()))?;
+}
+
+/// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
+/// presence prompt: `RootKeys::with_signer`).
+pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
+    // A version the root signs never carries a waiting recovery, so signing any version cancels it.
+    let mut body = body;
+    body.root.pending = None;
+    body.validate().map_err(Error::bad_request)?;
+    let org = body.org.clone();
+    let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
+        .map_err(|error| Error::internal(error.to_string()))?;
     signed.map_err(|why| {
         Error::new(
             ErrorKind::Forbidden,
@@ -123,6 +123,21 @@ fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Resul
     queue_for(node, doc, targets)
 }
 
+/// A root key this node made for a recovery that was then cancelled will sign nothing: it is forgotten.
+fn forget_cancelled_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) {
+    let made = previous
+        .body
+        .root
+        .pending
+        .as_ref()
+        .and_then(|one| one.public_key.as_ref());
+    let Some(made) = made else { return };
+    let is_cancelled = next.body.root.pending.is_none() && &next.body.root.public_key != made;
+    if is_cancelled && node.root_keys().holds(&next.body.org, made) {
+        let _ = node.root_keys().forget(&next.body.org, made);
+    }
+}
+
 /// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
 /// trust this node keeps for the org moves to the new root, so a later first copy is checked against it.
 fn follow_new_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) -> Result<()> {
@@ -167,19 +182,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         devices: vec![],
     };
     let root = Root::new(account, root_key.clone());
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: org.clone(),
-        label,
-        version: 1,
-        prev: None,
-        root,
-        departments: vec![],
-        people: vec![me],
-        teams: vec![],
-        revoked: vec![],
-        at: node.now_text(),
-    };
+    let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
     let doc = sign(node, body)?;
     node.store().save_org(&doc)?;
     node.update_config(|config| config.trust(org, root_key.fingerprint()))?;
@@ -246,8 +249,10 @@ pub fn amend(
     }
     let mut body = OrgDefinition::successor_of(&current, node.now_text());
     edit(&mut body)?;
+    capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
+    forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;
     forget_removed(node, &current.body, &doc.body)?;
     Ok(doc)
@@ -394,6 +399,7 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
     node.store().save_org(&doc)?;
+    forget_cancelled_root(node, &current, &doc);
     forget_removed(node, &current.body, &doc.body)
 }
 

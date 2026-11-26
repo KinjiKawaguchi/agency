@@ -47,3 +47,34 @@ for (const [theme, width, height] of [['light', 1100, 900], ['dark', 390, 844]] 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
+
+// A real push service is not reachable from the test browser, so the browser is made to hold a subscription, which the
+// page tells the node (as it does on every open): the node's mock answers with what it has come to know of it.
+const holdsASubscription = (key: string): void => {
+  Object.defineProperty(Notification, 'permission', { get: () => 'granted' })
+  const bytes = Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), (character) => character.charCodeAt(0))
+  const subscription = {
+    endpoint: 'https://push.example/abcdefgh',
+    options: { applicationServerKey: bytes.buffer },
+    toJSON: () => ({ endpoint: 'https://push.example/abcdefgh', keys: { p256dh: 'P', auth: 'A' } }),
+    unsubscribe: async () => true,
+  }
+  PushManager.prototype.getSubscription = async () => subscription as unknown as PushSubscription
+}
+
+for (const [theme, width, height] of [['light', 1100, 900], ['dark', 390, 844]] as const) {
+  test(`says plainly that a browser's notifications fail, in ${theme} at ${width}px`, async ({ page, request }) => {
+    mkdirSync(DIRECTORY, { recursive: true })
+    await resetNode(request, { webPush: true, webPushFailing: true })
+    await page.addInitScript(holdsASubscription, 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8')
+    await page.setViewportSize({ width, height })
+    await page.goto(`/devices?theme=${theme}`)
+    await expect(page.getByText(/did not take the last notice/)).toBeVisible()
+    await expect(page.getByText(/push\.example answered 503/)).toBeVisible()
+    await expect(page.getByText(/The last notice it took was at/)).toBeVisible()
+    await page.getByRole('heading', { name: 'When the app is closed' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${DIRECTORY}/web-push-failing-${theme}-${width}.png`, fullPage: true, animations: 'disabled' })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}
+

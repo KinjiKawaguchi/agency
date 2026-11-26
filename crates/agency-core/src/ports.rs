@@ -1,4 +1,5 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
+use crate::clients_seen::ClientsSeen;
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
@@ -18,6 +19,8 @@ use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
+use agency_proto::participant_metrics::ParticipantMetrics;
+use agency_proto::root_change::RootAnswer;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -76,11 +79,42 @@ pub trait RootKeys: Send + Sync {
     ) -> std::result::Result<String, String>;
     /// Forgets a root key of `org` that no version will be signed with again.
     fn forget(&self, org: &Id, key: &PublicKey) -> std::result::Result<(), String>;
+    /// Whether signing asks for the owner's presence (a keychain). A root's node then never signs because
+    /// someone else asked: it holds the change for `agency root-sign`.
+    fn needs_presence(&self) -> bool {
+        false
+    }
+    /// Asks for presence once, saying `purpose`, then hands `work` a signer for that one run: several
+    /// versions in a row, one press. The secret is held in memory for the run only.
+    fn with_signer(
+        &self,
+        org: &Id,
+        key: &PublicKey,
+        purpose: &str,
+        work: &mut dyn FnMut(&RootSigner) -> std::result::Result<(), String>,
+    ) -> std::result::Result<(), String> {
+        let signer = |message: &[u8]| self.sign(org, key, message, purpose);
+        work(&signer)
+    }
     /// Whether a key made here cannot be copied out (a keychain), so that an org must have a recovery key
     /// before its root moves here: without one, losing this machine would lose the org.
     fn needs_recovery(&self) -> bool {
         false
     }
+}
+
+/// Signs one message with a root key, within `RootKeys::with_signer`.
+pub type RootSigner<'a> = dyn Fn(&[u8]) -> std::result::Result<String, String> + 'a;
+
+/// Root changes held for the owner, by their handle, and the joins this node asked for that wait for
+/// another org's owner (`pending_root`).
+pub trait PendingRootStore {
+    fn put_pending_root(&self, change: &crate::pending_root::PendingRootChange) -> Result<()>;
+    fn pending_roots(&self) -> Vec<crate::pending_root::PendingRootChange>;
+    fn remove_pending_root(&self, id: &str) -> Result<()>;
+    fn put_waiting_join(&self, join: &crate::pending_root::WaitingJoin) -> Result<()>;
+    fn waiting_joins(&self) -> Vec<crate::pending_root::WaitingJoin>;
+    fn remove_waiting_join(&self, org: &Id) -> Result<()>;
 }
 
 pub trait OrgStore {
@@ -142,6 +176,10 @@ pub trait PushStore {
     /// until the first pass has recorded it.
     fn desk_refresh(&self) -> Option<crate::push::DeskRefresh>;
     fn save_desk_refresh(&self, state: &crate::push::DeskRefresh) -> Result<()>;
+    /// The destinations that failed to take a notice and are to be sent it again (docs/protocol.md, "Push notifications"),
+    /// oldest first.
+    fn push_retries(&self) -> Vec<crate::push_retries::Retry>;
+    fn save_push_retries(&self, retries: &[crate::push_retries::Retry]) -> Result<()>;
     /// The owner's registered Web Push subscriptions, oldest first.
     fn web_subscriptions(&self) -> Vec<WebSubscription>;
     fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;
@@ -183,6 +221,12 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The app releases the node has seen (`clients_seen`), kept in its data directory.
+pub trait ClientsSeenStore {
+    fn clients_seen(&self) -> ClientsSeen;
+    fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -193,6 +237,7 @@ pub trait ReplicaStore {
 pub trait Store:
     ConfigStore
     + OrgStore
+    + PendingRootStore
     + InviteStore
     + AppliedLog
     + OutboxStore
@@ -203,6 +248,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + ClientsSeenStore
     + Send
     + Sync
 {
@@ -211,6 +257,7 @@ pub trait Store:
 impl<
         T: ConfigStore
             + OrgStore
+            + PendingRootStore
             + InviteStore
             + AppliedLog
             + OutboxStore
@@ -221,6 +268,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + ClientsSeenStore
             + Send
             + Sync,
     > Store for T
@@ -301,19 +349,21 @@ pub trait Peers: Send + Sync {
         path: &str,
         doc: &SignedOrg,
     ) -> Result<(), PeerError>;
-    /// Sends a device change to the root's node, which answers with the version it wrote.
+    /// Sends a device change to the root's node, which answers with the version it wrote, or holds it.
     async fn post_device_change(
         &self,
         node: &str,
         path: &str,
         change: &Signed<DeviceChange>,
-    ) -> Result<SignedOrg, PeerError>;
+    ) -> Result<RootAnswer, PeerError>;
     async fn post_join(
         &self,
         node: &str,
         path: &str,
         request: &Signed<JoinRequest>,
-    ) -> Result<SignedOrg, PeerError>;
+    ) -> Result<RootAnswer, PeerError>;
+    /// Asks the root's node for a join it holds, by its handle: still pending, or the version that signed it.
+    async fn get_join(&self, node: &str, path: &str) -> Result<RootAnswer, PeerError>;
 }
 
 /// The runtimes of the teams this node hosts (agency-runtime/1).
@@ -328,6 +378,21 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// The team's participants over the last `days` days, with the days cut at `utc_offset_minutes` (minutes
+    /// east of UTC). A runtime that does not report them answers 404, which is what a runtime that does not
+    /// implement this answers.
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        _days: u32,
+        _utc_offset_minutes: i32,
+    ) -> Result<ParticipantMetrics, RuntimeError> {
+        Err(RuntimeError {
+            status: 404,
+            message: "the team runtime does not report participant metrics".into(),
+        })
+    }
+
     /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
     /// report activity answers 404.
     async fn activity(
@@ -381,6 +446,21 @@ pub trait Notifier: Send + Sync {
     /// Whether the keys of a browser's subscription can be sent to; the reason when they cannot.
     fn web_push_check_keys(&self, _p256dh: &str, _auth: &str) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Sends a notification to each of some browsers' subscriptions, the answers in the order of the subscriptions. The
+    /// default sends one after another; an adapter that can send to several at once (a push service that is slow must
+    /// not hold the others, nor the iPhone's notice) does.
+    async fn send_web_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        let mut answers = Vec::with_capacity(subscriptions.len());
+        for subscription in subscriptions {
+            answers.push(self.send_web(subscription, notice).await);
+        }
+        answers
     }
 
     /// Sends a notification to a browser's subscription.

@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 const SAMPLE_USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
+const SAMPLE_PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
 const SAMPLE_ACTIVITY: &str = include_str!("../../../testdata/activity.sample.json");
 /// Fixed ports, so the node URLs inside the answers (and the signed documents that hold them) repeat.
 const ALICE_PORT: u16 = 7701;
@@ -204,6 +205,10 @@ async fn nodes() -> (Running, Running, Arc<Mutex<MemoryRuntimeState>>) {
         let mut state = memory.lock().unwrap();
         state.requests.push(("r-2".into(), "Ship it?".into()));
         state.usage = Some(serde_json::from_str(SAMPLE_USAGE).unwrap());
+        let mut participants: agency_proto::participant_metrics::ParticipantMetrics =
+            serde_json::from_str(SAMPLE_PARTICIPANTS).unwrap();
+        participants.utc_offset_minutes = 0; // the node's time zone is UTC
+        state.participants = Some(participants);
         let activity: agency_proto::activity::Activity =
             serde_json::from_str(SAMPLE_ACTIVITY).unwrap();
         state.activity = Some(activity.events);
@@ -300,14 +305,18 @@ async fn evaluation_answer(alice: &Running) -> Value {
     use agency_core::delivery::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
     let at = |raw: &str| agency_proto::clock::parse(raw).unwrap();
     let pull_request =
-        |title: &str, opened: &str, merged: &str, started: Option<&str>| MergedPullRequest {
-            title: title.into(),
-            body: String::new(),
-            opened_at: at(opened),
-            merged_at: at(merged),
-            first_commit_at: Some(at(opened)),
-            has_issue: started.is_some(),
-            issue_started_at: started.map(at),
+        |number: u64, title: &str, opened: &str, merged: &str, started: Option<&str>| {
+            MergedPullRequest {
+                repo: "acme/app".into(),
+                number,
+                title: title.into(),
+                body: String::new(),
+                opened_at: at(opened),
+                merged_at: at(merged),
+                first_commit_at: Some(at(opened)),
+                has_issue: started.is_some(),
+                issue_started_at: started.map(at),
+            }
         };
     let run = |commit: &str, finished: &str, verdict| MainRun {
         repo: "acme/app".into(),
@@ -318,18 +327,21 @@ async fn evaluation_answer(alice: &Running) -> Value {
     let facts = DeliveryFacts {
         pull_requests: vec![
             pull_request(
+                101,
                 "feat(web): add a screen",
                 "2026-11-23T08:00:00Z",
                 "2026-11-23T10:00:00Z",
                 Some("2026-11-23T06:00:00Z"),
             ),
             pull_request(
+                102,
                 "fix(core): refuse it",
                 "2026-11-24T08:30:00Z",
                 "2026-11-24T09:00:00Z",
                 None,
             ),
             pull_request(
+                103,
                 "Revert \"fix(core): refuse it\"",
                 "2026-11-24T10:00:00Z",
                 "2026-11-24T10:10:00Z",

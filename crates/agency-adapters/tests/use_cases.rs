@@ -226,9 +226,12 @@ async fn join_requests_must_be_signed_within_ten_minutes() {
         ErrorKind::BadRequest
     );
     alice.clock.set("2026-11-24T12:10:00Z");
-    let doc = accept_join(&alice.node, &id("acme"), request(T0))
+    let answer = accept_join(&alice.node, &id("acme"), request(T0))
         .await
         .unwrap();
+    let agency_proto::root_change::RootAnswer::Signed(doc) = answer else {
+        panic!("held: {answer:?}")
+    };
     assert!(doc.body.member(&id("bob")).is_some());
 }
 
@@ -425,19 +428,13 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         role: Role::Member,
         devices: vec![],
     };
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), root.public()),
-        departments: vec![],
-        people: vec![alice],
-        teams: vec![],
-        revoked: vec![],
-        at: T0.into(),
-    };
+    let body = OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), root.public()),
+        T0.into(),
+    )
+    .with_people(vec![alice]);
     Signed::sign(Kind::Org, body, id("alice"), signer).unwrap()
 }
 
