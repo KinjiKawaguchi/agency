@@ -41,7 +41,7 @@ export const isDone = (epic: EpicForecast): boolean => epic.total > 0 && epic.do
 /** The epics still open first (work going on first, then the furthest along), then the finished ones, the latest finished first. */
 export function sortEpics<T extends Epic>(epics: readonly T[]): T[] {
   const progress = (epic: EpicForecast): number => (epic.total === 0 ? 0 : epic.done / epic.total)
-  const finishedAt = (epic: Epic): number => doneTime(epic) ?? 0
+  const finishedAt = (epic: Epic): number => doneTime(epic) ?? 0 /* stand-in-ok(routing): the sort key of an epic with no finish time: it goes first among the finished */
   return epics.toSorted((a, b) => Number(isDone(a)) - Number(isDone(b)) || (isDone(a) ? finishedAt(b) - finishedAt(a) : b.doing - a.doing || progress(b) - progress(a)))
 }
 

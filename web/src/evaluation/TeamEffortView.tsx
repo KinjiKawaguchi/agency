@@ -1,3 +1,4 @@
+import { Loading, Skeleton } from '../shared/Skeleton'
 import type { TeamEffort, TeamPlan } from '../api/evaluationApi'
 import { useI18n } from '../i18n'
 import { AllocationRows } from './AllocationRows'
@@ -6,7 +7,8 @@ import { Columns } from './Columns'
 import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, shownShare, totalCost, weekSpend } from './effort'
 import { daysEnding, niceMax } from './series'
 
-export type PlanState = { kind: 'stated'; plan: TeamPlan } | { kind: 'none' } | { kind: 'unreadable' }
+/** What is known of the team's plan: the org definition it is in is still being read (`loading`), could not be read, or states it (or does not). */
+export type PlanState = { kind: 'stated'; plan: TeamPlan } | { kind: 'none' } | { kind: 'loading' } | { kind: 'unreadable' }
 
 interface Props {
   label: string
@@ -24,7 +26,7 @@ export function TeamEffortView({ label, effort, plan, days }: Props) {
   const last = effort.until
   const dates = daysEnding(last, days)
   const byDate = new Map(effort.byDay.map((day) => [day.date, day]))
-  const columns = dates.map((date) => ({ date, segments: EFFORT_TYPES.map((type) => ({ key: type, label: text.types[type], color: EFFORT_COLORS[type], value: byDate.get(date)?.costUsd[type] ?? 0 })) }))
+  const columns = dates.map((date) => ({ date, segments: EFFORT_TYPES.map((type) => ({ key: type, label: text.types[type], color: EFFORT_COLORS[type], value: byDate.get(date)?.costUsd[type] ?? 0 /* stand-in-ok(sparse): the node leaves out a day, or a type on a day, with no cost: 0 is what it says, drawn in a chart that exists after the answer */ })) }))
   const money = (value: number): string => (value === 0 ? '$0' : fmt.money(value))
   const max = niceMax(Math.max(0, ...columns.map((column) => column.segments.reduce((sum, segment) => sum + segment.value, 0))))
   const shares = sharesOf(effort)
@@ -36,6 +38,7 @@ export function TeamEffortView({ label, effort, plan, days }: Props) {
           <b>{text.allocation.title}</b> <span className="muted">{stated === undefined ? '' : text.allocation.hint}</span>
         </p>
         {plan.kind === 'none' ? <p className="muted ev-plan-note">{text.noPlan}</p> : null}
+        {plan.kind === 'loading' ? <Loading quiet><Skeleton kind="short" /></Loading> : null}
         {plan.kind === 'unreadable' ? <p className="muted ev-plan-note">{text.planUnreadable}</p> : null}
         <AllocationRows effort={effort} plan={stated} />
         <p className="muted ev-plan-note">{text.allocation.unclassifiedNote}</p>

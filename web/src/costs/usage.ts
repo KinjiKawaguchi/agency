@@ -36,7 +36,7 @@ export function columnsFor(report: TokenUsage, series: readonly Series[]): Colum
     const values = series.map((one) =>
       one.person === null
         ? Object.entries(day.costUsd).filter(([person]) => !named.has(person)).reduce((sum, [, cost]) => sum + cost, 0)
-        : (day.costUsd[one.person] ?? 0),
+        : (day.costUsd[one.person] ?? 0 /* stand-in-ok(sparse): a person who cost nothing on a day is left out of that day by the node */),
     )
     return { date: day.date, total: values.reduce((sum, value) => sum + value, 0), values }
   })

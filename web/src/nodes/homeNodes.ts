@@ -68,7 +68,7 @@ export function listedNodes(own: HomeNodes, fromNode: ReadonlyArray<{ label: str
     seen.add(parsed.origin)
     listed.push({ label: label.trim() === '' ? new URL(parsed.origin).host : label.trim(), origin: parsed.origin, isFromNode })
   }
-  for (const one of fromNode ?? []) add(one.label, one.url, true)
+  for (const one of fromNode ?? [] /* stand-in-ok(optional): the node leaves its list out for anyone but its owner, in an answer that has come */) add(one.label, one.url, true)
   for (const one of own.others) add(one.label, one.origin, false)
   return listed
 }

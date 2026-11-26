@@ -20,7 +20,7 @@ export function isRetryable(error: unknown): boolean {
 }
 
 /** The wait before retry number `attempt` (0 is the first retry); the last delay repeats if there are more. */
-export const retryDelayFor = (delays: readonly number[], attempt: number): number => delays[Math.min(attempt, delays.length - 1)] ?? 0
+export const retryDelayFor = (delays: readonly number[], attempt: number): number => delays[Math.min(attempt, delays.length - 1)] ?? 0 /* stand-in-ok(index): the delay of an attempt past the end of the list */
 
 function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve, reject) => {

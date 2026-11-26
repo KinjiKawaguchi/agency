@@ -30,7 +30,7 @@ export interface PaperProps {
 
 function Thread({ item }: { item: DeskItem }) {
   const { t, fmt } = useI18n()
-  const messages = item.request.thread ?? []
+  const messages = item.request.thread ?? [] /* stand-in-ok(optional): the node leaves the thread out when a request has none, in an answer that has come */
   if (messages.length === 0) return null
   return (
     <div className="doc-thread">

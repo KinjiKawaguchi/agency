@@ -24,7 +24,7 @@ export function StackedColumns({ columns, series }: StackedColumnsProps) {
           <div key={column.date} className="column" tabIndex={0} aria-label={t.costs.tokens.dayTotal(fmt.shortDate(column.date), fmt.money(column.total))}>
             <div className="stack" style={{ height: `${(column.total / max) * 100}%` }}>
               {series.map((one, index) => {
-                const value = column.values[index] ?? 0
+                const value = column.values[index] ?? 0 /* stand-in-ok(index): one value for each person in the series, by position */
                 return value > 0 ? <span key={one.person ?? 'other'} className="slice" style={{ flex: value, background: one.color }} /> : null
               })}
             </div>
@@ -34,7 +34,7 @@ export function StackedColumns({ columns, series }: StackedColumnsProps) {
                 <span key={one.person ?? 'other'} className="tip-row">
                   <i style={{ background: one.color }} />
                   {one.label}
-                  <b>{fmt.money(column.values[index] ?? 0)}</b>
+                  <b>{fmt.money(column.values[index] ?? 0 /* stand-in-ok(index): one value for each person in the series, by position */)}</b>
                 </span>
               ))}
               <span className="tip-row total">{fmt.money(column.total)}</span>

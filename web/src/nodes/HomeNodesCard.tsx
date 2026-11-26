@@ -13,8 +13,8 @@ const REASONS = ['empty', 'not-an-address', 'needs-https', 'has-credentials'] as
 export function HomeNodesCard() {
   const { t } = useI18n()
   const { nodes, listed, change } = useHomeNodes()
-  const [label, setLabel] = useState('')
-  const [address, setAddress] = useState('')
+  const [label, setLabel] = useState('') /* stand-in-ok(device): a form the viewer fills in */
+  const [address, setAddress] = useState('') /* stand-in-ok(device): a form the viewer fills in */
   const [problem, setProblem] = useState<(typeof REASONS)[number] | null>(null)
   if (isNativeApp()) return null
   const text = t.devices.homeNodes
@@ -36,7 +36,7 @@ export function HomeNodesCard() {
       <p className="muted">{text.intro}</p>
       <label className="device-field">
         <span>{text.thisNode}</span>
-        <input type="text" value={nodes.self ?? ''} placeholder={window.location.host} maxLength={MAX_NODE_LABEL} onChange={(event) => change((current) => withSelfLabel(current, event.target.value))} />
+        <input type="text" value={nodes.self ?? '' /* stand-in-ok(device): the name the viewer gave this home node, kept on this device */} placeholder={window.location.host} maxLength={MAX_NODE_LABEL} onChange={(event) => change((current) => withSelfLabel(current, event.target.value))} />
       </label>
       <p className="muted">{text.thisHost(window.location.host)}</p>
       {listed.length === 0 ? (

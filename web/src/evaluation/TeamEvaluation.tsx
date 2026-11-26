@@ -27,11 +27,11 @@ export function TeamEvaluation({ label, numbers, days }: Props) {
   const mergedMax = countMax(Math.max(0, ...rows.map((row) => allMerged(row))))
   const prLead = rollingMedian(rows, (row) => row.prLeadSeconds, TREND_DAYS)
   const issueLead = rollingMedian(rows, (row) => row.issueLeadSeconds, TREND_DAYS)
-  const leadAxis = durationAxis(Math.max(HOUR_SECONDS, ...prLead.map((value) => value ?? 0), ...issueLead.map((value) => value ?? 0)), text.units)
+  const leadAxis = durationAxis(Math.max(HOUR_SECONDS, ...prLead.map((value) => value ?? 0 /* stand-in-ok(scale): an axis maximum from the values that exist */), ...issueLead.map((value) => value ?? 0)), text.units)
   const redAxis = durationAxis(Math.max(HOUR_SECONDS, ...rows.map((row) => row.mainRedSeconds)), text.units)
   const revertsMax = countMax(Math.max(0, ...rows.map((row) => row.reverts)))
   const costPerPr = rollingCostPerPullRequest(rows, TREND_DAYS)
-  const costMax = niceMax(Math.max(0, ...costPerPr.map((value) => value ?? 0)))
+  const costMax = niceMax(Math.max(0, ...costPerPr.map((value) => value ?? 0 /* stand-in-ok(scale): an axis maximum from the values that exist */)))
   const money = (value: number): string => (value === 0 ? '$0' : fmt.money(value))
 
   return (

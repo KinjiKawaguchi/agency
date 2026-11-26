@@ -47,6 +47,7 @@ export const ja: Messages = {
   overview: {
     title: '全体の状況',
     lead: (requests, teams) => (requests === 0 ? 'あなたを待っている依頼は、どのチームにもありません。' : `${teams} チームで、${requests} 件の依頼があなたを待っています。`),
+    leadPartial: (requests, teams, unread) => `${requests === 0 ? '答えたチームでは、あなたを待っている依頼はありません。' : `答えた ${teams} チームで、${requests} 件の依頼があなたを待っています。`}読み込めなかったチームが ${unread} あります。`,
     noTeams: 'この組織には、まだチームがありません。',
     waitingForYou: (count) => `あなたを待っている依頼 ${count} 件`,
     nothingWaits: 'あなたを待っている依頼はありません。',
@@ -144,6 +145,7 @@ export const ja: Messages = {
     allOrgs: 'すべての組織',
     allTitle: 'あなたのすべての組織',
     orgUnavailable: '読み込めません',
+    someUnread: '読み込めないチームがあります',
     title: (label) => `${label} の組織`,
     whole: '組織全体に戻る',
     chooseOrg: '組織',
@@ -481,6 +483,7 @@ export const ja: Messages = {
     feed: {
       title: '今起きていること',
       empty: 'この 1 時間はまだ何もありません。',
+      notRead: 'まだフィードを読み込めていません。',
       added: (ref, title) => `新規: ${ref} ${title}`,
       changed: (ref, title, from, to) => `${ref} ${title}: ${from} → ${to}`,
       opened: (ref, title) => `プルリクエストを開きました: ${ref} ${title}`,
