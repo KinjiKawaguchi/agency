@@ -28,16 +28,35 @@ pub enum RootAnswer {
     Pending(PendingRootAnswer),
 }
 
-/// A held change, as the owner's desk shows it.
+/// A held change, as the owner's desk shows it. A client words it from `kind` and the fields in the screen's
+/// language, and shows `what` only for a kind it does not know.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, optional_fields)]
 pub struct RootChangeRef {
     pub id: String,
     pub org: Id,
-    /// What it changes, in words: "add member carol (Carol)", "add device iPhone for bob".
+    pub kind: RootChangeKind,
+    /// The member it is for: the joiner (`addMember`), or the device's owner.
+    pub member: Id,
+    /// The new member's name (`addMember`), or the device's label (`addDevice`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// The device's id (`addDevice`, `removeDevice`), so a client knows the device it approved is held.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<Id>,
+    /// What it changes, in English words: "add member carol (Carol)", "add device iPhone for bob".
     pub what: String,
     pub received_at: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum RootChangeKind {
+    AddMember,
+    AddDevice,
+    RemoveDevice,
 }
 
 /// What the owner is told while a change waits for the root key's node.

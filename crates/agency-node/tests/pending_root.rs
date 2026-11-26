@@ -83,7 +83,7 @@ async fn a_device_change_from_a_member_waits_without_a_prompt_and_one_press_sign
 }
 
 #[tokio::test]
-async fn several_changes_are_signed_after_one_prompt_that_names_them_each_as_its_own_version() {
+async fn changes_are_signed_at_most_three_to_a_prompt_and_every_joiner_takes_its_version() {
     let (alice, _) = alice().await;
     alice.root_keys.ask_presence(true);
     let before = alice
@@ -100,17 +100,19 @@ async fn several_changes_are_signed_after_one_prompt_that_names_them_each_as_its
         join(&joiner.node, &link, |_| true).await.unwrap();
         joiners.push(joiner);
     }
-    let run = sign_held(&alice.node, &id("acme"), &held_ids(&alice))
-        .await
-        .unwrap();
-    assert_eq!(run.signed.len(), 4, "{:?}", run.dropped);
+    let ids = held_ids(&alice);
+    let too_many = sign_held(&alice.node, &id("acme"), &ids).await.unwrap_err();
+    assert_eq!(too_many.kind, ErrorKind::BadRequest, "four in one prompt");
+    for group in ids.chunks(pending_root::MOST_PER_PROMPT) {
+        let run = sign_held(&alice.node, &id("acme"), group).await.unwrap();
+        assert_eq!(run.signed.len(), group.len(), "{:?}", run.dropped);
+    }
     let prompts = alice.root_keys.prompts();
-    assert_eq!(prompts.len(), 1, "one press");
-    assert!(
-        prompts[0].starts_with("Sign 4 changes for acme: add member carol (CAROL)"),
-        "{prompts:?}"
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
+    assert_eq!(
+        prompts[0],
+        "Sign 3 changes for acme: add member carol (CAROL), add member dave (DAVE), add member erin (ERIN)"
     );
-    assert!(prompts[0].ends_with("and 1 more"), "{prompts:?}");
     let after = alice
         .node
         .store()
@@ -119,6 +121,45 @@ async fn several_changes_are_signed_after_one_prompt_that_names_them_each_as_its
         .body
         .version;
     assert_eq!(after, before + 4);
+    for joiner in &joiners {
+        let done = finish_joins(&joiner.node).await.unwrap();
+        assert!(matches!(&done[..], [Joined::Member(_)]), "{done:?}");
+        let copy = joiner.node.store().load_org(&id("acme")).unwrap();
+        assert_eq!(
+            copy.body.version,
+            before
+                + 1
+                + joiners
+                    .iter()
+                    .position(|one| std::ptr::eq(one, joiner))
+                    .unwrap() as u64
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_join_whose_label_could_move_the_terminal_is_refused() {
+    use agency_proto::invite::Invite;
+    use agency_proto::{JoinRequest, Kind, Signed};
+    let (alice, _) = alice().await;
+    alice.root_keys.ask_presence(true);
+    let link = invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
+    let invite = Invite::parse(&link).unwrap();
+    let key = AccountKey::generate();
+    let request = JoinRequest {
+        org: id("acme"),
+        code: invite.code,
+        account: id("mallory"),
+        label: "Mallory\n\u{1b}[2Kadd member carol".into(),
+        public_key: key.public(),
+        at: alice.node.now_text(),
+    };
+    let signed = Signed::sign(Kind::Join, request, id("mallory"), &key).unwrap();
+    let refused = invites::accept_join(&alice.node, &id("acme"), signed)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::BadRequest);
+    assert!(pending_root::waiting(&alice.node).unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -251,7 +292,30 @@ async fn the_owners_desk_lists_what_waits_and_no_one_else_sees_it() {
     let (status, me) = common::body(common::get(&alice, "/api/me").send().await.unwrap()).await;
     assert_eq!(status, 200, "{me}");
     assert_eq!(me["rootChanges"][0]["what"], "add device Laptop for bob");
+    assert_eq!(me["rootChanges"][0]["kind"], "addDevice");
+    assert_eq!(me["rootChanges"][0]["member"], "bob");
+    assert_eq!(me["rootChanges"][0]["label"], "Laptop");
+    assert!(me["rootChanges"][0]["device"]
+        .as_str()
+        .is_some_and(|device| device.starts_with("d-")));
     assert_eq!(me["rootChanges"][0]["org"], "acme");
     let (_, theirs) = common::body(common::get(&bob, "/api/me").send().await.unwrap()).await;
     assert!(theirs.get("rootChanges").is_none(), "{theirs}");
+}
+
+#[tokio::test]
+async fn one_account_holds_at_most_five_changes_in_an_org() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    alice.root_keys.ask_presence(true);
+    for label in ["One", "Two", "Three", "Four", "Five"] {
+        held_device_for_bob(&alice, &bob, label).await;
+    }
+    let key = AccountKey::generate();
+    let added = add_device(&bob.node, "Six", &key.public(), None).await;
+    assert!(
+        matches!(&added[..], [(_, Added::Failed(error))] if error.message.contains("already wait")),
+        "{added:?}"
+    );
+    assert_eq!(pending_root::waiting(&alice.node).unwrap().len(), 5);
 }

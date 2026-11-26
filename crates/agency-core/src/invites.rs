@@ -5,6 +5,7 @@ use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
 use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
+use crate::read_auth::sign_read;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
@@ -78,7 +79,7 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             "the join request's signature does not match",
         ));
     }
-    let is_label_valid = (1..=80).contains(&request.label.chars().count());
+    let is_label_valid = agency_proto::org::label_ok(&request.label);
     let is_fresh = clock::parse(&request.at)
         .is_some_and(|at| (node.now() - at).whole_seconds().abs() <= JOIN_SKEW_SECONDS);
     if !is_label_valid || !is_fresh {
@@ -284,7 +285,7 @@ async fn keep_joined(
     joined: SignedOrg,
 ) -> Result<Joined> {
     let config = node.config();
-    verify_root_successor(current, &joined).map_err(Error::bad_request)?;
+    let chain = chain_to(node, &invite.node, current, &joined).await?;
     if joined.body.member(&config.account.id).is_none() {
         return Err(Error::bad_request(
             "the returned org definition does not include this account",
@@ -294,13 +295,56 @@ async fn keep_joined(
     refuse_another_org(node, invite)?;
     let stored = node.store().load_org(&invite.org);
     if stored.is_none_or(|stored| stored.body.version < joined.body.version) {
-        node.store().save_org(&joined)?;
+        for version in &chain {
+            node.store().save_org(version)?;
+        }
     }
     node.update_config(|config| {
         config.trust_with_root_node(invite.org.clone(), invite.fp.clone(), invite.node.clone())
     })?;
     node.store().remove_waiting_join(&invite.org)?;
     Ok(Joined::Member(Box::new(joined)))
+}
+
+/// The versions from the one after `current` (the definition the invite was checked with) up to `joined`,
+/// each checked as the root-signed successor of the one before. Versions signed in between (other joins
+/// signed in the same run, or anything else) are read from the root's node, which this node may read now
+/// that `joined` names it a member.
+async fn chain_to(
+    node: &Node,
+    origin: &str,
+    current: &SignedOrg,
+    joined: &SignedOrg,
+) -> Result<Vec<SignedOrg>> {
+    let mut chain: Vec<SignedOrg> = vec![];
+    let mut last = current.clone();
+    while last.body.version + 1 < joined.body.version {
+        let path = routes::versions(&current.body.org, last.body.version);
+        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let fetched = node
+            .peers()
+            .get_versions(origin, &path, &auth)
+            .await
+            .map_err(|error| Error::new(ErrorKind::Unavailable, error.to_string()))?;
+        let before = last.body.version;
+        for version in fetched.versions {
+            if version.body.version >= joined.body.version {
+                break;
+            }
+            verify_root_successor(&last, &version).map_err(Error::bad_request)?;
+            last = version.clone();
+            chain.push(version);
+        }
+        if last.body.version == before {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} sent no version after {before}"),
+            ));
+        }
+    }
+    verify_root_successor(&last, joined).map_err(Error::bad_request)?;
+    chain.push(joined.clone());
+    Ok(chain)
 }
 
 /// What a join came to.

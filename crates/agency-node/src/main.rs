@@ -403,6 +403,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         let mut tick = 0u64;
         loop {
             if tick.is_multiple_of(2) {
+                // Expired held changes are dropped, and a held join's invite freed, even when nobody looks.
+                if let Err(error) = agency_core::pending_root::waiting(&background) {
+                    logger.warn("root", &format!("sweeping held changes failed: {error}"));
+                }
                 if let Err(error) = finish_joins(&background).await {
                     logger.warn("joins", &format!("asking for held joins failed: {error}"));
                 }

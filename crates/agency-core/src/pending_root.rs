@@ -11,7 +11,8 @@ use agency_proto::device::{DeviceChange, DeviceOp};
 use agency_proto::invite::{code_from_bytes, JoinRequest};
 use agency_proto::org::SignedOrg;
 use agency_proto::root_change::{
-    waiting_message, PendingRootAnswer, RootAnswer, RootChangeRef, PENDING_ROOT_DAYS,
+    waiting_message, PendingRootAnswer, RootAnswer, RootChangeKind, RootChangeRef,
+    PENDING_ROOT_DAYS,
 };
 use agency_proto::{Id, Signed};
 use serde::{Deserialize, Serialize};
@@ -52,8 +53,14 @@ pub struct WaitingJoin {
 }
 
 impl PendingRootChange {
-    /// What it changes, in words, for the terminal, the desk, and the presence prompt.
+    /// What it changes, in words, for the terminal, the desk, and the presence prompt. A label came from
+    /// someone else: a control character in it is shown as `?`, so it can neither move the terminal's cursor
+    /// nor push a name out of the prompt.
     pub fn what(&self) -> String {
+        printable(&self.raw_what())
+    }
+
+    fn raw_what(&self) -> String {
         match &self.change {
             RootChange::Join { request } => {
                 format!(
@@ -72,20 +79,61 @@ impl PendingRootChange {
         }
     }
 
+    /// The account the change is for: the joiner, or the member whose device it is.
+    pub fn account(&self) -> &Id {
+        match &self.change {
+            RootChange::Join { request } => &request.body.account,
+            RootChange::Device { change } => &change.body.account,
+        }
+    }
+
     fn is_expired(&self, node: &Node) -> bool {
         let end = clock::parse(&self.received_at).map(|at| at + Duration::days(PENDING_ROOT_DAYS));
         end.is_none_or(|end| end <= node.now())
     }
 
     pub fn as_ref_for_desk(&self) -> RootChangeRef {
+        let (kind, label, device) = match &self.change {
+            RootChange::Join { request } => (
+                RootChangeKind::AddMember,
+                Some(request.body.label.clone()),
+                None,
+            ),
+            RootChange::Device { change } => match &change.body.op {
+                DeviceOp::Add { device } => (
+                    RootChangeKind::AddDevice,
+                    Some(device.label.clone()),
+                    Some(device.id.clone()),
+                ),
+                DeviceOp::Remove { device } => {
+                    (RootChangeKind::RemoveDevice, None, Some(device.clone()))
+                }
+            },
+        };
         RootChangeRef {
             id: self.id.clone(),
             org: self.org.clone(),
+            kind,
+            member: self.account().clone(),
+            label,
+            device,
             what: self.what(),
             received_at: self.received_at.clone(),
         }
     }
 }
+
+fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+/// The most changes one presence prompt signs: every one of them is named in its words.
+pub const MOST_PER_PROMPT: usize = 3;
+
+/// The most changes held at once for one account in one org: more wait for these to be signed or to expire.
+pub const MOST_HELD_PER_ACCOUNT: usize = 5;
 
 /// Whether the root's node must hold a change for the owner instead of signing it now: its root key asks
 /// for presence. A root that is still the account key signs without asking.
@@ -96,6 +144,22 @@ pub(crate) fn must_hold(node: &Node, current: &SignedOrg) -> bool {
 
 /// Holds a checked change and answers with its handle.
 pub(crate) fn hold(node: &Node, org: &Id, change: RootChange) -> Result<RootAnswer> {
+    let account = match &change {
+        RootChange::Join { request } => request.body.account.clone(),
+        RootChange::Device { change } => change.body.account.clone(),
+    };
+    let held_for = waiting(node)?
+        .iter()
+        .filter(|one| &one.org == org && one.account() == &account)
+        .count();
+    if held_for >= MOST_HELD_PER_ACCOUNT {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            format!(
+                "{MOST_HELD_PER_ACCOUNT} changes for {account} already wait for the owner of {org}"
+            ),
+        ));
+    }
     let id = format!(
         "{}{}",
         code_from_bytes(node.random()),
@@ -200,18 +264,12 @@ pub struct SignRun {
     pub dropped: Vec<(PendingRootChange, String)>,
 }
 
-/// The words of the presence prompt for `held`: how many, the org, and the first few, so that one press
-/// never approves something the prompt did not name.
+/// The words of the presence prompt for `held`: how many, the org, and every one of them (at most
+/// `MOST_PER_PROMPT`), so that one press never approves something the prompt did not name.
 pub fn purpose_of(org: &Id, held: &[PendingRootChange]) -> String {
-    let named: Vec<String> = held.iter().take(3).map(PendingRootChange::what).collect();
-    let more = held.len().saturating_sub(named.len());
-    let tail = if more > 0 {
-        format!(", and {more} more")
-    } else {
-        String::new()
-    };
+    let named: Vec<String> = held.iter().map(PendingRootChange::what).collect();
     format!(
-        "Sign {} change{} for {org}: {}{tail}",
+        "Sign {} change{} for {org}: {}",
         held.len(),
         if held.len() == 1 { "" } else { "s" },
         named.join(", ")
@@ -221,6 +279,11 @@ pub fn purpose_of(org: &Id, held: &[PendingRootChange]) -> String {
 /// Signs, in one run after one presence prompt, the held changes of `org` whose handles are `ids` (the ones
 /// the owner was shown), each as its own version, in the order they came.
 pub async fn sign_held(node: &Node, org: &Id, ids: &[String]) -> Result<SignRun> {
+    if ids.len() > MOST_PER_PROMPT {
+        return Err(Error::bad_request(format!(
+            "one prompt signs at most {MOST_PER_PROMPT} changes, each named"
+        )));
+    }
     let _guard = node.write_lock().lock().await;
     let held: Vec<PendingRootChange> = waiting(node)?
         .into_iter()

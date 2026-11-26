@@ -1,15 +1,15 @@
 //! `agency root-sign`: the changes others asked the root to sign (joins, device changes), held because the
 //! root key asks for the owner's presence. Every one is listed before the one prompt, and only those are
 //! signed.
-use agency_core::pending_root::{self, purpose_of, sign_held, PendingRootChange};
+use agency_core::pending_root::{self, purpose_of, sign_held, PendingRootChange, MOST_PER_PROMPT};
 use agency_core::Node;
 use agency_proto::Id;
 use anyhow::Result;
 use clap::Args;
 use std::io::{BufRead, Write};
 
-/// Lists the changes held for the root key's owner and signs them after one presence prompt; with
-/// `--refuse`, drops one unsigned
+/// Lists the changes held for the root key's owner and signs them, at most three per presence prompt and
+/// each named in it; with `--refuse`, drops one unsigned
 #[derive(Args)]
 pub struct RootSign {
     /// Only this org's changes
@@ -18,9 +18,6 @@ pub struct RootSign {
     /// Drops this held change instead (its id as listed)
     #[arg(long)]
     refuse: Option<String>,
-    /// Signs without asking here first (the presence prompt still asks)
-    #[arg(long)]
-    yes: bool,
 }
 
 fn by_org(held: Vec<PendingRootChange>) -> Vec<(Id, Vec<PendingRootChange>)> {
@@ -67,17 +64,19 @@ pub async fn root_sign(node: &Node, args: RootSign) -> Result<()> {
         for one in &list {
             println!("  {}  {}  (asked {})", one.id, one.what(), one.received_at);
         }
-        if !args.yes && !confirm(&format!("{}?", purpose_of(&org, &list))) {
-            println!("  Nothing signed for {org}.");
-            continue;
-        }
-        let ids: Vec<String> = list.iter().map(|one| one.id.clone()).collect();
-        let run = sign_held(node, &org, &ids).await?;
-        for (one, doc) in &run.signed {
-            println!("  Signed: {} (version {})", one.what(), doc.body.version);
-        }
-        for (one, why) in &run.dropped {
-            println!("  Dropped: {} ({why})", one.what());
+        for group in list.chunks(MOST_PER_PROMPT) {
+            if !confirm(&format!("{}?", purpose_of(&org, group))) {
+                println!("  Not signed.");
+                continue;
+            }
+            let ids: Vec<String> = group.iter().map(|one| one.id.clone()).collect();
+            let run = sign_held(node, &org, &ids).await?;
+            for (one, doc) in &run.signed {
+                println!("  Signed: {} (version {})", one.what(), doc.body.version);
+            }
+            for (one, why) in &run.dropped {
+                println!("  Dropped: {} ({why})", one.what());
+            }
         }
     }
     Ok(())
