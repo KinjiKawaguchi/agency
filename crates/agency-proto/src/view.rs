@@ -291,8 +291,9 @@ pub struct Forecast {
     pub at: Timestamp,
 }
 
-/// What a team's node answers to a member's signed read of the team: the view, and the reader's name
-/// in the team runtime (absent when the team does not address the reader).
+/// What a team's node answers to a member's signed read of the team: the view, the reader's name
+/// in the team runtime (absent when the team does not address the reader), and the seats and external
+/// parties the reader answers for there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
@@ -300,6 +301,32 @@ pub struct FederatedView {
     pub view: TeamView,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
+    /// A request's `to` that names one of these is the reader's to answer. Left out when there is none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers_for: Vec<AnswersFor>,
+}
+
+/// A seat or an external party that the reader of a team answers for: the name the team's runtime knows
+/// it by (what a request's `to` holds), and its id in the org definition, from which the reader's home node
+/// reads its label.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AnswersFor {
+    pub name: String,
+    pub id: Id,
+}
+
+impl FederatedView {
+    /// What a node may keep of another node's answer besides the view (see `limits`): no more entries in
+    /// `answersFor` than a team has people, and names within `limits::NAME`.
+    pub fn check_answers_for(&self) -> Result<(), String> {
+        at_most("answersFor", &self.answers_for, limits::PEOPLE)?;
+        names(
+            "an answersFor name",
+            self.answers_for.iter().map(|one| &one.name),
+        )
+    }
 }
 
 /// How much a TeamView may hold. A view beyond them is not served or kept: another node chooses what it
