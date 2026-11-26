@@ -30,6 +30,8 @@ apple/
 - On the first launch it asks for the home node address and keeps it in `UserDefaults`. Only the origin is kept: a pasted path is dropped. Plain `http` is accepted only for `localhost`, `127.0.0.1`, and `.local` names, so a node on the owner's machine can be tried.
 - Every screen is native and reads from the node's Client API (the next section). The app shows no web page. Earlier versions showed the web client in a web view; that web view, its cookie copy of the Access token and the bridge for the page were removed, and the data they left in the app (the cookie and the web client's own storage) is removed once at the first launch after the update (`LegacyWebData`).
 
+Every call to the node's Client API carries `x-agency-client: ios/0.3.1 (202611261830)` (or `macos/…`), the app's platform, its `CFBundleShortVersionString` and its `CFBundleVersion`, so that a node knows which app versions its owners use (agency#318). The node's reader is strict and ignores the whole header when a part is outside its form, so the app sends only what is in it: the version exactly three numbers, the build only digits (a build that is not digits is left out and the version is kept), and no header at all without a version. The browser's sign-in handoff is not a Client API call and carries none.
+
 ## The native desk
 
 - **The tabs** (five, the most a phone's bar shows without folding the rest into "More") are 決めること, 全体, 組織, 成果 and 端末, all native; 組織 holds the org chart and the participants and work behind a switch at the top, and 成果 holds the costs and the evaluation behind one, as the web client groups them. A screen is a case of the shell's `Tab` and of one switch (`screen(_:session:)`).
