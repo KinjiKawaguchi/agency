@@ -150,6 +150,7 @@ Names start at what came after the first release: every node has what the first 
 | `orgRecovery` | signed field | `root.recovery` and `root.pending`: the org's recovery key, and a recovery that was started and waits. |
 | `orgSeats` | signed field | `seats`: places in the org that no one has taken yet (see Seat in the glossary), and the seats a member took: `people[].formerly` and `people[].askAbout`. |
 | `orgExternals` | signed field | `externals`: people the org works with who never take a seat. |
+| `hostedMembers` | signed field | `people[].hostedBy`: a member with no node of its own, hosted by the root's node, with no `publicKey`. |
 | `webPush` | feature | A browser's Web Push subscriptions, and the notices sent to them. |
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |

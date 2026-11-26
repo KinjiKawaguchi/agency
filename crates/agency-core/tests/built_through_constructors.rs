@@ -5,7 +5,13 @@
 use std::path::{Path, PathBuf};
 
 /// The types built through `Type::new` and its `with_*` methods.
-const CONSTRUCTED: [&str; 4] = ["HostedTeam", "NodeConfig", "OrgDefinition", "TeamPlace"];
+const CONSTRUCTED: [&str; 5] = [
+    "HostedTeam",
+    "NodeConfig",
+    "OrgDefinition",
+    "Person",
+    "TeamPlace",
+];
 
 fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap().flatten() {
@@ -21,11 +27,19 @@ fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
 }
 
 /// Whether `line` holds `text` where the name in it starts a word, so that `HomeNodeConfig`, another
-/// type, is not taken for `NodeConfig`.
+/// type, is not taken for `NodeConfig`; and not as the variant of an enum (`WaitingOn::Person {`), which is a
+/// path whose last segment before the name starts with a capital.
 fn contains_word(line: &str, text: &str) -> bool {
     line.match_indices(text).any(|(at, _)| {
-        let before = line[..at].chars().next_back();
-        !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        let head = &line[..at];
+        let before = head.chars().next_back();
+        let is_variant = head.strip_suffix("::").is_some_and(|path| {
+            let segment = path
+                .rsplit(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .next();
+            segment.is_some_and(|one| one.starts_with(|c: char| c.is_ascii_uppercase()))
+        });
+        !before.is_some_and(|c| c.is_alphanumeric() || c == '_') && !is_variant
     })
 }
 
@@ -46,7 +60,24 @@ fn builds_by_hand(line: &str, name: &str) -> bool {
         .find("->")
         .zip(line.find(&needle))
         .is_some_and(|(arrow, at)| arrow < at);
-    contains_word(line, &needle) && !is_not_literal && !is_return_type
+    // A variant of an enum declared with a constructed type's name, one field to a line: its fields are types.
+    let is_variant_declaration = line.trim_start().starts_with(&needle)
+        && line.trim_end().ends_with("},")
+        && line.contains(": String");
+    contains_word(line, &needle) && !is_not_literal && !is_return_type && !is_variant_declaration
+}
+
+#[test]
+fn an_enum_variant_of_the_same_name_is_not_a_literal() {
+    let variant = format!("Some(WaitingOn::Person{}", " { person })");
+    assert!(!builds_by_hand(&variant, "Person"));
+    let declared = format!("    Person{}", " { person: String },");
+    assert!(!builds_by_hand(&declared, "Person"));
+    let qualified = format!("let one = agency_proto::org::Person{}", " {");
+    assert!(
+        builds_by_hand(&qualified, "Person"),
+        "a module path is still a literal"
+    );
 }
 
 #[test]

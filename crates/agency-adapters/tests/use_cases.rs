@@ -419,17 +419,7 @@ async fn join_requests_must_be_signed_by_the_key_they_add() {
 
 /// A first copy of acme, signed by `signer` but naming `root` as its root key.
 fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
-    let alice = Person {
-        id: id("alice"),
-        label: "Alice".into(),
-        account: id("alice"),
-        public_key: root.public(),
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-        formerly: vec![],
-        ask_about: vec![],
-    };
+    let alice = Person::new(id("alice"), "Alice", id("alice"), root.public());
     let body = OrgDefinition::new(
         id("acme"),
         "Acme".into(),

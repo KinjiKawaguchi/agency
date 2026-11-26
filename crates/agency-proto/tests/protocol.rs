@@ -33,17 +33,13 @@ fn genesis(root: &AccountKey) -> SignedOrg {
         parent: None,
         head: Some(id("owner")),
     }])
-    .with_people(vec![Person {
-        id: id("owner"),
-        label: "Alice".into(),
-        account: id("alice"),
-        public_key: root.public(),
-        department: Some(id("dev")),
-        role: Role::Member,
-        devices: vec![],
-        formerly: vec![],
-        ask_about: vec![],
-    }])
+    .with_people(vec![Person::new(
+        id("owner"),
+        "Alice",
+        id("alice"),
+        root.public(),
+    )
+    .with_department(Some(id("dev")))])
     .with_teams(vec![TeamPlace::new(
         id("app"),
         "app",
@@ -70,17 +66,11 @@ fn org_chain_accepts_only_the_next_version_signed_by_the_root() {
     assert_eq!(verify_genesis(&v1), Ok(()));
     let bob = AccountKey::generate();
     let v2 = successor(&v1, &root, |body| {
-        body.people.push(Person {
-            id: id("bob"),
-            label: "Bob".into(),
-            account: id("bob"),
-            public_key: bob.public(),
-            department: Some(id("dev")),
-            role: Role::Answerer,
-            devices: vec![],
-            formerly: vec![],
-            ask_about: vec![],
-        })
+        body.people.push(
+            Person::new(id("bob"), "Bob", id("bob"), bob.public())
+                .with_department(Some(id("dev")))
+                .with_role(Role::Answerer),
+        )
     });
     assert_eq!(verify_successor(&v1, &v2), Ok(Succession::Root));
     assert!(v2.body.member(&id("bob")).is_some());
@@ -411,7 +401,10 @@ fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
         recovery: None,
     });
     let empty_start = sign(body, &recovery);
-    for kept_on_a_node in [root.public(), org.body.people[0].public_key.clone()] {
+    for kept_on_a_node in [
+        root.public(),
+        org.body.people[0].public_key.clone().unwrap(),
+    ] {
         let mut body = next(org);
         body.root.recovery = Some(kept_on_a_node);
         assert!(
@@ -430,7 +423,7 @@ fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     );
     let mut body = next(&with_recovery);
     body.root.pending = Some(PendingRoot {
-        public_key: Some(org.body.people[0].public_key.clone()),
+        public_key: org.body.people[0].public_key.clone(),
         recovery: None,
     });
     assert!(
@@ -549,21 +542,42 @@ fn org_with_seats(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
 }
 
+/// The next version of `org`, with a member hosted by the root's node: no account key (`publicKey` left out),
+/// `hostedBy` "root", its member id as its account, and one device, a P-256 key from a browser.
+fn org_with_hosted_member(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    let browser = AccountKey::from_seed([0x61; 32]).public();
+    let device = Device {
+        id: browser.device_id(),
+        label: "Carol's laptop".into(),
+        public_key: browser,
+        added_at: Timestamp::parse(AT).unwrap(),
+    };
+    body.people
+        .push(Person::hosted(id("carol"), "Carol", vec![device]));
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    assert!(!canonical_of(&signed.body)
+        .unwrap()
+        .contains("\"publicKey\":null"));
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
 /// The next version of `org`, in which dan has taken the seat carol: the seat is gone from `seats`, and dan has
 /// its id as `formerly` and what to ask about it as `askAbout`.
 fn org_with_a_claimed_seat(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
-    body.people.push(Person {
-        id: id("dan"),
-        label: "Dan".into(),
-        account: id("dan"),
-        public_key: AccountKey::from_seed([4; 32]).public(),
-        department: Some(id("dev")),
-        role: Role::Member,
-        devices: vec![],
-        formerly: vec![id("carol")],
-        ask_about: vec!["invoices".into(), "budget approval".into()],
-    });
+    body.people.push(
+        Person::new(
+            id("dan"),
+            "Dan",
+            id("dan"),
+            AccountKey::from_seed([4; 32]).public(),
+        )
+        .with_department(Some(id("dev")))
+        .with_formerly(vec![id("carol")])
+        .with_ask_about(vec!["invoices".into(), "budget approval".into()]),
+    );
     let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     assert!(verify_successor(org, &signed).is_ok());
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
@@ -853,6 +867,7 @@ fn vectors_match_testdata() {
         "orgWithPlan": org_with_plan(&key, &org),
         "orgWithSeats": org_with_seats(&key, &org),
         "orgWithClaimedSeat": org_with_a_claimed_seat(&key, &org),
+        "orgWithHostedMember": org_with_hosted_member(&key, &org),
         "rootRotation": root_rotation(&key, &org),
         "rootRecovery": root_recovery(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),

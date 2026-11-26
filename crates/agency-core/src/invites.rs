@@ -170,22 +170,20 @@ pub(crate) fn joined_body(
         ));
     }
     let mut body = OrgDefinition::successor_of(current, node.now_text());
-    let mut person = Person {
-        id: request.account.clone(),
-        label: request.label.clone(),
-        account: request.account.clone(),
-        public_key: request.public_key.clone(),
-        department: record.department.clone(),
-        role: record.role,
-        devices: vec![],
-        formerly: vec![],
-        ask_about: vec![],
-    };
+    let mut person = Person::new(
+        request.account.clone(),
+        request.label.clone(),
+        request.account.clone(),
+        request.public_key.clone(),
+    )
+    .with_department(record.department.clone())
+    .with_role(record.role);
     if let Some(seat_id) = &record.seat {
         let seat = take_seat(&mut body, seat_id)?;
-        person.department = seat.department;
-        person.ask_about = seat.ask_about;
-        person.formerly = vec![seat.id];
+        person = person
+            .with_department(seat.department)
+            .with_ask_about(seat.ask_about)
+            .with_formerly(vec![seat.id]);
     }
     body.people.push(person);
     if record.seat.is_some() {

@@ -146,17 +146,7 @@ fn stand_in() -> AccountKey {
 /// A well-formed first version of an org, made by whoever holds the stand-in key.
 fn planted() -> SignedOrg {
     let key = stand_in();
-    let founder = agency_proto::Person {
-        id: id("mallory"),
-        label: "Mallory".into(),
-        account: id("mallory"),
-        public_key: key.public(),
-        department: None,
-        role: agency_proto::Role::Member,
-        devices: vec![],
-        formerly: vec![],
-        ask_about: vec![],
-    };
+    let founder = agency_proto::Person::new(id("mallory"), "Mallory", id("mallory"), key.public());
     let body = OrgDefinition::new(
         id("planted"),
         "Planted".into(),
