@@ -1,3 +1,4 @@
+import { InstallCard } from '../pwa/InstallCard'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi } from '../api/context'
@@ -190,6 +191,7 @@ export function DevicesPage() {
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
       <HomeNodesCard />
+      <InstallCard />
     </>
   )
 }

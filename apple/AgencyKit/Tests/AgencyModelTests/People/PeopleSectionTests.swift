@@ -14,7 +14,7 @@ struct PeopleSectionTests {
         #expect(section.working == 2)
         #expect(section.waitingOnViewer == 1)
         #expect(section.title == "App チーム")
-        #expect(section.summary == "参加者 4 人のうち 2 人が作業中です。 1 人の参加者があなたの返事を待っています。")
+        #expect(section.summary == "参加者 4 人のうち 2 人が作業中です。 参加者 1 人があなたの返事を待っています。")
     }
 
     @Test("the summary says nothing of waiting when nobody waits on the viewer")

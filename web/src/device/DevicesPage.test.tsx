@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { memoryKeyStore, renderApp } from '../test/render'
+import { slowDeviceListAfterRequest } from '../test/slowNode'
 import { createTestNode } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair, type DeviceKey } from './deviceKey'
 import { settledDeviceKey } from './useDeviceKey'
@@ -110,6 +111,25 @@ describe('devices screen', () => {
     await waitFor(() => expect(screen.queryByLabelText('Pairing code of Phone')).not.toBeInTheDocument())
   })
 
+  it('does not offer to approve a device until the account is known, since the change is signed for it', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const slowMe = createApiClient(async (request) => {
+      if (new URL(request.url, 'http://mock.local').pathname === '/api/me') await gate
+      return node.handle(request)
+    })
+    renderApp({ path: '/devices', node, enrolled: true, client: slowMe })
+    await otherDeviceAsks(node, 'Tablet')
+    window.dispatchEvent(new Event('visibilitychange'))
+    expect(await screen.findByRole('button', { name: 'The codes match: approve it' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'The codes match: approve it' }))
+    expect((await createApiClient((request) => node.handle(request)).devices()).requests).toHaveLength(1)
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeEnabled())
+  })
+
   it('says why when the node refuses to add the device', async () => {
     const user = userEvent.setup()
     const node = createTestNode()
@@ -209,8 +229,11 @@ describe('devices screen', () => {
     const user = userEvent.setup()
     const node = createMockNode()
     const keyStore = memoryKeyStore()
-    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    renderApp({ path: '/devices', node, enrolled: false, keyStore, client: slowDeviceListAfterRequest(node) })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    // The code is on the screen before the click as well, and is large only once the node lists the request
+    // as waiting: wait for that, or the code found is the small one of a moment ago.
+    await screen.findByText(/Waiting for you to approve this device/)
     const code = await screen.findByLabelText('Pairing code of this device')
     expect(code).toHaveClass('large')
     node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)

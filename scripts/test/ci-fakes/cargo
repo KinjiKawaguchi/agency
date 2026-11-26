@@ -1,0 +1,19 @@
+#!/bin/bash
+# A stand-in for cargo test, for scripts/test/ci-scripts.sh. FAKE_MODE says what it does:
+#   ok      every test passes
+#   flaky   the first run fails two tests, and the run of just those two passes
+#   fail    the two tests fail every time
+#   build   the build fails: no test runs, so no test fails
+echo "$*" >> "${FAKE_STATE:?}/calls"
+retry=0
+case " $* " in *" --exact "*) retry=1 ;; esac
+case "$FAKE_MODE" in
+  ok) echo "test result: ok. 3 passed" ;;
+  flaky)
+    if [ "$retry" -eq 1 ]; then echo "test result: ok. 2 passed"; exit 0; fi
+    printf 'test alpha::first ... FAILED\ntest beta::second ... FAILED\ntest gamma::third ... ok\ntest result: FAILED. 1 passed; 2 failed\n'
+    exit 101
+    ;;
+  fail) printf 'test alpha::first ... FAILED\ntest beta::second ... FAILED\ntest result: FAILED\n'; exit 101 ;;
+  build) echo "error[E0432]: unresolved import" >&2; exit 101 ;;
+esac

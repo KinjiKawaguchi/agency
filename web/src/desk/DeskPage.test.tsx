@@ -167,13 +167,17 @@ describe('decision desk', () => {
 
   it('shows a request for someone else as read-only', async () => {
     const user = userEvent.setup()
+    // A draft is kept for it (as a reload brings back), so that only the rule that it is not the viewer's to decide stops it from being sent.
+    window.sessionStorage.setItem('agency.drafts', JSON.stringify([['acme:app:r-20261124-120000-e5f6', { text: 'Include them.', choice: 'yes' }]]))
     const { node } = renderApp({ view: withRequestFor('frontend') })
     await user.click(await screen.findByRole('option', { name: /nightly export include archived projects/ }))
     expect(screen.getByText(/Waiting for Frontend to decide/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Answer' })).not.toBeInTheDocument()
     await user.keyboard('1')
     await user.keyboard('{Meta>}{Enter}{/Meta}')
+    await new Promise((resolve) => setTimeout(resolve, 200))
     expect(node.decisions()).toEqual([])
+    expect(screen.queryByText(/Sent\./)).not.toBeInTheDocument()
   })
 
   it('keeps the draft and reports the failure when the node refuses the answer', async () => {
