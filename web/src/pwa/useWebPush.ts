@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { ApiClient } from '../api/client'
-import { type BrowserSupport, browserLabel, isMadeWith, isWebPushOffered, keyBytes, subscriptionInput } from './webPush'
+import { type BrowserSupport, type PushDelivery, browserLabel, deliveryOf, isMadeWith, isWebPushOffered, keyBytes, subscriptionInput } from './webPush'
 
 /**
  * Where Web Push stands in this browser, for the Devices screen. `unsupported` (this browser has none, or it is an
  * iPhone, which has the app), `unavailable` (the node has no `webPush`), `denied` (the viewer refused notifications for
- * this page), `off`, `stale` (subscribed with a key the node no longer has: subscribe again), `on`.
+ * this page), `off`, `stale` (subscribed with a key the node no longer has: subscribe again), `on` (with what the node knows of how its push
+ * service took the notices sent so far).
  */
-export type WebPushState = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'unavailable' } | { kind: 'denied' } | { kind: 'off' } | { kind: 'stale' } | { kind: 'on' } | { kind: 'failed'; message: string }
+export type WebPushState = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'unavailable' } | { kind: 'denied' } | { kind: 'off' } | { kind: 'stale' } | { kind: 'on'; delivery: PushDelivery } | { kind: 'failed'; message: string }
 
 /** What the hook needs of the browser, so that a test stands in for it. */
 export interface WebPushBrowser {
@@ -53,8 +54,7 @@ async function stateWithSubscription(api: Api, browser: WebPushBrowser, subscrip
   if (!isMadeWith(subscription.options.applicationServerKey, key)) return { kind: 'stale' }
   const input = subscriptionInput(subscription.toJSON(), browserLabel(browser.support().userAgent))
   if (input === undefined) return { kind: 'stale' }
-  await api.registerPushSubscription(input)
-  return { kind: 'on' }
+  return { kind: 'on', delivery: deliveryOf(await api.registerPushSubscription(input)) }
 }
 
 async function read(api: Api, browser: WebPushBrowser): Promise<WebPushState> {

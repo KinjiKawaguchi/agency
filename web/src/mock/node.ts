@@ -34,6 +34,8 @@ export interface MockNode {
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
+  /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
+  recordPushDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => void
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
   /** Starts the node again: its write token changes, as it does each time the real node starts, and a page that holds the old one is refused. */
@@ -94,6 +96,8 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
+  /** With `webPush`: every browser's push service has refused the last notice it was sent. */
+  webPushFailing?: boolean
   /** The other home nodes the node's configuration names, as `GET /api/me` gives them to its owner; left out when not given. */
   homeNodes?: ReadonlyArray<{ label: string; url: string }>
   /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
@@ -219,7 +223,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
-  const webPush = createMockWebPush(() => now.toISOString())
+  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
   const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
@@ -400,6 +404,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     envelopes: () => accepted,
     pushTokens: () => pushTokens,
     pushSubscriptions: () => webPush.subscriptions(),
+    recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
     signRootChanges: () => {
       rootChanges = []
