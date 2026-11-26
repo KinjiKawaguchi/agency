@@ -15,6 +15,7 @@ import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
 import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
+import { isHeldFor } from '../rootchange/held'
 import { answerOf } from '../rootchange/provisional'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
@@ -86,7 +87,9 @@ function RequestCard({ request, deviceKey, list }: { request: DeviceRequest; dev
   const toast = useToast()
   const me = useQuery(meQuery(api))
   const pendingWords = `${t.devices.pendingRoot[0]}agency root-sign${t.devices.pendingRoot[1]}`
-  const [held, setHeld] = useState<readonly string[]>([])
+  const [heldHere, setHeld] = useState<readonly string[]>([]) /* stand-in-ok(device): what this click was told by the node, kept in this card; the node's own answer is read from `Me` below */
+  // What this click was told, or else what the node says it holds: so that a reload does not offer the same approval again.
+  const held = heldHere.length > 0 ? heldHere : me.data !== undefined && isHeldFor(me.data, request) ? [pendingWords] : []
   const confirm = useMutation({
     mutationFn: async () => {
       if (me.data === undefined) throw new Error(t.devices.accountUnknown)

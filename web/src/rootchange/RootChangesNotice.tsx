@@ -4,13 +4,13 @@ import type { Messages } from '../i18n/en'
 import { rootChangesOf, type RootChangeRef } from './provisional'
 import './rootchange.css'
 
-/** What a change does, in the page's words from its kind and fields; the node's English `what` only for a kind that is not known or has lost a field. */
+/** What a change does, in the page's words from its kind and fields; the node's English `what` for a kind that is not known or has lost a field, and a plain line when it has none either. */
 function describe(change: RootChangeRef, text: Messages['desk']['rootChanges']): string {
   const { kind, member, label, device } = change
   if (kind === 'addMember' && member !== undefined && label !== undefined) return text.addMember(label, member)
   if (kind === 'addDevice' && member !== undefined && label !== undefined) return text.addDevice(label, member)
   if (kind === 'removeDevice' && member !== undefined && device !== undefined) return text.removeDevice(device, member)
-  return change.what
+  return change.what ?? text.unknownChange
 }
 
 /**

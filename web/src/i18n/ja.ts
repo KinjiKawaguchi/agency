@@ -347,6 +347,7 @@ export const ja: Messages = {
       label: 'ルート鍵の署名を待っている変更',
       title: (count) => `ルート鍵の署名を待っている変更が ${count} 件あります。`,
       item: (what, org, when) => `${what}（${org}、${when}に依頼）`,
+      unknownChange: 'この画面では説明できない変更',
       addMember: (label, member) => `メンバー ${label}（${member}）の追加`,
       addDevice: (label, member) => `${member} の端末「${label}」の追加`,
       removeDevice: (device, member) => `${member} の端末 ${device} の削除`,

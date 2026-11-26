@@ -7,16 +7,16 @@ import type { Me } from '../api/clientApi'
 export interface RootChangeRef {
   id: string
   org: string
-  /** What it changes, in the node's English words: "add member carol (Carol)". Said only for a kind this client does not know. */
-  what: string
+  /** What it changes, in the node's English words: "add member carol (Carol)". Said only for a kind this client does not know; the page does not rely on it being there. */
+  what?: string
   receivedAt: string
-  /** The kind of change, and the fields it is worded from (assumed shape, asked of the node): `addMember` (member, label), `addDevice` (member, label), `removeDevice` (member, device). */
+  /** The kind of change, and the fields it is worded from (assumed shape, asked of the node): `addMember` (member, label), `addDevice` (member, label, device), `removeDevice` (member, device). */
   kind?: string
   /** The new member for `addMember`; the owner of the device for the other two. */
   member?: string
   /** The member's label for `addMember`; the device's label for `addDevice`. */
   label?: string
-  /** The device's id for `removeDevice`. */
+  /** The device's id for `addDevice` and `removeDevice`. */
   device?: string
 }
 
@@ -35,15 +35,15 @@ export function rootChangesOf(me: Me): RootChangeRef[] {
     if (typeof entry !== 'object' || entry === null) return []
     const { id, org, what, receivedAt } = entry as Record<string, unknown>
     const [one, orgId, words, at] = [text(id), text(org), text(what), text(receivedAt)]
-    if (one === undefined || orgId === undefined || words === undefined || at === undefined) return []
+    if (one === undefined || orgId === undefined || at === undefined) return []
     const { kind, member, label, device } = entry as Record<string, unknown>
     const [kindText, memberText, labelText, deviceText] = [text(kind), text(member), text(label), text(device)]
     return [
       {
         id: one,
         org: orgId,
-        what: words,
         receivedAt: at,
+        ...(words === undefined ? {} : { what: words }),
         ...(kindText === undefined ? {} : { kind: kindText }),
         ...(memberText === undefined ? {} : { member: memberText }),
         ...(labelText === undefined ? {} : { label: labelText }),

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { deviceKeyOf, generateKeyPair } from '../device/deviceKey'
 import { createFormatters } from '../i18n/format'
+import { deviceIdOf } from '../device/fingerprint'
 import { createMockNode } from '../mock/node'
 import { heldNode } from '../test/heldNode'
 import { refreshQueries, renderApp } from '../test/render'
@@ -67,6 +68,19 @@ describe('the changes that wait for the root key’s signature, on the desk', ()
     expect(rows[1]).toHaveTextContent('add member dave (Dave) (Acme, asked')
     expect(rows[2]).toHaveTextContent('remove device d-9 of bob (Acme, asked')
     expect(rows[3]).toHaveTextContent('add device Tab for bob (Acme, asked')
+  })
+
+  it('keeps a change that comes with no `what`: worded from its kind, and plainly when there is nothing to word it from', async () => {
+    const bare = [
+      { id: 'n1', org: 'acme', receivedAt: AGO(30), kind: 'addMember', member: 'carol', label: 'Carol' },
+      { id: 'n2', org: 'acme', receivedAt: AGO(20), kind: 'rotateMoon' },
+    ]
+    renderApp({ node: createTestNode({ rootChanges: bare }), path: '/desk', enrolled: true })
+    const one = await item()
+    expect(one).toHaveTextContent('2 changes wait for the root key’s signature.')
+    const rows = within(one).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Add member Carol (carol) (Acme, asked')
+    expect(rows[1]).toHaveTextContent('A change this page cannot describe (Acme, asked')
   })
 
   it('says one change in the singular', async () => {
@@ -155,13 +169,61 @@ describe('an approval of a device that the root key’s node holds', () => {
   })
 })
 
+describe('an approval the root key’s node holds, after the page is read again', () => {
+  /** A node that holds `changes(device)` and has a request of another device named Phone; the page is opened afresh, with no click. */
+  async function opened(changes: (device: { id: string }) => unknown[], locale: 'en' | 'ja' = 'en') {
+    const other = await deviceKeyOf(await generateKeyPair())
+    const node = createTestNode({ rootChanges: changes({ id: deviceIdOf(other.pairingCode) }) as never })
+    await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Phone', publicKey: other.publicKey })
+    renderApp({ node, path: '/devices', enrolled: true, locale })
+    return await screen.findByRole('button', { name: locale === 'ja' ? 'コードが一致したので承認する' : 'The codes match: approve it' })
+  }
+  const held = (over: object) => ({ id: 'h1', org: 'acme', receivedAt: AGO(5), kind: 'addDevice', member: 'alice', label: 'Phone', ...over })
+
+  it('keeps the approve button off, and says why, for a request whose device id the node names', async () => {
+    const approve = await opened((device) => [held({ device: device.id, label: 'Other name' })])
+    expect(approve).toBeDisabled()
+    expect(await screen.findByText(PENDING_EN)).toBeInTheDocument()
+  })
+
+  it('says it in Japanese', async () => {
+    await opened((device) => [held({ device: device.id })], 'ja')
+    expect(await screen.findByText(PENDING_JA)).toBeInTheDocument()
+  })
+
+  it('knows it by the label and the account when the node names no device', async () => {
+    const approve = await opened(() => [held({})])
+    expect(approve).toBeDisabled()
+    expect(await screen.findByText(PENDING_EN)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['another device’s id, even with this label', (device: { id: string }) => [held({ device: `${device.id}0` })]],
+    ['this label for another account', () => [held({ member: 'bob' })]],
+    ['another label', () => [held({ label: 'Laptop' })]],
+    ['a change of another kind with this label', () => [held({ kind: 'addMember' })]],
+    ['nothing held', () => []],
+  ])('leaves the approve button on for %s', async (_name, changes) => {
+    const approve = await opened(changes)
+    expect(approve).toBeEnabled()
+    expect(screen.queryByText(PENDING_EN)).not.toBeInTheDocument()
+  })
+})
+
 describe('how the node says what waits', () => {
   const me = (rootChanges: unknown) => ({ account: { id: 'alice', label: 'Alice', fingerprint: 'a1' }, orgs: [], funding: [], rootChanges }) as never
 
   it('reads a list of changes, and leaves out an entry that is not one', () => {
     expect(rootChangesOf(me(WAITING))).toEqual(WAITING)
-    expect(rootChangesOf(me([null, 'x', {}, { id: 'c', org: 'acme', what: '', receivedAt: 'now' }, { id: 'c', org: 'acme', what: 'w' }, WAITING[0]]))).toEqual([WAITING[0]])
+    expect(rootChangesOf(me([null, 'x', {}, { id: 'c', org: 'acme', what: 'w' }, { id: '', org: 'acme', receivedAt: 'now' }, WAITING[0]]))).toEqual([WAITING[0]])
     for (const value of [undefined, null, 'x', 7, {}]) expect(rootChangesOf(me(value)), String(value)).toEqual([])
+  })
+
+  it('keeps an entry that has no `what`, since the page words it from its kind and fields', () => {
+    expect(rootChangesOf(me([{ id: 'c', org: 'acme', receivedAt: 'now', kind: 'addMember', member: 'carol', label: 'Carol' }, { id: 'd', org: 'acme', what: '', receivedAt: 'now' }]))).toEqual([
+      { id: 'c', org: 'acme', receivedAt: 'now', kind: 'addMember', member: 'carol', label: 'Carol' },
+      { id: 'd', org: 'acme', receivedAt: 'now' },
+    ])
   })
 
   it('reads kind and its fields when they are text, and leaves out what is not', () => {
