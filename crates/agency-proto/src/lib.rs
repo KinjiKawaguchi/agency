@@ -1,6 +1,7 @@
 //! Agency's protocol between nodes (docs/protocol.md).
 //! Every piece of data has one writer. The writer signs it; other nodes keep a replica only after checking the signature.
 
+pub mod activity;
 pub mod canonical;
 pub mod client;
 pub mod clock;
