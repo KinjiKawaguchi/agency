@@ -155,13 +155,33 @@ impl Opened {
         token: String,
         assets: Arc<dyn Assets>,
     ) -> anyhow::Result<Router> {
+        let access = self.access()?;
+        let is_public = access.is_some();
         let api = ClientApi {
             node: self.node.clone(),
             token,
             port,
-            access: self.access()?,
+            access,
             assets,
         };
-        Ok(server::router(self.node.clone()).merge(client_api::router(Arc::new(api))))
+        let app = server::router(self.node.clone()).merge(client_api::router(Arc::new(api)));
+        Ok(if is_public {
+            app.layer(axum::middleware::map_response(strict_transport))
+        } else {
+            app
+        })
     }
+}
+
+/// HSTS for a node reached at a public host name over HTTPS: browsers then refuse plain HTTP to it for a
+/// year. Without `includeSubDomains`, it says nothing about other names under the same domain.
+/// Browsers ignore the header on plain HTTP, so local answers carrying it change nothing.
+pub const STRICT_TRANSPORT_SECURITY: &str = "max-age=31536000";
+
+async fn strict_transport(mut response: axum::response::Response) -> axum::response::Response {
+    response.headers_mut().insert(
+        axum::http::header::STRICT_TRANSPORT_SECURITY,
+        axum::http::HeaderValue::from_static(STRICT_TRANSPORT_SECURITY),
+    );
+    response
 }
