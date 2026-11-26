@@ -3,4 +3,4 @@
 /**
  * Why a reading has the numbers it has, or why it has none. Numbers are given only in `ready`.
  */
-export type ReadingState = "notShipped" | "shipDateUnknown" | "noBaseline" | "tooEarly" | "tooFew" | "ready";
+export type ReadingState = "notShipped" | "shipDateUnknown" | "noBaseline" | "tooEarly" | "noFollowUp" | "tooFew" | "ready";

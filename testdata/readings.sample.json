@@ -21,6 +21,7 @@
     { "team": "app", "epic": "app#20", "epicTitle": "Mobile layout", "kpi": "revenue", "state": "notShipped", "overlapping": [], "basis": "correlation" },
     { "team": "app", "epic": "app#21", "kpi": "revenue", "state": "shipDateUnknown", "overlapping": [], "basis": "correlation" },
     { "team": "app", "epic": "app#14", "kpi": "lead-time", "shippedOn": "2026-11-01", "state": "noBaseline", "overlapping": [], "basis": "correlation" },
+    { "team": "app", "epic": "app#13", "kpi": "lead-time", "shippedOn": "2026-05-02", "state": "noFollowUp", "overlapping": [], "basis": "correlation" },
     { "team": "app", "epic": "app#15", "kpi": "activation", "shippedOn": "2026-11-20", "state": "tooEarly", "readableFrom": "2026-12-04", "overlapping": [], "basis": "correlation" },
     { "team": "app", "epic": "app#16", "kpi": "revenue", "shippedOn": "2026-10-30", "state": "tooFew", "points": 2, "needs": 3, "overlapping": [], "basis": "correlation" }
   ]

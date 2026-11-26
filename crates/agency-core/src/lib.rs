@@ -23,6 +23,7 @@ pub mod ports;
 pub mod push;
 mod push_events;
 pub mod read_auth;
+pub mod readings;
 pub mod routes;
 pub mod signed_decisions;
 pub mod teams;
