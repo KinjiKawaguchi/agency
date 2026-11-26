@@ -391,3 +391,37 @@ async fn hidden_titles_keep_the_labels_out_of_a_held_changes_notice() {
         "{told:?}"
     );
 }
+
+#[tokio::test]
+async fn this_node_writes_no_new_label_that_could_reorder_a_line_but_keeps_old_ones() {
+    use agency_proto::org::Department;
+    let (alice, _) = alice().await;
+    let department = |raw: &str, label: &str| Department {
+        id: id(raw),
+        label: label.into(),
+        parent: None,
+        head: None,
+    };
+    let refused =
+        agency_core::departments::add(&alice.node, &id("acme"), department("ops", "Ops\u{202E}x"))
+            .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::BadRequest, "{refused:?}");
+    agency_core::departments::add(&alice.node, &id("acme"), department("dev", "Dev")).unwrap();
+}
+
+#[tokio::test]
+async fn a_device_only_token_that_failed_is_sent_a_held_changes_notice_again() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["device"]).await;
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+    alice.notifier.0.lock().unwrap().refusing = vec![TOKEN_HEX.to_owned()];
+    notify_waiting(&alice.node).await.unwrap();
+    assert!(root_notices(&alice).is_empty(), "the phone refused it");
+    alice.notifier.0.lock().unwrap().refusing = vec![];
+    notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(root_notices(&alice).len(), 1, "the retry reached it");
+}

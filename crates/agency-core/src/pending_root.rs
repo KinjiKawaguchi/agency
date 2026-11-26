@@ -79,6 +79,14 @@ impl PendingRootChange {
         }
     }
 
+    /// What a notification names the change by: 16 hex digits of SHA-256("agency/push-id/v1" || handle). The
+    /// handle itself is how a joiner fetches its version, so it never goes to a push service, and the derivation
+    /// is its own, so the id shares nothing with the key the store keeps the change under.
+    pub fn notice_id(&self) -> String {
+        let text = format!("agency/push-id/v1{}", self.id);
+        agency_proto::digest::sha256_hex(text.as_bytes())[..16].to_owned()
+    }
+
     /// The account the change is for: the joiner, or the member whose device it is.
     pub fn account(&self) -> &Id {
         match &self.change {

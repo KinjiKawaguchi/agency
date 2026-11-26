@@ -277,48 +277,42 @@ pub fn is_node_origin(raw: &str) -> bool {
     })
 }
 
-/// A label: 1 to 80 characters, none of them a control or a format character (which could move a
-/// terminal's cursor, reorder how a line reads, or hide part of it).
+/// A label: 1 to 80 characters, none of them a control character. Every version, old or new, is checked
+/// with this rule, so that nodes old and new agree on which versions are valid.
 pub fn label_ok(label: &str) -> bool {
     let count = label.chars().count();
-    (1..=80).contains(&count) && !label.chars().any(is_hidden_char)
+    (1..=80).contains(&count) && !label.chars().any(char::is_control)
 }
 
-/// A control character (Unicode category Cc) or a format character (Cf): bidirectional overrides and
-/// isolates, zero-width characters, the byte-order mark, and the rest of Cf.
+/// A label this node may write into a new version or record now: a `label_ok` one with no character that
+/// could reorder or hide how a line reads (`is_hidden_char`). Versions signed before keep their labels.
+pub fn label_ok_to_write(label: &str) -> bool {
+    label_ok(label) && !label.chars().any(is_hidden_char)
+}
+
+/// A control character (Unicode Cc), a bidirectional control (U+061C, U+200E, U+200F, U+202A to U+202E,
+/// U+2066 to U+2069), a zero-width space (U+200B), a word joiner (U+2060), or a byte-order mark (U+FEFF).
+/// The joiners U+200C and U+200D, which Persian, Indic scripts and emoji need, and the emoji tag characters
+/// stay: none of them can reorder text.
 pub fn is_hidden_char(c: char) -> bool {
-    const FORMAT: &[(u32, u32)] = &[
-        (0x00AD, 0x00AD),
-        (0x0600, 0x0605),
+    const HIDDEN: &[(u32, u32)] = &[
         (0x061C, 0x061C),
-        (0x06DD, 0x06DD),
-        (0x070F, 0x070F),
-        (0x0890, 0x0891),
-        (0x08E2, 0x08E2),
-        (0x180E, 0x180E),
-        (0x200B, 0x200F),
+        (0x200B, 0x200B),
+        (0x200E, 0x200F),
         (0x202A, 0x202E),
-        (0x2060, 0x2064),
-        (0x2066, 0x206F),
+        (0x2060, 0x2060),
+        (0x2066, 0x2069),
         (0xFEFF, 0xFEFF),
-        (0xFFF9, 0xFFFB),
-        (0x110BD, 0x110BD),
-        (0x110CD, 0x110CD),
-        (0x13430, 0x1343F),
-        (0x1BCA0, 0x1BCA3),
-        (0x1D173, 0x1D17A),
-        (0xE0001, 0xE0001),
-        (0xE0020, 0xE007F),
     ];
     let code = u32::from(c);
     c.is_control()
-        || FORMAT
+        || HIDDEN
             .iter()
             .any(|(low, high)| (*low..=*high).contains(&code))
 }
 
-/// Text from someone else made safe to print on a terminal or in a prompt: every control or format
-/// character becomes `?`.
+/// Text from someone else made safe to print on a terminal or in a prompt: every `is_hidden_char` becomes
+/// `?`.
 pub fn printable(text: &str) -> String {
     text.chars()
         .map(|c| if is_hidden_char(c) { '?' } else { c })

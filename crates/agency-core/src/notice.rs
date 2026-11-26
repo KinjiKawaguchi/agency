@@ -28,14 +28,20 @@ pub enum NoticeKind {
     /// this node. It names the org by id, never by label, so `hideTitles` keeps it whole.
     Recovery {
         org: Id,
+        /// When this node took the start, and when the recovery takes effect on it (ISO 8601); both absent
+        /// when it keeps no record of the start.
+        started_at: Option<String>,
         takes_effect_at: Option<String>,
     },
-    /// A change someone asked the root to sign waits for the owner: its handle, and what it changes (absent
+    /// A change someone asked the root to sign waits for the owner: an id derived from its handle (never the
+    /// handle), and what it changes (absent
     /// when the node hides titles, since it names a member's or a device's label).
     RootChange {
         org: Id,
         id: String,
         what: Option<String>,
+        /// How many changes wait in the org when it is told.
+        waiting: u32,
     },
 }
 

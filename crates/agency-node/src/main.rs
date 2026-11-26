@@ -329,7 +329,7 @@ fn status(node: &Node) {
             println!(
                 "Device in {}: {} ({}), pairing code {}",
                 doc.body.org,
-                device.label,
+                agency_proto::org::printable(&device.label),
                 device.id,
                 device.public_key.pairing_code()
             );
@@ -376,7 +376,9 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     print!(
         "Join the org \"{}\" ({})? The fingerprint of root key {} matches the link. [y/N] ",
-        definition.label, definition.org, definition.root.account
+        agency_proto::org::printable(&definition.label),
+        definition.org,
+        definition.root.account
     );
     let _ = std::io::stdout().flush();
     let mut answer = String::new();

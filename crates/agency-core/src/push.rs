@@ -444,6 +444,7 @@ async fn send_fresh(
         if let NoticeKind::Recovery {
             org,
             takes_effect_at,
+            ..
         } = &notice.kind
         {
             let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
