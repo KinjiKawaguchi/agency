@@ -13,7 +13,7 @@ use agency_proto::client::{
 };
 use agency_proto::clock::{self, Duration};
 use agency_proto::device::{check_device_change, device_change_key};
-use agency_proto::org::{verify_successor, SignedOrg};
+use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::{
     AccountKey, Device, DeviceChange, DeviceOp, Id, Kind, OrgDefinition, PublicKey, Signed,
     Timestamp,
@@ -196,7 +196,7 @@ async fn keep_returned(node: &Node, root_node: &str, returned: SignedOrg) -> Res
     let _guard = node.write_lock().lock().await;
     let current = load(node, &returned.body.org)?;
     if returned.body.version > current.body.version {
-        verify_successor(&current, &returned).map_err(Error::bad_request)?;
+        verify_root_successor(&current, &returned).map_err(Error::bad_request)?;
         node.store().save_org(&returned)?;
     }
     Ok(())

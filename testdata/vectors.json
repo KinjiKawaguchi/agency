@@ -131,6 +131,67 @@
     "publicKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
   },
   "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
+  "rootRecovery": {
+    "addingTheRecoveryKey": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":2}",
+      "digest": "338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4",
+      "signature": "If4F94Vz8gQIi/NtX6+AlHBFuBgM2fPOEAcN/U4Tk37AClKJCMLSaHeqLxx4GA2WNhXR7d7MBmdSjYaGtdhnAg=="
+    },
+    "cancel": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"77c28f718940ac7fc3d5866991b1bb09a4d16cfcd9a5b167392d3f2365daf803\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":4}",
+      "digest": "be9d683d94d206d4102dd57365f1c438af7fc68f673871019ff2ba41ffbd124f",
+      "signature": "+1rJr+Whf2urNIWq/8DQBhCxjZ+lpE85HZeIbXAOO+SPKw0chG5v+lef31rcnTEEBOZKJxLfIYfp9kOSaxLqBA=="
+    },
+    "finish": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"77c28f718940ac7fc3d5866991b1bb09a4d16cfcd9a5b167392d3f2365daf803\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":4}",
+      "digest": "dd03b42ed8930cfc14f29f7bab0383692abcda0d656d5d87cac9675b674d6bce",
+      "signature": "ZzMLSH2rvTf5TMVBkd/W1kCszYJQIDV8IzTfBEI2tuZWLQY7HG1N0x54MmaLsCOLNQR9/+HbD87gOyo670/dDQ=="
+    },
+    "newRecoverySeed": "1010101010101010101010101010101010101010101010101010101010101010",
+    "newRootSeed": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+    "recoverySeed": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+    "refused": {
+      "recoveryChangedByTheRoot": {
+        "after": 2,
+        "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"XJxt8mHJy4QEdXdqrvzZRLQFMo+rKPmzqV70BJDT3oQ=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+        "signature": "CFjbQ2juL4jNexC0ied+d7/+VkkTzjDHqn8rZifd3gol19b9rZixSS0Uwx7dD4MdWj1qohPEW9wet+63snPZAg==",
+        "why": "only the recovery key replaces the recovery key"
+      },
+      "rotationWithoutAStart": {
+        "after": 2,
+        "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+        "signature": "3Ke5u2CZtdBy7Y6zUyXuuNH7PQAnadxKKvTHL8LQfOMl+jm4uJvjryN3U//RS+r1eCWUtutiYtpjdnVNWXYrCA==",
+        "why": "a recovery start names no change"
+      },
+      "startChangingMore": {
+        "after": 2,
+        "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Taken\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"pending\":{\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\"},\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+        "signature": "YMS2OLGqHFL6/1bZzB3yOfHfyJoCS5PutDqL4ppz3YmqGPqzhaFLrTr4oQvuF5amO30uFnt6KYD6MMjodrlTAA==",
+        "why": "the recovery key changes nothing but the root"
+      },
+      "startSignedByTheRoot": {
+        "after": 2,
+        "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"pending\":{\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\"},\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+        "signature": "kbSlzpCSpDXndaZPhHMRtW0iJj3ltZawCYeo09UDO2bCFQVLT9boPu9GY56jll9QRy7vV8hLuGGhRS14QZq/Ag==",
+        "why": "the root key does not start a recovery"
+      }
+    },
+    "replacingTheWordsFinish": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"6fdc4806c35948ee2313f13c96d3ecb8a3e34df63f4a61c71b6fc2500f410c63\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\",\"recovery\":\"XJxt8mHJy4QEdXdqrvzZRLQFMo+rKPmzqV70BJDT3oQ=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":6}",
+      "digest": "8a2e97651028d6ce0fefcc3bce3bc0762854f410359dce9afe7755e0ac7f9d8a",
+      "signature": "EjGOPQDbXMbkMkrf3qJDy3dDdleLshbp48L6QMcuNCasbRQ+PqhEAeOYRrG+tOsqrfdbqu51hFN1s4EzTdicDw=="
+    },
+    "replacingTheWordsStart": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"dd03b42ed8930cfc14f29f7bab0383692abcda0d656d5d87cac9675b674d6bce\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"pending\":{\"recovery\":\"XJxt8mHJy4QEdXdqrvzZRLQFMo+rKPmzqV70BJDT3oQ=\"},\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":5}",
+      "digest": "6fdc4806c35948ee2313f13c96d3ecb8a3e34df63f4a61c71b6fc2500f410c63",
+      "signature": "naWLjISAmr08a7hv1SypnHmH7otAq5L6DCfA0s7WwAucJqie22iId8OOUSRwC912am+itSFse14+ijnMwMgUCA=="
+    },
+    "start": {
+      "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"338f7e224d1196882ac38089521e7800121fe2ea8ef5118b45386155166125b4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"pending\":{\"publicKey\":\"2b8hSHSKhcidparY7gsPwtEF/TnUGkx5ZTY1TwrikAw=\"},\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"recovery\":\"C+71qeZ55qPhNP4ng3v/MsfLX11E6gm8sOVCutakwMw=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":3}",
+      "digest": "77c28f718940ac7fc3d5866991b1bb09a4d16cfcd9a5b167392d3f2365daf803",
+      "signature": "x/H/3KIDYCO7GGOCiYhiF3iFDw0Wiw51GqvZfe2vruBn/Q4S6stjzShSSZZiZNK1Yj1rxNgY5+j6RoCN8t9uAA=="
+    }
+  },
   "rootRotation": {
     "namingTheNewRoot": {
       "canonical": "{\"at\":\"2026-11-24T12:00:00Z\",\"departments\":[{\"head\":\"owner\",\"id\":\"dev\",\"label\":\"開発\"}],\"label\":\"Acme\",\"org\":\"acme\",\"people\":[{\"account\":\"alice\",\"department\":\"dev\",\"id\":\"owner\",\"label\":\"Alice\",\"publicKey\":\"6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=\",\"role\":\"member\"}],\"prev\":\"4fc964ae7a88afca590badef4f367bae2c002aed7b42cc0986c70f434140a3d4\",\"revoked\":[],\"root\":{\"account\":\"alice\",\"publicKey\":\"kaKKC3Q4FZOk2UaVeSCJJq/IrYLIg5t2RDWbnrqaSzo=\"},\"teams\":[{\"department\":\"dev\",\"id\":\"app\",\"label\":\"app\",\"node\":\"https://alice.example\"}],\"version\":2}",

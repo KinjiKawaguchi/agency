@@ -9,7 +9,9 @@
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
 //! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
-use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
+use crate::handoff::{
+    self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH,
+};
 use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
@@ -74,6 +76,8 @@ pub struct ClientApi {
     pub launch: Option<Launch>,
     /// When each app version was last noted, so a client that calls often costs no write (see `note_client`).
     pub client_notes: Mutex<HashMap<(Platform, String), OffsetDateTime>>,
+    /// The codes the app handoff made and that wait to be redeemed.
+    pub handoff: handoff::Codes,
 }
 
 pub(crate) type Shared = State<Arc<ClientApi>>;
@@ -148,7 +152,7 @@ async fn admit(
 }
 
 /// Constant-time comparison, so the token cannot be guessed byte by byte from response times.
-fn is_same_secret(given: &str, expected: &str) -> bool {
+pub(crate) fn is_same_secret(given: &str, expected: &str) -> bool {
     given.len() == expected.len()
         && given
             .bytes()
@@ -613,6 +617,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .layer(middleware::from_fn_with_state(api.clone(), guard))
         // Added after the guard, so it answers without an Access sign-in: Apple's servers fetch it.
         .route(ASSOCIATION_PATH, get(handoff::association))
+        .route(REDEEM_PATH, post(handoff::redeem))
         .with_state(api)
 }
 

@@ -131,6 +131,8 @@ pub enum Capability {
     OrgAims,
     /// `kpis` in the org definition.
     OrgKpis,
+    /// `root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.
+    OrgRecovery,
     /// A browser's Web Push subscriptions and the notices sent to them.
     WebPush,
     /// A team's activity feed.
@@ -140,10 +142,11 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 6] = [
+    pub const ALL: [Capability; 7] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
+        Capability::OrgRecovery,
         Capability::WebPush,
         Capability::Activity,
         Capability::Outcomes,
@@ -154,6 +157,7 @@ impl Capability {
             Capability::OrgPlan => "orgPlan",
             Capability::OrgAims => "orgAims",
             Capability::OrgKpis => "orgKpis",
+            Capability::OrgRecovery => "orgRecovery",
             Capability::WebPush => "webPush",
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
@@ -181,6 +185,10 @@ impl Capability {
         }
         if !definition.kpis.is_empty() {
             used.insert(Capability::OrgKpis);
+        }
+        let root = &definition.root;
+        if root.recovery.is_some() || root.pending.is_some() {
+            used.insert(Capability::OrgRecovery);
         }
         used
     }
@@ -234,6 +242,10 @@ mod tests {
 
     /// The paths added after the first release, each with the capability a reader needs for it.
     const AFTER_FIRST_RELEASE: &[(&str, Capability)] = &[
+        ("root.recovery", Capability::OrgRecovery),
+        ("root.pending", Capability::OrgRecovery),
+        ("root.pending.publicKey", Capability::OrgRecovery),
+        ("root.pending.recovery", Capability::OrgRecovery),
         ("kpis", Capability::OrgKpis),
         ("kpis[].currency", Capability::OrgKpis),
         ("kpis[].goodWhen", Capability::OrgKpis),
@@ -254,15 +266,31 @@ mod tests {
         ("teams[].plan.weeklyBudgetUsd", Capability::OrgPlan),
     ];
 
+    /// Every org definition in the vectors, wherever it is, named by its path (`rootRotation.namingTheNewRoot`),
+    /// so a vector added under any name is checked.
     fn org_vectors() -> Vec<(String, Value)> {
         let vectors: Value = serde_json::from_str(VECTORS).unwrap();
-        ["org", "orgWithPlan", "orgWithOutcomes"]
-            .into_iter()
-            .map(|name| {
-                let canonical = vectors[name]["canonical"].as_str().unwrap();
-                (name.to_owned(), serde_json::from_str(canonical).unwrap())
-            })
-            .collect()
+        let mut found = vec![];
+        org_definitions_in(&vectors, "", &mut found);
+        found
+    }
+
+    fn org_definitions_in(value: &Value, at: &str, found: &mut Vec<(String, Value)>) {
+        let Value::Object(fields) = value else { return };
+        let canonical = fields.get("canonical").and_then(Value::as_str);
+        if let Some(body) = canonical.and_then(|text| serde_json::from_str::<Value>(text).ok()) {
+            if serde_json::from_value::<OrgDefinition>(body.clone()).is_ok() {
+                found.push((at.to_owned(), body));
+            }
+        }
+        for (name, inner) in fields {
+            let path = if at.is_empty() {
+                name.clone()
+            } else {
+                format!("{at}.{name}")
+            };
+            org_definitions_in(inner, &path, found);
+        }
     }
 
     fn paths(value: &Value, prefix: &str, found: &mut BTreeSet<String>) {
@@ -378,6 +406,11 @@ mod tests {
             Capability::used_by(&definition)
         };
         assert_eq!(used("org"), BTreeSet::new());
+        assert_eq!(
+            used("rootRecovery.start"),
+            BTreeSet::from([Capability::OrgRecovery])
+        );
+        assert_eq!(used("rootRotation.namingTheNewRoot"), BTreeSet::new());
         assert_eq!(used("orgWithPlan"), BTreeSet::from([Capability::OrgPlan]));
         assert_eq!(
             used("orgWithOutcomes"),

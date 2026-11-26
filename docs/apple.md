@@ -111,6 +111,7 @@ The owner's numbers for what each org measures (`GET /api/orgs/<org>/outcomes?da
 - **What a card says.** The latest number of the period by its KPI's unit: money in its own currency (an ISO code, never converted), a percent as it is (never clipped), a count grouped, a ratio with its `×`, a duration as the evaluation writes one; a unit this app does not know is a plain number. The movement is read from the baseline (`before`) to the latest number, with a word and a tone by `goodWhen` (a direction the node does not say colours nothing). A KPI with no number in the period but one before it shows that one as older; a KPI with none shows a gap. A 0 the node gave is a 0, and a missing number is never one.
 - **Readings.** One line for each aim, in the words of the state (`ready` gives the two numbers, the change and a line that the figure moved after the work and that this does not say the work moved it; every other state says what is missing). A test fails if any of the page's words claims a cause.
 - **The period** is 90 days by default (a monthly number is rarely in 14), or 30, the same on the web.
+- **The screen.** A third page, 成果の指標, in the 成果 tab beside the costs and the evaluation (`ResultsScreen`, the same on the iPhone and the Mac), offered only while `isAvailable`: with the node refusing the owner nothing in the tab changes and nothing says why. Each KPI is a card (label, the latest number, the day it is as of, the movement as a symbol, words and colour, and its numbers as dots on their days joined by a line, with nothing for a day without a number); then the readings. Until the node has answered, the page is grey bars, not an empty page; a failure is said over what was read. The numbers are shown on a plain cover whenever the iPhone app is not in front, so that the picture the system keeps for the app switcher holds none of them (not verified on a device).
 
 ## Build
 
@@ -208,6 +209,8 @@ It needs `bash`, `openssl`, `perl` and `jq`, and uses no Apple account, network,
 ## Signing in with a passkey
 
 The app signs in to Access in an `ASWebAuthenticationSession`. It runs in Safari's context, so passkeys and password managers work, and it needs no password prompt of its own. (A `WKWebView` could not run WebAuthn for the Access team domain, `<team>.cloudflareaccess.com`: iOS allows that only for a relying party that is one of the app's associated domains, and the file that says so would have to be served by Cloudflare.)
+
+**The node's side has changed (agency#117): it answers the handoff with a single-use code, not the token, and the app redeems it with a verifier at `POST /app/redeem` (docs/protocol.md, "App sign-in"). The steps below describe the app until it moves to that exchange, which is the next change.**
 
 1. When the desk has no Access token yet, or the session ended (the node answers with a redirect to Access's login), the app starts the session on `https://<node host>/app/handoff?state=<state>`. The `state` is 256 random bits made for this sign-in. The first launch starts it by itself once.
 2. Access signs the owner in and returns to the handoff route, which sits behind Access. The node answers with a redirect to `https://<node host>/app/callback#token=<Access token>&state=<state>`.

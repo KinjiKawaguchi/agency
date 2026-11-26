@@ -14,7 +14,53 @@ use ts_rs::TS;
 pub struct Root {
     pub account: Id,
     pub public_key: PublicKey,
+    /// The recovery key: a second key, kept only as written words, that may move the root after a wait
+    /// (`RECOVERY_WAIT_SECONDS`) and do nothing else. Left out when the org has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recovery: Option<PublicKey>,
+    /// A recovery that was started and waits: what it will change. Only the recovery key sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pending: Option<PendingRoot>,
 }
+
+impl Root {
+    /// A root with no recovery key.
+    pub fn new(account: Id, public_key: PublicKey) -> Self {
+        Self {
+            account,
+            public_key,
+            recovery: None,
+            pending: None,
+        }
+    }
+
+    pub fn with_recovery(self, recovery: PublicKey) -> Self {
+        Self {
+            recovery: Some(recovery),
+            ..self
+        }
+    }
+}
+
+/// What a started recovery changes in `root` once its wait is over: a new root key, a new recovery
+/// key, or both.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct PendingRoot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub public_key: Option<PublicKey>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub recovery: Option<PublicKey>,
+}
+
+/// How long, by its own clock, a node holds a started recovery before it takes the version that
+/// finishes it: 72 hours, in which the current root cancels it by signing any version.
+pub const RECOVERY_WAIT_SECONDS: i64 = 72 * 60 * 60;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -251,10 +297,38 @@ impl OrgDefinition {
         Some((person, found))
     }
 
-    /// Account and root keys: these must never be device keys, because nodes hold them.
+    /// Account, root, and recovery keys: these must never be device keys.
     fn node_keys(&self) -> HashSet<&PublicKey> {
         let accounts = self.people.iter().map(|p| &p.public_key);
-        accounts.chain([&self.root.public_key]).collect()
+        let pending = self.root.pending.iter();
+        let roots = [Some(&self.root.public_key), self.root.recovery.as_ref()]
+            .into_iter()
+            .chain(pending.flat_map(|one| [one.public_key.as_ref(), one.recovery.as_ref()]))
+            .flatten();
+        accounts.chain(roots).collect()
+    }
+
+    /// A recovery key that is also the root key or an account key would be kept on a node, which defeats it; a
+    /// new root key a started recovery names is no account key either.
+    fn are_recovery_keys_apart(&self) -> bool {
+        let root = &self.root;
+        let pending = root.pending.as_ref();
+        let new_root = pending.and_then(|one| one.public_key.as_ref());
+        let accounts: HashSet<&PublicKey> = self.people.iter().map(|p| &p.public_key).collect();
+        let held: HashSet<&PublicKey> = accounts
+            .iter()
+            .copied()
+            .chain([Some(&root.public_key), new_root].into_iter().flatten())
+            .collect();
+        let recovery_keys = [
+            root.recovery.as_ref(),
+            pending.and_then(|one| one.recovery.as_ref()),
+        ];
+        let is_recovery_apart = recovery_keys
+            .into_iter()
+            .flatten()
+            .all(|key| !held.contains(key));
+        is_recovery_apart && new_root.is_none_or(|key| !accounts.contains(key))
     }
 
     /// Device ids are unique per person; device keys are unique in the org, are not account or root
@@ -296,8 +370,13 @@ impl OrgDefinition {
         {
             return Err("a department, person, team, or account appears twice".into());
         }
-        let are_node_keys_ed25519 = self.root.public_key.is_ed25519()
-            && self.people.iter().all(|p| p.public_key.is_ed25519());
+        let are_node_keys_ed25519 = self.node_keys().into_iter().all(PublicKey::is_ed25519);
+        if !self.are_recovery_keys_apart() {
+            return Err(
+                "a recovery key, or a key a started recovery names, is the root key or an account key"
+                    .into(),
+            );
+        }
         if !are_node_keys_ed25519 {
             return Err("account and root keys must be Ed25519".into());
         }
@@ -379,8 +458,22 @@ pub fn verify_genesis(doc: &SignedOrg) -> Result<(), String> {
     body.validate()
 }
 
-/// Whether `next` is the next version of `now`: one version higher, linked to its fingerprint, and signed by the current root key.
-pub fn verify_successor(current: &SignedOrg, next: &SignedOrg) -> Result<(), String> {
+/// Who may sign the next version, and what it then may change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Succession {
+    /// Signed by the root key: anything but the recovery key (which it may only add while there is
+    /// none), and never a pending recovery, so it cancels one that waits.
+    Root,
+    /// Signed by the recovery key, starting a recovery: it only sets `root.pending`.
+    RecoveryStart,
+    /// Signed by the recovery key, finishing a recovery: it only applies `root.pending`. A node takes it
+    /// only after holding the start for `RECOVERY_WAIT_SECONDS` by its own clock.
+    RecoveryFinish,
+}
+
+/// Whether `next` is the next version of `now`: one version higher, linked to its fingerprint, signed
+/// by the current root key or recovery key, and changing only what that key may change.
+pub fn verify_successor(current: &SignedOrg, next: &SignedOrg) -> Result<Succession, String> {
     let (now, body) = (&current.body, &next.body);
     if body.org != now.org
         || body.version != now.version + 1
@@ -391,8 +484,61 @@ pub fn verify_successor(current: &SignedOrg, next: &SignedOrg) -> Result<(), Str
             now.version, now.org
         ));
     }
-    if next.signer != now.root.account || !next.verify(Kind::Org, &now.root.public_key) {
+    let succession = succession(current, next)?;
+    body.validate()?;
+    Ok(succession)
+}
+
+/// Whether `next` is the next version of `now` signed by the root key. A node that asked the root's
+/// node for a change (a join, a device) takes only this from its answer; a recovery comes by gossip,
+/// where the node counts its wait.
+pub fn verify_root_successor(current: &SignedOrg, next: &SignedOrg) -> Result<(), String> {
+    match verify_successor(current, next)? {
+        Succession::Root => Ok(()),
+        _ => Err("not signed by the current root key".into()),
+    }
+}
+
+fn succession(current: &SignedOrg, next: &SignedOrg) -> Result<Succession, String> {
+    let (now, body) = (&current.body.root, &next.body.root);
+    let is_signed_by = |key: &PublicKey| next.signer == now.account && next.verify(Kind::Org, key);
+    if is_signed_by(&now.public_key) {
+        if body.pending.is_some() {
+            return Err("the root key does not start a recovery".into());
+        }
+        if now.recovery.is_some() && body.recovery != now.recovery {
+            return Err("only the recovery key replaces the recovery key".into());
+        }
+        return Ok(Succession::Root);
+    }
+    if !now.recovery.as_ref().is_some_and(is_signed_by) {
         return Err("not signed by the current root key".into());
     }
-    body.validate()
+    let mut expected = OrgDefinition::successor_of(current, next.body.at.clone());
+    let succession = match &now.pending {
+        None => {
+            let pending = body
+                .pending
+                .as_ref()
+                .ok_or("a recovery start names no change")?;
+            if pending.public_key.is_none() && pending.recovery.is_none() {
+                return Err("a recovery start names no change".into());
+            }
+            expected.root.pending = Some(pending.clone());
+            Succession::RecoveryStart
+        }
+        Some(pending) => {
+            expected.root = Root {
+                account: now.account.clone(),
+                public_key: pending.public_key.clone().unwrap_or(now.public_key.clone()),
+                recovery: pending.recovery.clone().or(now.recovery.clone()),
+                pending: None,
+            };
+            Succession::RecoveryFinish
+        }
+    };
+    if expected != next.body {
+        return Err("the recovery key changes nothing but the root".into());
+    }
+    Ok(succession)
 }

@@ -1,11 +1,11 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import { daysEnding } from '../evaluation/series'
-import { sampleOutcomes, sampleReadings } from '../api/outcomesSamples'
+import { sampleReadings } from '../api/outcomesSamples'
+import { createMockOutcomes } from './outcomes'
 import { createMockWebPush } from './webPush'
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
@@ -125,7 +125,7 @@ const MAX_LIMIT = 200
 /** The longest `title` and `choiceLabel` the node takes. */
 const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
-const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings)?$/
+const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 const DEVICES_PATH = '/api/devices'
@@ -183,6 +183,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return { body: request.method === 'DELETE' ? null : await request.json().catch(() => null) }
   }
 
+  const outcomes = createMockOutcomes(now)
   const webPush = createMockWebPush(() => now.toISOString())
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
@@ -262,16 +263,27 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
-  /** The owner's numbers: the shared samples, over the days asked; anyone else is refused, as the node refuses them, even to read. */
-  const handleOutcomes = (url: URL, org: string, isReadings: boolean): Response => {
+  /** The owner's numbers: the shared samples and what was entered, over the days asked; anyone else is refused, as the node refuses them, even to read. */
+  const handleOutcomes = async (request: Request, url: URL, org: string, part: string | undefined): Promise<Response> => {
     if (options.outcomesFailWith !== undefined) return failure(options.outcomesFailWith, 'The numbers could not be read.')
     if (options.outcomes !== true) return failure(403, 'Only the owner reads these numbers.')
     if (org !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
-    if (isReadings) return json(sampleReadings)
+    if (part === '/readings') return json(sampleReadings)
+    if (part === '/observations') {
+      if (request.method === 'POST') {
+        const write = await readWrite(request)
+        if (write instanceof Response) return write
+        const entered = outcomes.enter(write.body)
+        return outcomes.isRefusal(entered) ? failure(entered.status, entered.message) : json(entered)
+      }
+      const limit = Number(url.searchParams.get('limit') ?? 100)
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) return failure(400, 'limit must be between 1 and 500.')
+      const history = outcomes.history(url.searchParams.get('kpi') ?? '', limit)
+      return outcomes.isRefusal(history) ? failure(history.status, history.message) : json(history)
+    }
     const days = Number(url.searchParams.get('days') ?? 14)
     if (!Number.isInteger(days) || days < 1 || days > 90) return failure(400, 'days must be between 1 and 90.')
-    const answer = sampleOutcomes as { until: string }
-    return json({ ...answer, days, from: daysEnding(answer.until, days)[0] })
+    return json(outcomes.answer(days))
   }
 
   /** The owner's write: the page's token and JSON, a lowercase-hex token, its environment, and a label. Idempotent per token. */
@@ -332,7 +344,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       return orgMatch[1] === ORG_DEFINITION.org ? json({ ...ORG_DEFINITION, teams: withPlans(ORG_DEFINITION.teams) }) : failure(404, 'No such organization.')
     }
     const outcomesMatch = OUTCOMES_PATH.exec(url.pathname)
-    if (request.method === 'GET' && outcomesMatch) return handleOutcomes(url, outcomesMatch[1] ?? '', outcomesMatch[2] !== undefined)
+    if (outcomesMatch !== null && (request.method === 'GET' || (request.method === 'POST' && outcomesMatch[2] === '/observations'))) return handleOutcomes(request, url, outcomesMatch[1] ?? '', outcomesMatch[2])
     const evaluationMatch = EVALUATION_PATH.exec(url.pathname)
     if (request.method === 'GET' && evaluationMatch) return handleEvaluation(url, evaluationMatch[1] ?? '', evaluationMatch[2] ?? '')
     const teamMatch = TEAM_PATH.exec(url.pathname)

@@ -27,6 +27,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 - **Org** (組織). A set of departments, members, and teams under one root key. Its definition is the signed `OrgDefinition`.
 - **Root key** (ルート鍵). The Ed25519 key that signs an org's definition versions. It is held by the root's node (`root` in the definition names its account and key).
+- **Recovery key** (回復用の鍵). A second key of an org, named in `root.recovery`, that no machine keeps: the owner keeps it as written **recovery words** (回復用の単語). It may only move the root key or itself, and only after a **recovery** (ルート鍵の回復) waits 72 hours, in which the root key cancels it by signing any version.
 - **Org definition** (組織定義) and its **versions**. The signed body listing the org's departments, members, teams, and revoked keys. Version 1 starts it; each next version is one higher and refers to the one before (`prev`). Every piece is written only by the root key.
 - **Department** (部署). A unit of the org that groups members and teams, with an optional parent and an optional head (a member).
 - **Team** (チーム). One harness, running on exactly one node: the *team's node* (`teams[].node`). Requests, activity, and the board belong to a team, and the team's node is their only writer.
