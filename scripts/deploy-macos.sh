@@ -122,7 +122,7 @@ else
     say "building $(git describe --always --dirty) from $repo"
     (cd web && npm ci && npm run build)
     cargo build --release --locked -p agency-node
-    binary="$repo/target/release/agency"
+    binary="$("$(dirname "$0")/release/target-dir.sh" "$repo")/release/agency"
   fi
   [ -x "$binary" ] || fail "$binary is not an executable file"
   "$binary" --help >/dev/null || fail "$binary does not run on this machine"

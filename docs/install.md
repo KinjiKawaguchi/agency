@@ -33,7 +33,7 @@ cd ..
 cargo build --release -p agency-node
 ```
 
-Install the binary at a path that a rebuild or `cargo clean` does not touch.
+Install the binary at a path that a rebuild or `cargo clean` does not touch. Cargo builds it in `target/release/` of the repository, or in `$CARGO_TARGET_DIR/release/` when that is set.
 Copy it under a new name and then rename it, so that a running node never has its binary rewritten in place:
 
 ```sh
