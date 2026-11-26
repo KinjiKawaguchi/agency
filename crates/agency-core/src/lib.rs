@@ -5,6 +5,7 @@
 pub mod client;
 pub mod config;
 pub mod decisions;
+pub mod delivery;
 pub mod departments;
 pub mod devices;
 pub mod error;
