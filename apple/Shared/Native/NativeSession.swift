@@ -68,7 +68,8 @@ final class NativeSession {
         keyProblem = problem
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
-        pushDelivery = PushDeliveryStore(source: client, ownToken: { ownPushToken.value })
+        let ownToken = ownPushToken
+        pushDelivery = PushDeliveryStore(source: client, ownToken: { ownToken.value })
         // The screens read the account and every team through one shared cache, so the app asks the node once
         // for what several screens want, and a decision drops what was read before it.
         let sent = SentDecisions()
