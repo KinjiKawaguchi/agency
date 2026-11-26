@@ -214,7 +214,6 @@ pub async fn submit_signed_decision(
     let note = DecisionNote {
         title: note_text(input.title, "title")?,
         choice_label: note_text(input.choice_label, "choiceLabel")?,
-        relayed_for: note_text(input.relayed_for, "relayedFor")?,
     };
     if note.choice_label.is_some() && input.envelope.body.payload.choice.is_none() {
         return Err(Error::bad_request("choiceLabel needs a choice"));

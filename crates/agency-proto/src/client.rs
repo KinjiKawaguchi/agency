@@ -353,11 +353,22 @@ pub struct DecisionEntry {
     pub choice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
-    /// Whom the decision was made for, when it answered for a seat or an external party.
+    /// Whom the decision was made for, when it answered for a seat or an external party. The node worked
+    /// it out from the org and the team when it applied the decision; no client says it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relayed_for: Option<String>,
+    pub relayed_for: Option<RelayedFor>,
     pub decided_at: Timestamp,
     pub state: DecisionState,
+}
+
+/// The seat or external party a decision answered for: its id, and its label as the org's definition had it
+/// when the decision was applied.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct RelayedFor {
+    pub id: Id,
+    pub label: String,
 }
 
 /// Where a decision went.
@@ -395,11 +406,6 @@ pub struct SignedDecisionInput {
     /// The label of the chosen option, kept in the decision log like `title`. Only with a choice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice_label: Option<String>,
-    /// Whom the decision was made for, when the request was addressed to a seat or an external party the
-    /// account answers for (the label from the snapshot's `relayedFor`), kept in the decision log like
-    /// `title`. Never signed or sent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relayed_for: Option<String>,
 }
 
 /// A new device asking to be added. One of the account's devices (or, for the first device, the node's
