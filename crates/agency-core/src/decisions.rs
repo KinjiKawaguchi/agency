@@ -34,6 +34,17 @@ pub struct DecisionRecord {
     pub at: String,
     /// Applied to a team on this node; otherwise sent as an envelope, whose delivery the outbox tracks.
     pub is_local: bool,
+    /// The member who decided: the node's own account, or a member it hosts (a guest). Absent in records
+    /// made before guests, which were all the node's own account's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<Id>,
+}
+
+impl DecisionRecord {
+    /// Whether `account` made this decision, a record without `by` being the node's own account's.
+    pub(crate) fn is_by(&self, account: &Id, node_account: &Id) -> bool {
+        self.by.as_ref().unwrap_or(node_account) == account
+    }
 }
 
 /// What people read about a decision once its request is gone: the request's title and the label of the
@@ -58,6 +69,7 @@ impl DecisionRecord {
             payload: envelope.payload.clone(),
             at: envelope.at.clone(),
             is_local,
+            by: Some(envelope.account.clone()),
         }
     }
 }

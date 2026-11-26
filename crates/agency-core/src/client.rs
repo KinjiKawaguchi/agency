@@ -3,6 +3,7 @@
 use crate::config::{HostedTeam, NodeConfig};
 use crate::decisions::{Decided, DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
+use crate::guests::Caller;
 use crate::node::Node;
 use crate::orgs::is_root;
 use crate::outbox::Parcel;
@@ -21,17 +22,25 @@ use std::collections::BTreeMap;
 
 /// The org, if the node's account is a member of it.
 pub(crate) fn membership(node: &Node, org: &Id) -> Result<(SignedOrg, Person)> {
+    membership_of(node, &Caller::Owner, org)
+}
+
+/// The org's definition and the caller's entry in it; not found when the caller is not a member there.
+pub(crate) fn membership_of(node: &Node, caller: &Caller, org: &Id) -> Result<(SignedOrg, Person)> {
     let not_found = || Error::not_found("not found");
+    if !caller.is_in(org) {
+        return Err(not_found());
+    }
     let doc = node.store().load_org(org).ok_or_else(not_found)?;
     let person = doc
         .body
-        .member(&node.account())
+        .member(&caller.account(node))
         .cloned()
         .ok_or_else(not_found)?;
     Ok((doc, person))
 }
 
-fn team_ref(node: &Node, org: &Id, place: &TeamPlace, person: &Person) -> TeamRef {
+pub(crate) fn team_ref(node: &Node, org: &Id, place: &TeamPlace, person: &Person) -> TeamRef {
     let (location, viewer) = match node.hosted(org, &place.id) {
         Some(hosted) => (TeamLocation::Local, viewer_name(&hosted, &person.id)),
         None => (
@@ -96,6 +105,7 @@ pub fn me(node: &Node) -> Me {
         node_id: agency_proto::client::node_id(&config.url),
         home_nodes: None,
         root_changes: None,
+        guest: None,
     }
 }
 
@@ -172,7 +182,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
 }
 
 /// For each of the reader's requests that is addressed to a seat or an external party: whom it is for.
-fn relayed_for(
+pub(crate) fn relayed_for(
     definition: &OrgDefinition,
     hosted: &HostedTeam,
     view: &TeamView,
@@ -206,11 +216,12 @@ fn note_text(raw: Option<String>, field: &str) -> Result<Option<String>> {
 /// Relays a decision signed by one of the account's devices. The node only checks and relays it.
 pub async fn submit_signed_decision(
     node: &Node,
+    caller: &Caller,
     org: &Id,
     team: &Id,
     input: SignedDecisionInput,
 ) -> Result<DecisionResult> {
-    membership(node, org)?;
+    membership_of(node, caller, org)?;
     let note = DecisionNote {
         title: note_text(input.title, "title")?,
         choice_label: note_text(input.choice_label, "choiceLabel")?,
@@ -218,7 +229,8 @@ pub async fn submit_signed_decision(
     if note.choice_label.is_some() && input.envelope.body.payload.choice.is_none() {
         return Err(Error::bad_request("choiceLabel needs a choice"));
     }
-    result_of(decide_signed(node, org, team, input.envelope, note).await?)
+    let account = caller.account(node);
+    result_of(decide_signed(node, &account, org, team, input.envelope, note).await?)
 }
 
 /// A refusal by the team's node is a conflict: the client should re-read the team, because the request
@@ -271,16 +283,24 @@ pub const MAX_LOG_LIMIT: usize = 200;
 
 /// The account's recent decisions in orgs it still belongs to, newest first, with where each one went.
 pub fn decision_log(node: &Node, limit: Option<usize>) -> DecisionLog {
+    decision_log_of(node, &Caller::Owner, limit)
+}
+
+/// The caller's own recent decisions: the owner's, or a guest's, never one another's.
+pub fn decision_log_of(node: &Node, caller: &Caller, limit: Option<usize>) -> DecisionLog {
     let limit = limit.unwrap_or(DEFAULT_LOG_LIMIT).clamp(1, MAX_LOG_LIMIT);
     let (pending, refused) = (
         node.store().pending_parcels(),
         node.store().refused_parcels(),
     );
+    // Read deep enough that the caller's own decisions fill the limit when others' are among them.
     let visible = node
         .store()
-        .recent_decisions(limit)
+        .recent_decisions(MAX_LOG_LIMIT)
         .into_iter()
-        .filter(|record| membership(node, &record.org).is_ok());
+        .filter(|record| record.is_by(&caller.account(node), &node.account()))
+        .filter(|record| membership_of(node, caller, &record.org).is_ok())
+        .take(limit);
     let entries = visible.filter_map(|record| {
         let decided_at = timestamp(Some(&record.at))?;
         let state = state_of(&record, &decided_at, &pending, &refused);

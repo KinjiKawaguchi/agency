@@ -478,7 +478,13 @@ HourSeries { hour: Timestamp, count, errors, p95Ms? }
 
 ## Client API
 
-A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
+A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404. A **guest** is the exception (below).
+
+**Guests.** A member this node hosts (`people[].hostedBy: "root"`, see "Org definition") has no node of its own, and its clients talk to this node signed in through Access as that member.
+- The node keeps, in `guests/` of its data directory and never in the definition, which sign-in email is which hosted member of which org (lowercased, compared exactly). It admits an Access sign-in as that guest only while the definition still lists the member as hosted; otherwise the sign-in is what it was before. The owner's email (`access.ownerEmail`) always wins: the owner is never a guest. A direct local request is never a guest.
+- A guest reaches only these routes, and every other one answers it 403: `GET /api/about`, `/api/session`, `/api/me`, `/api/devices`, `/api/decisions`, `GET /api/orgs/<its org>/teams/<team>/view`, `POST /api/orgs/<its org>/teams/<team>/envelopes`, and `POST /api/devices/changes`. Reads are checked against this list before the route; writes by the guest's own case of the write check, which sends nothing on to the owner's.
+- What it reads is its own: `/api/me` has its member as `account` (with an empty `fingerprint`: it has no account key), its org only, with only the teams on this node that address it (by a runtime name, or through a seat or external party it answers for), `funding` `[]`, and `guest: { member, org }`, and no `homeNodes`, `rootChanges`, or org `recovery`; a client draws no funding for a guest. A team's view is the answerer's view (only the requests it answers; no people, work, or epics), and only of a team on this node that addresses it (404 otherwise). `/api/devices` lists its own devices, with no requests and no `node`. `/api/decisions` lists its own decisions, never the owner's, and the owner's list never shows a guest's: each logged decision keeps the member who made it (`by`).
+- What it writes is as its member: an envelope whose `account` is the guest's member, signed by one of that member's devices (403 for any other account), and a device change for that member in its org.
 The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 
 **`x-agency-client`.** An app tells the node which release it is, on every call: `x-agency-client: <platform>/<version> (<build>)`, for example `ios/0.3.0 (202611260418)`.

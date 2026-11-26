@@ -14,16 +14,18 @@ use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Kind, Payload, Signed
 /// Relays a decision signed by one of this node's account's devices to its team.
 pub async fn decide_signed(
     node: &Node,
+    account: &Id,
     org: &Id,
     team: &Id,
     signed: Signed<Envelope>,
     note: DecisionNote,
 ) -> Result<Decided> {
     let envelope = &signed.body;
-    if envelope.account != node.account() {
+    // The account the caller acts as: the node's own, or the hosted member a guest is.
+    if &envelope.account != account {
         return Err(Error::new(
             ErrorKind::Forbidden,
-            "this node relays only its own account's decisions",
+            "this node relays only the decisions of the account the caller acts as",
         ));
     }
     if &envelope.org != org || &envelope.team != team {
@@ -83,5 +85,6 @@ pub async fn decide_with_device(
     envelope.validate().map_err(Error::bad_request)?;
     let signed = Signed::sign(Kind::Envelope, envelope, device.id.clone(), device.key)
         .map_err(|error| Error::internal(error.to_string()))?;
-    decide_signed(node, org, team, signed, DecisionNote::default()).await
+    let account = node.account();
+    decide_signed(node, &account, org, team, signed, DecisionNote::default()).await
 }
