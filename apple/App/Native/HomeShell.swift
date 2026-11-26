@@ -42,7 +42,7 @@ struct HomeShell: View {
             switch self {
             case .desk: nil
             case .overview: nil
-            case .people: "/people"
+            case .people: nil
             case .costs: "/costs"
             case .devices: "/devices"
             }
@@ -115,7 +115,12 @@ struct HomeShell: View {
                 store: session.overview, onOpenDesk: { self.tab = .desk },
                 onSignInAgain: { Task { await session.signInAgain() } }
             )
-        case .people, .costs, .devices:
+        case .people:
+            PeopleScreen(
+                store: session.people, onOpenDesk: { self.tab = .desk },
+                onSignInAgain: { Task { await session.signInAgain() } }
+            )
+        case .costs, .devices:
             webScreen(tab)
         }
     }

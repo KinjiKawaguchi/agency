@@ -57,7 +57,7 @@ struct FundingSummaryTests {
         #expect(Ja.Overview.working(1, of: 4) == "参加者 4 人のうち 1 人が作業中")
         #expect(Ja.Overview.tag(.active) == nil)
         #expect(Ja.Overview.tag(.mine) == "あなたの番")
-        #expect(Ja.Overview.blockedReason(.waitingOnPrevious) == "先行する仕事待ち")
+        #expect(Ja.Work.blockedReason(.waitingOnPrevious) == "先行する仕事待ち")
     }
 }
 

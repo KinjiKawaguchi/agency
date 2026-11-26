@@ -3,9 +3,7 @@ import Foundation
 import Observation
 
 /// Where the overview reads from: the home node's Client API. `NodeClient` is the real one.
-public protocol OverviewSource: Sendable {
-    func me() async throws -> Me
-    func teamSnapshot(org: String, team: String) async throws -> TeamSnapshot
+public protocol OverviewSource: TeamSnapshotSource {
     func usage(org: String, team: String, days: Int) async throws -> TokenUsage
 }
 
@@ -65,7 +63,7 @@ public final class OverviewStore {
     public var sections: [OrgSection] {
         orgs
             .map { org in
-                let entries = org.teams.map { TeamEntry(org: org.id, ref: $0, state: states["\(org.id)/\($0.id)"] ?? .loading) }
+                let entries = org.teams.map { TeamEntry(org: org.id, ref: $0, state: states[TeamReader.key(org: org.id, team: $0.id)] ?? .loading) }
                 return OrgSection(org: org, teams: OverviewOrder.teams(entries))
             }
             .sorted { left, right in
@@ -100,7 +98,7 @@ public final class OverviewStore {
             orgs = me.orgs
             funding = me.funding
             needsSignIn = false
-            let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
+            let keys = Set(me.orgs.flatMap { org in org.teams.map { TeamReader.key(org: org.id, team: $0.id) } })
             states = states.filter { keys.contains($0.key) }
             weekCosts = weekCosts.filter { keys.contains($0.key) }
             await readTeams(of: me.orgs)
@@ -117,18 +115,7 @@ public final class OverviewStore {
     }
 
     private func readTeams(of orgs: [OrgRef]) async {
-        let source = source
-        await withTaskGroup(of: (String, Result<TeamSnapshot, Error>).self) { group in
-            for org in orgs {
-                for team in org.teams {
-                    group.addTask {
-                        do { return ("\(org.id)/\(team.id)", .success(try await source.teamSnapshot(org: org.id, team: team.id))) }
-                        catch { return ("\(org.id)/\(team.id)", .failure(error)) }
-                    }
-                }
-            }
-            for await (key, result) in group { apply(result, to: key) }
-        }
+        await TeamReader.read(orgs, from: source) { key, result in apply(result, to: key) }
         await readCosts()
     }
 
@@ -139,8 +126,10 @@ public final class OverviewStore {
         case .failure(let error):
             // A team that was read keeps its last answer, as the web client does, until it can be read again.
             if case .ready = states[key] { return }
-            let isEnded = (error as? NodeError).map { $0 == .sessionExpired || $0 == .notSignedIn } ?? false
-            states[key] = .failed(reason: DeskStore.reason(error), signInEnded: isEnded)
+            let failure = TeamFailure(error: error)
+            // A session that ended while the teams were being read shows as that, not only as failures of each team.
+            if failure.signInEnded { needsSignIn = true }
+            states[key] = .failed(reason: failure.reason, signInEnded: failure.signInEnded)
         }
     }
 
@@ -149,7 +138,7 @@ public final class OverviewStore {
         let source = source
         let asked = orgs.flatMap { org in
             org.teams.compactMap { team -> (key: String, org: String, team: String)? in
-                let key = "\(org.id)/\(team.id)"
+                let key = TeamReader.key(org: org.id, team: team.id)
                 guard case .ready(let snapshot)? = states[key], !snapshot.isUnreachable else { return nil }
                 return (key, org.id, team.id)
             }
