@@ -1,3 +1,4 @@
+import type { ClaimInput, ClaimState } from '../claim/provisional'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Session, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
@@ -49,6 +50,10 @@ export interface ApiClient {
   requestDevice: (input: DeviceRequestInput) => Promise<DeviceRequest>
   /** Adds a device: a change signed by one of the account's devices. */
   submitDeviceChange: (change: Signed<DeviceChange>) => Promise<DeviceChangeResult>
+  /** Takes a seat with the code of a claim link and the key this browser made; the person's sign-in is the other half of the proof. */
+  redeemClaim: (input: ClaimInput) => Promise<ClaimState>
+  /** Where this sign-in's claim stands, for a page that is read again or waits for the owner: 404 when there is none. */
+  claimState: () => Promise<ClaimState>
   usage: (org: string, team: string, days: number) => Promise<TokenUsage>
   /** How fast each team of the org ships: merged pull requests, lead times, red main, reverts, cost. */
   evaluation: (org: string, days: number) => Promise<Evaluation>
@@ -203,5 +208,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     devices: () => get<DeviceList>('/api/devices'),
     requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
     submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),
+    redeemClaim: (input) => post<ClaimState>('/api/claim', input),
+    claimState: () => get<ClaimState>('/api/claim'),
   }
 }
