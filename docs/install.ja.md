@@ -1,8 +1,8 @@
 # ノードのインストール
 
-この文書では、Agency のノードを Mac にソースからインストールし、launchd のエージェントとして動かし、最初の端末を追加するまでを説明します。
+この文書では、Agency のノードを Mac か Linux のマシンにソースから（Linux ではリリースビルドからも）インストールし、launchd のエージェントか systemd のユニットとして動かし、最初の端末を追加するまでを説明します。
 続いて、そのノードを Cloudflare Access の背後に置き、ほかのマシンから使えるようにする方法を説明します。
-いまのところ対象は macOS だけで、Linux と systemd での手順は今後追加します。
+対象は macOS（launchd）と Linux（systemd）で、手順が違う箇所にはどちらの手順かを書いています。
 
 英語版は [install.md](install.md) で、節の構成は同じです。
 内容が食い違うときは英語版が正です。
@@ -13,8 +13,8 @@ ID に使えるのは英小文字、数字、ハイフンです（`[a-z0-9][a-z0
 
 ## 必要なもの
 
-- macOS（Apple シリコンでも Intel でもかまいません）。
-- Xcode Command Line Tools。`xcode-select --install` で入ります。
+- macOS（Apple シリコンでも Intel でもかまいません）、または glibc 2.35 以降の Linux（x86_64 か arm64）。ノードをサービスとして動かすには systemd も要ります。
+- macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラと `curl`。たとえば `sudo apt install build-essential curl` で入ります。
 - Rust の stable 版、1.87 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
 - Web クライアントのビルドに使う Node.js 24 と npm。`node --version` で確かめます。
 - チームのハーネスと、ハーネスが使うツール（[チームランタイム](#チームランタイム)を参照）。
@@ -49,10 +49,27 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 `~/.local/bin` を `PATH` に入れるか、フルパスで実行してください。
 `agency` は `--dir` を指定しないと `$AGENCY_DIR` に、それも未設定なら `~/.agency` にデータを置きます。
 
+### Linux のリリースビルド
+
+ソースからビルドする代わりに、CI が作る Linux 用のリリースビルドも使えます。x86_64 と arm64 があり（`uname -m` は `x86_64` または `aarch64` を表示します）、glibc 2.35 以降のシステムで動きます。
+
+1. リポジトリの **Actions** タブで **release** ワークフローの実行を開き、使うマシンに合ったアーティファクトをダウンロードします。名前は `agency-<バージョン>-<コミット>-linux-x86_64` か `agency-<バージョン>-<コミット>-linux-arm64` です。中身は `.tar.gz` とその `.sha256` です。
+2. 確かめて展開し、前の節と同じ方法でバイナリを置きます。
+
+```sh
+sha256sum -c agency-*-linux-*.tar.gz.sha256
+tar xzf agency-*-linux-*.tar.gz
+mkdir -p ~/.local/bin
+cp agency-*-linux-*/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~/.local/bin/agency
+```
+
+tarball には `systemd-unit.sh`（[systemd で動かす](#systemd-で動かすlinux)を参照）、この文書、ライセンスも入っています。
+バイナリには Web クライアントがすでに入っています。
+
 ## ローカル専用のノード
 
-ローカル専用のノードは、1 台の Mac の中だけで動きます。
-待ち受けるのは `127.0.0.1` だけなので、Web クライアントはその Mac でしか開けず、ノードもその Mac からのリクエストしか受け付けません。
+ローカル専用のノードは、1 台のマシンの中だけで動きます。
+待ち受けるのは `127.0.0.1` だけなので、Web クライアントはそのマシンでしか開けず、ノードもそのマシンからのリクエストしか受け付けません。
 ほかのノードとは行き来がなく、トンネルも Cloudflare もプッシュ通知も使いません。
 ノードが保存するものはすべてデータディレクトリの中に残ります。
 
@@ -76,7 +93,7 @@ agency status
 
 データディレクトリには、組織のルート鍵である `account.key` ができています。
 このファイルを読める人は、組織のルートとして振る舞えます。
-この Mac の外に持ち出さず、同期や共有をするフォルダにも置かないでください。
+このマシンの外に持ち出さず、同期や共有をするフォルダにも置かないでください。
 
 ### launchd で動かす
 
@@ -101,6 +118,40 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 | 次に読み込むまで止める | `launchctl bootout gui/$(id -u)/local.agency.node` |
 
 ハーネスの置き場所を変えたときなど、`PATH` が変わったら、スクリプトを実行し直してから `bootout` と `bootstrap` をやり直します。
+
+### systemd で動かす（Linux）
+
+ユニットの定義ファイルは `scripts/systemd-unit.sh` で作ります（リリースの tarball では `systemd-unit.sh` という名前で入っています）。
+ユニットにはスクリプトを実行したシェルの `PATH` が渡るので、チームランタイムはターミナルと同じツールを見つけられます。systemd の `--user` のサービスには、そのままでは短い既定の `PATH` しか渡らないためです。
+`scrum` とハーネスのツールが動くターミナルで実行してください。
+
+```sh
+scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
+  --out ~/.config/systemd/user/agency-node.service
+systemctl --user daemon-reload
+systemctl --user enable --now agency-node
+```
+
+ユニットはログイン時に（次のとおり linger を有効にすれば、マシンの起動時に）`agency serve` を起動し、止まったら 10 秒後に起動し直します。
+ノードの出力は `~/.agency/logs/serve.log` に書かれます。systemd が起動と停止をいつ行ったかは、`journalctl --user -u agency-node` でわかります。
+
+| したいこと | コマンド |
+|---|---|
+| 動いているか確かめる | `systemctl --user status agency-node` |
+| 再起動する | `systemctl --user restart agency-node` |
+| 次に起動するまで止める | `systemctl --user disable --now agency-node` |
+
+ハーネスの置き場所を変えたときなど、`PATH` が変わったら、スクリプトを実行し直してから `systemctl --user daemon-reload` と `systemctl --user restart agency-node` を実行します。
+
+systemd がサービスを動かすのは、ログインセッションがあるあいだだけです。マシンの起動時にノードを始め、ログアウトしても動かし続けるには、一度だけ linger を有効にします。
+
+```sh
+loginctl enable-linger "$USER"
+loginctl show-user "$USER" --property=Linger
+```
+
+2 つ目のコマンドは `Linger=yes` を出力するはずです。有効でないと、最後のセッションからログアウトした時点でノードが止まります。
+`systemctl --user` はログインセッション（ターミナルや SSH のログイン）で実行してください。`su` や `sudo -u` からでは自分のサービスに届かず、`Failed to connect to bus` と表示されます。
 
 ### 最初の端末としてブラウザを追加する
 
@@ -141,7 +192,7 @@ JSON が 1 行出力され、その `result.runtimes` に `agency-runtime/1` が
 ## Cloudflare Access の背後に置いて外から使う
 
 スマートフォンやほかのマシンからノードを使うとき、またはほかのノードから届くようにするときは、ノードを Cloudflare Tunnel と Cloudflare Access の背後に置きます。
-ノードは引き続き `127.0.0.1` で待ち受け、同じ Mac で動くトンネルがそこへつなぎます。
+ノードは引き続き `127.0.0.1` で待ち受け、同じマシンで動くトンネルがそこへつなぎます。
 クライアントは Access にサインインし、ノードはリクエストのたびに Access のトークンを検証します。
 ほかのノードは Access にサインインできないため、リクエストごとに自分の鍵で署名します。
 そのため、連合のルートは Access を通さずに受け付けます。
@@ -163,9 +214,9 @@ agency team-move --org acme --team app --node https://agency.example.com
 
 ### Cloudflare Tunnel
 
-1. `cloudflared` を入れます（`brew install cloudflared`）。
+1. `cloudflared` を入れます（macOS では `brew install cloudflared`。Linux では、お使いのディストリビューション向けの Cloudflare のパッケージです）。
 2. Cloudflare Zero Trust でトンネルを作り、公開ホスト名 `agency.example.com` を追加して、そのサービスを `http://127.0.0.1:4400` にします。
-3. トンネルについての Cloudflare の手順に従い、Mac の起動時に始まるサービスとして `cloudflared` を動かします。
+3. トンネルについての Cloudflare の手順に従い、マシンの起動時に始まるサービスとして `cloudflared` を動かします。
 
 トンネルを通ったリクエストには Cloudflare のヘッダーが付きます。
 ノードはこのヘッダーを見て外からのリクエストとして扱い、`127.0.0.1` から届いていても Access のサインインを求めます。
@@ -216,14 +267,14 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 自分の代わりに決定するブラウザやスマートフォンは、それぞれ自分の鍵を作って持ちます。
 鍵が端末の外に出ることはありません。
 
-1. 新しい端末で Web クライアントを開きます。ノードの Mac なら `http://127.0.0.1:4400/`、それ以外なら Access にサインインしてから `https://agency.example.com/` です。iPhone アプリも同じページを開きます（[apple.md](apple.md)）。
+1. 新しい端末で Web クライアントを開きます。ノードのマシンなら `http://127.0.0.1:4400/`、それ以外なら Access にサインインしてから `https://agency.example.com/` です。iPhone アプリも同じページを開きます（[apple.md](apple.md)）。
 2. 「端末」を開き、「この端末を追加」を選びます。照合コードが表示されます。
 3. 次のどちらかでコードを確かめて承認します。
    - 追加済みの端末で「端末」を開き、依頼を見つけ、コードが一致すれば承認します。
    - ノードのターミナルで `agency device-add` を実行します。端末がまだ一つもなければノードのアカウント鍵で、追加済みの CLI の端末があればそれで署名します。
 
 依頼は 1 時間有効で、ノードが保持するのは 10 件までです。
-ブラウザが鍵を作れるのは、`https` のページか、ノードの Mac 上の `127.0.0.1` のページだけです。
+ブラウザが鍵を作れるのは、`https` のページか、ノードのマシン上の `127.0.0.1` のページだけです。
 それ以外では、鍵を作れないと画面に表示されます。
 
 ## AI サブスクリプションと使用量
@@ -325,6 +376,8 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 launchctl kickstart -k gui/$(id -u)/local.agency.node
 ```
 
+Linux では、最後の行の代わりにユニットを再起動します。`systemctl --user restart agency-node` です。
+リリースビルドを使っているなら、新しい tarball を展開し、「Linux のリリースビルド」と同じ方法でバイナリを置いてから、ユニットを再起動します。
 データディレクトリには手を加えません。
 ノードは起動のたびに書き込み用のトークンを作り直すため、開いていたページは次の書き込みの前に一度読み込み直します。
 
@@ -337,14 +390,14 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 | 行 | 意味 |
 |---|---|
 | `Node running: <url> (listening on <address>)` と `Web client: …` | ノードが起動しました。 |
-| `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
+| `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd と systemd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
 | `agency: refused an Access request (wrong audience)` | `audience` がアプリケーションの AUD タグと違います。 |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` が自分のチームドメインと違います。 |
-| `agency: refused an Access request (expired)` または `(not valid yet)` | サインインの期限が切れたか、この Mac の時計がずれています。 |
+| `agency: refused an Access request (expired)` または `(not valid yet)` | サインインの期限が切れたか、このマシンの時計がずれています。 |
 | `agency: refused an Access request (cannot fetch the Access certs: …)`、`(unknown signing key)`、`(the signature does not match)` | ノードが `teamDomain` から Access の鍵を取得できないか、トークンがこのチームドメインのものではありません。 |
 | `agency: team acme/app: the team runtime fails: …` | チームランタイムが動かないか、5xx を返しました。行の残りに理由があります（下の応答の表を参照）。失敗し始めたときに 1 回書かれ、そのあとは理由が変わったときだけ書かれます。 |
 | `agency: team acme/app: the team runtime answers again` | 失敗していたランタイムが、また応答するようになりました。 |
@@ -353,7 +406,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 | `agency: a push notification was not sent: …` | APNs が通知を受け付けませんでした。30 秒後にもう一度送ります。 |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | その資金源の収集に失敗しました。理由が続きます（ログインが見つからない、トークンの期限切れ、トークンの拒否、サービスの不調）。最後の使用量ファイルは残ります。その資金源の設定ディレクトリでログインし直すか、そのログインで Claude Code を使うと、次の読み取りは成功します。続いて `agency: usage of "<id>" is read again` が出ます。 |
 | `agency: re-reading the replicas failed: …`、`agency: checking for new requests failed: …`、`agency: retrying the outbox failed: …` | ノードがデータディレクトリに書き込めませんでした（ディスクがいっぱいなど）。ほかのノードに届かないことはログに出ません。送信待ちのものは `agency status` に、ほかのノードにあるチームの写しをいつ読んだかは Web クライアントに表示されます。 |
-| `agency: <メッセージ>` のあとノードが止まる | `config.json` を読めないなどの理由で起動できませんでした。launchd は 10 秒ごとに起動し直します。 |
+| `agency: <メッセージ>` のあとノードが止まる | `config.json` を読めないなどの理由で起動できませんでした。launchd と systemd は 10 秒ごとに起動し直します。 |
 
 ### ノードの応答
 
@@ -363,7 +416,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 |---|---|
 | `503` `cannot start the team runtime: No such file or directory` | `config.json` に書かれたパス（`teams[].runtime.command`）にチームランタイムのコマンドがありません。 |
 | `503` `the team runtime did not answer within 20 seconds` | チームランタイムが止まっているか、応答が遅すぎます。 |
-| `503` `the team runtime did not write an agency-runtime/1 response (…): …` | チームランタイムが失敗しました。応答の末尾は、チームランタイムが標準エラーに書いた内容です。launchd の `PATH` にツールがないことがよくある原因です。 |
+| `503` `the team runtime did not write an agency-runtime/1 response (…): …` | チームランタイムが失敗しました。応答の末尾は、チームランタイムが標準エラーに書いた内容です。launchd のエージェントや systemd のユニットの `PATH` にツールがないことがよくある原因です。 |
 | `421` `wrong host` | `127.0.0.1:<ポート>` か `localhost:<ポート>` 以外のアドレスでページを開いています。 |
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
@@ -379,7 +432,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 
 - agency-runtime/1 の `describe`、`view`、`decide` に答えるコマンド。費用の画面を使うなら `tokenUsage` にも答えます。どの呼び出しにも 20 秒以内に答える必要があります。
 - `team-add --state-dir` に渡したものと同じ、チームの状態ディレクトリ。
-- チームランタイムが呼ぶすべてのツールが、launchd のエージェントに書かれた `PATH` から見つかること。
+- チームランタイムが呼ぶすべてのツールが、launchd のエージェントや systemd のユニットに書かれた `PATH` から見つかること。
 - 自分あての依頼は、`to` を省くか `owner` にすること。自分のほかにメンバーがいない組織では、すべての依頼が自分あてになります。自分を待っている参加者は、`waitingOn` が `{ "kind": "person", "person": "owner" }` になります。
 
 ノードは動いているあいだ、30 秒ごとと、ページがチームを読むたびに、チームランタイムにビューを問い合わせます。
