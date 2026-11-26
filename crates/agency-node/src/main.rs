@@ -348,6 +348,7 @@ fn status(node: &Node) {
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
+    warn_unknown_addressees(node, |line| println!("{line}"));
     for parcel in pending(node) {
         println!(
             "Outbox: {} -> {} ({} attempts, {})",
@@ -376,6 +377,17 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
     }
 }
 
+/// Says which entries of a team's `people` name no member, seat, or external party of its org, so that a
+/// request addressed to one is not left for no one. It is a warning: a typo here must not stop a node.
+fn warn_unknown_addressees(node: &Node, write: impl Fn(String)) {
+    for unknown in orgs::unknown_addressees(node) {
+        write(format!(
+            "team {}/{}: the people entry \"{}\" names {}, who is not a member, seat, or external party of org {}, so a request addressed to {} is answered by no one",
+            unknown.org, unknown.team, unknown.name, unknown.id, unknown.org, unknown.name
+        ));
+    }
+}
+
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     print!(
         "Join the org \"{}\" ({})? The fingerprint of root key {} matches the link. [y/N] ",
@@ -398,12 +410,22 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
     let logger = opened.logger().clone();
+    let recorder = opened.recorder().clone();
+    let flushing = recorder.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let flushing = flushing.clone();
+            let _ = tokio::task::spawn_blocking(move || flushing.flush()).await;
+        }
+    });
     logger.record(
         LogLevel::Info,
         "start",
         &format!("node running: {} (listening on {listen})", node.url()),
     );
     warn_misplaced(&node, |line| logger.warn("placement", &line));
+    warn_unknown_addressees(&node, |line| logger.warn("placement", &line));
     for line in agency_core::client::home_nodes(&node.config()).1 {
         logger.warn("placement", &line);
     }
@@ -466,6 +488,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await?;
+    let _ = tokio::task::spawn_blocking(move || recorder.flush()).await;
     Ok(())
 }
 

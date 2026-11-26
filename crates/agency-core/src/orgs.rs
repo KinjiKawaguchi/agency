@@ -382,6 +382,46 @@ pub fn misplaced_teams(node: &Node) -> Vec<Misplaced> {
     misplaced.collect()
 }
 
+/// An entry of a hosted team's `people` map that names an id the org has no member, seat, or external party
+/// for: a request addressed to that name is answered by no one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownAddressee {
+    pub org: Id,
+    pub team: Id,
+    /// The runtime name, the entry's key.
+    pub name: String,
+    /// The id the name maps to.
+    pub id: Id,
+}
+
+/// The entries of the hosted teams' `people` maps that name no member, seat, or external party of the org
+/// as this node has it. A team of an org this node has no definition of is left out: what it names cannot
+/// be judged yet.
+pub fn unknown_addressees(node: &Node) -> Vec<UnknownAddressee> {
+    let config = node.config();
+    let mut found = vec![];
+    for hosted in &config.teams {
+        let Some(doc) = node.store().load_org(&hosted.org) else {
+            continue;
+        };
+        let body = &doc.body;
+        for (name, id) in &hosted.people {
+            let is_known = body.people.iter().any(|one| &one.id == id)
+                || body.seats.iter().any(|one| &one.id == id)
+                || body.externals.iter().any(|one| &one.id == id);
+            if !is_known {
+                found.push(UnknownAddressee {
+                    org: hosted.org.clone(),
+                    team: hosted.team.clone(),
+                    name: name.clone(),
+                    id: id.clone(),
+                });
+            }
+        }
+    }
+    found
+}
+
 /// The org definition for a member's signed read, or for anyone with an open invite code.
 pub fn read_definition(
     node: &Node,

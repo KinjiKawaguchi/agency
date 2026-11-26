@@ -172,6 +172,7 @@ async fn waiting_in(
         let reader = Reader::Hosted {
             hosted: &hosted,
             person: &person.id,
+            definition,
         };
         let mine = mine(&view, &reader);
         (view, mine)

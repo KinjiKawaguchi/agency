@@ -2,7 +2,7 @@
 //! CLI device. The home node checks each one as the team's node will, then applies or sends it. It never
 //! signs them itself.
 use crate::decisions::{
-    accept_envelope, send_envelope, Accepted, Decided, DecisionNote, DecisionRecord,
+    accept_envelope_for, send_envelope, Accepted, Decided, DecisionNote, DecisionRecord,
 };
 use crate::devices::DeviceSigner;
 use crate::error::{Error, ErrorKind, Result};
@@ -49,7 +49,12 @@ pub async fn decide_signed(
     if !is_local {
         return send_envelope(node, place.node, signed, record).await;
     }
-    if accept_envelope(node, org, team, signed).await? == Accepted::Applied {
+    let (accepted, relayed_for) = accept_envelope_for(node, org, team, signed).await?;
+    if accepted == Accepted::Applied {
+        let record = DecisionRecord {
+            relayed_for,
+            ..record
+        };
         node.store().append_decision(&record)?;
     }
     Ok(Decided::Applied)

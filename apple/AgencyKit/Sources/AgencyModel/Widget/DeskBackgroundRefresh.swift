@@ -9,8 +9,8 @@ import Foundation
 @MainActor
 public struct DeskBackgroundRefresh {
     public enum Outcome: Equatable, Sendable {
-        /// The widgets' file was written from a complete reading of the desk.
-        case written
+        /// The widgets' file was written from a complete reading of the desk, which had this many requests waiting for the owner.
+        case written(waiting: Int)
         /// The desk could not be read in full (the sign-in ended, the node did not answer, a team did not). Nothing was written.
         case notRead
     }
@@ -26,20 +26,9 @@ public struct DeskBackgroundRefresh {
     /// One reading: the account, every team once (no waiting for a team that is not ready: a background run has
     /// seconds), and the file.
     public func run(now: Date = Date()) async -> Outcome {
-        guard let me = try? await source.me() else { return .notRead }
-        let expected = me.orgs.reduce(0) { $0 + $1.teams.count }
-        var teams: [Team] = []
-        await TeamReader.read(me.orgs, from: source, retry: .never) { _, result in
-            guard case .success(let snapshot) = result else { return }
-            // A copy of a remote team's view that was never fetched holds nothing yet: that is not a read, and its 0
-            // would be a number nothing explains.
-            if case .replica(nil, _, _) = snapshot.source { return }
-            teams.append(Team(snapshot: snapshot))
-        }
-        // A team that failed, was never fetched, or whose read was cancelled is missing from `teams`: that is an incomplete desk.
-        guard teams.count == expected else { return .notRead }
+        guard let (me, teams) = await DeskReading.complete(from: source) else { return .notRead }
         publisher.preferences.nodeSays(hidesTitles: me.hidesTitles)
-        publisher.publish(items: Desk.openItems(teams.sorted { $0.key < $1.key }), now: now)
-        return .written
+        publisher.publish(items: Desk.openItems(teams), now: now)
+        return .written(waiting: Desk.waitingCount(teams))
     }
 }

@@ -145,6 +145,7 @@ fn runtime_requests_carry_the_version_and_the_op_inline() {
         target: "app#14".into(),
         by: id("owner"),
         by_participant: Some("owner".into()),
+        on_behalf_of: None,
         payload: Payload {
             text: "Drop it".into(),
             choice: None,
