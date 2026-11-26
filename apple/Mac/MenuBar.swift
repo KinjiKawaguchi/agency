@@ -7,14 +7,16 @@ struct MenuBarLabel: View {
     let model: MacAppModel
 
     var body: some View {
+        let state = model.menuState
         Group {
-            if let text = Ja.MenuBar.label(model.waitingCount) {
+            if let text = Ja.MenuBar.label(state) {
                 Label(text, systemImage: "tray.full")
             } else {
                 Image(systemName: "tray")
             }
         }
-        .accessibilityLabel(Ja.MenuBar.accessibility(model.waitingCount))
+        .opacity(Ja.MenuBar.isDim(state) ? 0.5 : 1)
+        .accessibilityLabel(Ja.MenuBar.accessibility(state))
     }
 }
 
@@ -24,7 +26,10 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Text(Ja.MenuBar.status(model.waitingCount))
+        Text(Ja.MenuBar.status(model.menuState))
+        if let note = Ja.MenuBar.note(model.menuState) {
+            Text(note)
+        }
         Divider()
         Button(Ja.MenuBar.open, action: open)
         Button(Ja.MenuBar.quit) { NSApplication.shared.terminate(nil) }

@@ -1,5 +1,6 @@
 //! A Claude subscription's usage windows, from the usage endpoint of the Claude Code login.
 use super::claude_login::LoginStore;
+use super::renew::Renewer;
 use super::schedule::Failure;
 use super::UsageSource;
 use agency_core::ports::Clock;
@@ -17,6 +18,8 @@ pub struct ClaudeUsage {
     clock: Arc<dyn Clock>,
     http: reqwest::Client,
     url: String,
+    /// Renews an expired login by running Claude Code; without it, an expired token stays expired.
+    renewer: Option<Renewer>,
 }
 
 impl ClaudeUsage {
@@ -34,19 +37,46 @@ impl ClaudeUsage {
             clock,
             http,
             url,
+            renewer: None,
         })
     }
 
-    /// The access token that lasts longest, if it has not run out.
-    async fn token(&self) -> Result<String, Failure> {
+    /// The same, renewing an expired login with `renewer`.
+    pub fn with_renewer(self, renewer: Renewer) -> Self {
+        Self {
+            renewer: Some(renewer),
+            ..self
+        }
+    }
+
+    /// The access token that lasts longest, if it has not run out; otherwise when it ran out (in
+    /// milliseconds since the Unix epoch).
+    async fn token(&self) -> Result<Result<String, i64>, Failure> {
         let now_ms = self.clock.now().unix_timestamp() * 1000;
         let logins = self.logins.logins().await;
         let newest = logins.into_iter().max_by_key(|login| login.expires_at_ms);
         match newest {
             None => Err(Failure::NoLogin(self.logins.describe())),
-            Some(login) if login.expires_at_ms <= now_ms => Err(Failure::Expired),
-            Some(login) => Ok(login.token.expose().to_owned()),
+            Some(login) if login.expires_at_ms <= now_ms => Ok(Err(login.expires_at_ms)),
+            Some(login) => Ok(Ok(login.token.expose().to_owned())),
         }
+    }
+
+    /// The access token to use. When it has expired, and a renewer is set, Claude Code is run once to
+    /// renew it (within the renewer's limits) and the login is read again.
+    async fn usable_token(&self) -> Result<String, Failure> {
+        let expired_at_ms = match self.token().await? {
+            Ok(token) => return Ok(token),
+            Err(expired_at_ms) => expired_at_ms,
+        };
+        let Some(renewer) = &self.renewer else {
+            return Err(Failure::Expired);
+        };
+        let now = self.clock.now().unix_timestamp();
+        if !renewer.renew(expired_at_ms, now).await? {
+            return Err(Failure::Expired);
+        }
+        self.token().await?.map_err(|_| Failure::Expired)
     }
 }
 
@@ -87,7 +117,7 @@ fn windows(body: &str) -> Result<Value, Failure> {
 #[async_trait]
 impl UsageSource for ClaudeUsage {
     async fn read(&self) -> Result<Value, Failure> {
-        let token = self.token().await?;
+        let token = self.usable_token().await?;
         let mut authorization =
             HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| Failure::Malformed)?;
         authorization.set_sensitive(true);

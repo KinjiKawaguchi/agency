@@ -6,10 +6,12 @@ use crate::devices::DeviceRequestRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
 use crate::outbox::Parcel;
+use crate::peer_about::PeerAbout;
 use crate::push::{Notice, PushError};
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
 use crate::web_push::WebSubscription;
+use agency_proto::about::About;
 use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow, VapidKey};
 use agency_proto::clock::OffsetDateTime;
@@ -19,11 +21,12 @@ use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
-    DeviceChange, Envelope, EnvelopeId, Id, JoinRequest, RuntimeDecision, Signed, TeamView,
-    Timestamp, TokenUsage,
+    DeviceChange, Envelope, EnvelopeId, Id, JoinRequest, PublicKey, RuntimeDecision, Signed,
+    TeamView, Timestamp, TokenUsage,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
@@ -50,6 +53,29 @@ pub trait WriteLock: Send + Sync {
 pub trait ConfigStore {
     fn load_config(&self) -> Result<NodeConfig>;
     fn save_config(&self, config: &NodeConfig) -> Result<()>;
+}
+
+/// The root keys of the orgs this node is root of, kept apart from its account key: the account key
+/// signs automated things (reads, join requests), a root key only org definition versions, which a
+/// person makes. An adapter reads a secret only to sign, may ask for the owner's presence first, and
+/// never lets it out. An org created before root keys were kept apart uses the account key as its root
+/// until it is rotated (`orgs::rotate_root`).
+pub trait RootKeys: Send + Sync {
+    /// Makes a new root key for `org`, keeps it, and answers its public key.
+    fn create(&self, org: &Id) -> std::result::Result<PublicKey, String>;
+    /// Whether this node keeps the secret of `key` as a root key of `org`. Never asks for presence.
+    fn holds(&self, org: &Id, key: &PublicKey) -> bool;
+    /// Signs `message` with `key`, a root key of `org` kept here. `purpose` says what it signs, for a
+    /// presence prompt. Refused when the owner does not confirm, or the key is not kept here.
+    fn sign(
+        &self,
+        org: &Id,
+        key: &PublicKey,
+        message: &[u8],
+        purpose: &str,
+    ) -> std::result::Result<String, String>;
+    /// Forgets a root key of `org` that no version will be signed with again.
+    fn forget(&self, org: &Id, key: &PublicKey) -> std::result::Result<(), String>;
 }
 
 pub trait OrgStore {
@@ -142,6 +168,12 @@ pub trait ShipLedger {
     fn append_ship(&self, org: &Id, record: &ShipRecord) -> Result<()>;
 }
 
+/// What this node has read of the other nodes of an org, by the node's origin (`peer_about`).
+pub trait AboutStore {
+    fn peer_abouts(&self, org: &Id) -> BTreeMap<String, PeerAbout>;
+    fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
+}
+
 pub trait ReplicaStore {
     fn load_replica(&self, org: &Id, team: &Id) -> Option<Replica>;
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
@@ -161,6 +193,7 @@ pub trait Store:
     + PushStore
     + OutcomeStore
     + ShipLedger
+    + AboutStore
     + Send
     + Sync
 {
@@ -178,6 +211,7 @@ impl<
             + PushStore
             + OutcomeStore
             + ShipLedger
+            + AboutStore
             + Send
             + Sync,
     > Store for T
@@ -231,6 +265,8 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<Evaluation, PeerError>;
+    /// What another node says about itself (`routes::about`), by a member's signed read.
+    async fn get_about(&self, node: &str, path: &str, auth: &ReadAuth) -> Result<About, PeerError>;
     async fn get_definition(
         &self,
         node: &str,

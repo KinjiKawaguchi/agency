@@ -2,6 +2,9 @@
 import type { Currency } from "./Currency.js";
 
 /**
- * What a KPI's number counts. `money` names its currency and is never converted; `seconds` is a duration.
+ * What a KPI's number counts. A number is any finite value (negative ones included) and no range is checked for any
+ * unit: `money` is an amount in its currency, never converted; `percent` is a number of percent (41.5 means
+ * 41.5%, and it can be above 100); `count` is a plain count; `ratio` is a plain number (1.5 means 1.5 times); and
+ * `seconds` is a duration in seconds.
  */
 export type KpiUnit = { "unit": "money", currency: Currency, } | { "unit": "percent" } | { "unit": "count" } | { "unit": "ratio" } | { "unit": "seconds" };

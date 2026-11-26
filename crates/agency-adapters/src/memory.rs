@@ -355,3 +355,99 @@ impl Notifier for MemoryNotifier {
         Ok(())
     }
 }
+
+/// Root keys in memory for tests: made from a seed and a counter, so they repeat; signing can be
+/// refused (as the owner declining a presence prompt), and each signature is counted.
+#[derive(Default)]
+pub struct MemoryRootKeys {
+    state: Mutex<MemoryRootKeysState>,
+}
+
+#[derive(Default)]
+struct MemoryRootKeysState {
+    /// Without a seed, keys are random.
+    seed: Option<u8>,
+    made: u8,
+    keys: Vec<(agency_proto::Id, agency_proto::AccountKey)>,
+    is_refusing: bool,
+    signed: usize,
+}
+
+impl MemoryRootKeys {
+    /// Keys made from `seed` (and how many were made before), so a seeded node repeats them.
+    pub fn seeded(seed: u8) -> Self {
+        Self {
+            state: Mutex::new(MemoryRootKeysState {
+                seed: Some(seed),
+                ..MemoryRootKeysState::default()
+            }),
+        }
+    }
+
+    /// Refuses every signature from now on, or stops refusing.
+    pub fn refuse(&self, is_refusing: bool) {
+        self.state.lock().unwrap().is_refusing = is_refusing;
+    }
+
+    /// How many signatures were made.
+    pub fn signed(&self) -> usize {
+        self.state.lock().unwrap().signed
+    }
+}
+
+impl agency_core::ports::RootKeys for MemoryRootKeys {
+    fn create(&self, org: &agency_proto::Id) -> Result<agency_proto::PublicKey, String> {
+        let mut state = self.state.lock().unwrap();
+        state.made = state.made.wrapping_add(1);
+        let key = match state.seed {
+            Some(byte) => {
+                let mut seed = [byte; 32];
+                seed[0] = 0xb0;
+                seed[31] = state.made;
+                agency_proto::AccountKey::from_seed(seed)
+            }
+            None => agency_proto::AccountKey::generate(),
+        };
+        let public = key.public();
+        state.keys.push((org.clone(), key));
+        Ok(public)
+    }
+
+    fn holds(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> bool {
+        let state = self.state.lock().unwrap();
+        state
+            .keys
+            .iter()
+            .any(|(one, kept)| one == org && &kept.public() == key)
+    }
+
+    fn sign(
+        &self,
+        org: &agency_proto::Id,
+        key: &agency_proto::PublicKey,
+        message: &[u8],
+        _purpose: &str,
+    ) -> Result<String, String> {
+        let mut state = self.state.lock().unwrap();
+        if state.is_refusing {
+            return Err("the owner did not confirm".into());
+        }
+        let found = state
+            .keys
+            .iter()
+            .find(|(one, kept)| one == org && &kept.public() == key);
+        let signature = found
+            .map(|(_, kept)| kept.sign(message))
+            .ok_or_else(|| format!("no root key of {org} here"))?;
+        state.signed += 1;
+        Ok(signature)
+    }
+
+    fn forget(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> Result<(), String> {
+        let mut state = self.state.lock().unwrap();
+        state
+            .keys
+            .retain(|(one, kept)| !(one == org && &kept.public() == key));
+        Ok(())
+    }
+}

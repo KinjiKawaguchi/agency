@@ -88,6 +88,12 @@ public final class DeskStore {
     /// make the desk unread again.
     public private(set) var hasAnswered = false
 
+    /// Whether the last read that finished failed, wholly (the account, the sign-in) or in part (a team that could not be
+    /// read, so the number is not the whole desk). Set when a read fails and cleared when one finishes without a
+    /// failure; a read under way leaves it as it was, so a place that shows the number (the Mac's menu bar) does not
+    /// look current while the next read of a node that is down is still waiting.
+    public private(set) var isReadFailing = false
+
     /// Whether the node has answered: a read finished, or a team's view was read. Before that the lists are empty because
     /// nothing was read, not because nothing is there, and a screen shows that it is loading, not an empty desk.
     public var hasAnswer: Bool { hasAnswered || !teams.isEmpty }
@@ -107,6 +113,7 @@ public final class DeskStore {
 
     /// Reads every team's view and the recent decisions. A team that cannot be read does not hide the others.
     public func refresh() async {
+        let before = loading
         loading = .loading
         do {
             let me = try await source.me()
@@ -121,16 +128,28 @@ public final class DeskStore {
             await refreshRecent()
             needsSignIn = false
             hasAnswered = true
+            isReadFailing = !teamFailures.isEmpty
             loading = .loaded
+        } catch where Self.isCancelled(error) {
+            // The screen that asked went away (the Mac's sidebar cancels the desk's read when another screen is chosen):
+            // that says nothing about the node, so what was known stays as it was.
+            loading = before
         } catch NodeError.sessionExpired {
             needsSignIn = true
+            isReadFailing = true
             loading = .failed("The sign-in has ended.")
         } catch NodeError.notSignedIn {
             needsSignIn = true
+            isReadFailing = true
             loading = .failed("Not signed in.")
         } catch {
+            isReadFailing = true
             loading = .failed(Self.reason(error))
         }
+    }
+
+    private static func isCancelled(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// A team that was read keeps its last answer when a later read of it fails, as the web client does, and

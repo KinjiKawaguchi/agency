@@ -309,6 +309,13 @@ pub enum UsageCollector {
     Claude {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         config_dir: Option<PathBuf>,
+        /// Whether the node runs `claude` once, within limits, to renew the login when its access token
+        /// has expired and nobody has used the login (default true). It never renews a token itself.
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        renew: bool,
+        /// The `claude` program that renews the login (default: `claude` on the node's `PATH`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<PathBuf>,
     },
     /// A ChatGPT plan used through Codex, read from `codex app-server`, which holds the login itself.
     /// `codex_home` is the `CODEX_HOME` the login lives in (default `~/.codex`); `command` is the
@@ -320,6 +327,14 @@ pub enum UsageCollector {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         command: Option<PathBuf>,
     },
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// Cloudflare Access for requests that arrive through a tunnel or at the public host name.
@@ -398,6 +413,18 @@ impl NodeConfig {
             root_fingerprint,
             root_node: None,
         });
+    }
+
+    /// Moves the trust in `org` from one root key to the next, once a version that names the new root
+    /// (signed by the old one) was accepted. Only the trusted fingerprint `from` is replaced.
+    pub fn retrust(&mut self, org: &Id, from: &str, to: String) {
+        let trusted = self
+            .trusted
+            .iter_mut()
+            .find(|one| &one.org == org && one.root_fingerprint == from);
+        if let Some(one) = trusted {
+            one.root_fingerprint = to;
+        }
     }
 
     /// `trust`, and where the root's node is. It records the root's node only for the same root.
@@ -501,6 +528,46 @@ mod tests {
             let error = hosts(&["push.acme.example", bad]).check().unwrap_err();
             assert!(error.contains(bad), "{error}");
         }
+    }
+
+    #[test]
+    fn a_claude_collector_renews_by_default_and_says_so_in_the_file_only_when_it_does_not() {
+        let default: UsageCollector = serde_json::from_str(r#"{"type":"claude"}"#).unwrap();
+        assert_eq!(
+            default,
+            UsageCollector::Claude {
+                config_dir: None,
+                renew: true,
+                command: None
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&default).unwrap(),
+            r#"{"type":"claude"}"#,
+            "the default is not written"
+        );
+        let off: UsageCollector = serde_json::from_str(
+            r#"{"type":"claude","configDir":"/home/alice/.claude-a","renew":false,"command":"/opt/bin/claude"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            off,
+            UsageCollector::Claude {
+                config_dir: Some("/home/alice/.claude-a".into()),
+                renew: false,
+                command: Some("/opt/bin/claude".into())
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&off).unwrap(),
+            r#"{"type":"claude","configDir":"/home/alice/.claude-a","renew":false,"command":"/opt/bin/claude"}"#
+        );
+        assert!(
+            serde_json::from_str::<UsageCollector>(r#"{"type":"claude","renews":false}"#).is_err()
+        );
+        assert!(
+            serde_json::from_str::<UsageCollector>(r#"{"type":"codex","renew":false}"#).is_err()
+        );
     }
 
     #[test]
