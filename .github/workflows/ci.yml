@@ -61,7 +61,7 @@ jobs:
   # so it is tested on Linux. The app itself needs Xcode, and this repository has no macOS runner.
   apple-package:
     runs-on: ubuntu-latest
-    container: swift:6.2
+    container: swift:6.4
     defaults:
       run:
         working-directory: apple/AgencyKit
