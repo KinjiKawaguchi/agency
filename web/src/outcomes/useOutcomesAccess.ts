@@ -24,7 +24,8 @@ export function useOutcomesAccess(): OutcomesAccess {
   const orgs = me.data?.orgs ?? [] /* stand-in-ok(routing): the orgs to ask about once the viewer is read; the status below says it is not known yet */
   const reads = useQueries({ queries: orgs.map((org) => outcomesQuery(api, org.id, DEFAULT_DAYS)) })
   if (me.isPending) return { status: 'loading' }
-  if (me.error !== null) return { status: 'unknown', error: me.error }
+  // A refetch that failed keeps the data it had and sets the error: the viewer already read is still read.
+  if (me.data === undefined && me.error !== null) return { status: 'unknown', error: me.error }
   const readable = orgs.filter((_org, index) => reads[index]?.data !== undefined).map((org) => org.id)
   if (readable.length > 0) return { status: 'available', orgs: readable }
   if (reads.some((read) => read.isPending)) return { status: 'loading' }

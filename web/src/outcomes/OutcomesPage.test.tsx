@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { heldNode } from '../test/heldNode'
-import { renderApp } from '../test/render'
+import { refreshQueries, renderApp } from '../test/render'
 import { createTestNode } from '../test/testDevice'
 
 const card = async (label: string) => within(await screen.findByRole('article', { name: label }))
@@ -30,6 +30,22 @@ describe('the owner’s outcomes page', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Outcomes' })).toBeInTheDocument()
     expect(outcomesTab()).toBeInTheDocument()
+  })
+
+  it('stays through a read that fails after it has answered: the page and the menu entry are kept', async () => {
+    const node = createTestNode({ outcomes: true })
+    let isDown = false
+    const client = createApiClient((request) => (isDown ? Promise.resolve(new Response(JSON.stringify({ error: 'The node is restarting.' }), { status: 500, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Outcomes' })).toBeInTheDocument()
+    isDown = true
+    await refreshQueries()
+    await refreshQueries(['me'])
+    await refreshQueries(['outcomes'])
+    expect(screen.getByRole('heading', { level: 1, name: 'Outcomes' })).toBeInTheDocument()
+    expect(outcomesTab()).toBeInTheDocument()
+    expect(screen.queryByText('The node is restarting.')).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Monthly revenue' })).toBeInTheDocument()
   })
 
   it('treats 404 like 403: not the owner’s, nothing to show', async () => {
