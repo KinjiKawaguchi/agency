@@ -11,7 +11,18 @@ public enum SignInExchangeError: Error, Equatable, Sendable {
     case stateMismatch
     /// The callback has no code, or one that is not 43 base64url characters.
     case missingCode
+    /// This sign-in already gave its code: a callback delivered twice redeems once.
+    case alreadyUsed
+    /// The sign-in was started too long ago for the owner still to be at it.
+    case expired
 }
+
+/// What redeems a code: the node's client. A stand-in in tests.
+public protocol SignInRedeeming: Sendable {
+    func redeemSignIn(code: String, verifier: String) async throws -> String
+}
+
+extension NodeClient: SignInRedeeming {}
 
 /// One sign-in of the owner to a home node through the system's web authentication session, which runs in Safari's
 /// context, where passkeys and password managers work, and for any host.
@@ -25,7 +36,7 @@ public enum SignInExchangeError: Error, Equatable, Sendable {
 /// The callback comes back one of two ways (`Transport`): a universal link on the node's own host, which only the app
 /// the node's association file names can receive, for a host the build has an associated domain for; or the custom
 /// scheme `agency-signin`, which needs no domain, for any other. The callback is untrusted input.
-public struct SignInExchange: Equatable, Sendable {
+public final class SignInExchange: @unchecked Sendable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public enum Transport: Equatable, Sendable {
         case universalLink
         case customScheme
@@ -34,6 +45,8 @@ public struct SignInExchange: Equatable, Sendable {
     public static let startPath = "/app/handoff"
     public static let callbackPath = "/app/callback"
     public static let callbackScheme = "agency-signin"
+    /// How long after it started a sign-in can still give its code.
+    public static let lifetime: TimeInterval = 10 * 60
 
     static let byteCount = 32
     static let secretLength = 43
@@ -41,12 +54,16 @@ public struct SignInExchange: Equatable, Sendable {
     public let host: String
     public let transport: Transport
     /// 43 characters of base64url: 256 bits made for this sign-in; it ties the callback to it.
-    public let state: String
-    /// 43 characters of base64url: 256 bits that never leave the app until the code is redeemed.
-    public let verifier: String
+    let state: String
+    /// 43 characters of base64url: 256 bits that never leave the app until the code is redeemed (`redeem`).
+    let verifier: String
     /// base64url of the SHA-256 of `verifier`, as the node expects it.
-    public let challenge: String
+    let challenge: String
     private let port: Int
+    private let startedAt: Date
+    private let now: () -> Date
+    private let lock = NSLock()
+    private var isUsed = false
 
     /// A sign-in is possible for a node on `https` (Access is only on https). The callback is a universal link when
     /// the host is one of the build's associated domains, and the custom scheme otherwise.
@@ -54,10 +71,12 @@ public struct SignInExchange: Equatable, Sendable {
     ///   - associatedHosts: what the build has in its associated domains: a host (`node.example.com`) or a
     ///     wildcard (`*.example.com`, which matches one label below `example.com` and not `example.com` itself).
     ///   - randomBytes: 32 bytes each for the `state` and the `verifier`; the system's generator unless a test says.
+    ///   - now: the clock, for the lifetime; a test hands in its own.
     public init?(
         homeNode: HomeNodeURL,
         associatedHosts: [String],
-        randomBytes: () -> [UInt8] = SignInExchange.systemRandomBytes
+        randomBytes: () -> [UInt8] = SignInExchange.systemRandomBytes,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         guard homeNode.scheme == "https" else { return nil }
         let stateBytes = randomBytes()
@@ -70,7 +89,14 @@ public struct SignInExchange: Equatable, Sendable {
         challenge = Base64URL.encode(Array(Sha256.digest(Data(verifier.utf8))))
         let isAssociated = homeNode.port == 443 && Self.isAssociated(host: homeNode.host, with: associatedHosts)
         transport = isAssociated ? .universalLink : .customScheme
+        self.now = now
+        startedAt = now()
     }
+
+    /// What a print, a log line or a debugger says of it: where it signs in, and nothing that is secret.
+    public var description: String { "SignInExchange(host: \(host), transport: \(transport))" }
+    public var debugDescription: String { description }
+    public var customMirror: Mirror { Mirror(self, children: ["host": host, "transport": "\(transport)"], displayStyle: .class) }
 
     public static func systemRandomBytes() -> [UInt8] {
         (0..<byteCount).map { _ in UInt8.random(in: .min ... .max) }
@@ -110,7 +136,10 @@ public struct SignInExchange: Equatable, Sendable {
     public var callbackHost: String? { transport == .universalLink ? host : nil }
     public var callbackPath: String { Self.callbackPath }
 
-    /// The code from the address the session returned.
+    /// The code from the address the session returned, once. Only this sign-in's own callback gives it: another address
+    /// (a page that opens `agency-signin://callback#...`, a callback of another sign-in) is refused and does **not**
+    /// use the sign-in up, or anyone could cancel it. Once the code has been given, a second delivery of the same
+    /// callback (the session's completion and the app's URL handler both see it) is refused too.
     public func code(from callback: URL) throws -> String {
         guard let components = URLComponents(url: callback, resolvingAgainstBaseURL: false), isOurCallback(components),
               let fragment = components.percentEncodedFragment,
@@ -120,7 +149,17 @@ public struct SignInExchange: Equatable, Sendable {
         guard let code = fields["code"], code.count == Self.secretLength, Base64URL.isAlphabet(Substring(code)) else {
             throw SignInExchangeError.missingCode
         }
-        return code
+        return try lock.withLock {
+            guard !isUsed else { throw SignInExchangeError.alreadyUsed }
+            guard now().timeIntervalSince(startedAt) <= Self.lifetime else { throw SignInExchangeError.expired }
+            isUsed = true
+            return code
+        }
+    }
+
+    /// Redeems the code at the node with the verifier, which goes nowhere else.
+    public func redeem(code: String, using redeemer: any SignInRedeeming) async throws -> String {
+        try await redeemer.redeemSignIn(code: code, verifier: verifier)
     }
 
     private func isOurCallback(_ components: URLComponents) -> Bool {
@@ -128,9 +167,11 @@ public struct SignInExchange: Equatable, Sendable {
         case .universalLink:
             components.scheme?.lowercased() == "https" && components.host?.lowercased() == host
                 && (components.port ?? 443) == 443 && components.percentEncodedPath == Self.callbackPath
+                && components.percentEncodedQuery == nil
         case .customScheme:
             components.scheme?.lowercased() == Self.callbackScheme && components.host?.lowercased() == "callback"
                 && components.port == nil && components.percentEncodedPath.isEmpty && components.user == nil
+                && components.percentEncodedQuery == nil
         }
     }
 

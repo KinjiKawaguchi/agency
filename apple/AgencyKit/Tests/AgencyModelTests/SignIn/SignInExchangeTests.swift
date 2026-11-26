@@ -14,11 +14,11 @@ struct SignInExchangeTests {
     private let challenge = "zwkx4Wi0nph1A8rxivb-JTtrPYKoEAjD6OHuZ8fI3FU"
     private let code = String(repeating: "c", count: 43)
 
-    private func exchange(_ host: String, associated: [String] = ["node.example.com"]) throws -> SignInExchange {
+    private func exchange(_ host: String, associated: [String] = ["node.example.com"], now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_795_521_600) }) throws -> SignInExchange {
         var next: UInt8 = 0
         return try #require(SignInExchange(
             homeNode: try HomeNodeURL(validating: host), associatedHosts: associated,
-            randomBytes: { defer { next += 32 }; return Self.bytes(from: next) }
+            randomBytes: { defer { next += 32 }; return Self.bytes(from: next) }, now: now
         ))
     }
 
@@ -105,6 +105,8 @@ struct SignInExchangeTests {
         "https://node.example.com/app/callback#code=CODE&state=STATE&extra=1",
         "https://node.example.com/app/callback#code=CODE&code=CODE&state=STATE",
         "https://node.example.com/app/callback#code&state=STATE",
+        "https://node.example.com/app/callback?x=1#code=CODE&state=STATE",
+        "https://node.example.com/app/callback?#code=CODE&state=STATE",
     ])
     func rejectsLink(template: String) throws {
         let one = try exchange("node.example.com")
@@ -120,6 +122,7 @@ struct SignInExchangeTests {
         "other-scheme://callback#code=CODE&state=STATE",
         "https://other.example.org/app/callback#code=CODE&state=STATE",
         "agency-signin://callback#code=CODE",
+        "agency-signin://callback?x=1#code=CODE&state=STATE",
     ])
     func rejectsScheme(template: String) throws {
         let one = try exchange("other.example.org")
@@ -137,5 +140,85 @@ struct SignInExchangeTests {
                 try one.code(from: URL(string: "https://node.example.com/app/callback#code=\(bad)&state=\(state)")!)
             }
         }
+    }
+
+    // MARK: Once, and only for its own callback
+
+    @Test("a callback delivered twice (the session's completion and the app's URL handler) gives its code once")
+    func once() throws {
+        let one = try exchange("node.example.com")
+        let url = URL(string: "https://node.example.com/app/callback#code=\(code)&state=\(state)")!
+        #expect(try one.code(from: url) == code)
+        #expect(throws: SignInExchangeError.alreadyUsed) { try one.code(from: url) }
+        #expect(throws: SignInExchangeError.alreadyUsed) { try one.code(from: url) }
+    }
+
+    @Test("a wrong callback does not use the sign-in up: a page that opens agency-signin://callback# cannot cancel it")
+    func wrongDoesNotBurn() throws {
+        let one = try exchange("other.example.org")
+        for wrong in [
+            "agency-signin://callback#code=\(code)&state=\(String(repeating: "z", count: 43))",
+            "agency-signin://callback#code=short&state=\(state)",
+            "agency-signin://callback#",
+            "agency-signin://callback",
+            "agency-signin://evil#code=\(code)&state=\(state)",
+            "agency-signin://callback?x=1#code=\(code)&state=\(state)",
+        ] {
+            #expect(throws: SignInExchangeError.self, "\(wrong)") { try one.code(from: URL(string: wrong)!) }
+        }
+        #expect(try one.code(from: URL(string: "agency-signin://callback#code=\(code)&state=\(state)")!) == code, "the real callback still works")
+    }
+
+    @Test("a sign-in lives ten minutes: after that the callback is expired, and a late one gives nothing")
+    func lifetime() throws {
+        let clock = Clock(Date(timeIntervalSince1970: 1_795_521_600))
+        let one = try exchange("node.example.com", now: { clock.now })
+        let url = URL(string: "https://node.example.com/app/callback#code=\(code)&state=\(state)")!
+        clock.advance(10 * 60)
+        #expect(try one.code(from: url) == code, "at the ten minutes it still works")
+        let late = try exchange("node.example.com", now: { clock.now })
+        clock.advance(10 * 60 + 1)
+        #expect(throws: SignInExchangeError.expired) { try late.code(from: url) }
+    }
+
+    @Test("a print, a log line or a dump says where it signs in and nothing secret")
+    func hidesSecrets() throws {
+        let one = try exchange("node.example.com")
+        var dumped = ""
+        dump(one, to: &dumped)
+        for text in ["\(one)", String(describing: one), String(reflecting: one), one.description, one.debugDescription, dumped] {
+            #expect(text.contains("node.example.com"))
+            #expect(!text.contains(verifier) && !text.contains(state) && !text.contains(challenge), "\(text)")
+        }
+    }
+
+    @Test("redeeming gives the verifier to the redeemer and to nobody else, and returns the token")
+    func redeem() async throws {
+        let one = try exchange("node.example.com")
+        let redeemer = Redeemer(token: "a.b.c")
+        #expect(try await one.redeem(code: code, using: redeemer) == "a.b.c")
+        #expect(redeemer.calls == [Redeemer.Call(code: code, verifier: verifier)])
+        #expect(!one.startURL.absoluteString.contains(verifier))
+    }
+}
+
+private final class Clock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    init(_ start: Date) { current = start }
+    var now: Date { lock.withLock { current } }
+    func advance(_ seconds: TimeInterval) { lock.withLock { current = current.addingTimeInterval(seconds) } }
+}
+
+private final class Redeemer: SignInRedeeming, @unchecked Sendable {
+    struct Call: Equatable { let code: String; let verifier: String }
+    private let lock = NSLock()
+    private var recorded: [Call] = []
+    private let token: String
+    init(token: String) { self.token = token }
+    var calls: [Call] { lock.withLock { recorded } }
+    func redeemSignIn(code: String, verifier: String) async throws -> String {
+        lock.withLock { recorded.append(Call(code: code, verifier: verifier)) }
+        return token
     }
 }
