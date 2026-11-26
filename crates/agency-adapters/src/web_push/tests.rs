@@ -336,3 +336,28 @@ fn what_the_worker_is_told_leaves_out_the_text_the_node_does_not_have() {
     );
     assert_eq!(urgency(&device(None)), "normal");
 }
+
+#[tokio::test]
+async fn the_client_of_a_real_node_does_not_connect_to_a_name_that_resolves_inside_the_machine() {
+    let (url, seen) = stand_in().await;
+    let port = url.rsplit(':').next().unwrap();
+    let address = format!("http://localhost:{port}/other");
+    // Without the filter, the stand-in is reached through the name: the check below is not vacuous.
+    assert!(web_push().http.post(&address).send().await.is_ok());
+    assert_eq!(seen.lock().unwrap().len(), 1);
+
+    let dir = tempfile::tempdir().unwrap();
+    let node_sender = WebPush::new(
+        &WebPushConfig::default(),
+        "https://node.acme.example".into(),
+        &dir.path().join("vapid.key"),
+        Arc::new(ManualClock::at(T0)),
+    )
+    .unwrap();
+    assert!(node_sender.http.post(&address).send().await.is_err());
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "the stand-in saw nothing more"
+    );
+}
