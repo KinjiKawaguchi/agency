@@ -24,6 +24,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
+  const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -31,6 +32,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    outcomes: outcomes === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),

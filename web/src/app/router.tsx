@@ -1,3 +1,5 @@
+import { OutcomesPage } from '../outcomes/OutcomesPage'
+import { OUTCOMES_PERIODS } from '../outcomes/useOutcomesAccess'
 import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
@@ -83,11 +85,25 @@ const evaluationRoute = createRoute({
   },
 })
 
+const outcomesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/outcomes',
+  validateSearch: (search: Record<string, unknown>): { org?: string; days?: number } => ({
+    ...(nonEmpty(search.org) === undefined ? {} : { org: nonEmpty(search.org) }),
+    ...(OUTCOMES_PERIODS.find((one) => one === Number(search.days)) === undefined ? {} : { days: Number(search.days) }),
+  }),
+  component: function OutcomesRoute() {
+    const { org, days } = outcomesRoute.useSearch()
+    const navigate = outcomesRoute.useNavigate()
+    return <OutcomesPage org={org} days={days} onChange={(next) => void navigate({ search: next, replace: true })} />
+  },
+})
+
 const liveRoute = createRoute({ getParentRoute: () => rootRoute, path: '/live', component: LivePage })
 
 const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, devicesRoute])
+const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, outcomesRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })
