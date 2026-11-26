@@ -247,7 +247,7 @@ pub fn kpi_lines(body: &OrgDefinition) -> Vec<String> {
         format!(
             "  KPI {} ({}), {kind}, {}, {better} is better",
             kpi.id,
-            kpi.label,
+            agency_proto::org::printable(&kpi.label),
             unit_text(&kpi.unit)
         )
     });

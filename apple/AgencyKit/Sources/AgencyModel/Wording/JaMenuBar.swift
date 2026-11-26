@@ -66,9 +66,17 @@ extension Ja {
             if case .count(_, true) = state { staleNote } else { nil }
         }
 
-        /// What a screen reader says of the item.
-        public static func accessibility(_ state: MenuBarState) -> String {
-            ["Agency: \(status(state))", note(state)].compactMap { $0 }.joined(separator: "。")
+        /// The symbol of the item: a warning while a recovery of an org waits (the owner can cancel it only until it takes effect, and
+        /// the menu says which), the full tray when requests wait, the empty tray otherwise.
+        public static func symbol(_ state: MenuBarState, hasRecovery: Bool) -> String {
+            if hasRecovery { return "exclamationmark.triangle.fill" }
+            return label(state) == nil ? "tray" : "tray.full"
+        }
+
+        /// What a screen reader says of the item: the state, and a line for each recovery that was started
+        /// (`RecoveryNotice.headline`).
+        public static func accessibility(_ state: MenuBarState, recoveries: [String] = []) -> String {
+            (["Agency: \(status(state))", note(state)].compactMap { $0 } + recoveries).joined(separator: "。")
         }
     }
 }

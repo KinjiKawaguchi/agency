@@ -156,7 +156,7 @@ pub fn department_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
             format!(
                 "  Department {} ({}), under {}, head {}, teams: {}",
                 department.id,
-                department.label,
+                agency_proto::org::printable(&department.label),
                 department.parent.as_ref().map_or("none", Id::as_str),
                 department.head.as_ref().map_or("none", Id::as_str),
                 if teams.is_empty() {

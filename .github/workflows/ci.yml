@@ -91,9 +91,11 @@ jobs:
           shellcheck -x scripts/ci/flaky-weekly.sh scripts/test/flaky-weekly.sh scripts/test/flaky-fakes/*
           scripts/test/flaky-weekly.sh
       - name: Check the scripts
-        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
+        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/debian-package.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
       - name: Test the systemd unit script
         run: scripts/test/systemd-unit.sh
+      - name: Test the Debian package script
+        run: scripts/test/debian-package.sh
       - name: Test the deploy script, against stand-ins for launchctl and curl
         run: scripts/test/deploy-macos.sh
       - name: Test the macOS release script and the packaging, against stand-ins for gh, cargo, and npm

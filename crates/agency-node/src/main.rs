@@ -39,6 +39,7 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "agency",
+    version,
     about = "Agency's node: runs organizations of AI agents and people across many machines"
 )]
 struct Cli {
@@ -270,7 +271,7 @@ fn status(node: &Node) {
         println!(
             "Org {} ({}), version {}, {}, people: {}, teams: {}",
             doc.body.org,
-            doc.body.label,
+            agency_proto::org::printable(&doc.body.label),
             doc.body.version,
             role,
             doc.body.people.len(),
@@ -331,7 +332,7 @@ fn status(node: &Node) {
             println!(
                 "Device in {}: {} ({}), pairing code {}",
                 doc.body.org,
-                device.label,
+                agency_proto::org::printable(&device.label),
                 device.id,
                 device.public_key.pairing_code()
             );
@@ -378,7 +379,9 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
 fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     print!(
         "Join the org \"{}\" ({})? The fingerprint of root key {} matches the link. [y/N] ",
-        definition.label, definition.org, definition.root.account
+        agency_proto::org::printable(&definition.label),
+        definition.org,
+        definition.root.account
     );
     let _ = std::io::stdout().flush();
     let mut answer = String::new();
@@ -607,7 +610,7 @@ async fn run(cli: Cli) -> Result<()> {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
                 Joined::Member(doc) => println!(
                     "Joined org {} ({}) (version {})",
-                    doc.body.org, doc.body.label, doc.body.version
+                    doc.body.org, agency_proto::org::printable(&doc.body.label), doc.body.version
                 ),
                 Joined::Waiting(message) => println!(
                     "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."
