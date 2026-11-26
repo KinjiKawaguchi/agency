@@ -1,0 +1,3 @@
+#!/bin/bash
+# A stand-in for npm.
+echo "$*" >> "${FAKE_STATE:?}/npm"
