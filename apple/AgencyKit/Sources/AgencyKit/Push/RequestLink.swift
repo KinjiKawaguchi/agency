@@ -26,7 +26,7 @@ public struct RequestLink: Equatable, Sendable {
     private static let allowedScalars = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-".unicodeScalars)
     private static let maximumLength = 128
 
-    private static func identifier(_ value: Any?) -> String? {
+    static func identifier(_ value: Any?) -> String? {
         guard let text = value as? String, !text.isEmpty, text.count <= maximumLength,
               text.unicodeScalars.allSatisfy(allowedScalars.contains)
         else { return nil }

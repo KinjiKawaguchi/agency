@@ -207,9 +207,28 @@ struct NodeClientTests {
         ])
         let registered = try await client(transport).registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone")
         #expect(registered.environment == .production)
+        #expect(registered.events == ["request"])
         let post = try #require(transport.requests.last)
         #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"environment":"sandbox","label":"iPhone","token":"ab12"}"#)
         #expect(post.headers["x-agency-token"] == "w-1")
+    }
+
+    @Test("the kinds a push token wants are sent as `events`, an empty list included, and left out when not given")
+    func pushTokenEvents() async throws {
+        for (events, expected) in [
+            (["request", "device"], #"{"environment":"sandbox","events":["request","device"],"label":"iPhone","token":"ab12"}"#),
+            ([], #"{"environment":"sandbox","events":[],"label":"iPhone","token":"ab12"}"#),
+        ] as [([String], String)] {
+            let transport = ScriptedTransport([("GET /api/session", json(session)), ("POST /api/push/tokens", fixture("push-token"))])
+            _ = try await client(transport).registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone", events: events)
+            #expect(String(decoding: try #require(transport.requests.last?.body), as: UTF8.self) == expected)
+        }
+    }
+
+    @Test("a node that predates kinds answers a token without `events`")
+    func pushTokenWithoutEvents() throws {
+        let text = #"{"environment":"production","label":"iPhone","registeredAt":"2026-11-24T12:00:00Z","token":"ab12"}"#
+        #expect(try JSONDecoder().decode(RegisteredPushToken.self, from: Data(text.utf8)).events == nil)
     }
 
     @Test("an id from the node never adds a segment or a query to the path")
