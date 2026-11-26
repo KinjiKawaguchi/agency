@@ -36,7 +36,7 @@ public struct Me: Decodable, Equatable, Sendable {
 
 /// A home node a node's configuration names: a label and the address as the node writes it (`home_node_origin`).
 public struct HomeNodeRef: Decodable, Equatable, Sendable {
-    public let label: String
+    @Shown public private(set) var label: String
     public let url: String
 
     public init(label: String, url: String) {
@@ -47,13 +47,13 @@ public struct HomeNodeRef: Decodable, Equatable, Sendable {
 
 public struct AccountRef: Decodable, Equatable, Sendable {
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let fingerprint: String
 }
 
 public struct OrgRef: Decodable, Equatable, Sendable {
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let isRoot: Bool
     public let teams: [TeamRef]
     /// A recovery of the org that was started and waits; left out when none does.
@@ -86,7 +86,7 @@ public struct TeamRef: Decodable, Equatable, Sendable {
     public enum Location: String, OpenWireEnum { case local, remote, unknown }
 
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let location: Location
     /// The viewer's name in the team's runtime; absent when the team does not address them.
     public let viewer: String?
@@ -97,7 +97,7 @@ public struct Funding: Decodable, Equatable, Sendable {
     public enum Kind: String, OpenWireEnum { case subscription, apiKey, unknown }
 
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let kind: Kind
     public let windows: [UsageWindow]
     public let readAt: Instant?

@@ -25,7 +25,7 @@ struct OutcomesPage: View {
                 banner
                 if store.hasAnswered {
                     OutcomesContent(
-                        orgs: store.orgs, days: store.days, histories: store.histories,
+                        orgs: store.orgs, days: store.days, histories: store.histories, costs: store.costs,
                         onChoose: { days in Task { await store.choose(days: days) } },
                         onTryAgain: { Task { await store.refresh() } },
                         onEnter: { org, card in entering = Entering(org: org.id, today: org.until, card: card) },

@@ -7,7 +7,7 @@ public struct RegisteredPushToken: Decodable, Equatable, Sendable {
 
     public let token: String
     public let environment: Environment
-    public let label: String
+    @Shown public private(set) var label: String
     /// The kinds of notification this token gets (`request`, `device`, `decision`). A node that predates kinds
     /// does not say, and sends requests only.
     public let events: [String]?

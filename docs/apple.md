@@ -127,6 +127,12 @@ The node's push of the kind `recovery` (`agency: { type: "recovery", org }`, its
 
 The cancel command is built from the org's id, which the node gave, and is made to be pasted into a terminal, so it is shown only when the id is one the node itself would have made (its `Id` rule: lower-case letters, digits and hyphens, not starting with a hyphen, at most 40, the web's rule too); otherwise the item says in words where to run `agency root-cancel-recovery` (the web's sentence).
 
+## The cost under the outcomes (agency#77)
+
+Under each KPI that has numbers in the period, the outcomes page draws what the org's work cost on the same days, as the web does (`CostOnTheseDays`): columns of the API-priced cost, so that a movement can be read next to the effort of its days. It comes from the evaluation (`GET /api/orgs/<org>/evaluation?days=<the days the KPIs are drawn over>`), read **after** the numbers are on screen, because an evaluation asks every team's runtime and is slow; until it is read a quiet bar stands in the place, and a cost that cannot be read says so (「この期間のコストを読み込めませんでした。」) and leaves the numbers alone. A read cost is kept for five minutes (the page refreshes every few seconds); one that could not be read is asked for again at the next refresh; another period drops it and reads its own.
+
+A day is the sum of what each team reports for it, and a team reports a day when it lies inside its own period (`from` to `until`): the node leaves out of `byDay` a day with nothing in it, so a day inside the period that `byDay` omits is a day of 0 (a sliver in the accent colour), while a day inside no team's period has no cost (a grey mark), which is not a cost of 0. A team that did not answer is counted and the sum is said to be of the others (「報告できなかった N チームを除きます。」). A tap on a day says its date and its cost in words, and a screen reader gets all of them.
+
 ## The node's own response times (agency#240)
 
 The evaluation screen ends with 「このノードの応答時間」, for the owner only, from `GET /api/metrics?days=1|7|30` (`docs/protocol.md`, "Metrics"; the web's twin is the same section of its evaluation page, in the same words). A 403 (not the owner) draws nothing at all, with no alert and no hint, and the section stays gone; a 404 says in one line that the node does not measure; an answer with no series says that nothing was measured in the period, which is not 0 ms. Until the node has answered the first time only a skeleton is drawn (no heading, so that a viewer who is not the owner sees none flash and go); another period keeps the heading and shows a skeleton in place of its numbers, each period keeps its own answer (7 days are never shown as 1), and a failed refresh leaves what was shown. A node that cannot give its measurements, or whose answer cannot be read, is told plainly (「ノードが計測を返せませんでした。」), without the reader's own words.
@@ -144,6 +150,12 @@ The node keeps, for each push token, when APNs last took a notice (`lastSucceede
 - **nothing at all** when APNs takes them (a refusal older than a taking is not one), when the node lists the token with neither fact (that is not "refused": an older node records none, and a new phone may have been sent none), when this phone's token is not among the listed ones, before Apple has given this phone a token, and when the node cannot say (an older node; a failed read leaves what was known). A time the node writes that cannot be read is not a later time, so a refusal stands, and is said with the node's own text for it.
 
 The list is read when the screen opens, on a pull to reload, and again no sooner than 30 seconds later (the screen asks every few seconds for its devices). The reason is the node's own text and is shown as it is.
+
+## Labels from the node are shown without what can reorder them
+
+A label the node gives (an org's, a team's, an account's, a participant's, a KPI's, a device's, a home node's, what a held root change names, and whom a request is answered for) is shown with its hidden characters replaced by `?`, as every client does: the control characters (Unicode category Cc), the bidirectional controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069), the zero-width space (U+200B), the word joiner (U+2060) and the byte order mark (U+FEFF). The zero-width joiner and non-joiner and the emoji tag characters stay. The node refuses them in a new label and prints an older one's as `?` in its own text, but a label stored before that can still hold them, and a bidirectional override can reorder the line it sits on, on the screen where the owner decides.
+
+`NodeLabel.shown` (`AgencyProtocol`) does it, and the property wrapper `@Shown` applies it when a label is decoded, so that no screen can show one by forgetting: every `label` of the wire types has it, and so have the fields a held root change names and a participant's name. Free text of a team (a request's title, context and options, a comment) is not a label and is not changed here: its newlines are meant.
 
 ## Words of the node the app does not know
 

@@ -8,7 +8,10 @@ use crate::orgs::is_root;
 use crate::outbox::Parcel;
 use crate::push::is_hiding_titles;
 use crate::signed_decisions::decide_signed;
-use crate::views::{addressed_party, mine, runtime_view, viewer_name, waiting_on_viewer, Reader};
+use crate::views::{
+    addressed_party, mine, remote_addressed_party, runtime_view, viewer_name, waiting_on_viewer,
+    Reader, Replica,
+};
 use agency_proto::client::{
     home_node_origin, AccountRef, DecisionEntry, DecisionLog, DecisionOutcome, DecisionResult,
     DecisionState, Funding, HomeNode, Me, OrgRef, SignedDecisionInput, SnapshotSource,
@@ -16,6 +19,7 @@ use agency_proto::client::{
 };
 use agency_proto::clock;
 use agency_proto::org::{SignedOrg, TeamPlace};
+use agency_proto::view::AnswersFor;
 use agency_proto::{Id, OrgDefinition, Person, PublicKey, TeamView, Timestamp};
 use std::collections::BTreeMap;
 
@@ -144,29 +148,39 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         });
     }
     let replica = node.store().load_replica(org, team).unwrap_or_default();
-    let Some(view) = replica.view else {
-        let why = replica.error.unwrap_or_else(|| "not read yet".to_owned());
+    let Replica {
+        fetched_at,
+        tried_at,
+        error,
+        view,
+        viewer,
+        answers_for,
+    } = replica;
+    let Some(view) = view else {
+        let why = error.unwrap_or_else(|| "not read yet".to_owned());
         return Err(Error::new(
             ErrorKind::Unavailable,
             format!("no replica of {org}/{team} yet: {why}"),
         ));
     };
-    let tried_at = timestamp(Some(&replica.tried_at))
+    let tried_at = timestamp(Some(&tried_at))
         .ok_or_else(|| Error::internal("the replica's time is malformed"))?;
-    let source = SnapshotSource::Replica {
-        fetched_at: timestamp(replica.fetched_at.as_deref()),
-        tried_at,
-        error: replica.error,
-    };
     let reader = Reader::Remote {
-        viewer: replica.viewer.as_deref(),
+        viewer: viewer.as_deref(),
+        answers_for: &answers_for,
+    };
+    let mine = mine(&view, &reader);
+    let source = SnapshotSource::Replica {
+        fetched_at: timestamp(fetched_at.as_deref()),
+        tried_at,
+        error,
     };
     Ok(TeamSnapshot {
-        mine: mine(&view, &reader),
-        waiting_on_viewer: waiting_on_viewer(&view, replica.viewer.as_deref()),
-        relayed_for: BTreeMap::new(),
+        relayed_for: remote_relayed_for(&doc.body, &answers_for, &view, &mine),
+        waiting_on_viewer: waiting_on_viewer(&view, viewer.as_deref()),
+        mine,
         view,
-        viewer: replica.viewer,
+        viewer,
         source,
     })
 }
@@ -182,6 +196,24 @@ fn relayed_for(
     requests
         .filter_map(|request| {
             let (_, label) = addressed_party(definition, hosted, request.to.as_deref())?;
+            Some((request.id.clone(), label.to_owned()))
+        })
+        .collect()
+}
+
+/// `relayed_for` for a team on another node: the seats and external parties its node says the reader
+/// answers for, with their labels from this node's definition of the org.
+fn remote_relayed_for(
+    definition: &OrgDefinition,
+    answers_for: &[AnswersFor],
+    view: &TeamView,
+    mine: &[String],
+) -> BTreeMap<String, String> {
+    let requests = view.requests.iter().filter(|one| mine.contains(&one.id));
+    requests
+        .filter_map(|request| {
+            let (_, label) =
+                remote_addressed_party(definition, answers_for, request.to.as_deref())?;
             Some((request.id.clone(), label.to_owned()))
         })
         .collect()

@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// `GET /api/orgs/<org>/evaluation?days=<1 to 90>`: how fast each team of an org ships.
@@ -21,7 +22,7 @@ public struct Evaluation: Decodable, Equatable, Sendable {
 /// A team the node could not get numbers for. The reason is plain text, with no secret and no address in it.
 public struct TeamUnavailable: Decodable, Equatable, Sendable {
     public let team: String
-    public let reason: String
+    @Shown public private(set) var reason: String
 }
 
 public struct TeamEvaluation: Decodable, Equatable, Sendable {
@@ -63,7 +64,7 @@ public struct ParticipantEvaluation: Decodable, Equatable, Sendable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
-        name = try container.decode(String.self, forKey: .name)
+        name = NodeLabel.shown(try container.decode(String.self, forKey: .name))
         busySeconds = try container.amount(.busySeconds)
         waitingSeconds = try container.amount(.waitingSeconds)
         idleSeconds = try container.amount(.idleSeconds)
