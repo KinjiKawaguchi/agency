@@ -280,10 +280,29 @@ pub struct DeviceRequest {
 /// The account's devices in each org it belongs to, and the devices waiting to be added.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, optional_fields)]
 pub struct DeviceList {
     pub orgs: Vec<OrgDevices>,
     pub requests: Vec<DeviceRequest>,
+    /// Where and how to approve a device on this node's terminal. Only the node's owner is given it
+    /// (the command holds the path of the running program, which can hold a user name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<NodeInfo>,
+}
+
+/// What the owner needs to approve a device at this node's terminal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NodeInfo {
+    /// The node's origin (`url` of its configuration).
+    pub url: String,
+    /// The absolute data directory the running node uses.
+    pub data_dir: String,
+    /// What to run on the node's machine to approve a device: the absolute path of the running
+    /// program, `--dir` and the data directory unless it is `~/.agency`, and `device-add`, with a path
+    /// that needs it quoted for a POSIX shell.
+    pub command: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

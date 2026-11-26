@@ -1,4 +1,9 @@
 {
+  "node": {
+    "command": "/opt/agency/bin/agency --dir /var/lib/agency device-add",
+    "dataDir": "/var/lib/agency",
+    "url": "http://127.0.0.1:7701"
+  },
   "orgs": [
     {
       "devices": [

@@ -7,6 +7,7 @@ use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
 use agency_adapters::handoff;
+use agency_adapters::launch::Launch;
 use agency_adapters::memory::NoNotifier;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::runtime::CommandRuntime;
@@ -29,6 +30,8 @@ pub struct Overrides {
     pub random: Option<Arc<dyn Random>>,
     pub certs: Option<Arc<dyn CertSource>>,
     pub notifier: Option<Arc<dyn Notifier>>,
+    /// The program and data directory a client tells the owner to run (default: this process).
+    pub launch: Option<Launch>,
 }
 
 /// APNs when the node has a push setting whose key can be read; otherwise nothing is sent.
@@ -52,12 +55,14 @@ pub struct Opened {
     clock: Arc<dyn Clock>,
     random: Arc<dyn Random>,
     certs: Option<Arc<dyn CertSource>>,
+    launch: Option<Launch>,
 }
 
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
+    let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let notifier = match overrides.notifier {
@@ -83,6 +88,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         clock,
         random,
         certs: overrides.certs,
+        launch,
     })
 }
 
@@ -163,6 +169,7 @@ impl Opened {
             port,
             access,
             assets,
+            launch: self.launch.clone(),
         };
         let app = server::router(self.node.clone()).merge(client_api::router(Arc::new(api)));
         Ok(if is_public {
