@@ -91,7 +91,7 @@
       "include-component-in-tag": true,
       "tag-separator": "-",
       "changelog-path": "CHANGELOG.md",
-      "pull-request-title-pattern": "chore: release ${component} ${version}",
+      "pull-request-title-pattern": "chore: release${component} ${version}",
       "extra-files": [
         {
           "type": "yaml",
