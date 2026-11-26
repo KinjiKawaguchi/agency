@@ -331,6 +331,26 @@ message       { from, to, summary }
 - An answerer reads none of it (403). The route for a team on this node is in "Client API"; for a team on another node it is not answered yet (404).
 - The shared sample is `testdata/activity.sample.json`.
 
+## Outcomes
+
+The numbers of what the org's work achieves. What the org measures (its KPIs) and what a team aims at are in the signed org definition, with no number (see "Org definition"). The numbers themselves are business data: they are kept **only on the owner's node** and read **only by the owner**. They are never in the org definition, a federation route, `Evaluation` or `Effort`, a push notification, a log line, or the output of `agency status` (a count at most).
+
+```
+Observation      { kpi: Id, date: Date, value: number, source: Source, enteredAt: Timestamp, enteredBy: Id, note?: string }
+Source           { kind: "manual" } | { kind: "connector", name: string }
+ObservationInput { kpi: Id, date: Date, value: number, note?: string, connector?: string }
+Outcomes         { org: Id, days, from: Date, until: Date, generatedAt: Timestamp, series: KpiSeries[] }
+KpiSeries        { kpi: Kpi, points: Observation[], before?: Observation }
+```
+
+- An observation is one number for one KPI on one day. `date` is a calendar day in the node's time zone, the same days the delivery reports use (`Evaluation`), so a screen can draw a KPI and the cost on the same days; for a monthly figure it is the last day of the period. It is not more than one day ahead of the node's today and not older than ten years. `value` is a finite number of at most 1e15 in size, in the unit of its KPI (`money` in the KPI's own currency, never converted). **Values are for reading how a measure moves, not for accounting**: they are numbers in a JSON, not amounts in a ledger.
+- `enteredAt` is the node's clock and `enteredBy` the org member id of the node's account; the one who enters a number sets neither (`ObservationInput` has no such field, and any field it does not know is refused). `source` is `manual`, or a connector's name when the number was entered with `connector` (a program the owner runs; connectors use the same route). A `note` is at most 200 characters and a connector's name at most 80, neither with a control character.
+- Append-only. A second entry for the same KPI and day wins in every reading, and the first stays in the history, so a correction is visible. A KPI keeps at most 5,000 observations (409 beyond it). An observation is refused (404) when the node's account is not a member of the org or the org's definition does not list its KPI.
+- `Outcomes` has a series for each KPI of the definition, in its order. `points` are the numbers of the period, oldest first, one for each day (the latest entry of that day); `before` is the last number before the period, the baseline a movement is read from. `days` is 1 to 90 (default 14), and `from`, `until`, and `generatedAt` mean what they mean in `Evaluation`: the last `days` calendar days up to today in the node's time zone. Nothing here is read from another node: unlike `Evaluation`, `Outcomes` has no federation route.
+- **Every route is owner-only**: a direct local request, or one through Access signed in as `ownerEmail`. Any other signed-in email gets 403, also on a read, unlike the rest of the Client API, because someone who may read a team's board must not read the revenue. A POST also needs the write token like any write. An agent on the owner's machine reads and writes as the owner does. Letting a member read is a later decision (a role), and the default stays closed.
+- The node keeps the numbers in `outcomes/<org>.jsonl` of its data directory (the directory with mode `0700`, the file `0600`), one line for each observation. **Back this directory up and keep it out of anything shared**: it is business data.
+- The shared sample, with made-up figures, is `testdata/outcomes.sample.json`.
+
 ## Client API
 
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
@@ -345,6 +365,9 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | GET | `/api/orgs/<org>/teams/<team>/usage?days=<n>` | `TokenUsage` over the last `days` days (default 14, from 1 to 90; anything else is 400). Read from the runtime for a team on this node and live from the team's node otherwise (503 when it cannot be reached). 404 when the team's runtime does not report usage |
 | GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org |
 | GET | `/api/orgs/<org>/teams/<team>/activity?since=<time>&limit=<n>` | `Activity` for a team on this node (see "Activity"): the events after `since` (an RFC 3339 UTC time, default an hour ago), at most `limit` (1 to 500, default 200); anything else is 400. 404 when the team's runtime does not report activity or the team runs on another node, 403 for an answerer, 503 for an answer that is not valid |
+| POST | `/api/orgs/<org>/outcomes/observations` | Body `ObservationInput`; answers the `Observation` (see "Outcomes"). Owner only (403 otherwise), and the write rules |
+| GET | `/api/orgs/<org>/outcomes?days=<n>` | `Outcomes` for the org's KPIs (see "Outcomes"; `days` as for `usage`, default 14). Owner only: any other signed-in email gets 403 |
+| GET | `/api/orgs/<org>/outcomes/observations?kpi=<id>&limit=<n>` | One KPI's history, newest first, the entries a later one superseded included (`limit` 1 to 500, default 100). Owner only |
 | POST | `/api/orgs/<org>/teams/<team>/envelopes` | Body `SignedDecisionInput`: `envelope`, a `Signed<Envelope>` built from the request's `answerWith` and signed by one of the account's devices, plus the request's `title` and, with a choice, the chosen option's `choiceLabel`. Both are optional, trimmed, at most 200 characters, kept in the decision log for people to read, and never signed or sent to another node. The node checks the envelope's account (only its own account: 403), org, team, shape, freshness, and device signature (401), then applies it to a team on this node or sends it to the team's node. Answer `DecisionResult`: `applied`, `delivered`, or `queued` (with `message`). A runtime's 400 and 404 pass through, and so does the 403 for a request on this node that is not the account's to decide; a refusal by the team's node is 409 |
 | GET | `/api/devices` | `DeviceList`: the account's devices in each of its orgs, the devices waiting to be added (`label`, `publicKey`, `deviceId`, `pairingCode`, `requestedAt`), and, for the node's owner only, `node` (below) |
 | POST | `/api/devices/requests` | Body `DeviceRequestInput` (`label` of 1 to 80 characters, `publicKey`, which can't be the account key). Answer the `DeviceRequest` with its pairing code |
