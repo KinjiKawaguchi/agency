@@ -146,13 +146,14 @@ public final class NewsStore {
         case .device: text = events.count == 1 ? deviceText(first) : Ja.News.devices(events.count)
         case .decision: text = events.count == 1 ? decisionText(first) : Ja.News.decisions(events.count)
         }
-        return NewsBanner(kind: kind, text: text, count: events.count, destination: destination(kind, first))
+        return NewsBanner(kind: kind, text: text, count: events.count, destination: destination(kind, first, count: events.count))
     }
 
-    private func destination(_ kind: EventKind, _ event: NotificationEvent) -> NewsDestination {
+    /// Where a banner leads: one new request opens that request; several open the desk, where they are.
+    private func destination(_ kind: EventKind, _ event: NotificationEvent, count: Int) -> NewsDestination {
         switch kind {
         case .request:
-            guard let parts = Self.parts(of: event) else { return .desk(itemID: nil) }
+            guard count == 1, let parts = Self.parts(of: event) else { return .desk(itemID: nil) }
             return .desk(itemID: DeskItem.key(org: parts.org, team: parts.team, request: parts.rest))
         case .participant, .blocked: return .people
         case .device: return .devices
