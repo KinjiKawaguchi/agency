@@ -54,5 +54,17 @@ struct ShownLabelsTests {
         let evaluation = try JSONDecoder().decode(Evaluation.self, from: JSONSerialization.data(withJSONObject: root))
         #expect(evaluation.teams[0].participants?.first?.name == "Erin?")
     }
+
+    @Test("the names a runtime gives (whom a request is from and to, who wrote a message) and the label of a chosen option in the log")
+    func runtimeNames() throws {
+        let request = try read(Request.self, #"{"id":"r-1","kind":"question","title":"t","context":"c","from":"\#(bad)","to":"\#(bad)","createdAt":"2026-11-24T11:00:00Z","blocks":[],"options":[],"thread":[{"from":"\#(bad)","text":"x","at":"2026-11-24T11:10:00Z"}],"answerWith":{"kind":"answer","target":"r-1"}}"#)
+        #expect(request.from == shown && request.to == shown && request.thread?.first?.from == shown)
+        let bare = try read(Request.self, #"{"id":"r-2","kind":"question","title":"t","context":"c","from":"backend","createdAt":"2026-11-24T11:00:00Z","blocks":[],"options":[],"answerWith":{"kind":"answer","target":"r-2"}}"#)
+        #expect(bare.to == nil && bare.from == "backend", "an addressee the node leaves out is none")
+        let entry = #"{"id":"e1","org":"acme","team":"app","kind":"answer","target":"r-1","text":"","choice":"a","choiceLabel":"\#(bad)","decidedAt":"2026-11-26T09:00:00Z","state":{"kind":"applied"}}"#
+        #expect(try read(DecisionEntry.self, entry).choiceLabel == shown)
+        #expect(try read(DecisionEntry.self, entry.replacingOccurrences(of: #","choiceLabel":"\#(bad)""#, with: "")).choiceLabel == nil)
+        #expect(try read(DecisionEntry.self, entry.replacingOccurrences(of: #""\#(bad)""#, with: "null")).choiceLabel == nil)
+    }
 }
 

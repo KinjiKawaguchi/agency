@@ -17,7 +17,7 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     public let title: String?
     public let text: String
     public let choice: String?
-    public let choiceLabel: String?
+    @ShownIfPresent public private(set) var choiceLabel: String?
     public let decidedAt: Instant
     public let state: DecisionState
 

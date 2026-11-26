@@ -60,9 +60,9 @@ public struct Request: Decodable, Equatable, Sendable {
     public let context: String
     /// Markdown body of a proposal.
     public let document: String?
-    public let from: String
+    @Shown public private(set) var from: String
     /// The addressee by the team runtime's name; absent means the team's owner.
-    public let to: String?
+    @ShownIfPresent public private(set) var to: String?
     public let createdAt: Instant
     public let issue: String?
     public let blocks: [String]
@@ -81,7 +81,7 @@ public struct RequestOption: Decodable, Equatable, Sendable {
 }
 
 public struct ThreadMessage: Decodable, Equatable, Sendable {
-    public let from: String
+    @Shown public private(set) var from: String
     public let text: String
     public let choice: String?
     public let at: Instant

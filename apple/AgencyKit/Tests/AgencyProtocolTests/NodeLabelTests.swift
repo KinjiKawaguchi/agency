@@ -53,4 +53,41 @@ struct NodeLabelTests {
         set.wrappedValue = "\u{202D}"
         #expect(set.wrappedValue == "?")
     }
+
+    // MARK: The shared file
+
+    /// `testdata/label-hidden-chars.json`: the set as the node's `is_hidden_char` has it, which the web client's test and a Rust test of the
+    /// node read too, so that the three cannot drift.
+    private struct SharedSet: Decodable {
+        struct Case: Decodable { let text: String; let printable: String }
+        let mark: String
+        let hidden: [[String]]
+        let cases: [Case]
+
+        init(from file: String = #filePath) throws {
+            var url = URL(fileURLWithPath: file)
+            for _ in 0..<5 { url.deleteLastPathComponent() }
+            self = try JSONDecoder().decode(SharedSet.self, from: Data(contentsOf: url.appendingPathComponent("testdata/label-hidden-chars.json")))
+        }
+
+        func isListed(_ value: UInt32) -> Bool {
+            hidden.contains { UInt32($0[0], radix: 16)! <= value && value <= UInt32($0[1], radix: 16)! }
+        }
+    }
+
+    @Test("every code point is hidden exactly when the shared file says it is, so that the set cannot drift from the node's and the web's")
+    func theSharedSet() throws {
+        let shared = try SharedSet()
+        #expect(shared.mark == "?" && shared.hidden.count >= 9)
+        for value in UInt32(0)...0x10FFFF where !(0xD800...0xDFFF).contains(value) {
+            #expect(NodeLabel.isHidden(Unicode.Scalar(value)!) == shared.isListed(value), Comment(rawValue: "U+\(String(value, radix: 16, uppercase: true))"))
+        }
+    }
+
+    @Test("every case of the shared file is shown as the file says, the ends of each range and the characters next to them included")
+    func theSharedCases() throws {
+        let shared = try SharedSet()
+        #expect(shared.cases.count >= 40)
+        for one in shared.cases { #expect(NodeLabel.shown(one.text) == one.printable, Comment(rawValue: one.text)) }
+    }
 }

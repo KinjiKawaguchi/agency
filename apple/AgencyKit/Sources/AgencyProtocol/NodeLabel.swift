@@ -45,3 +45,31 @@ public struct Shown: Decodable, Equatable, Sendable {
         text = NodeLabel.shown(try decoder.singleValueContainer().decode(String.self))
     }
 }
+
+/// The same for a label that may be missing: it is `nil` when the node leaves it out or says `null`, and shown otherwise.
+@propertyWrapper
+public struct ShownIfPresent: Decodable, Equatable, Sendable {
+    private var text: String?
+
+    public var wrappedValue: String? {
+        get { text }
+        set { text = newValue.map(NodeLabel.shown) }
+    }
+
+    public init(wrappedValue: String?) {
+        text = wrappedValue.map(NodeLabel.shown)
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        text = container.decodeNil() ? nil : NodeLabel.shown(try container.decode(String.self))
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// A label the node leaves out is `nil`, as an optional field is, though its wrapper is not optional.
+    public func decode(_ type: ShownIfPresent.Type, forKey key: Key) throws -> ShownIfPresent {
+        try decodeIfPresent(type, forKey: key) ?? ShownIfPresent(wrappedValue: nil)
+    }
+}
+
