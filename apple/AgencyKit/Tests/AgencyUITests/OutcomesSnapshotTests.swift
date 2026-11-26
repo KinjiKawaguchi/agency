@@ -29,10 +29,10 @@ struct OutcomesSnapshotTests {
         let outcomes = sample(Outcomes.self, "outcomes")
         let readingList = sample(Readings.self, "readings")
         let kpis = Dictionary(uniqueKeysWithValues: outcomes.series.map { ($0.kpi.id, $0.kpi) })
-        let lines = readingList.readings.map { ReadingLine(reading: $0, team: "App", kpi: kpis[$0.kpi]) }
+        let lines = readingList.readings.map { ReadingLine(reading: $0, team: "App", kpi: kpis[$0.kpi], today: "2026-11-24") }
         return [OrgOutcomes(
             id: "acme", label: "Acme", from: outcomes.from, until: outcomes.until,
-            cards: outcomes.series.map(KpiCard.init(series:)), readings: readings ?? .lines(lines)
+            cards: outcomes.series.map { KpiCard(series: $0, until: outcomes.until) }, readings: readings ?? .lines(lines)
         )]
     }
 
@@ -56,16 +56,16 @@ struct OutcomesSnapshotTests {
     func stress() {
         let long = UIFixtures.longJapaneseTitle
         let worse = series(
-            #"{"kpi":{"id":"k","label":"\#(long)","kind":"product","unit":"seconds","goodWhen":"lower"},"points":["#
+            #"{"kpi":{"id":"k1","label":"\#(long)","kind":"product","unit":"seconds","goodWhen":"lower"},"points":["#
                 + observation("2026-11-18", 7200) + "," + observation("2026-11-24", 90_000) + #"],"before":"# + observation("2026-10-31", 3600) + "}"
         )
         let unknown = series(
-            #"{"kpi":{"id":"k","label":"Basis points","kind":"product","unit":"basis-points","goodWhen":"sideways"},"points":["#
+            #"{"kpi":{"id":"k2","label":"Basis points","kind":"product","unit":"basis-points","goodWhen":"sideways"},"points":["#
                 + observation("2026-11-24", 12.5) + #"],"before":"# + observation("2026-10-31", 10) + "}"
         )
-        let older = series(#"{"kpi":{"id":"k","label":"Gross margin","kind":"business","unit":"ratio","goodWhen":"higher"},"points":[],"before":"# + observation("2026-10-31", 1.5) + "}")
+        let older = series(#"{"kpi":{"id":"k3","label":"Gross margin","kind":"business","unit":"ratio","goodWhen":"higher"},"points":[],"before":"# + observation("2026-10-31", 1.5) + "}")
         let dollars = series(
-            #"{"kpi":{"id":"k","label":"ARR","kind":"business","unit":"money","currency":"USD","goodWhen":"higher"},"points":["#
+            #"{"kpi":{"id":"k4","label":"ARR","kind":"business","unit":"money","currency":"USD","goodWhen":"higher"},"points":["#
                 + observation("2026-11-24", 1_234_567.5) + #"],"before":"# + observation("2026-10-31", 1_300_000) + "}"
         )
         let lines = [
@@ -73,7 +73,7 @@ struct OutcomesSnapshotTests {
         ]
         let org = OrgOutcomes(
             id: "acme", label: "Acme", from: "2026-08-27", until: "2026-11-24",
-            cards: [worse, unknown, older, dollars].map(KpiCard.init(series:)), readings: .lines(lines)
+            cards: [worse, unknown, older, dollars].map { KpiCard(series: $0, until: "2026-11-24") }, readings: .lines(lines)
         )
         for scheme in [ColorScheme.light, .dark] {
             expectFits(Snapshot.capture("outcomes-stress", OutcomesContent(orgs: [org], days: 30), scheme: scheme), "stress, \(scheme)")

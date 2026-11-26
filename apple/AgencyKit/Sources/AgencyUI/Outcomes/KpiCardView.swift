@@ -26,7 +26,7 @@ struct MovementLine: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: symbol).accessibilityHidden(true)
-            Text("\(movement.text) \(movement.change)").wrapping()
+            Text(movement.text).wrapping()
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(color)
