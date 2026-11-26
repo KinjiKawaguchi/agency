@@ -47,7 +47,7 @@ test('org chart: departments, teams, agents, and focusing on one department', as
   await expect(chart.getByText('Acme', { exact: true })).toBeVisible()
   const engineering = chart.getByRole('link', { name: /DepartmentEngineering|Department\s*Engineering/ })
   await expect(engineering).toContainText('Led by Alice')
-  await expect(engineering).toContainText('1 waiting for you')
+  await expect(engineering).toContainText('3 requests wait for you')
   await expect(chart.getByRole('link', { name: /Backend/ })).toContainText('Waiting for your answer')
   await engineering.click()
   await expect(page).toHaveURL(/unit=engineering/)

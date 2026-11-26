@@ -147,6 +147,42 @@
   text-decoration: none;
 }
 
+/* The other home nodes: a link to each, its host, and a way to take it off the list. */
+.node-list {
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.node-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 0;
+}
+
+.node-list a {
+  color: var(--seal);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.node-list .btn {
+  margin: 0 0 0 auto;
+}
+
+#home-nodes ~ form {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+#home-nodes ~ form .device-field {
+  margin-bottom: 10px;
+}
+
 /* A device that waits to be approved: its code large, and what to do next. */
 .pairing-code.large {
   font-size: 44px;
