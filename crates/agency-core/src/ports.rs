@@ -82,6 +82,10 @@ pub trait OrgStore {
     fn orgs(&self) -> Vec<SignedOrg>;
     /// One version of an org's definition, from the history this node kept.
     fn load_org_version(&self, org: &Id, version: u64) -> Option<SignedOrg>;
+    /// Notes when this node took a version that starts a recovery, by its own clock.
+    fn note_recovery_start(&self, org: &Id, version: u64, at: &str) -> Result<()>;
+    /// When this node took the version `version` of `org` that starts a recovery, if it did.
+    fn recovery_started(&self, org: &Id, version: u64) -> Option<String>;
 }
 
 /// Invites, keyed by the SHA-256 of their code. The code itself is never stored.

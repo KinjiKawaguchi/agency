@@ -128,10 +128,7 @@ fn org(root: PublicKey, bob: PublicKey) -> OrgDefinition {
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: root.clone(),
-        },
+        root: Root::new(id("alice"), root.clone()),
         departments: vec![],
         people: vec![person("alice", root), person("bob", bob)],
         teams: vec![],
