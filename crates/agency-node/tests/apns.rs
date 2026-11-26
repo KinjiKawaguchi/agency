@@ -405,6 +405,13 @@ fn every_kind() -> Vec<Notice> {
             badge: 0,
         },
         Notice {
+            kind: NoticeKind::Recovery {
+                org: org(),
+                takes_effect_at: Some("2026-11-29T09:30:00Z".into()),
+            },
+            badge: 0,
+        },
+        Notice {
             kind: NoticeKind::Decision {
                 org: org(),
                 team: team(),
