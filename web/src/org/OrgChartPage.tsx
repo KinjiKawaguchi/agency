@@ -1,9 +1,13 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries, useSuspenseQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useDeferredValue } from 'react'
 import { useApi } from '../api/context'
-import { orgDefinitionQuery, useTeams } from '../api/queries'
-import { failureText } from '../api/failure'
+import type { Me } from '../api/clientApi'
+import { orgDefinitionQuery, useSuspenseTeamStates } from '../api/queries'
+import type { Team } from '../api/teams'
 import { useI18n } from '../i18n'
+import { Region } from '../shared/Region'
+import { OrgChartSkeleton } from './OrgChartSkeleton'
 import { OrgChartViewer } from './OrgChartViewer'
 import { AllOrgsTree, OrgTree } from './OrgTree'
 import { buildAllOrgsTree, buildOrgTree } from './tree'
@@ -19,17 +23,21 @@ interface OrgChartPageProps {
   unit: string | undefined
 }
 
-/** Every org of the account in one chart, under the account. */
-function AllOrgsChart({ onChoose }: { onChoose: (org: string) => void }) {
+interface ChartProps {
+  me: Me
+  teams: readonly Team[]
+  /** The `org/team` keys of the teams still being read. */
+  loading: ReadonlySet<string>
+  onChoose: (org: string) => void
+}
+
+/** Every org of the account in one chart, under the account. An org whose definition is still being read, or cannot be, is a box that says so; the others are drawn. */
+function AllOrgsChart({ me, teams, loading, onChoose }: ChartProps) {
   const { t } = useI18n()
   const api = useApi()
-  const { me, teams, error } = useTeams()
-  const definitions = useQueries({ queries: (me?.orgs ?? []).map((org) => orgDefinitionQuery(api, org.id)) })
-  if (me === undefined) {
-    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
-  }
+  const definitions = useQueries({ queries: me.orgs.map((org) => orgDefinitionQuery(api, org.id)) })
   const inputs = me.orgs.map((org, index) => ({ org, definition: definitions[index]?.data, failed: definitions[index]?.error != null }))
-  const orgs = buildAllOrgsTree(inputs, teams, me.account.id)
+  const orgs = buildAllOrgsTree(inputs, teams, me.account.id, loading)
   return (
     <>
       <div className="page-head">
@@ -57,42 +65,52 @@ function OrgMenu({ value, orgs, onChoose }: { value: string; orgs: ReadonlyArray
   )
 }
 
-export function OrgChartPage({ org, unit }: OrgChartPageProps) {
+/** One org's chart, optionally focused on a department. Its definition suspends the region; failing for good, it is the region's failure. */
+function OneOrgChart({ me, teams, loading, org, unit, onChoose }: ChartProps & { org: Me['orgs'][number]; unit: string | undefined }) {
   const { t } = useI18n()
   const api = useApi()
-  const navigate = useNavigate()
-  const { me, teams, error } = useTeams()
-  const isAll = me !== undefined && me.orgs.length > 1 && (org === undefined || org === ALL_ORGS)
-  const selected = me?.orgs.find((one) => one.id === org) ?? me?.orgs[0]
-  const definition = useQuery({ ...orgDefinitionQuery(api, selected?.id ?? ''), enabled: selected !== undefined && !isAll })
-  if (isAll) return <AllOrgsChart onChoose={(next) => void navigate({ to: '/org', search: { org: next } })} />
-
-  if (me === undefined || selected === undefined) {
-    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
-  }
-  if (definition.data === undefined) {
-    return <p className={definition.error === null ? 'muted' : 'empty'} role={definition.error === null ? undefined : 'alert'}>{definition.error === null ? t.app.loading : failureText(t, definition.error)}</p>
-  }
-
-  const tree = buildOrgTree(definition.data, teams, me.account.id, unit)
+  const { data: definition } = useSuspenseQuery(orgDefinitionQuery(api, org.id))
+  const tree = buildOrgTree(definition, teams, me.account.id, unit, loading)
   return (
     <>
       <div className="page-head">
-        <h1 className="page-title">{t.org.title(selected.label)}</h1>
-        <OrgMenu value={selected.id} orgs={me.orgs} onChoose={(next) => void navigate({ to: '/org', search: { org: next } })} />
+        <h1 className="page-title">{t.org.title(org.label)}</h1>
+        <OrgMenu value={org.id} orgs={me.orgs} onChoose={onChoose} />
       </div>
       {tree.focus === undefined ? null : (
         <p className="oc-up">
-          <Link to="/org" search={{ org: selected.id }}>{t.org.whole}</Link>
+          <Link to="/org" search={{ org: org.id }}>{t.org.whole}</Link>
         </p>
       )}
       {tree.children.length === 0 && tree.focus !== undefined ? (
         <p className="empty">{t.org.emptyDepartment}</p>
       ) : (
-        <OrgChartViewer resetKey={`${selected.id}/${unit ?? ''}`} fileName={`org-chart-${selected.id}${unit === undefined ? '' : `-${unit}`}`}>
-          <OrgTree tree={tree} org={selected.id} orgLabel={selected.label} />
+        <OrgChartViewer resetKey={`${org.id}/${unit ?? ''}`} fileName={`org-chart-${org.id}${unit === undefined ? '' : `-${unit}`}`}>
+          <OrgTree tree={tree} org={org.id} orgLabel={org.label} />
         </OrgChartViewer>
       )}
     </>
+  )
+}
+
+/** The chart the address names: every org, or one. It reads every team's view, which suspends it until they are read; a team that keeps failing is a box that says so. */
+function OrgChart({ org, unit }: OrgChartPageProps) {
+  const navigate = useNavigate()
+  const { me, teams, loading } = useSuspenseTeamStates()
+  const onChoose = (next: string): void => void navigate({ to: '/org', search: { org: next } })
+  const selected = me.orgs.find((one) => one.id === org) ?? me.orgs[0]
+  if (me.orgs.length > 1 && (org === undefined || org === ALL_ORGS)) return <AllOrgsChart me={me} teams={teams} loading={loading} onChoose={onChoose} />
+  return selected === undefined ? null : <OneOrgChart me={me} teams={teams} loading={loading} org={selected} unit={unit} onChoose={onChoose} />
+}
+
+export function OrgChartPage({ org, unit }: OrgChartPageProps) {
+  const { t } = useI18n()
+  // While another org or department is read, the chart that is shown stays instead of giving way to the skeleton.
+  const shownOrg = useDeferredValue(org)
+  const shownUnit = useDeferredValue(unit)
+  return (
+    <Region what={t.loading.what.orgChart} skeleton={<OrgChartSkeleton />}>
+      <OrgChart org={shownOrg} unit={shownUnit} />
+    </Region>
   )
 }

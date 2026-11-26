@@ -1,0 +1,2087 @@
+{
+  "description": "Sequences of readings and the events each one makes, for the definition of what is new in the web client and the iPhone app (agency#167). Each case is read from its first step, which is a baseline. A team that could not be read (ok false) and a list that could not be read (null) keep their last answer and make no event. Events come ordered by kind (request, participant, blocked, device, decision), then by key in code point order. Keys: request:org/team/id, participant:org/team/id, blocked:org/team/ref, device:public key, decision:id:state.",
+  "cases": [
+    {
+      "name": "the first reading is a baseline: nothing in it is new",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1",
+                  "r-2"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "the same reading twice makes no event",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "a request that now waits on the viewer, and one that comes back",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1",
+                  "r-2"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-2"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-2"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-2",
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a participant starts waiting on the viewer, stops, and starts again",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "participant",
+              "key": "participant:acme/app/backend"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "participant",
+              "key": "participant:acme/app/backend"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a work item that is newly blocked; one that was blocked already is not news",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  },
+                  {
+                    "ref": "app#2",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "blocked",
+              "key": "blocked:acme/app/app#2"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  },
+                  {
+                    "ref": "app#2",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  },
+                  {
+                    "ref": "app#2",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "blocked",
+              "key": "blocked:acme/app/app#2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a failed read keeps the last answer: the next good read is not all new",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": false,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": false,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1",
+                  "r-2"
+                ],
+                "waitingOnViewer": [
+                  "backend"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a team that could not be read at first has its first good read as its baseline",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": false,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1",
+                  "r-2"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a team that first appears after the baseline is its own baseline",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [
+                  "b-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "web#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [
+                  "b-1",
+                  "b-2"
+                ],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "web#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/web/b-2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "teams are compared separately: the same id in another team is new",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/web/r-1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a device that asks to be added; this device's own key is not news",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "device",
+              "key": "device:k2"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2",
+              "own-key"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2",
+              "own-key"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": null,
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2",
+              "k3"
+            ],
+            "decisions": []
+          },
+          "expected": [
+            {
+              "kind": "device",
+              "key": "device:k3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a device list that could not be read keeps the last one",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": null,
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "a device that cannot approve anything is told nothing about requests",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": false,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k2",
+              "k3"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "decisions made elsewhere: new ones, and ones that change state",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d2:applied"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d3",
+                "state": "refused"
+              },
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d3:refused"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d4",
+                "state": "queued"
+              },
+              {
+                "id": "d3",
+                "state": "refused"
+              },
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d4:queued"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d4",
+                "state": "applied"
+              },
+              {
+                "id": "d3",
+                "state": "refused"
+              },
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d4:applied"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d4",
+                "state": "applied"
+              },
+              {
+                "id": "d3",
+                "state": "refused"
+              },
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "delivered"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d1:delivered"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d4",
+                "state": "applied"
+              },
+              {
+                "id": "d3",
+                "state": "refused"
+              },
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "delivered"
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "a decision this device sent: its success is not news",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": [
+          "d9"
+        ]
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d9",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "a decision this device sent that is queued, and then gets through",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": [
+          "d9"
+        ]
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d9",
+                "state": "queued"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d9:queued"
+            }
+          ]
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d9",
+                "state": "queued"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d9",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d9:applied"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a decision this device sent that is refused",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": [
+          "d9"
+        ]
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": []
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d9",
+                "state": "refused"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "decision",
+              "key": "decision:d9:refused"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a decision log that could not be read keeps the last one",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": null
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        }
+      ]
+    },
+    {
+      "name": "many at once: ordered by kind, then by key",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-2",
+                  "r-1"
+                ],
+                "waitingOnViewer": [
+                  "zeta",
+                  "alpha"
+                ],
+                "blocked": [
+                  {
+                    "ref": "app#9",
+                    "reason": "needsDecision"
+                  }
+                ]
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [
+                  "q-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k0"
+            ],
+            "decisions": [
+              {
+                "id": "d2",
+                "state": "applied"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-1"
+            },
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-2"
+            },
+            {
+              "kind": "request",
+              "key": "request:acme/web/q-1"
+            },
+            {
+              "kind": "participant",
+              "key": "participant:acme/app/alpha"
+            },
+            {
+              "kind": "participant",
+              "key": "participant:acme/app/zeta"
+            },
+            {
+              "kind": "blocked",
+              "key": "blocked:acme/app/app#9"
+            },
+            {
+              "kind": "device",
+              "key": "device:k0"
+            },
+            {
+              "kind": "decision",
+              "key": "decision:d2:applied"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "events that piled up while nothing was read arrive together, in order, in one reading",
+      "own": {
+        "deviceKey": "own-key",
+        "canApprove": true,
+        "sentDecisionIds": []
+      },
+      "steps": [
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "queued"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1"
+                ],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  }
+                ]
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1"
+            ],
+            "decisions": [
+              {
+                "id": "d1",
+                "state": "queued"
+              }
+            ]
+          },
+          "expected": []
+        },
+        {
+          "reading": {
+            "teams": [
+              {
+                "org": "acme",
+                "team": "app",
+                "ok": true,
+                "mine": [
+                  "r-1",
+                  "r-3",
+                  "r-2"
+                ],
+                "waitingOnViewer": [],
+                "blocked": [
+                  {
+                    "ref": "app#1",
+                    "reason": "needsDecision"
+                  },
+                  {
+                    "ref": "app#3",
+                    "reason": "needsDecision"
+                  },
+                  {
+                    "ref": "app#2",
+                    "reason": "needsDecision"
+                  }
+                ]
+              },
+              {
+                "org": "acme",
+                "team": "web",
+                "ok": true,
+                "mine": [
+                  "q-9"
+                ],
+                "waitingOnViewer": [],
+                "blocked": []
+              }
+            ],
+            "devices": [
+              "k1",
+              "k5",
+              "k4"
+            ],
+            "decisions": [
+              {
+                "id": "d2",
+                "state": "queued"
+              },
+              {
+                "id": "d1",
+                "state": "applied"
+              }
+            ]
+          },
+          "expected": [
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-2"
+            },
+            {
+              "kind": "request",
+              "key": "request:acme/app/r-3"
+            },
+            {
+              "kind": "request",
+              "key": "request:acme/web/q-9"
+            },
+            {
+              "kind": "blocked",
+              "key": "blocked:acme/app/app#2"
+            },
+            {
+              "kind": "blocked",
+              "key": "blocked:acme/app/app#3"
+            },
+            {
+              "kind": "device",
+              "key": "device:k4"
+            },
+            {
+              "kind": "device",
+              "key": "device:k5"
+            },
+            {
+              "kind": "decision",
+              "key": "decision:d1:applied"
+            },
+            {
+              "kind": "decision",
+              "key": "decision:d2:queued"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

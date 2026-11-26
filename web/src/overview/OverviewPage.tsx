@@ -1,7 +1,8 @@
-import { useTeamStates } from '../api/queries'
-import { failureText } from '../api/failure'
+import { useSuspenseTeamStates } from '../api/queries'
 import { FundingCard } from '../costs/FundingCard'
 import { useI18n } from '../i18n'
+import { Region } from '../shared/Region'
+import { OverviewSkeleton } from './OverviewSkeleton'
 import { orderTeams, orgRank, summarize } from './summary'
 import { TeamCard } from './TeamCard'
 import './overview.css'
@@ -9,11 +10,20 @@ import './overview.css'
 /** Every org and team of the account on one screen, the ones that need the viewer first. */
 export function OverviewPage() {
   const { t } = useI18n()
-  const { me, orgs, error } = useTeamStates()
+  return (
+    <>
+      <h1 className="page-title">{t.overview.title}</h1>
+      <Region what={t.loading.what.overview} skeleton={<OverviewSkeleton />}>
+        <Overview />
+      </Region>
+    </>
+  )
+}
 
-  if (me === undefined) {
-    return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
-  }
+/** The overview's content, which reads every team: it suspends until they have been read (a team that is not ready yet is retried), and shows a team that keeps failing in its place. */
+function Overview() {
+  const { t } = useI18n()
+  const { me, orgs } = useSuspenseTeamStates()
   const ready = orgs.flatMap(({ teams }) => teams.flatMap(({ state }) => (state.status === 'ready' ? [summarize(state.team)] : [])))
   const waiting = ready.reduce((sum, summary) => sum + summary.mine, 0)
   const waitingTeams = ready.filter((summary) => summary.mine > 0).length
@@ -23,7 +33,6 @@ export function OverviewPage() {
   const now = Date.now()
   return (
     <>
-      <h1 className="page-title">{t.overview.title}</h1>
       <p className="ov-lead">{t.overview.lead(waiting, waitingTeams)}</p>
       {ordered.map(({ org, teams }) => (
         <section key={org.id} className="ov-org" aria-labelledby={`ov-org-${org.id}`}>

@@ -10,6 +10,7 @@
 //! also need the owner's email, because writes act for the node's account.
 use crate::access::{AccessVerifier, Identity};
 use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
+use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
@@ -18,10 +19,12 @@ use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
-use agency_proto::client::{DeviceRequestInput, PushTokenInput, Session, SignedDecisionInput};
+use agency_proto::client::{
+    DeviceList, DeviceRequestInput, NodeInfo, PushTokenInput, Session, SignedDecisionInput,
+};
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -54,6 +57,9 @@ pub struct ClientApi {
     pub port: u16,
     pub access: Option<Arc<AccessVerifier>>,
     pub assets: Arc<dyn Assets>,
+    /// The running program and its data directory, for the command a client shows the owner. `None`
+    /// when they cannot be written out as text; clients then show their own wording.
+    pub launch: Option<Launch>,
 }
 
 pub(crate) type Shared = State<Arc<ClientApi>>;
@@ -280,8 +286,35 @@ async fn post_envelope(
     respond(result.await)
 }
 
-async fn get_devices(State(api): Shared) -> Response {
-    respond(device_list(&api.node))
+/// Whether the request is the node's owner's: a direct local one (the machine's own user), or one
+/// through Access signed in as the configured owner. Other Access sign-ins may read this node's data
+/// but are not told about its machine.
+fn is_owner_request(api: &ClientApi, admitted: &Admitted) -> bool {
+    match admitted {
+        Admitted::Local => true,
+        Admitted::Access(identity) => is_owner(api, identity),
+    }
+}
+
+/// `list` with where and how to approve a device here, for the owner only: the command holds the path of
+/// the running program, which can hold a user name.
+fn with_node_info(api: &ClientApi, admitted: &Admitted, mut list: DeviceList) -> DeviceList {
+    if !is_owner_request(api, admitted) {
+        return list;
+    }
+    list.node = api.launch.as_ref().map(|launch| {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        NodeInfo {
+            url: api.node.config().url,
+            data_dir: launch.data_dir.clone(),
+            command: launch.device_add_command(home.as_deref()),
+        }
+    });
+    list
+}
+
+async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
 }
 
 /// A new device asks to be added; the answer carries its pairing code.

@@ -346,7 +346,7 @@ export const en = {
     noData: 'None in this period',
     teamUnavailable: (reason: string) => `This team could not report its numbers: ${reason}`,
     units: { minute: 'm', hour: 'h', day: 'd' },
-    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other' },
+    types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other', revert: 'Revert' },
     tiles: {
       features: 'New features merged',
       merged: 'Pull requests merged',
@@ -415,6 +415,14 @@ export const en = {
       table: { show: 'Show the numbers', caption: (team: string) => `${team} team, by work type`, type: 'Work type', cost: 'API-priced', share: 'Share', intended: 'Intended', total: 'Total' },
       source: (path: string) => `The same numbers, for an agent to cite: GET ${path}. The intended shares are \`teams[].plan\` of the org definition.`,
     },
+  },
+  loading: {
+    label: 'Loading…',
+    failed: (what: string, reason: string) => `Could not load ${what}: ${reason}`,
+    retryIn: (seconds: number) => `Trying again in ${seconds} s.`,
+    retrying: 'Trying again…',
+    tryAgain: 'Try again',
+    what: { overview: 'the overview', orgChart: 'the org chart', people: 'participants and work' },
   },
 } as const
 

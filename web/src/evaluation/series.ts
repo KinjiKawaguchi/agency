@@ -21,6 +21,12 @@ export const emptyCounts = (): MergedCounts => ({ feat: 0, fix: 0, refactor: 0, 
 
 export const totalMerged = (counts: MergedCounts): number => PULL_REQUEST_TYPES.reduce((sum, type) => sum + counts[type], 0)
 
+/** Every pull request merged: the typed ones and the reverts, which the node counts on their own. */
+export const allMerged = (row: { merged: MergedCounts; reverts: number }): number => totalMerged(row.merged) + row.reverts
+
+/** The color of the reverts in the merged chart: the last of the fixed series. */
+export const REVERT_COLOR = 'var(--series-8)'
+
 /**
  * The last day of the period, in the node's time zone: the `until` the node names; failing that, the newest
  * day it reports (its date is in the node's time zone, where a timestamp's UTC date may be a day behind);
@@ -62,7 +68,7 @@ export function rollingMedian(rows: readonly DayEvaluation[], pick: (row: DayEva
 /** Cost per merged pull request over the trailing window; `null` while nothing was merged in it. */
 export function rollingCostPerPullRequest(rows: readonly DayEvaluation[], window: number): (number | null)[] {
   return trailing(rows, window).map((span) => {
-    const merged = span.reduce((sum, row) => sum + totalMerged(row.merged), 0)
+    const merged = span.reduce((sum, row) => sum + allMerged(row), 0)
     return merged === 0 ? null : span.reduce((sum, row) => sum + row.costUsd, 0) / merged
   })
 }

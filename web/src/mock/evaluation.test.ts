@@ -13,7 +13,7 @@ describe('the mock evaluation', () => {
     expect(summary).toEqual(summaryOf(byDay))
     expect(summary.merged.feat).toBe(byDay.reduce((sum, day) => sum + day.merged.feat, 0))
     expect(summary.prLeadMedianSeconds).not.toBeNull()
-    expect(byDay.every((day) => day.prLeadSeconds.length === Object.values(day.merged).reduce((sum, count) => sum + count, 0))).toBe(true)
+    expect(byDay.every((day) => day.prLeadSeconds.length === Object.values(day.merged).reduce((sum, count) => sum + count, 0) + day.reverts)).toBe(true)
   })
 
   it('keeps the period: dates end today, ascend, and number at most `days`', () => {
@@ -45,11 +45,12 @@ describe('the mock’s summary, against numbers worked out by hand', () => {
     expect(summaryOf([day('2026-11-25', tenHours)]).prLeadP90Seconds).toBe(9 * 3600)
   })
 
-  it('adds up the red time, finds the longest day, and divides the cost by the merged pull requests', () => {
+  it('adds up the red time, finds the longest day, and divides the cost by every merged pull request, the reverts included', () => {
+    // Two typed pull requests and one revert: $15 over 3.
     const summary = summaryOf([day('2026-11-24', [], { mainRedSeconds: 600, costUsd: 10, reverts: 1 }), day('2026-11-25', [], { mainRedSeconds: 1800, costUsd: 5 })])
     expect(summary.mainRedSeconds).toBe(2400)
     expect(summary.longestRedSeconds).toBe(1800)
     expect(summary.reverts).toBe(1)
-    expect(summary.costPerMergedPrUsd).toBe(7.5)
+    expect(summary.costPerMergedPrUsd).toBe(5)
   })
 })
