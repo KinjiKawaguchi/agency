@@ -5,6 +5,9 @@ mod common;
 use common::access::{access_token, behind_access, PUBLIC_HOST};
 use serde_json::{json, Value};
 
+/// A change to a token's claims, made before it is signed.
+type Edit = Box<dyn FnOnce(&mut Value)>;
+
 async fn status_with(edit: impl FnOnce(&mut Value)) -> u16 {
     let running = behind_access(None).await;
     reqwest::Client::new()
@@ -30,7 +33,7 @@ async fn time_claims_of_the_wrong_type_are_refused() {
         "the same token with integer claims"
     );
     let far = 1_795_521_600_i64 + 600;
-    let cases: [(&str, Box<dyn FnOnce(&mut Value)>); 7] = [
+    let cases: [(&str, Edit); 7] = [
         (
             "exp as a string",
             Box::new(move |c| c["exp"] = json!(far.to_string())),
