@@ -82,3 +82,23 @@ struct NumberCheckTests {
         #expect(NumberProblem.note.text.contains("200 文字"))
     }
 }
+
+@Suite("Number hint")
+struct NumberHintTests {
+    @Test("each unit says in which unit to write the number, money in its own currency")
+    func hints() {
+        #expect(Ja.Outcomes.Enter.hint(for: .money(currency: "JPY")) == "単位は JPY です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .money(currency: "USD")) == "単位は USD です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .percent) == "単位はパーセントです。41.5 は 41.5% です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .count) == "単位は件数などの数です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .ratio) == "単位のない数です。1.5 は 1.5 倍です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .seconds) == "単位は秒です。")
+        #expect(Ja.Outcomes.Enter.hint(for: .unknown("x")) == "単位のない数です。")
+    }
+
+    @Test("a card carries its KPI, so that a number can be entered for it")
+    func cardKpi() throws {
+        let card = KpiCard(series: try OutcomeSamples.outcomes().series[0])
+        #expect(card.kpi.id == "revenue" && card.kpi.unit == .money(currency: "JPY"))
+    }
+}
