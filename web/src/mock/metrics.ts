@@ -84,6 +84,7 @@ export function metricsAnswer(now: Date, days: number, variant: MetricsVariant):
     objectives: variant === 'empty' ? [] : [
       { group: 'teams', p95Ms: 100, state: variant === 'slow' ? 'notMet' : 'met', measuredP95Ms: variant === 'slow' ? 1000 : 100 },
       { group: 'desk', p95Ms: 50, state: 'met', measuredP95Ms: 5 },
+      { group: 'usage', p95Ms: 3000, state: 'undetermined', measuredP95Ms: 5000 },
       { group: 'evaluation', p95Ms: 2000, state: 'unknown' },
     ],
     series,

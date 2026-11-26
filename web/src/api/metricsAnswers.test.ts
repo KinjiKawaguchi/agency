@@ -13,6 +13,12 @@ describe('reading the answer of the measurements route', () => {
     expect(read.series[0]).toMatchObject({ kind: 'serve', status: '2xx', count: sample.series[0]?.count })
   })
 
+  it('reads the objectives of the shared sample, each of the four states, as the node says them', () => {
+    const read = readMetrics(sample)
+    expect(read.objectives).toEqual(sample.objectives)
+    expect(new Set(read.objectives.map((one) => one.state))).toEqual(new Set(['met', 'notMet', 'undetermined', 'unknown']))
+  })
+
   it('keeps a percentile that is left out as left out, and never fills it', () => {
     const [read] = readMetrics(answer({}, [series({ count: 4, buckets: buckets({ 14: 4 }), p50Ms: undefined, p95Ms: undefined, p99Ms: undefined })])).series
     expect(read?.p95Ms).toBeUndefined()
@@ -20,9 +26,9 @@ describe('reading the answer of the measurements route', () => {
   })
 
   it('reads the budget and the objectives, and has none when the node says none', () => {
-    const given = readMetrics(answer({ budget: { inNodeReadP95Ms: 100 }, objectives: [{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'later' }] }))
+    const given = readMetrics(answer({ budget: { inNodeReadP95Ms: 100 }, objectives: [{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'later' }, { group: 'usage', p95Ms: 3000, state: 'undetermined', measuredP95Ms: 5000 }, { group: 'x', p95Ms: 5, state: 'constructor' }] }))
     expect(given.budgetInNodeReadP95Ms).toBe(100)
-    expect(given.objectives).toEqual([{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'unknown' }])
+    expect(given.objectives).toEqual([{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'unknown' }, { group: 'usage', p95Ms: 3000, state: 'undetermined', measuredP95Ms: 5000 }, { group: 'x', p95Ms: 5, state: 'unknown' }])
     const none = readMetrics(answer())
     expect(none.budgetInNodeReadP95Ms).toBeUndefined()
     expect(none.objectives).toEqual([])

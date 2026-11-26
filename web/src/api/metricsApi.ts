@@ -5,6 +5,8 @@
 export const BUCKET_BOUNDS_MS: readonly number[] = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000]
 export const BUCKET_COUNT = BUCKET_BOUNDS_MS.length + 1
 
+import type { ObjectiveResult, ObjectiveState } from './clientApi'
+
 export type SeriesKind = 'serve' | 'call' | 'client'
 
 export interface HourSeries {
@@ -39,17 +41,12 @@ export interface LatencySeries {
   byHour: HourSeries[]
 }
 
-export type ObjectiveState = 'met' | 'notMet' | 'unknown'
-
-/** A response time the node's operator set for a route group, and whether it held. */
-export interface Objective {
-  group: string
-  p95Ms: number
-  /** `unknown` is also what a state this client does not know is read as. */
-  state: ObjectiveState
-  /** What the node measured (an upper bound), when it could. */
-  measuredP95Ms?: number
-}
+/**
+ * A response time the node's operator set for a route group, and whether it held, as the node says it: the generated
+ * type. A state this client does not know is read as `unknown` (`metricsAnswers.ts`).
+ */
+export type Objective = ObjectiveResult
+export type { ObjectiveState }
 
 export interface Metrics {
   from: string

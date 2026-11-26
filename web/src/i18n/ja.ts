@@ -572,7 +572,7 @@ export const ja: Messages = {
       lead: '運用者がノードの設定で、ルートの区分ごとに決めた応答時間です。この期間に守れたかどうかは、ノードが答えます。',
       target: (group: string, p95: string) => `${group}: p95 ${p95}`,
       measured: (value: string) => `計測値: ${value}。`,
-      states: { met: '達成', notMet: '未達', unknown: 'まだ判断できません' },
+      states: { met: '達成', notMet: '未達', undetermined: 'この目標に対して判断できません', unknown: 'まだ判断できません' },
     },
   },
   evaluation: {
