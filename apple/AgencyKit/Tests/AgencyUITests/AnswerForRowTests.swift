@@ -27,7 +27,7 @@ struct AnswerForRowTests {
         #expect(RequestRow.answerLine(of: item(nil)) == nil)
         #expect(RequestRow.answerLine(of: item("")) == nil)
         #expect(RequestRow.answerLine(of: item("   ")) == nil)
-        #expect(RequestRow.answerLine(of: item(" \n\t ")) == nil)
+        #expect(RequestRow.answerLine(of: item(" \n\t ")) == "?? の代理で答える", "control characters are shown as ?, so the label is not empty")
         #expect(RequestRow.answerLine(of: item("  Dan (tax) ")) == "Dan (tax) の代理で答える")
     }
 
