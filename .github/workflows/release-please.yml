@@ -20,7 +20,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      pr: ${{ steps.release.outputs.pr }}
+      prs: ${{ steps.release.outputs.prs }}
     steps:
       - id: release
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
@@ -33,18 +33,30 @@ jobs:
   # push with the workflow's own token starts no other workflow, so this does not loop.
   cargo-lock:
     needs: release-please
-    if: needs.release-please.outputs.pr != ''
+    if: needs.release-please.outputs.prs != ''
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The release pull requests are one for the node and one for the iOS app; the lock file is the node's.
+      - name: Find the node's release pull request
+        id: node
+        env:
+          PULL_REQUESTS: ${{ needs.release-please.outputs.prs }}
+        run: |
+          branch="$(printf '%s' "$PULL_REQUESTS" | jq -r '[.[] | select(.headBranchName | endswith("--components--agency"))][0].headBranchName // empty')"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - if: steps.node.outputs.branch != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+          ref: ${{ steps.node.outputs.branch }}
+      - if: steps.node.outputs.branch != ''
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
-      - name: Update the workspace crates' versions in Cargo.lock
+      - if: steps.node.outputs.branch != ''
+        name: Update the workspace crates' versions in Cargo.lock
         run: cargo update --workspace
-      - name: Commit it to the release pull request
+      - if: steps.node.outputs.branch != ''
+        name: Commit it to the release pull request
         run: |
           if git diff --quiet -- Cargo.lock; then
             echo "Cargo.lock is already up to date"

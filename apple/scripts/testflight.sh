@@ -6,6 +6,9 @@
 # Needs apple/Local.xcconfig (team and bundle ID) and an app record for that bundle ID. The key
 # settings come from the environment only (see docs/apple.md). Nothing secret is printed. The build
 # number is the current UTC time, so every run is higher than the one before; BUILD_NUMBER overrides it.
+# The build says which source it was made from (the commit, and `git describe` against the ios-v tags,
+# in its Info.plist), and each upload is recorded in apple/uploads.log: time, build number, version,
+# commit, and describe. A tree with uncommitted changes is built, and recorded as -dirty.
 # The archive and this project's DerivedData are deleted at the end, also after a failure.
 set -euo pipefail
 
@@ -26,6 +29,14 @@ if ! printf '%s' "$BUILD_NUMBER" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
   problem "BUILD_NUMBER must be numbers separated by dots, for example 202611251830"
 fi
 exit_if_problems
+
+# Where the build comes from. Outside a git checkout, or without a tag, these say so.
+BUILD_COMMIT=$(git -C "$REPOSITORY_ROOT" rev-parse --short=12 HEAD 2> /dev/null || echo unknown)
+BUILD_DESCRIBE=$(git -C "$REPOSITORY_ROOT" describe --tags --match 'ios-v*' --long --dirty --always --abbrev=12 2> /dev/null || echo unknown)
+MARKETING_VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' "$APPLE_DIR/project.yml" 2> /dev/null | head -n 1 || true)
+case "$BUILD_DESCRIBE" in
+  *-dirty) printf 'Warning: the working tree has uncommitted changes; this build is recorded as %s.\n' "$BUILD_DESCRIBE" ;;
+esac
 
 # Xcode keeps one folder per project, named after it with 28 letters of hash.
 remove_derived_data() {
@@ -63,6 +74,8 @@ xcodebuild archive -quiet \
   -archivePath "$BUILD_DIR/Agency.xcarchive" \
   -derivedDataPath "$BUILD_DIR/DerivedData" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  AGENCY_BUILD_COMMIT="$BUILD_COMMIT" \
+  AGENCY_BUILD_DESCRIBE="$BUILD_DESCRIBE" \
   "${AUTHENTICATION[@]}" || die "the archive failed"
 
 printf 'Sending build %s to App Store Connect.\n' "$BUILD_NUMBER"
@@ -72,4 +85,6 @@ xcodebuild -exportArchive -quiet \
   -exportPath "$BUILD_DIR/export" \
   "${AUTHENTICATION[@]}" || die "the export or the upload failed"
 
+printf '%s\tbuild %s\tversion %s\tcommit %s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_NUMBER" "${MARKETING_VERSION:-unknown}" \
+  "$BUILD_COMMIT" "$BUILD_DESCRIBE" >> "$APPLE_DIR/uploads.log"
 printf 'Done: build %s is uploaded. It shows up in TestFlight after App Store Connect has processed it.\n' "$BUILD_NUMBER"
