@@ -123,6 +123,26 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
     Ok(doc)
 }
 
+/// An org id names one org on a node. A link to an org whose id this node already has, under another
+/// root key, is a different org (or a fake one): joining it would replace this node's definition and
+/// trust for that id, and with them every team it hosts there. The root key is the one the stored
+/// definition names now (it may have been rotated), or else the trusted one.
+fn refuse_another_org(node: &Node, invite: &Invite) -> Result<()> {
+    let org = &invite.org;
+    let stored = node.store().load_org(org);
+    let known = match &stored {
+        Some(doc) => Some(doc.body.root.public_key.fingerprint()),
+        None => node.config().trusted_fingerprint(org).map(str::to_owned),
+    };
+    match known {
+        Some(fingerprint) if fingerprint != invite.fp => Err(Error::new(
+            ErrorKind::Conflict,
+            format!("this node already has an org {org} with another root key; it cannot join a second org with the same id"),
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Joins an org from an invite link. Stops unless the org's root key matches the fingerprint in the link,
 /// and unless `confirm` agrees after seeing the definition.
 pub async fn join(
@@ -131,6 +151,7 @@ pub async fn join(
     confirm: impl FnOnce(&OrgDefinition) -> bool,
 ) -> Result<SignedOrg> {
     let invite = Invite::parse(link).map_err(Error::bad_request)?;
+    refuse_another_org(node, &invite)?;
     let access = DefinitionAccess::InviteCode(invite.code.clone());
     let current = node
         .peers()
@@ -180,7 +201,12 @@ pub async fn join(
             "the returned org definition does not include this account",
         ));
     }
-    node.store().save_org(&joined)?;
+    let _guard = node.write_lock().lock().await;
+    refuse_another_org(node, &invite)?;
+    let stored = node.store().load_org(&invite.org);
+    if stored.is_none_or(|stored| stored.body.version < joined.body.version) {
+        node.store().save_org(&joined)?;
+    }
     node.update_config(|config| {
         config.trust_with_root_node(invite.org.clone(), invite.fp.clone(), invite.node.clone())
     })?;

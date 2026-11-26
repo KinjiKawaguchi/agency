@@ -155,9 +155,13 @@ impl NodeConfig {
             .map(|one| one.root_fingerprint.as_str())
     }
 
-    /// Trusts an org (replacing the fingerprint of an org already trusted).
+    /// Trusts `root_fingerprint` as the root of `org`. An org id names one org on a node, so this never
+    /// replaces the fingerprint of another root; callers refuse that case first (see
+    /// `invites::join` and `orgs::create`).
     pub fn trust(&mut self, org: Id, root_fingerprint: String) {
-        self.trusted.retain(|one| one.org != org);
+        if self.trusted.iter().any(|one| one.org == org) {
+            return;
+        }
         self.trusted.push(TrustedOrg {
             org,
             root_fingerprint,
@@ -165,11 +169,15 @@ impl NodeConfig {
         });
     }
 
-    /// Joins `trust` with where the root's node is.
+    /// `trust`, and where the root's node is. It records the root's node only for the same root.
     pub fn trust_with_root_node(&mut self, org: Id, root_fingerprint: String, root_node: String) {
-        self.trust(org, root_fingerprint);
-        if let Some(last) = self.trusted.last_mut() {
-            last.root_node = Some(root_node);
+        self.trust(org.clone(), root_fingerprint.clone());
+        let same = self
+            .trusted
+            .iter_mut()
+            .find(|one| one.org == org && one.root_fingerprint == root_fingerprint);
+        if let Some(one) = same {
+            one.root_node = Some(root_node);
         }
     }
 
@@ -187,6 +195,40 @@ mod tests {
 
     fn id(raw: &str) -> Id {
         Id::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn trusting_never_replaces_another_roots_fingerprint() {
+        let mut config = NodeConfig {
+            url: "http://127.0.0.1:4400".into(),
+            listen: "127.0.0.1:4400".into(),
+            account: Account {
+                id: id("alice"),
+                label: "Alice".into(),
+            },
+            scrum: "scrum".into(),
+            teams: vec![],
+            trusted: vec![],
+            funding: vec![],
+            access: None,
+            push: None,
+        };
+        let acme = id("acme");
+        config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://a.example".into());
+        config.trust(acme.clone(), "b".repeat(32));
+        config.trust_with_root_node(acme.clone(), "b".repeat(32), "https://b.example".into());
+        assert_eq!(
+            config.trusted_fingerprint(&acme),
+            Some("a".repeat(32).as_str())
+        );
+        assert_eq!(config.root_node(&acme), Some("https://a.example"));
+        config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://moved.example".into());
+        assert_eq!(
+            config.root_node(&acme),
+            Some("https://moved.example"),
+            "the same root may move"
+        );
+        assert_eq!(config.trusted.len(), 1);
     }
 
     #[test]
