@@ -4,7 +4,7 @@ import { createMockNode } from '../mock/node'
 import { createFormatters } from '../i18n/format'
 import { heldNode } from '../test/heldNode'
 import { refreshQueries, renderApp } from '../test/render'
-import { isId, recoveriesOf } from './provisional'
+import { isId, recoveriesOf } from './recoveries'
 
 const AT = '2026-12-01T09:30:00Z'
 const STARTED = { takesEffectAt: AT, newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true }

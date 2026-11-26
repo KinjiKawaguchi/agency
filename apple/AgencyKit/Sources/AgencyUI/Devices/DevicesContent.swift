@@ -77,6 +77,8 @@ struct RequestCard: View {
     let request: DeviceRequest
     let isConfirming: Bool
     let confirmed: String?
+    /// What was said for a change the root's node holds for its owner.
+    let held: String?
     let failure: String?
     let now: Date
     let onConfirm: () -> Void
@@ -90,9 +92,13 @@ struct RequestCard: View {
             }
             CodeView(code: request.pairingCode, caption: Ja.Devices.codeOf(request.label))
             Text(Ja.Devices.compare).font(.footnote).foregroundStyle(Theme.warning).wrapping()
+            if let held {
+                // Not a success and not a refusal: the change waits for the root key's owner.
+                Label(held, systemImage: "hourglass").font(.footnote).foregroundStyle(.secondary).wrapping()
+            }
             if let confirmed {
                 Label(confirmed, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green).wrapping()
-            } else {
+            } else if held == nil || failure != nil {
                 Button(action: onConfirm) {
                     Text(isConfirming ? Ja.Devices.confirming : Ja.Devices.confirm)
                         .font(.headline).multilineTextAlignment(.center).lineLimit(3).wrapping().frame(maxWidth: .infinity)
@@ -122,6 +128,7 @@ struct DevicesContent: View {
     let loadFailure: String?
     let confirming: Set<String>
     let confirmed: [String: String]
+    let held: [String: String]
     let confirmFailures: [String: String]
     let now: Date
     let onAdd: () -> Void
@@ -150,7 +157,7 @@ struct DevicesContent: View {
                 ForEach(requests, id: \.publicKey) { request in
                     RequestCard(
                         request: request, isConfirming: confirming.contains(request.publicKey),
-                        confirmed: confirmed[request.publicKey], failure: confirmFailures[request.publicKey], now: now
+                        confirmed: confirmed[request.publicKey], held: held[request.publicKey], failure: confirmFailures[request.publicKey], now: now
                     ) { onConfirm(request) }
                 }
             }
@@ -182,7 +189,7 @@ public struct DevicesScreen: View {
                         DevicesContent(
                             code: pairing.pairingCode, pairing: pairing.status, isAsking: pairing.isAsking,
                             rows: store.rows, requests: store.requests, isLoaded: store.isLoaded, loadFailure: store.loadFailure,
-                            confirming: store.confirming, confirmed: store.confirmed, confirmFailures: store.confirmFailures, now: Date(),
+                            confirming: store.confirming, confirmed: store.confirmed, held: store.held, confirmFailures: store.confirmFailures, now: Date(),
                             onAdd: { Task { await pairing.requestAdd() } },
                             onCheck: { Task { await refresh(pairing) } },
                             onConfirm: { request in Task { await store.confirm(request) } }

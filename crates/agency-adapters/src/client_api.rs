@@ -294,6 +294,12 @@ async fn get_me(State(api): Shared, Extension(admitted): Extension<Admitted>) ->
     if is_owner_request(&api, &admitted) {
         let listed = home_nodes(&api.node.config()).0;
         answer.home_nodes = (!listed.is_empty()).then_some(listed);
+        let held = match agency_core::pending_root::waiting(&api.node) {
+            Ok(held) => held,
+            Err(error) => return refuse(status_of(error.kind), &error.message),
+        };
+        answer.root_changes =
+            (!held.is_empty()).then(|| held.iter().map(|one| one.as_ref_for_desk()).collect());
     }
     json_response(StatusCode::OK, &answer)
 }

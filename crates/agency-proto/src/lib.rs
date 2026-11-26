@@ -20,6 +20,7 @@ pub mod org;
 pub mod outcome;
 pub mod participant_metrics;
 pub mod reading;
+pub mod root_change;
 pub mod runtime;
 pub mod seat;
 pub mod signed;

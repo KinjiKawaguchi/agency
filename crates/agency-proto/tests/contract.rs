@@ -291,3 +291,30 @@ fn a_home_node_origin_is_written_one_way() {
         assert_eq!(home_node_origin(given).as_deref(), Some(written), "{given}");
     }
 }
+
+#[test]
+fn a_node_id_is_the_hash_of_the_origin_and_the_same_for_every_way_to_write_it() {
+    use agency_proto::client::node_id;
+    let file: Value = serde_json::from_str(include_str!("../../../testdata/node-id.json")).unwrap();
+    let cases = file["cases"].as_array().unwrap();
+    assert!(cases.len() >= 5);
+    for case in cases {
+        let url = case["url"].as_str().unwrap();
+        let origin = case["origin"].as_str().unwrap();
+        let id = case["id"].as_str().unwrap();
+        assert_eq!(node_id(url).as_deref(), Some(id), "{url}");
+        assert_eq!(node_id(origin).as_deref(), Some(id), "{origin}");
+        assert_eq!(id.len(), 32);
+        assert!(id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+    }
+    let distinct: std::collections::HashSet<&str> = cases
+        .iter()
+        .map(|case| case["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(distinct.len(), 5, "five different origins, one id each");
+    for url in file["none"].as_array().unwrap() {
+        assert_eq!(node_id(url.as_str().unwrap()), None, "{url}");
+    }
+}

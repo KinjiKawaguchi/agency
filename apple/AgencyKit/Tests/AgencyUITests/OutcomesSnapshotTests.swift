@@ -80,6 +80,37 @@ struct OutcomesSnapshotTests {
         }
     }
 
+    @Test("the buttons to enter a number and read the history, an open history with a replaced entry, and one that is loading or failed")
+    func historyAndEnter() throws {
+        func entry(_ date: String, _ value: Double, _ at: String) -> KpiObservation {
+            try! JSONDecoder().decode(KpiObservation.self, from: Data(#"{"kpi":"revenue","date":"\#(date)","value":\#(value),"source":{"kind":"manual"},"enteredAt":"\#(at)","enteredBy":"owner"}"#.utf8))
+        }
+        let revenue = orgs()[0].cards[0]
+        let list = NumberHistoryEntry.list(
+            [entry("2026-11-20", 1_350_000, "2026-11-22T09:00:00Z"), entry("2026-11-20", 1_300_000, "2026-11-21T09:00:00Z"),
+             entry("2026-10-31", 1_200_000, "2026-11-02T09:00:00Z")],
+            unit: revenue.unit, until: "2026-11-24", timeZone: TimeZone(identifier: "Asia/Tokyo")!
+        )
+        #expect(list.map(\.isReplaced) == [false, true, false])
+        let key = OutcomesStore.historyKey(org: "acme", kpi: "revenue")
+        for (name, state) in [("open", HistoryState.entries(list)), ("loading", .loading), ("failed", .failed("down"))] {
+            let content = OutcomesContent(
+                orgs: orgs(), days: 90, histories: [key: state], onEnter: { _, _ in }, onToggleHistory: { _, _ in }
+            )
+            for scheme in [ColorScheme.light, .dark] {
+                expectFits(Snapshot.capture("outcomes-history-\(name)", content, scheme: scheme), "history \(name), \(scheme)")
+            }
+        }
+    }
+
+    @Test("the day picked in the sheet is the day sent: a calendar day carried in UTC comes back as it went in")
+    func sheetDay() {
+        for day in ["2026-11-24", "2016-11-24", "2026-03-29", "2026-02-28", "2024-02-29", "2026-12-31"] {
+            #expect(EnterNumberSheet.text(of: EnterNumberSheet.date(of: day)!) == day, Comment(rawValue: day))
+        }
+        #expect(EnterNumberSheet.date(of: "soon") == nil)
+    }
+
     @Test("an org with no KPIs, no aims, and readings that could not be read")
     func empty() {
         let none = OrgOutcomes(id: "acme", label: "Acme", from: "2026-08-27", until: "2026-11-24", cards: [], readings: .lines([]))

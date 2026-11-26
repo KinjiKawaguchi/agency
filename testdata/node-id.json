@@ -1,0 +1,43 @@
+{
+  "description": "The id a node puts in its pushes as `agency.node` (docs/protocol.md, \"Push payloads\"): the first 16 bytes of the SHA-256 of `agency-node:` and the node's origin as `home_node_origin` writes it, as 32 lowercase hex characters. An address that is not a home node's origin has no id. The Rust node and the Swift apps read the same file.",
+  "cases": [
+    {
+      "url": "https://work.example.com",
+      "origin": "https://work.example.com",
+      "id": "02ae509c6b20999646d3c600687ee1bf"
+    },
+    {
+      "url": "https://Work.Example.com:443/",
+      "origin": "https://work.example.com",
+      "id": "02ae509c6b20999646d3c600687ee1bf"
+    },
+    {
+      "url": "https://work.example.com:8443",
+      "origin": "https://work.example.com:8443",
+      "id": "0881dc11d90faa5bd241e84dd481c251"
+    },
+    {
+      "url": "https://home.example.org",
+      "origin": "https://home.example.org",
+      "id": "d6d3917538b937d9a7bde7c90d891b7b"
+    },
+    {
+      "url": "http://127.0.0.1:4500",
+      "origin": "http://127.0.0.1:4500",
+      "id": "52ec9aa74688182ac19b667a157f900c"
+    },
+    {
+      "url": "http://localhost:80/",
+      "origin": "http://localhost",
+      "id": "27d6876f873503cf9f01f9c6591f94f3"
+    }
+  ],
+  "none": [
+    "ftp://work.example.com",
+    "https://user@work.example.com",
+    "https://work.example.com/path",
+    "http://work.example.com",
+    "https://work.example.com:0",
+    ""
+  ]
+}

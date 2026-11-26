@@ -12,6 +12,9 @@ public enum AccessHandoffError: Error, Equatable, Sendable {
     case expired
 }
 
+/// **Deprecated: the sign-in of the apps before the code exchange** (`SignInExchange` replaces it; the node keeps this
+/// form until the apps in use speak the new one, agency#335). The token reader below is still the app's.
+///
 /// One sign-in of the owner through the system's web authentication session, which runs in
 /// Safari's context, where passkeys and password managers work.
 ///
@@ -85,6 +88,14 @@ public struct AccessHandoff: Equatable, Sendable {
         let expires = try Self.expiry(ofToken: token)
         guard expires > now else { throw AccessHandoffError.expired }
         return AccessToken(value: token, host: host, expires: expires)
+    }
+
+    /// The token a sign-in redeemed, for `host`: a JWT with an `exp` claim that has not passed. The signature is not checked
+    /// (the node does that on every request); the app only needs to know when to stop using the token.
+    public static func token(fromJWT jwt: String, host: String, now: Date) throws -> AccessToken {
+        let expires = try expiry(ofToken: jwt)
+        guard expires > now else { throw AccessHandoffError.expired }
+        return AccessToken(value: jwt, host: host, expires: expires)
     }
 
     /// `a=1&b=2` as a dictionary, or `nil` when a name repeats or a part has no value.

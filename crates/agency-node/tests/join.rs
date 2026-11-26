@@ -69,6 +69,9 @@ async fn a_node_that_only_trusts_an_id_joins_only_that_org() {
 
     let genuine = invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
     let joined = join(&host.node, &genuine, |_| true).await.unwrap();
+    let agency_core::invites::Joined::Member(joined) = joined else {
+        panic!("the join was held")
+    };
     assert!(
         joined.body.member(&id("carol")).is_some(),
         "the same org, by its root key"

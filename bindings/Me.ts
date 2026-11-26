@@ -3,6 +3,7 @@ import type { AccountRef } from "./AccountRef.js";
 import type { Funding } from "./Funding.js";
 import type { HomeNode } from "./HomeNode.js";
 import type { OrgRef } from "./OrgRef.js";
+import type { RootChangeRef } from "./RootChangeRef.js";
 
 /**
  * The node's account and everything it can reach.
@@ -14,7 +15,18 @@ export type Me = { account: AccountRef, orgs: Array<OrgRef>, funding: Array<Fund
  */
 hidesTitles?: boolean, 
 /**
+ * This node's id as it names itself in a push (`agency.node`, `node_id` of its `url`), so that an app
+ * maps a push to the node it talks to without working the id out from the address it signed in with,
+ * which may not be the node's own `url`. Left out when the node's `url` is not a home node's origin.
+ */
+nodeId?: string, 
+/**
  * The other home nodes of the same human, for their other accounts, as the node's owner
  * configured them. Given only to the owner, and absent when there are none.
  */
-homeNodes?: Array<HomeNode>, };
+homeNodes?: Array<HomeNode>, 
+/**
+ * The changes others asked the root to sign that wait for the owner (`agency root-sign`), oldest
+ * first. Given only to the owner, and absent when none wait.
+ */
+rootChanges?: Array<RootChangeRef>, };
