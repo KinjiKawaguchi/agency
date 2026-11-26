@@ -232,6 +232,7 @@ impl Opened {
             access,
             assets,
             launch: self.launch.clone(),
+            handoff: handoff::Codes::default(),
         };
         let app = server::router(self.node.clone()).merge(client_api::router(Arc::new(api)));
         Ok(if is_public {

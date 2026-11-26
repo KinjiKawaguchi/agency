@@ -222,10 +222,11 @@ Note two values from it for the node's setting:
 
 ### Paths that bypass Access
 
-Two paths must reach the node without an Access sign-in. Add an Access application (or policy) for each path with the action Bypass:
+Three paths must reach the node without an Access sign-in. Add an Access application (or policy) for each path with the action Bypass:
 
 - `agency.example.com/fed/*`: the federation routes. Other nodes cannot sign in to Access; the node checks their signatures instead (see "Federation routes" in [protocol.md](protocol.md)).
 - `agency.example.com/.well-known/apple-app-site-association`: Apple's servers fetch it without signing in, for the iPhone app's sign-in. Needed only with `appId` below.
+- `agency.example.com/app/redeem`: the Apple apps exchange the code the sign-in gave them for the Access token, and at that moment they have no Access sign-in (the token is what they ask for). The node admits only a code that the sign-in made, with the verifier only the app has; it is single use, lasts a minute, and each client address gets a few tries a minute. Needed only with `appId` below.
 
 Bypass nothing else. The node refuses every other request from outside that has no valid Access token.
 

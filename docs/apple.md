@@ -197,6 +197,8 @@ It needs `bash`, `openssl`, `perl` and `jq`, and uses no Apple account, network,
 
 The app signs in to Access in an `ASWebAuthenticationSession`. It runs in Safari's context, so passkeys and password managers work, and it needs no password prompt of its own. (A `WKWebView` could not run WebAuthn for the Access team domain, `<team>.cloudflareaccess.com`: iOS allows that only for a relying party that is one of the app's associated domains, and the file that says so would have to be served by Cloudflare.)
 
+**The node's side has changed (agency#117): it answers the handoff with a single-use code, not the token, and the app redeems it with a verifier at `POST /app/redeem` (docs/protocol.md, "App sign-in"). The steps below describe the app until it moves to that exchange, which is the next change.**
+
 1. When the desk has no Access token yet, or the session ended (the node answers with a redirect to Access's login), the app starts the session on `https://<node host>/app/handoff?state=<state>`. The `state` is 256 random bits made for this sign-in. The first launch starts it by itself once.
 2. Access signs the owner in and returns to the handoff route, which sits behind Access. The node answers with a redirect to `https://<node host>/app/callback#token=<Access token>&state=<state>`.
 3. That address is a universal link, so iOS hands it only to the app that the node's `/.well-known/apple-app-site-association` file names. The app checks the host, the path, that `state` is its own, and that the token is a JWT that has not expired (`AccessHandoff` in `apple/AgencyKit`), then keeps the token in the Keychain.
