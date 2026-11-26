@@ -1,6 +1,7 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import { createMockWebPush } from './webPush'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
@@ -21,6 +22,8 @@ export interface MockNode {
   addDeviceFromTerminal: (pairingCode: string) => boolean
   /** Push tokens registered so far, one entry per token, as the node keeps them. */
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
+  /** The browsers subscribed through Web Push so far. */
+  pushSubscriptions: () => readonly PushSubscription[]
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
   /** Starts the node again: its write token changes, as it does each time the real node starts, and a page that holds the old one is refused. */
@@ -64,6 +67,8 @@ interface MockNodeOptions {
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
+  webPush?: boolean
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
   pushTokensFailWith?: number
   /** Makes only the decision log calls fail with this status. */
@@ -155,9 +160,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
     if (request.headers.get('x-agency-token') !== writeToken) return failure(403, 'missing or wrong write token')
-    if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
-    return { body: await request.json().catch(() => null) }
+    if (request.method !== 'DELETE' && request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
+    return { body: request.method === 'DELETE' ? null : await request.json().catch(() => null) }
   }
+
+  const webPush = createMockWebPush(() => now.toISOString())
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
   const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
@@ -278,6 +285,10 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       return json({ entries: log.slice(0, Math.min(MAX_LIMIT, Math.max(1, limit))) } satisfies DecisionLog)
     }
     if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
+    if (options.webPush === true) {
+      const answered = webPush.handle(request, url, () => readWrite(request))
+      if (answered !== undefined) return answered
+    }
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) {
@@ -302,6 +313,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     decisions: () => received,
     envelopes: () => accepted,
     pushTokens: () => pushTokens,
+    pushSubscriptions: () => webPush.subscriptions(),
     addDeviceFromTerminal: devices.addFromTerminal,
   }
 }

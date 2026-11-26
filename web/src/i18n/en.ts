@@ -91,6 +91,16 @@ export const en = {
       isOn: 'On. A notification appears when something is new while this page is hidden. The page keeps reading in the background to see it, as far as the browser lets it, and not while the browser is closed.',
       isBlocked: 'This browser does not allow notifications for this page. Allow them in its site settings, then turn them on here.',
       isUnsupported: 'This browser cannot show notifications from a page.',
+      push: {
+        title: 'When the app is closed',
+        lead: 'The node sends what is new to this browser through its push service, even when no page of it is open. The words are the node’s: a node that hides titles sends none.',
+        turnOn: 'Turn on for a closed app',
+        turnOff: 'Turn off for a closed app',
+        isOn: 'On. The node tells this browser when something is new, with the page closed.',
+        isStale: 'This browser was subscribed with a key the node no longer has, so it is not told. Subscribe again.',
+        subscribeAgain: 'Subscribe again',
+        failed: (message: string) => `Could not change it: ${message}`,
+      },
     },
   },
   people: {

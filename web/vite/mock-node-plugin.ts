@@ -24,6 +24,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
+  const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -31,6 +32,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
