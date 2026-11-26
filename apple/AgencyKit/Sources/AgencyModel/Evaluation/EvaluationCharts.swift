@@ -53,21 +53,21 @@ enum ChartBuilder {
         return [first, dates[(dates.count - 1) / 2], last].map(JaFormat.shortDate)
     }
 
+    /// Columns over `dates`, one value for each series in each. A column that has nothing is still drawn.
     static func columns(
-        title: String, hint: String? = nil, series: [ChartSeries], rows: [DayEvaluation], max: Double,
-        axis: [String], values: (DayEvaluation) -> [Double], text: (Double) -> String, hasTotal: Bool, spoken: (String, Double) -> String
+        title: String, hint: String? = nil, series: [ChartSeries], dates: [String], values: [[Double]], max: Double,
+        axis: [String], text: (Double) -> String, hasTotal: Bool, spoken: (String, Double) -> String
     ) -> EvaluationChart {
-        let days = rows.map { row -> ChartDay in
-            let own = values(row)
+        let days = zip(dates, values).map { date, own -> ChartDay in
             let total = own.reduce(0, +)
             return ChartDay(
-                date: row.date, shortDate: JaFormat.shortDate(row.date), values: own, valueTexts: own.map(text),
-                totalText: hasTotal ? text(total) : nil, spoken: spoken(JaFormat.shortDate(row.date), total)
+                date: date, shortDate: JaFormat.shortDate(date), values: own, valueTexts: own.map(text),
+                totalText: hasTotal ? text(total) : nil, spoken: spoken(JaFormat.shortDate(date), total)
             )
         }
         return EvaluationChart(
             title: title, hint: hint, kind: .columns, series: series, days: days, max: max, axis: axis,
-            dateLabels: dateLabels(rows.map(\.date)), hasNoData: false
+            dateLabels: dateLabels(dates), hasNoData: false
         )
     }
 

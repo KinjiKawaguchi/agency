@@ -65,3 +65,48 @@ extension Ja {
         }
     }
 }
+
+extension Ja {
+    /// Where each team's effort goes, from the web client's Japanese (`evaluation.effort` in `ja.ts`).
+    public enum Effort {
+        public static let title = "労力の行き先"
+        public static let lead = "各チームが使った費用を、仕事の種類別に、組織の意図と並べて見ます。費用は API 価格での概算です。"
+        public static let unavailable = "このノードはまだ作業種別ごとの労力を返しません。"
+        public static let noPlan = "このチームには組織の計画がまだ示されていないので、比べるものがありません。"
+        public static let planUnreadable = "このチームの組織の計画を読み取れなかったので、比べていません。"
+        public static let allocationTitle = "作業種別ごとの費用の割合"
+        public static let allocationHint = "印は組織が意図する割合"
+        public static let onPlan = "計画どおり"
+        public static let unclassifiedNote = "作業種別がなく、プルリクエストの種類からも決められない仕事は、未分類のままにします。推測では埋めません。"
+        public static let budgetTitle = "週の予算"
+        public static let byDay = "1 日ごとの費用"
+        public static let byDayHint = "作業種別別"
+        public static let tableShow = "数字を表で見る"
+        public static let tableType = "作業種別"
+        public static let tableCost = "API 価格"
+        public static let tableShare = "割合"
+        public static let tableIntended = "意図"
+        public static let tableTotal = "合計"
+
+        public static func type(_ type: EffortType) -> String {
+            switch type {
+            case .newFeature: "新機能"
+            case .improvement: "改善"
+            case .maintenance: "保守"
+            case .debt: "技術的負債"
+            case .incident: "障害対応"
+            case .unclassified: "未分類"
+            }
+        }
+
+        public static func couldNotAnswer(_ reason: String) -> String { "チームが今は労力を返せませんでした: \(reason)" }
+        public static func actual(_ share: String) -> String { "費用の \(share)" }
+        public static func intended(_ share: String) -> String { "意図 \(share)" }
+        public static func above(_ points: Int) -> String { "\(points) ポイント上" }
+        public static func below(_ points: Int) -> String { "\(points) ポイント下" }
+        public static func budgetLine(spent: String, of budget: String) -> String { "直近 7 日で \(budget) のうち \(spent)" }
+        public static func budgetLeft(_ amount: String) -> String { "残り \(amount)" }
+        public static func budgetOver(_ amount: String) -> String { "\(amount) 超過" }
+        public static func budgetMeter(spent: String, of budget: String) -> String { "週の予算 \(budget) のうち \(spent) を使用" }
+    }
+}

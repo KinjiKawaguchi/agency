@@ -7,7 +7,10 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
     private let lock = NSLock()
     private var meAnswer: Result<Me, Error>
     private var answers: [String: Result<Evaluation, Error>] = [:]
+    private var efforts: [String: Result<Effort, Error>] = [:]
+    private var planAnswer: Result<OrgPlans, Error> = .success(OrgPlans(byTeam: [:]))
     private var asked: [String] = []
+    private var effortAsked: [String] = []
     private var notReady = 0
     private var gates: [CheckedContinuation<Void, Never>] = []
     private var heldDays: Int?
@@ -15,8 +18,11 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
     init(me: Result<Me, Error>) { meAnswer = me }
 
     var asks: [String] { lock.withLock { asked } }
+    var effortAsks: [String] { lock.withLock { effortAsked } }
     func set(me: Result<Me, Error>) { lock.withLock { meAnswer = me } }
     func set(_ answer: Result<Evaluation, Error>, for org: String) { lock.withLock { answers[org] = answer } }
+    func set(effort: Result<Effort, Error>, for org: String) { lock.withLock { efforts[org] = effort } }
+    func set(plans: Result<OrgPlans, Error>) { lock.withLock { planAnswer = plans } }
     func failWithNotReady(times: Int) { lock.withLock { notReady = times } }
 
     /// Holds the reads for this period until `release()`, so another period can be chosen meanwhile.
@@ -41,6 +47,17 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
         }
         return try answer.get()
     }
+
+    func effort(org: String, days: Int) async throws -> Effort {
+        try lock.withLock {
+            effortAsked.append("\(org)?days=\(days)")
+            return try (efforts[org] ?? Result { try EffortReportTests.sample() }).get()
+        }
+    }
+
+    func orgPlans(org: String) async throws -> OrgPlans {
+        try lock.withLock { try planAnswer.get() }
+    }
 }
 
 private func me(_ json: String) -> Me { try! JSONDecoder().decode(Me.self, from: Data(json.utf8)) }
@@ -64,6 +81,58 @@ struct EvaluationStoreTests {
         #expect(reports.map(\.title) == ["The appチーム", "docsチーム"])
         #expect(unavailable.map(\.title) == ["opsチーム"])
         #expect(unavailable.map(\.text) == ["このチームは数字を返せませんでした: the team's node could not be reached"])
+    }
+
+    @Test("the effort and the org's plans are read with the evaluation, for the same org and period")
+    func readsEffort() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        await store.choose(days: 30)
+        #expect(source.effortAsks == ["acme?days=14", "acme?days=30"])
+        guard case .ready(let reports, _) = store.effort else { Issue.record("not ready: \(store.effort)"); return }
+        #expect(reports.map(\.title) == ["The appチーム"])
+        #expect(reports[0].planNote != nil)
+    }
+
+    @Test("a team's plan from the org definition is compared, and an org definition that cannot be read says so")
+    func plans() async throws {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        let plan = TeamPlan(allocation: [.newFeature: 50, .improvement: 20, .maintenance: 20, .debt: 10, .incident: 0], weeklyBudgetUsd: 140)
+        source.set(plans: .success(OrgPlans(byTeam: ["app": plan])))
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        guard case .ready(let stated, _) = store.effort else { Issue.record("not ready"); return }
+        #expect(stated[0].planNote == nil)
+        #expect(stated[0].budget != nil)
+
+        source.set(plans: .failure(NodeError.http(status: 500, message: "boom")))
+        await store.refresh()
+        guard case .ready(let unreadable, _) = store.effort else { Issue.record("not ready"); return }
+        #expect(unreadable[0].planNote == Ja.Effort.planUnreadable)
+    }
+
+    @Test("404 on the effort route means not served yet, and 503 that the team could not answer; the evaluation is not affected")
+    func effortOutcomes() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(effort: .failure(NodeError.http(status: 404, message: nil)), for: "acme")
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        #expect(store.effort == .unavailable)
+        guard case .ready = store.state else { Issue.record("the evaluation was affected"); return }
+        source.set(effort: .failure(NodeError.http(status: 503, message: "runtime busy")), for: "acme")
+        await store.refresh()
+        #expect(store.effort == .couldNotAnswer("runtime busy"))
+    }
+
+    @Test("effort on screen stays when a refresh keeps failing")
+    func keepsEffort() async throws {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        source.set(effort: .failure(NodeError.http(status: 503, message: "runtime busy")), for: "acme")
+        await store.refresh()
+        guard case .ready = store.effort else { Issue.record("the effort was replaced: \(store.effort)"); return }
     }
 
     @Test("choosing another period or org reads again for it, and only a period on offer")

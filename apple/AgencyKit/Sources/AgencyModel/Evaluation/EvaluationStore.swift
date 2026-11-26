@@ -6,6 +6,9 @@ import Observation
 public protocol EvaluationSource: Sendable {
     func me() async throws -> Me
     func evaluation(org: String, days: Int) async throws -> Evaluation
+    func effort(org: String, days: Int) async throws -> Effort
+    /// What the org intends for each of its teams, from its definition.
+    func orgPlans(org: String) async throws -> OrgPlans
 }
 
 extension NodeClient: EvaluationSource {}
@@ -19,6 +22,23 @@ public enum EvaluationState: Equatable, Sendable {
     /// The node or a team's runtime could not answer, and kept not answering after it was asked again.
     case couldNotAnswer(String)
     case failed(String)
+}
+
+/// What is known of an org's effort: where each team's tokens went, by work type.
+public enum EffortState: Equatable, Sendable {
+    case loading
+    case ready([TeamEffortReport], unavailable: [TeamUnavailableNote])
+    /// The node does not serve the route yet (404).
+    case unavailable
+    case couldNotAnswer(String)
+    case failed(String)
+
+    var isRetryExhausted: Bool {
+        switch self {
+        case .couldNotAnswer, .failed: true
+        case .loading, .ready, .unavailable: false
+        }
+    }
 }
 
 /// A team the node could not get numbers for, by the team's own label.
@@ -60,6 +80,7 @@ public final class EvaluationStore {
     public private(set) var org: OrgRef?
     public private(set) var days = EvaluationStore.defaultDays
     public private(set) var state: EvaluationState = .loading
+    public private(set) var effort: EffortState = .loading
 
     @ObservationIgnored private let source: any EvaluationSource
     @ObservationIgnored private let retry: RetryPolicy
@@ -79,7 +100,7 @@ public final class EvaluationStore {
             orgs = me.orgs
             org = me.orgs.first { $0.id == chosenOrg } ?? me.orgs.first
             needsSignIn = false
-            await readEvaluation()
+            await readOrg()
             loading = .loaded
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
@@ -96,42 +117,90 @@ public final class EvaluationStore {
         chosenOrg = id
         org = next
         state = .loading
-        await readEvaluation()
+        effort = .loading
+        await readOrg()
     }
 
     public func choose(days: Int) async {
         guard Self.periods.contains(days), days != self.days else { return }
         self.days = days
-        await readEvaluation()
+        await readOrg()
     }
 
-    private func readEvaluation() async {
+    /// What one read of the node came to.
+    private enum Fetched<Value: Sendable>: Sendable {
+        case answer(Value)
+        case unavailable
+        case couldNotAnswer(String)
+        case failed(String)
+        case cancelled
+    }
+
+    private static func fetch<Value: Sendable>(_ retry: RetryPolicy, _ read: @Sendable () async throws -> Value) async -> Fetched<Value> {
+        do {
+            return .answer(try await retry.run(read))
+        } catch NodeError.http(404, _) {
+            return .unavailable
+        } catch NodeError.http(503, let message) {
+            return .couldNotAnswer(message ?? "HTTP 503")
+        } catch NodeError.unreadable {
+            // The answer is not what the route promises: the same as the team's runtime not answering.
+            return .couldNotAnswer(Ja.Evaluation.unreadable)
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .failed(DeskStore.reason(error))
+        }
+    }
+
+    /// Reads the evaluation, the effort and the org's plans together.
+    private func readOrg() async {
         guard let org else {
             state = .loading
             return
         }
         let (id, days, source, retry) = (org.id, days, source, retry)
-        let outcome: EvaluationState
-        do {
-            let answer = try await retry.run { try await source.evaluation(org: id, days: days) }
-            outcome = .ready(reports(answer, of: org), unavailable: notes(answer, of: org))
-        } catch NodeError.http(404, _) {
-            outcome = .unavailable
-        } catch NodeError.http(503, let message) {
-            outcome = .couldNotAnswer(message ?? "HTTP 503")
-        } catch NodeError.unreadable {
-            // The answer is not what the route promises: the same as the team's runtime not answering.
-            outcome = .couldNotAnswer(Ja.Evaluation.unreadable)
-        } catch is CancellationError {
-            return
-        } catch {
-            outcome = .failed(DeskStore.reason(error))
-        }
+        async let evaluation = Self.fetch(retry) { try await source.evaluation(org: id, days: days) }
+        async let effort = Self.fetch(retry) { try await source.effort(org: id, days: days) }
+        async let plans = Self.fetch(retry) { try await source.orgPlans(org: id) }
+        let (read, spent, intended) = await (evaluation, effort, plans)
         // A period or an org chosen meanwhile has its own answer coming; this one is for the old one.
         guard id == self.org?.id, days == self.days else { return }
+        apply(read, in: org)
+        apply(spent, plans: intended, in: org)
+    }
+
+    private func apply(_ read: Fetched<Evaluation>, in org: OrgRef) {
+        let outcome: EvaluationState
+        switch read {
+        case .answer(let answer): outcome = .ready(reports(answer, of: org), unavailable: notes(answer.unavailable, of: org))
+        case .unavailable: outcome = .unavailable
+        case .couldNotAnswer(let reason): outcome = .couldNotAnswer(reason)
+        case .failed(let reason): outcome = .failed(reason)
+        case .cancelled: return
+        }
         // What is on screen stays when a refresh keeps failing.
         if case .ready = state, outcome.isRetryExhausted { return }
         state = outcome
+    }
+
+    private func apply(_ read: Fetched<Effort>, plans: Fetched<OrgPlans>, in org: OrgRef) {
+        let outcome: EffortState
+        switch read {
+        case .answer(let answer):
+            let planFor: (String) -> PlanState = { team in
+                guard case .answer(let known) = plans else { return .unreadable }
+                return known.byTeam[team].map(PlanState.stated) ?? .none
+            }
+            let reports = answer.teams.map { TeamEffortReport(effort: $0, label: label(of: $0.team, in: org), days: answer.days, plan: planFor($0.team)) }
+            outcome = .ready(reports, unavailable: notes(answer.unavailable, of: org))
+        case .unavailable: outcome = .unavailable
+        case .couldNotAnswer(let reason): outcome = .couldNotAnswer(reason)
+        case .failed(let reason): outcome = .failed(reason)
+        case .cancelled: return
+        }
+        if case .ready = effort, outcome.isRetryExhausted { return }
+        effort = outcome
     }
 
     private func label(of team: String, in org: OrgRef) -> String {
@@ -142,8 +211,8 @@ public final class EvaluationStore {
         answer.teams.map { TeamEvaluationReport(numbers: $0, label: label(of: $0.team, in: org), days: answer.days) }
     }
 
-    private func notes(_ answer: Evaluation, of org: OrgRef) -> [TeamUnavailableNote] {
-        answer.unavailable.map { TeamUnavailableNote(team: $0.team, label: label(of: $0.team, in: org), reason: $0.reason) }
+    private func notes(_ unavailable: [TeamUnavailable], of org: OrgRef) -> [TeamUnavailableNote] {
+        unavailable.map { TeamUnavailableNote(team: $0.team, label: label(of: $0.team, in: org), reason: $0.reason) }
     }
 }
 

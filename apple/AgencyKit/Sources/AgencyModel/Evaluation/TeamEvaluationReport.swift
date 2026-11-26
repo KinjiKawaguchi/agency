@@ -84,9 +84,10 @@ public struct TeamEvaluationReport: Equatable, Sendable, Identifiable {
 
         return [
             ChartBuilder.columns(
-                title: Ja.Evaluation.Chart.merged, hint: Ja.Evaluation.Chart.mergedHint, series: typeSeries(), rows: rows, max: mergedMax,
+                title: Ja.Evaluation.Chart.merged, hint: Ja.Evaluation.Chart.mergedHint, series: typeSeries(), dates: dates,
+                values: rows.map { row in MergedCounts.Kind.allCases.map { Double(row.merged[$0]) } }, max: mergedMax,
                 axis: [mergedMax, mergedMax / 2, 0].map(count),
-                values: { row in MergedCounts.Kind.allCases.map { Double(row.merged[$0]) } }, text: count, hasTotal: true,
+                text: count, hasTotal: true,
                 spoken: { Ja.Evaluation.Chart.dayMerged($0, count($1)) }
             ),
             ChartBuilder.lines(
@@ -104,13 +105,13 @@ public struct TeamEvaluationReport: Equatable, Sendable, Identifiable {
                 dates: dates, values: [costPerPr], max: costMax, axis: [costMax, costMax / 2, 0].map(money), text: money
             ),
             ChartBuilder.columns(
-                title: Ja.Evaluation.Chart.red, series: one, rows: rows, max: redAxis.max,
-                axis: [redAxis.max, redAxis.max / 2, 0].map(redAxis.text), values: { [$0.mainRedSeconds] }, text: DurationFormat.text,
+                title: Ja.Evaluation.Chart.red, series: one, dates: dates, values: rows.map { [$0.mainRedSeconds] }, max: redAxis.max,
+                axis: [redAxis.max, redAxis.max / 2, 0].map(redAxis.text), text: DurationFormat.text,
                 hasTotal: false, spoken: { "\($0): \(DurationFormat.text($1))" }
             ),
             ChartBuilder.columns(
-                title: Ja.Evaluation.Chart.reverts, series: one, rows: rows, max: revertsMax,
-                axis: [revertsMax, revertsMax / 2, 0].map(count), values: { [Double($0.reverts)] }, text: count,
+                title: Ja.Evaluation.Chart.reverts, series: one, dates: dates, values: rows.map { [Double($0.reverts)] }, max: revertsMax,
+                axis: [revertsMax, revertsMax / 2, 0].map(count), text: count,
                 hasTotal: false, spoken: { "\($0): \(count($1))" }
             ),
         ]
