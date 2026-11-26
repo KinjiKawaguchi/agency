@@ -16,6 +16,8 @@ final class ShellModel {
     var showsSettings = false
     /// Said once when a tapped notification belongs to a home node this device does not have.
     var linkNotice: String?
+    /// Whether the account has been read once (with an answer or without), after which a node's id is as settled as it will be.
+    private var hasReadAccount = false
 
     let homeNode: HomeNodeURL
     @ObservationIgnored let push: PushCoordinator
@@ -102,7 +104,8 @@ final class ShellModel {
         }
         let others = nodes.others.map(\.url)
         let action = NotificationRouting.action(
-            forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:), hasCurrentSaid: nodes.hasSaidID(of: homeNode)
+            forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:),
+            hasCurrentSaid: nodes.hasSaidID(of: homeNode), isAccountRead: hasReadAccount
         )
         switch action {
         case .openHere:
@@ -159,10 +162,9 @@ final class ShellModel {
         await PushUnregistration.stop(token: push.registration?.token, at: node)
     }
 
-    /// The number on the icon and the sign-in belong to the node that is being left.
+    /// The sign-in, the widgets and this node's count on the icon belong to the node that is being left.
     func leave() {
         showsSettings = false
-        push.setBadge(0)
         session?.widgets.clear()
         flow?.forget()
         nodes.leave()
@@ -170,11 +172,10 @@ final class ShellModel {
 
     // MARK: The owner's other home nodes
 
-    /// Goes to another home node. Its sign-in, key and choices are as they were; what this node showed on the icon and on a
-    /// widget is not the other node's.
+    /// Goes to another home node. Its sign-in, key and choices are as they were; what this node showed on a widget is not the
+    /// other node's. The icon keeps the sum over the nodes: this node's count stays in it until the node says another.
     func switchHomeNode(to node: HomeNodeURL) {
         showsSettings = false
-        push.setBadge(0)
         session?.widgets.clear()
         nodes.switchTo(node)
     }
@@ -186,9 +187,15 @@ final class ShellModel {
         let nodes = nodes
         let homeNode = homeNode
         Task {
-            guard let me = await session.readAccount() else { return }
-            nodes.note(configured: me.homeNodes)
-            nodes.note(nodeID: me.nodeId, of: homeNode)
+            let me = await session.readAccount()
+            if let me {
+                nodes.note(configured: me.homeNodes)
+                nodes.note(nodeID: me.nodeId, of: homeNode)
+                // A node known by an address other than its own changes id here, and the count recorded under the worked-out id is gone.
+                if let count = session.desk.knownWaitingCount { nodes.recordWaiting(count, for: homeNode) }
+            }
+            // Finished, with an answer or without: a tap that waited for it is placed now, or said not to be of this device.
+            hasReadAccount = true
             takeLink()
         }
     }

@@ -15,6 +15,8 @@ export interface NodeOptions {
   empty?: boolean
   /** The node has Web Push: it gives its key and keeps a subscription for each browser. */
   webPush?: boolean
+  /** The owner reads the node's own measurements (`usual`, `empty`, or `slow`); `absent` is a node that does not measure. */
+  metrics?: 'usual' | 'empty' | 'slow' | 'absent'
   webPushFailing?: boolean
   /** The node has made a claim link for one seat with this code; `claimFails` is how a claim of it ends, when it does not. */
   claim?: { code: string; fails?: 'unknown' | 'expired' | 'other-email' | 'taken' }
@@ -51,6 +53,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.participants === true) query.set('participants', '1')
   if (options.outcomes === true) query.set('outcomes', '1')
   if (options.webPush === true) query.set('webPush', '1')
+  if (options.metrics !== undefined) query.set('metrics', options.metrics)
   if (options.webPushFailing === true) query.set('webPushFailing', '1')
   if (options.homeNodes === true) query.set('homeNodes', '1')
   if (options.recovery === true) query.set('recovery', '1')

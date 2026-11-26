@@ -1,0 +1,276 @@
+{
+  "from": "2026-11-24T10:00:00Z",
+  "until": "2026-11-24T12:00:00Z",
+  "generatedAt": "2026-11-24T11:30:00Z",
+  "series": [
+    {
+      "kind": "serve",
+      "name": "GET /api/me",
+      "status": "2xx",
+      "group": "desk",
+      "isInNodeRead": true,
+      "count": 20,
+      "errors": 0,
+      "sumMs": 64,
+      "buckets": [
+        0,
+        12,
+        6,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 2,
+      "p95Ms": 10,
+      "p99Ms": 10,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 20,
+          "errors": 0,
+          "p95Ms": 10
+        }
+      ]
+    },
+    {
+      "kind": "serve",
+      "name": "GET /api/orgs/{org}/teams/{team}/usage",
+      "status": "2xx",
+      "count": 10,
+      "errors": 0,
+      "sumMs": 985,
+      "buckets": [
+        5,
+        0,
+        0,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 1,
+      "p95Ms": 1000,
+      "p99Ms": 1000,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 10,
+          "errors": 0,
+          "p95Ms": 1000
+        }
+      ],
+      "group": "usage",
+      "isInNodeRead": false
+    },
+    {
+      "kind": "serve",
+      "name": "GET /api/orgs/{org}/teams/{team}/usage",
+      "status": "5xx",
+      "count": 1,
+      "errors": 1,
+      "sumMs": 20000,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "p50Ms": 30000,
+      "p95Ms": 30000,
+      "p99Ms": 30000,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 1,
+          "errors": 1,
+          "p95Ms": 30000
+        }
+      ],
+      "group": "usage",
+      "isInNodeRead": false
+    },
+    {
+      "kind": "call",
+      "name": "peer get_view",
+      "status": "2xx",
+      "peer": "node-b.example",
+      "count": 2,
+      "errors": 0,
+      "sumMs": 135,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 50,
+      "p95Ms": 100,
+      "p99Ms": 100,
+      "byHour": [
+        {
+          "hour": "2026-11-24T10:00:00Z",
+          "count": 2,
+          "errors": 0,
+          "p95Ms": 100
+        }
+      ],
+      "group": "peer",
+      "isInNodeRead": false
+    },
+    {
+      "kind": "call",
+      "name": "runtime view",
+      "status": "ok",
+      "count": 4,
+      "errors": 0,
+      "sumMs": 41350,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "p50Ms": 500,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 4,
+          "errors": 0
+        }
+      ],
+      "group": "runtime",
+      "isInNodeRead": false
+    },
+    {
+      "kind": "client",
+      "name": "GET /api/orgs/{org}/teams/{team}/view",
+      "status": "2xx",
+      "client": "web",
+      "count": 3,
+      "errors": 0,
+      "sumMs": 12,
+      "buckets": [
+        0,
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 5,
+      "p95Ms": 5,
+      "p99Ms": 5,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 3,
+          "errors": 0,
+          "p95Ms": 5
+        }
+      ],
+      "group": "teams",
+      "isInNodeRead": false
+    },
+    {
+      "kind": "client",
+      "name": "GET /api/orgs/{org}/teams/{team}/view",
+      "status": "network",
+      "client": "ios",
+      "count": 1,
+      "errors": 1,
+      "sumMs": 4800,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 5000,
+      "p95Ms": 5000,
+      "p99Ms": 5000,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 1,
+          "errors": 1,
+          "p95Ms": 5000
+        }
+      ],
+      "group": "teams",
+      "isInNodeRead": false
+    }
+  ],
+  "budget": {
+    "inNodeReadP95Ms": 100
+  }
+}

@@ -51,13 +51,42 @@ struct DeskBackgroundRefreshTests {
     @Test("the desk is read once and the widgets' file is written from it, and the widgets are told")
     func writes() async throws {
         let outcome = await refresh().run(now: now)
-        #expect(outcome == .written)
+        let team = Team(snapshot: source.snapshot)
+        #expect(outcome == .written(waiting: Desk.waitingCount([team])))
+        #expect(Desk.waitingCount([team]) > 0)
         let snapshot = try #require(sink.written.first)
         #expect(snapshot.host == "node.example")
         #expect(snapshot.writtenAt == now)
         #expect(snapshot.waitingCount == Desk.openItems([Team(snapshot: source.snapshot)]).filter(\.isMine).count)
         #expect(snapshot.waitingCount > 0)
         #expect(sink.reloads == 1)
+    }
+
+    @Test("a node's waiting count is read from a complete desk, and no widget file is written")
+    func waitingCount() async {
+        let count = await DeskWaitingCount(source: source).run()
+        #expect(count == Desk.waitingCount([Team(snapshot: source.snapshot)]))
+        #expect(count.map { $0 > 0 } == true)
+        #expect(sink.written.isEmpty && sink.reloads == 0)
+    }
+
+    @Test("an empty desk counts 0, which is a count: nothing waits")
+    func emptyCount() async {
+        source.snapshot = Teams.snapshot(mine: [], waitingOnViewer: [])
+        #expect(await DeskWaitingCount(source: source).run() == 0)
+    }
+
+    @Test("an account that cannot be read, or a team that cannot, gives no count: a number made of the teams that answered would be wrong")
+    func noCount() async {
+        source.me = .failure(NodeError.sessionExpired)
+        #expect(await DeskWaitingCount(source: source).run() == nil)
+        let two = """
+        {"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[{"id":"acme","isRoot":true,"label":"Acme","teams":[
+        {"id":"app","label":"app","location":"local","viewer":"owner"},{"id":"web","label":"web","location":"remote","viewer":"owner"}]}]}
+        """
+        source.me = .success(try! JSONDecoder().decode(Me.self, from: Data(two.utf8)))
+        source.failing = ["web"]
+        #expect(await DeskWaitingCount(source: source).run() == nil)
     }
 
     @Test("an empty desk is written as nothing waiting, so a widget that showed requests does not keep showing them")
@@ -105,7 +134,7 @@ struct DeskBackgroundRefreshTests {
             "kind": "replica", "fetchedAt": "2026-11-20T12:00:00Z", "triedAt": "2026-11-24T12:00:00Z", "error": "the team's node did not answer",
         ])
         let outcome = await refresh().run(now: now)
-        #expect(outcome == .written)
+        #expect(outcome == .written(waiting: Desk.waitingCount([Team(snapshot: source.snapshot)])))
     }
 
     @Test("a team that is not ready is asked once, not again after waits: a background run has seconds")

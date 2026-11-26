@@ -22,6 +22,14 @@ struct ShellRouterTests {
         #expect(router.organizationPage == .orgChart)
     }
 
+    @Test("a push for a held root change opens the desk, from any screen, and opens no request")
+    func rootPush() throws {
+        let router = ShellRouter()
+        router.tab = .results
+        router.open(try link(["type": "root", "org": "acme", "id": "h-1"]))
+        #expect(router.tab == .desk && router.openItemID == nil)
+    }
+
     @Test("a banner for a request opens that request on the desk, from any screen")
     func requestBanner() {
         let router = ShellRouter()

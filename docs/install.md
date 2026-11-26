@@ -11,7 +11,7 @@ Ids are lowercase letters, digits, and hyphens (`[a-z0-9][a-z0-9-]{0,39}`).
 
 ## Requirements
 
-- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.35 or later, and systemd to run the node as a service.
+- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.34 or later, and systemd to run the node as a service.
 - macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler and `curl`, for example `sudo apt install build-essential curl`.
 - Rust, stable, 1.87 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
 - Node.js 24 with npm, to build the web client. Check with `node --version`.
@@ -47,9 +47,27 @@ Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` whe
 
 ### A release build
 
-Instead of building from source, you can use a release build: for each release, the Releases page of the repository has a tarball for macOS on Apple silicon (`arm64`) and on Intel (`x86_64`), and for Linux on `x86_64` and on `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with glibc 2.35 or later. [releasing.md](releasing.md) says how releases are made.
+Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). Linux builds need glibc 2.34 or later; Debian 12 or later and Ubuntu 22.04 or later can install the Debian package. [releasing.md](releasing.md) says how releases are made.
 
-1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`. A build that is not of a release is a workflow artifact of the **release** workflow in the **Actions** tab (named `agency-<version>-<commit>-linux-<arch>`).
+#### Debian package (Linux)
+
+On Debian and its derivatives, install the package for your architecture first. It installs `agency` at `/usr/bin/agency` and these guides and licenses at `/usr/share/doc/agency/`; it does not install a system service or create a user.
+
+1. Download the `.deb` and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency_*_<arch>.deb*'`, where `<arch>` is `amd64` or `arm64`.
+2. Check and install it:
+
+```sh
+sha256sum -c agency_*.deb.sha256
+sudo apt install ./agency_*.deb
+agency --version
+```
+
+Then create the systemd user unit in [Run it with systemd](#run-it-with-systemd-linux), using `/usr/share/doc/agency/systemd-unit.sh` and `--agency /usr/bin/agency`.
+Installing a newer downloaded package with `sudo apt install ./agency_*.deb` upgrades it in place. `sudo apt remove agency` leaves `~/.agency` and your systemd user unit alone.
+
+#### Tarball (macOS or Linux)
+
+1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`.
 2. Check and unpack it, and install the binary the way the previous section does:
 
 ```sh
@@ -127,11 +145,12 @@ If your `PATH` changes (for example, the harness moves), run the script again, t
 
 ### Run it with systemd (Linux)
 
-`scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
+`scripts/systemd-unit.sh` writes the unit's file (the Debian package installs it at `/usr/share/doc/agency/systemd-unit.sh`, and the release tarball holds it as `systemd-unit.sh`).
 The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
 Run it from a terminal where `scrum` and the harness's tools work. As for the launchd agent above, every command the team runtime runs (for the scrum harness, `node` and `gh`) must be in a directory on that `PATH`.
 
 ```sh
+# Use /usr/share/doc/agency/systemd-unit.sh and /usr/bin/agency after a Debian package install.
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/.config/systemd/user/agency-node.service
 systemctl --user daemon-reload
@@ -469,6 +488,19 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
+
+### The measurements
+
+The node times every request it answers and writes the numbers to `~/.agency/metrics/`, one file for each UTC day, for 30 days. They are the node's own data, on this machine only; nothing leaves it unless you scrape it (below). A request is named by the route it matched (`GET /api/orgs/{org}/teams/{team}/usage`, never the path with the ids in it), what matched no route is one series, `unmatched`, and no body, token, query, or address is kept. The owner reads them:
+
+```sh
+curl -s 'http://127.0.0.1:4400/api/metrics?days=1' | python3 -m json.tool | head
+curl -s http://127.0.0.1:4400/metrics            # the text a Prometheus scrape reads, since the node started
+```
+
+- `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days. A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
+- It is the owner's alone: the direct local request, or Access signed in as the owner. Another person Access lets in gets 403. `/metrics` is read only on the node's own machine, so a Prometheus scrapes it there (not through the tunnel).
+- Nothing is recorded in the data directory by a command that is not `serve`. A node that cannot write its directory keeps what it has in memory and tries again.
 
 ### The log
 

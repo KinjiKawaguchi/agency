@@ -88,7 +88,7 @@ fn to_request(record: DeviceRequestRecord) -> Result<DeviceRequest> {
 }
 
 fn is_label(label: &str) -> bool {
-    (1..=80).contains(&label.chars().count()) && !label.chars().any(char::is_control)
+    agency_proto::org::label_ok_to_write(label)
 }
 
 /// Records a device that asks to be added, and answers with its pairing code.

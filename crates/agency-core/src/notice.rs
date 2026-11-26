@@ -28,7 +28,20 @@ pub enum NoticeKind {
     /// this node. It names the org by id, never by label, so `hideTitles` keeps it whole.
     Recovery {
         org: Id,
+        /// When this node took the start, and when the recovery takes effect on it (ISO 8601); both absent
+        /// when it keeps no record of the start.
+        started_at: Option<String>,
         takes_effect_at: Option<String>,
+    },
+    /// A change someone asked the root to sign waits for the owner: an id derived from its handle (never the
+    /// handle), and what it changes (absent
+    /// when the node hides titles, since it names a member's or a device's label).
+    RootChange {
+        org: Id,
+        id: String,
+        what: Option<String>,
+        /// How many changes wait in the org when it is told.
+        waiting: u32,
     },
 }
 
@@ -47,6 +60,7 @@ impl Notice {
             NoticeKind::Device { .. } => PushEvent::Device,
             NoticeKind::Decision { .. } => PushEvent::Decision,
             NoticeKind::Recovery { .. } => PushEvent::Recovery,
+            NoticeKind::RootChange { .. } => PushEvent::Root,
         }
     }
 
@@ -57,7 +71,8 @@ impl Notice {
 
     /// Whether a token or a browser that names `events` gets it.
     pub fn is_wanted_by(&self, events: &[PushEvent]) -> bool {
-        self.is_for_everyone() || events.contains(&self.event())
+        let is_device_like = self.event() == PushEvent::Root && events.contains(&PushEvent::Device);
+        self.is_for_everyone() || events.contains(&self.event()) || is_device_like
     }
 
     /// Notifications of one team are grouped together; the devices have a group of their own.
@@ -68,6 +83,7 @@ impl Notice {
             }
             NoticeKind::Device { .. } => "devices".to_owned(),
             NoticeKind::Recovery { org, .. } => format!("recovery/{org}"),
+            NoticeKind::RootChange { org, .. } => format!("root/{org}"),
         }
     }
 
@@ -79,6 +95,7 @@ impl Notice {
             NoticeKind::Device { device, .. } => device.as_str(),
             NoticeKind::Decision { id, .. } => id,
             NoticeKind::Recovery { org, .. } => org.as_str(),
+            NoticeKind::RootChange { id, .. } => id,
         }
     }
 }
@@ -92,6 +109,17 @@ pub fn recovery_text(org: &Id, takes_effect_at: Option<&str>) -> (String, String
             "It takes effect at {at}. If you did not start it, sign any version of the org now, for example with agency root-cancel-recovery."
         ),
         None => "If you did not start it, sign any version of the org now, for example with agency root-cancel-recovery.".to_owned(),
+    };
+    (title, body)
+}
+
+/// The words of a held root change's notice, written by the node as a recovery's are: what waits, and where
+/// to sign it. Without `what` (hidden titles), it names only the org.
+pub fn root_change_text(org: &Id, what: Option<&str>) -> (String, String) {
+    let title = format!("A change to {org} waits for the root key");
+    let body = match what {
+        Some(what) => format!("{what}. Run agency root-sign on the root key's node to sign it."),
+        None => "Run agency root-sign on the root key's node to sign it.".to_owned(),
     };
     (title, body)
 }

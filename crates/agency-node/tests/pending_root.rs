@@ -319,3 +319,126 @@ async fn one_account_holds_at_most_five_changes_in_an_org() {
     );
     assert_eq!(pending_root::waiting(&alice.node).unwrap().len(), 5);
 }
+
+const TOKEN_HEX: &str = "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
+async fn register(running: &Running, events: &[&str]) {
+    let input = serde_json::json!({ "token": TOKEN_HEX, "environment": "sandbox", "label": "iPhone", "events": events });
+    let (status, answer) = common::body(
+        reqwest::Client::new()
+            .post(format!("{}/api/push/tokens", running.url()))
+            .header("x-agency-token", common::TOKEN)
+            .json(&input)
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200, "{answer}");
+}
+
+fn root_notices(running: &Running) -> Vec<agency_core::notice::NoticeKind> {
+    let state = running.notifier.0.lock().unwrap();
+    state
+        .sent
+        .iter()
+        .map(|(_, notice)| notice.kind.clone())
+        .filter(|kind| matches!(kind, agency_core::notice::NoticeKind::RootChange { .. }))
+        .collect()
+}
+
+#[tokio::test]
+async fn the_owner_is_told_once_of_each_held_change_by_a_token_that_wants_devices() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["device"]).await;
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+
+    notify_waiting(&alice.node).await.unwrap();
+    notify_waiting(&alice.node).await.unwrap();
+    let told = root_notices(&alice);
+    assert_eq!(told.len(), 1, "once: {told:?}");
+    let agency_core::notice::NoticeKind::RootChange { what, org, .. } = &told[0] else {
+        unreachable!()
+    };
+    assert_eq!(org, &id("acme"));
+    assert_eq!(what.as_deref(), Some("add device Laptop for bob"));
+}
+
+#[tokio::test]
+async fn hidden_titles_keep_the_labels_out_of_a_held_changes_notice() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["root"]).await;
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+    notify_waiting(&alice.node).await.unwrap();
+    let told = root_notices(&alice);
+    assert!(
+        matches!(
+            &told[..],
+            [agency_core::notice::NoticeKind::RootChange { what: None, .. }]
+        ),
+        "{told:?}"
+    );
+}
+
+#[tokio::test]
+async fn this_node_writes_no_new_label_that_could_reorder_a_line_but_keeps_old_ones() {
+    use agency_proto::org::Department;
+    let (alice, _) = alice().await;
+    let department = |raw: &str, label: &str| Department {
+        id: id(raw),
+        label: label.into(),
+        parent: None,
+        head: None,
+    };
+    let refused =
+        agency_core::departments::add(&alice.node, &id("acme"), department("ops", "Ops\u{202E}x"))
+            .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::BadRequest, "{refused:?}");
+    agency_core::departments::add(&alice.node, &id("acme"), department("dev", "Dev")).unwrap();
+}
+
+#[tokio::test]
+async fn a_device_only_token_that_failed_is_sent_a_held_changes_notice_again() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["device"]).await;
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+    alice.notifier.0.lock().unwrap().refusing = vec![TOKEN_HEX.to_owned()];
+    notify_waiting(&alice.node).await.unwrap();
+    assert!(root_notices(&alice).is_empty(), "the phone refused it");
+    alice.notifier.0.lock().unwrap().refusing = vec![];
+    notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(root_notices(&alice).len(), 1, "the retry reached it");
+}
+
+#[tokio::test]
+async fn a_new_kpi_label_that_could_reorder_a_line_is_refused() {
+    use agency_proto::outcome::{GoodWhen, Kpi, KpiKind, KpiUnit};
+    let (alice, _) = alice().await;
+    let kpi = |label: &str| Kpi {
+        id: id("revenue"),
+        label: label.into(),
+        kind: KpiKind::Product,
+        unit: KpiUnit::Count,
+        good_when: GoodWhen::Higher,
+    };
+    let refused =
+        agency_core::kpis::add(&alice.node, &id("acme"), kpi("Revenue\u{202E}x")).unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::BadRequest, "{refused:?}");
+    agency_core::kpis::add(&alice.node, &id("acme"), kpi("Revenue")).unwrap();
+}
