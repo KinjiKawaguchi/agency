@@ -55,7 +55,8 @@ struct CostColumns: View {
             if let usd = day.usd {
                 Rectangle()
                     .fill(isSelected ? Color.accentColor : Color.accentColor.opacity(0.55))
-                    .frame(height: usd > 0 ? max(1, 44 * min(usd / max(maximum, 0.0001), 1)) : 0)
+                    // A day that cost nothing is a real day: a sliver, apart from the grey mark of a day no team reported.
+                    .frame(height: max(1, 44 * min(usd / max(maximum, 0.0001), 1)))
             } else {
                 // No team reported this day: a mark on the baseline, which is not a column of 0.
                 Rectangle().fill(Theme.hairline).frame(height: 1)
