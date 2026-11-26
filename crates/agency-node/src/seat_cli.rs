@@ -3,6 +3,7 @@
 //! on the root key's node. A `set` changes only the flags it is given.
 use agency_core::seats::{self, ExternalChange, SeatChange};
 use agency_core::Node;
+use agency_proto::org::printable;
 use agency_proto::org::SignedOrg;
 use agency_proto::seat::{External, Seat};
 use agency_proto::{Id, OrgDefinition};
@@ -267,9 +268,9 @@ pub fn seat_lines(body: &OrgDefinition) -> Vec<String> {
         format!(
             "  Seat {} ({}), in {}, ask about: {}, answered by: {}",
             seat.id,
-            seat.label,
+            printable(&seat.label),
             seat.department.as_ref().map_or("no department", Id::as_str),
-            list_or_none(&seat.ask_about),
+            printable(&list_or_none(&seat.ask_about)),
             if seat.relays.is_empty() {
                 "the team's owner".to_owned()
             } else {
@@ -281,8 +282,8 @@ pub fn seat_lines(body: &OrgDefinition) -> Vec<String> {
         format!(
             "  External party {} ({}), ask about: {}, answered by: {}",
             external.id,
-            external.label,
-            list_or_none(&external.ask_about),
+            printable(&external.label),
+            printable(&list_or_none(&external.ask_about)),
             list_or_none(&names(&external.relays))
         )
     });

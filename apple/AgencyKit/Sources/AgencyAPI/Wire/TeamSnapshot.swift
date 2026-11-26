@@ -15,6 +15,8 @@ public struct TeamSnapshot: Decodable, Equatable, Sendable {
         case local
         /// A copy from the team's node; `error` says why the last read failed.
         case replica(fetchedAt: Instant?, triedAt: Instant, error: String?)
+        /// A source a newer node names: its view is read and shown as the node gave it, with no word on its age.
+        case unknown(String)
 
         private enum Keys: String, CodingKey { case kind, fetchedAt, triedAt, error }
 
@@ -30,7 +32,7 @@ public struct TeamSnapshot: Decodable, Equatable, Sendable {
                     error: try container.decodeIfPresent(String.self, forKey: .error)
                 )
             case let other:
-                throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown source kind \(other)")
+                self = .unknown(other)
             }
         }
     }

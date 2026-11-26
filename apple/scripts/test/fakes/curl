@@ -52,7 +52,10 @@ case "$method $url" in
     fi ;;
   "POST "*"/v1/bundleIds")
     status=201 response='{"data":{"id":"NEW-BUNDLE"}}'
-    case "$body" in *.widgets*) response='{"data":{"id":"NEW-WIDGET"}}' ;; esac ;;
+    case "$body" in
+      *.widgets*) response='{"data":{"id":"NEW-WIDGET"}}' ;;
+      *.notifications*) response='{"data":{"id":"NEW-NOTIFICATIONS"}}' ;;
+    esac ;;
   "POST "*"/v1/bundleIdCapabilities") status=201 response='{"data":{"id":"NEW-CAPABILITY"}}' ;;
   *) status=404 response='{"errors":[{"title":"Not found","detail":"no such route"}]}' ;;
 esac

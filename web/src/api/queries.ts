@@ -78,6 +78,9 @@ export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
 export const outcomesQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['outcomes', org, days], queryFn: () => api.outcomes(org, days), staleTime: 2 * POLL_MS })
 
+export const metricsQuery = (api: ApiClient, days: number) =>
+  queryOptions({ queryKey: ['metrics', days], queryFn: () => api.metrics(days), staleTime: 2 * POLL_MS })
+
 export const NUMBER_HISTORY = 100
 
 export const numberHistoryQuery = (api: ApiClient, org: string, kpi: string) =>

@@ -30,6 +30,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
   const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
+  const metrics = query?.get('metrics') ?? process.env.AGENCY_MOCK_METRICS
   const webPushFailing = query?.get('webPushFailing') ?? process.env.AGENCY_MOCK_WEBPUSH_FAILING
   const participants = query?.get('participants') ?? process.env.AGENCY_MOCK_PARTICIPANTS
   const siteError = query?.get('siteError')
@@ -46,6 +47,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     // mock node (the desk's times too), for the dev server and the screenshots.
     ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
+    ...(metrics === 'usual' || metrics === 'empty' || metrics === 'slow' || metrics === 'absent' ? { metrics } : {}),
     webPushFailing: webPushFailing === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.

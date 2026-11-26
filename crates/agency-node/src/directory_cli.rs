@@ -3,6 +3,7 @@
 use agency_core::directory::directory;
 use agency_core::Node;
 use agency_proto::directory::{Directory, DirectoryParty, RuntimeNames};
+use agency_proto::org::printable;
 use agency_proto::Id;
 use anyhow::Result;
 use clap::Args;
@@ -42,8 +43,8 @@ fn party_line(kind: &str, party: &DirectoryParty) -> String {
     format!(
         "  {kind} {} ({}), ask about: {}; answered by: {}; names in this node's teams: {}",
         party.id,
-        party.label,
-        list(&party.ask_about),
+        printable(&party.label),
+        printable(&list(&party.ask_about)),
         if answered_by.is_empty() {
             "the team's owner".to_owned()
         } else {
@@ -65,7 +66,7 @@ pub fn directory_lines(directory: &Directory) -> Vec<String> {
         lines.push(format!(
             "  Member {} ({}), {}{ask_about}, names in this node's teams: {}",
             member.id,
-            member.label,
+            printable(&member.label),
             member.role,
             names(&member.runtime_names)
         ));

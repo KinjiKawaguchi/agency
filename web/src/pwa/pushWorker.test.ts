@@ -178,3 +178,16 @@ describe('a recovery of an org that was started', () => {
     expect((await pushed(payload({ agency: { type: 'recovery', org: 'acme', team: 'app', request: 'r-1' }, badge: 0 }))).shown[0]?.options.data.url).toBe('/desk')
   })
 })
+
+describe('a change that waits for the root key', () => {
+  const held = { agency: { type: 'root', org: 'acme', id: '0123456789abcdef' }, badge: 0, title: 'A change to acme waits for the root key', body: 'add device iPhone for bob. Run agency root-sign on the root key\'s node to sign it.' }
+
+  it('shows the node\'s words, tagged by the id the node derived, never the handle, and opens the desk', async () => {
+    expect((await pushed(payload(held))).shown).toEqual([{ title: held.title, options: { body: held.body, icon: '/icons/icon-192.png', tag: 'root/0123456789abcdef', data: { url: '/desk' } } }])
+  })
+
+  it('words it itself when the node sent no text, and never shows a bare "Agency" alone', async () => {
+    const bare = { agency: held.agency, badge: 0 }
+    expect((await pushed(payload(bare))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A change to acme waits for the root key', tag: 'root/0123456789abcdef' } })
+  })
+})

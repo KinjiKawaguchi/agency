@@ -30,9 +30,10 @@ struct OrgDefinitionWireTests {
         #expect(definition.teams[0].department == "platform")
     }
 
-    @Test("a role the client does not know fails instead of being read as another")
-    func unknownRole() {
+    @Test("a role the client does not know is read as unknown, instead of failing the definition or being read as another")
+    func unknownRole() throws {
         let json = #"{"org":"a","label":"A","departments":[],"people":[{"id":"x","label":"X","account":"x","department":null,"role":"owner"}],"teams":[]}"#
-        #expect(throws: DecodingError.self) { try JSONDecoder().decode(OrgDefinition.self, from: Data(json.utf8)) }
+        let definition = try JSONDecoder().decode(OrgDefinition.self, from: Data(json.utf8))
+        #expect(definition.people[0].role == .unknown)
     }
 }

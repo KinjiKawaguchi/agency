@@ -36,11 +36,110 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
     if key == &node.key().public() {
         return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
     }
-    let purpose = format!("Sign version {} of {}", body.version, body.label);
+    let purpose = format!(
+        "Sign version {} of {}",
+        body.version,
+        agency_proto::org::printable(&body.label)
+    );
     let org = body.org.clone();
     sign_by(node, body, &|text: &[u8]| {
         node.root_keys().sign(&org, key, text, &purpose)
     })
+}
+
+/// Every label of `body`, with what it names.
+fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
+    let mut all = vec![("the org".to_owned(), body.label.as_str())];
+    let departments = body.departments.iter();
+    all.extend(departments.map(|one| (format!("department {}", one.id), one.label.as_str())));
+    all.extend(
+        body.people
+            .iter()
+            .map(|one| (format!("member {}", one.id), one.label.as_str())),
+    );
+    for person in &body.people {
+        let devices = person.devices.iter();
+        all.extend(devices.map(|one| {
+            (
+                format!("device {} of {}", one.id, person.id),
+                one.label.as_str(),
+            )
+        }));
+    }
+    all.extend(
+        body.teams
+            .iter()
+            .map(|one| (format!("team {}", one.id), one.label.as_str())),
+    );
+    all.extend(
+        body.seats
+            .iter()
+            .map(|one| (format!("seat {}", one.id), one.label.as_str())),
+    );
+    let externals = body.externals.iter();
+    all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.as_str())));
+    let kpis = body.kpis.iter();
+    all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.as_str())));
+    all
+}
+
+/// Every text of `body` that says what to ask a member, a seat, or an external party about, with whose it is.
+fn ask_about_texts(body: &OrgDefinition) -> Vec<(String, &str)> {
+    let mut all = vec![];
+    for person in &body.people {
+        let texts = person.ask_about.iter();
+        all.extend(texts.map(|text| (format!("member {}", person.id), text.as_str())));
+    }
+    for seat in &body.seats {
+        let texts = seat.ask_about.iter();
+        all.extend(texts.map(|text| (format!("seat {}", seat.id), text.as_str())));
+    }
+    for external in &body.externals {
+        let texts = external.ask_about.iter();
+        all.extend(texts.map(|text| (format!("external party {}", external.id), text.as_str())));
+    }
+    all
+}
+
+/// A label or an ask-about text this node writes now must not hold a character that could reorder or hide
+/// how a line reads (`label_ok_to_write`, `is_hidden_char`). What the version before already had stays, so an
+/// old org can still be changed.
+fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
+    let before = node.store().load_org(&body.org);
+    let kept_labels: std::collections::HashSet<&str> = before
+        .as_ref()
+        .map(|doc| {
+            labels(&doc.body)
+                .into_iter()
+                .map(|(_, label)| label)
+                .collect()
+        })
+        .unwrap_or_default();
+    let kept_texts: std::collections::HashSet<&str> = before
+        .as_ref()
+        .map(|doc| {
+            ask_about_texts(&doc.body)
+                .into_iter()
+                .map(|(_, text)| text)
+                .collect()
+        })
+        .unwrap_or_default();
+    for (what, label) in labels(body) {
+        if !kept_labels.contains(label) && !agency_proto::org::label_ok_to_write(label) {
+            return Err(Error::bad_request(format!(
+                "the label of {what} has a character that could reorder or hide how it reads"
+            )));
+        }
+    }
+    for (what, text) in ask_about_texts(body) {
+        let is_hidden = text.chars().any(agency_proto::org::is_hidden_char);
+        if !kept_texts.contains(text) && is_hidden {
+            return Err(Error::bad_request(format!(
+                "what to ask {what} about has a character that could reorder or hide how it reads"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
@@ -50,6 +149,7 @@ pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Re
     let mut body = body;
     body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
+    refuse_new_hidden_labels(node, &body)?;
     let org = body.org.clone();
     let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
         .map_err(|error| Error::internal(error.to_string()))?;

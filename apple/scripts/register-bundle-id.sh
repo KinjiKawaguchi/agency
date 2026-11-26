@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Registers the app's bundle ID and the widget extension's (`<bundle id>.widgets`) in the developer account
-# and enables the capabilities they use (the app: Push Notifications, Associated Domains, App Groups; the
-# widget extension: App Groups) through the App Store Connect API. Safe to run again: it only creates what
+# Registers the app's bundle ID, the widget extension's (`<bundle id>.widgets`) and the notification service
+# extension's (`<bundle id>.notifications`) in the developer account and enables the capabilities they use (the
+# app: Push Notifications, Associated Domains, App Groups; each extension: App Groups) through the App Store
+# Connect API. Safe to run again: it only creates what
 # is missing.
 #
 # The API cannot create the app group itself (`group.<bundle id>`): make it once in the developer portal
@@ -19,6 +20,7 @@ REPOSITORY_ROOT=$(cd "$APPLE_DIR/.." && pwd)
 API_ROOT="${ASC_API_ROOT:-https://api.appstoreconnect.apple.com}"
 APP_NAME="${ASC_APP_NAME:-Agency}"
 WIDGET_NAME="${ASC_WIDGET_NAME:-$APP_NAME Widgets}"
+NOTIFICATIONS_NAME="${ASC_NOTIFICATIONS_NAME:-$APP_NAME Notifications}"
 
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
@@ -119,6 +121,7 @@ register_bundle_id() {
 register_bundle_id "$BUNDLE_ID" "$APP_NAME" \
   "PUSH_NOTIFICATIONS:Push Notifications" "ASSOCIATED_DOMAINS:Associated Domains" "APP_GROUPS:App Groups"
 register_bundle_id "$BUNDLE_ID.widgets" "$WIDGET_NAME" "APP_GROUPS:App Groups"
+register_bundle_id "$BUNDLE_ID.notifications" "$NOTIFICATIONS_NAME" "APP_GROUPS:App Groups"
 
 # The version the app is built as (MARKETING_VERSION in project.yml): the macOS version the record is given is
 # that one, so no other, empty version stays on the record.
@@ -174,4 +177,4 @@ check_macos() {
 
 check_macos
 
-printf 'Next: the app group group.%s must exist and be ticked for both bundle IDs. The API cannot create it.\n' "$BUNDLE_ID"
+printf 'Next: the app group group.%s must exist and be ticked for all three bundle IDs (the app, the widgets and the notifications). The API cannot create it.\n' "$BUNDLE_ID"

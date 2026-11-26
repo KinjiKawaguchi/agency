@@ -21,12 +21,14 @@ public enum NotificationRouting {
     ///   - others: the other nodes on this device.
     ///   - idOf: the id a push from a node carries (`HomeNodeBook.nodeID(of:)`: what the node said, else worked out from its address).
     ///   - hasCurrentSaid: whether the open node has said its own id (`Me.nodeId`), so that `idOf(current)` is the node's word and not a guess.
+    ///   - isAccountRead: whether the account read has finished, with an answer or without: a node that has not said its id by then
+    ///     never will (an older node, or a read that failed), so a push that is none of the others' is a stranger's.
     public static func action(
         forNode node: String?, current: HomeNodeURL, others: [HomeNodeURL],
-        idOf: (HomeNodeURL) -> String = NodeID.of, hasCurrentSaid: Bool = true
+        idOf: (HomeNodeURL) -> String = NodeID.of, hasCurrentSaid: Bool = true, isAccountRead: Bool = false
     ) -> Action {
         guard let node, node != idOf(current) else { return .openHere }
         if let other = others.first(where: { idOf($0) == node }) { return .switchTo(other) }
-        return hasCurrentSaid ? .unknownNode : .waitForAccount
+        return hasCurrentSaid || isAccountRead ? .unknownNode : .waitForAccount
     }
 }

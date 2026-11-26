@@ -5,6 +5,8 @@ import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
+import type { Metrics } from './metricsApi'
+import { readMetrics } from './metricsAnswers'
 import type { NumberEntry, NumberInput, Outcomes, Readings } from './outcomesApi'
 import { readNumberEntry, readNumberHistory, readOutcomes, readReadings } from './outcomesAnswers'
 
@@ -77,6 +79,8 @@ export interface ApiClient {
   numberHistory: (org: string, kpi: string, limit: number) => Promise<NumberEntry[]>
   /** Enters a number of a KPI for a day (the node sets who and when); a second one for the same day wins and the first stays in the history. Owner only. */
   enterNumber: (org: string, input: NumberInput) => Promise<NumberEntry>
+  /** What the node measured of its own response times over the last `days` days (1 to 30): owner only (403 for anyone else, which is "nothing to show"), and 404 from a node that does not measure. */
+  metrics: (days: number) => Promise<Metrics>
   /** What happened in a team after `since` (an RFC 3339 time): board events and messages between its agents, oldest first. */
   activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
@@ -216,6 +220,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
+    metrics: (days) => get<unknown>(`/api/metrics?days=${days}`).then(checked(readMetrics)),
     activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
     outcomes: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/outcomes?days=${days}`).then(checked(readOutcomes)),
     readings: (org) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/readings`).then(checked(readReadings)),
