@@ -22,6 +22,8 @@ public final class PeopleStore {
     public private(set) var failures: [String: String] = [:]
 
     @ObservationIgnored private let source: any TeamSnapshotSource
+    /// The last answer of each team that was read, so a later failed read does not take the team off the screen.
+    @ObservationIgnored private var lastRead: [String: Team] = [:]
 
     public init(source: any TeamSnapshotSource) {
         self.source = source
@@ -32,14 +34,17 @@ public final class PeopleStore {
         do {
             let me = try await source.me()
             let order = me.orgs.flatMap { org in org.teams.map { TeamReader.key(org: org.id, team: $0.id) } }
-            var read: [String: Team] = [:]
+            var read = lastRead.filter { order.contains($0.key) }
             var failed: [String: TeamFailure] = [:]
             await TeamReader.read(me.orgs, from: source) { key, result in
                 switch result {
                 case .success(let snapshot): read[key] = Team(snapshot: snapshot)
-                case .failure(let error): failed[key] = TeamFailure(error: error)
+                case .failure(let error):
+                    // A team that was read keeps its last answer, as the overview and the web client do.
+                    if read[key] == nil || TeamFailure(error: error).signInEnded { failed[key] = TeamFailure(error: error) }
                 }
             }
+            lastRead = read
             sections = order.compactMap { read[$0].map(PeopleSection.init(team:)) }
             failures = failed.mapValues(\.reason)
             // A session that ended while the teams were being read shows as that, not as failures of each team.

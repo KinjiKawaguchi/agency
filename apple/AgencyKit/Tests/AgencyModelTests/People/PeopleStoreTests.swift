@@ -10,6 +10,8 @@ private final class FakeTeams: TeamSnapshotSource, @unchecked Sendable {
 
     init(me: Result<Me, Error>) { meAnswer = me }
 
+    func set(me: Result<Me, Error>) { lock.withLock { meAnswer = me } }
+
     func set(_ snapshot: Result<TeamSnapshot, Error>, for key: String) { lock.withLock { snapshots[key] = snapshot } }
 
     func me() async throws -> Me { try lock.withLock { try meAnswer.get() } }
@@ -70,6 +72,24 @@ struct PeopleStoreTests {
         let second = PeopleStore(source: midway)
         await second.refresh()
         #expect(second.needsSignIn)
+    }
+
+    @Test("a team that was read keeps its last answer when a later read fails, and a team gone from the account leaves")
+    func keepsLastAnswer() async {
+        let source = FakeTeams(me: .success(twoTeams))
+        for (org, team) in [("acme", "app"), ("acme", "docs"), ("zed", "ops")] {
+            source.set(.success(T.snapshot(org: org, team: team)), for: "\(org)/\(team)")
+        }
+        let store = PeopleStore(source: source)
+        await store.refresh()
+        #expect(store.sections.count == 3)
+        source.set(.failure(NodeError.http(status: 500, message: "down")), for: "acme/docs")
+        await store.refresh()
+        #expect(store.sections.map(\.id).contains("acme/docs"))
+        #expect(store.failures.isEmpty)
+        source.set(me: .success(me(#"{"account":{"id":"a","label":"A","fingerprint":"f"},"funding":[],"orgs":[]}"#)))
+        await store.refresh()
+        #expect(store.sections.isEmpty)
     }
 
     @Test("a failed account read says why")
