@@ -65,16 +65,18 @@ export const ja: Messages = {
     funding: '利用上限',
   },
   notices: {
-    request: (count, title, team) => (count === 1 ? `あなたを待っている依頼があります: ${title} (${team})。` : `あなたを待つ依頼が ${count} 件、新しく届きました。`),
-    participant: (count, label) => (count === 1 ? `${label} があなたを待っています。` : `参加者 ${count} 人があなたを待っています。`),
-    blocked: (count, title, team) => (count === 1 ? `止まりました: ${title} (${team})。` : `仕事の項目 ${count} 件が新しく止まりました。`),
+    // The words of the iPhone app's banner (apple/AgencyKit/Sources/AgencyModel/Wording/JaNews.swift), so both clients say the same.
+    request: (count, title, team) => (count === 1 ? `${team}: 「${title}」があなたを待っています` : `${count} 件の依頼があなたを待っています`),
+    participant: (count, label) => (count === 1 ? `${label} があなたの返事を待っています` : `参加者 ${count} 人があなたの返事を待っています`),
+    blocked: (count, title, team, reason) => (count === 1 ? `${team}: 「${title}」が止まりました${reason === undefined ? '' : ` (${reason})`}` : `${count} 件の仕事が止まりました`),
     aDevice: '端末',
-    device: (count, label) => (count === 1 ? `${label} が、端末として追加されるのを待っています。` : `${count} 台の端末が、追加されるのを待っています。`),
+    device: (count, label) => (count === 1 ? `端末「${label}」が追加を待っています` : `${count} 台の端末が追加を待っています`),
     decision: (state, count, title, reason) => {
-      const named = count === 1 && title !== '' ? `「${title}」` : ''
-      const label = state === 'refused' ? '受け付けられませんでした' : state === 'queued' ? '送信待ちです' : state === 'applied' ? '反映されました' : '届きました'
-      if (count > 1) return `決定 ${count} 件が${label}。`
-      return `決定${named}が${label}${state === 'refused' && reason !== undefined ? `: ${reason}` : '。'}`
+      if (count > 1) return `${count} 件の決定に動きがありました`
+      const named = title === '' ? '決定' : `「${title}」の決定`
+      if (state === 'refused') return `${named}は断られました${reason === undefined ? '' : `: ${reason}`}`
+      if (state === 'queued') return `${named}は送信待ちです`
+      return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
     devicesMark: (count) => `承認待ち ${count} 件`,

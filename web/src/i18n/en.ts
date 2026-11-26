@@ -72,7 +72,7 @@ export const en = {
   notices: {
     request: (count: number, title: string, team: string) => (count === 1 ? `A request waits for you: ${title} (${team}).` : `${count} requests now wait for you.`),
     participant: (count: number, label: string) => (count === 1 ? `${label} is waiting for you.` : `${count} participants are waiting for you.`),
-    blocked: (count: number, title: string, team: string) => (count === 1 ? `Blocked: ${title} (${team}).` : `${count} work items are newly blocked.`),
+    blocked: (count: number, title: string, team: string, reason: string | undefined) => (count === 1 ? `Blocked: ${title} (${team})${reason === undefined ? '' : `: ${reason}`}.` : `${count} work items are newly blocked.`),
     aDevice: 'A device',
     device: (count: number, label: string) => (count === 1 ? `${label} asks to be added as a device.` : `${count} devices ask to be added.`),
     decision: (state: string, count: number, title: string, reason: string | undefined) => {

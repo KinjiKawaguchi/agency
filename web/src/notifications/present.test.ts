@@ -29,7 +29,7 @@ describe('what the viewer is told', () => {
   it('names a participant who waits, and a work item that is blocked, by their labels and titles', () => {
     const person = sampleTeamView.people[1]!
     expect(noticesFor([e('participant', `participant:acme/app/${person.id}`)], lookups, en, on)[0]?.message).toBe(`${person.label} is waiting for you.`)
-    expect(noticesFor([e('blocked', `blocked:acme/app/${blockedItem.ref}`)], lookups, en, on)[0]?.message).toBe(`Blocked: ${blockedItem.title} (${sampleTeamView.label}).`)
+    expect(noticesFor([e('blocked', `blocked:acme/app/${blockedItem.ref}`)], lookups, en, on)[0]?.message).toBe(`Blocked: ${blockedItem.title} (${sampleTeamView.label}): ${en.people.blockedReasons[blockedItem.blocked!.reason]}.`)
   })
 
   it('names a device that asks, and says nothing of it on the devices screen, which lists devices itself', () => {
@@ -59,7 +59,24 @@ describe('what the viewer is told', () => {
   })
 
   it('reads in Japanese', () => {
-    expect(noticesFor([e('device', 'device:k1')], lookups, ja, on)[0]?.message).toBe('Phone が、端末として追加されるのを待っています。')
-    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, ja, on)[0]?.message).toBe('決定「Add a second frontend agent」が受け付けられませんでした: Not the right team.')
+    expect(noticesFor([e('device', 'device:k1')], lookups, ja, on)[0]?.message).toBe('端末「Phone」が追加を待っています')
+    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, ja, on)[0]?.message).toBe('「Add a second frontend agent」の決定は断られました: Not the right team.')
+  })
+
+  it('says in Japanese what the iPhone banner says, kind by kind', () => {
+    // The words of apple/AgencyKit/Sources/AgencyModel/Wording/JaNews.swift: both clients tell the same news the same way.
+    const person = sampleTeamView.people[1]!
+    const at = (kind: NoticeEvent['kind'], key: string, count = 1): string[] => noticesFor(Array.from({ length: count }, (_, index) => e(kind, count === 1 ? key : `${key}-${index}`)), lookups, ja, on).map((one) => one.message)
+    expect(at('request', `request:acme/app/${request.id}`)).toEqual([`${sampleTeamView.label}: 「${request.title}」があなたを待っています`])
+    expect(at('request', 'request:acme/app/r', 3)).toEqual(['3 件の依頼があなたを待っています'])
+    expect(at('participant', `participant:acme/app/${person.id}`)).toEqual([`${person.label} があなたの返事を待っています`])
+    expect(at('participant', 'participant:acme/app/p', 2)).toEqual(['参加者 2 人があなたの返事を待っています'])
+    expect(at('blocked', `blocked:acme/app/${blockedItem.ref}`)).toEqual([`${sampleTeamView.label}: 「${blockedItem.title}」が止まりました (${ja.people.blockedReasons[blockedItem.blocked!.reason]})`])
+    expect(at('blocked', 'blocked:acme/app/x', 2)).toEqual(['2 件の仕事が止まりました'])
+    expect(at('device', 'device:k1')).toEqual(['端末「Phone」が追加を待っています'])
+    expect(at('device', 'device:k', 2)).toEqual(['2 台の端末が追加を待っています'])
+    expect(at('decision', 'decision:d2:queued')).toEqual(['「Rename the export endpoint」の決定は送信待ちです'])
+    expect(at('decision', 'decision:z:applied')).toEqual(['決定が反映されました'])
+    expect(at('decision', 'decision:z:delivered')).toEqual(['決定が届きました'])
   })
 })
