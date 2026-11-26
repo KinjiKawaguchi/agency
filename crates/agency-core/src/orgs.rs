@@ -78,6 +78,8 @@ fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
     );
     let externals = body.externals.iter();
     all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.as_str())));
+    let kpis = body.kpis.iter();
+    all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.as_str())));
     all
 }
 

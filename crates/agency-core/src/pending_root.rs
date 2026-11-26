@@ -54,8 +54,8 @@ pub struct WaitingJoin {
 
 impl PendingRootChange {
     /// What it changes, in words, for the terminal, the desk, and the presence prompt. A label came from
-    /// someone else: a control or format character in it is shown as `?`, so it can neither move the terminal's cursor
-    /// nor push a name out of the prompt.
+    /// someone else: a control character, or one that could reorder or hide in a line (`is_hidden_char`),
+    /// is shown as `?`, so it can neither move the terminal's cursor nor push a name out of the prompt.
     pub fn what(&self) -> String {
         printable(&self.raw_what())
     }

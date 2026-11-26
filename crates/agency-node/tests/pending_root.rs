@@ -425,3 +425,20 @@ async fn a_device_only_token_that_failed_is_sent_a_held_changes_notice_again() {
     notify_waiting(&alice.node).await.unwrap();
     assert_eq!(root_notices(&alice).len(), 1, "the retry reached it");
 }
+
+#[tokio::test]
+async fn a_new_kpi_label_that_could_reorder_a_line_is_refused() {
+    use agency_proto::outcome::{GoodWhen, Kpi, KpiKind, KpiUnit};
+    let (alice, _) = alice().await;
+    let kpi = |label: &str| Kpi {
+        id: id("revenue"),
+        label: label.into(),
+        kind: KpiKind::Product,
+        unit: KpiUnit::Count,
+        good_when: GoodWhen::Higher,
+    };
+    let refused =
+        agency_core::kpis::add(&alice.node, &id("acme"), kpi("Revenue\u{202E}x")).unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::BadRequest, "{refused:?}");
+    agency_core::kpis::add(&alice.node, &id("acme"), kpi("Revenue")).unwrap();
+}
