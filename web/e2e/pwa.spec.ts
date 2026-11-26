@@ -42,6 +42,28 @@ test('registers the worker, which takes control and keeps built files only', asy
   expect(kept.filter((path) => !path.startsWith('/assets/') && !path.startsWith('/icons/') && path !== '/offline.html' && path !== '/offline.css')).toEqual([])
 })
 
+test('does not keep the page the node answers for a built file it does not have', async ({ page }) => {
+  await page.goto('/overview')
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
+  await page.reload()
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true)
+  // The node answers any path it does not know with the page: asking for a built file that is gone gets a 200 page.
+  const answer = await page.evaluate(async () => {
+    const first = await fetch('/assets/gone-OLDHASH.js')
+    await fetch('/icons/gone.png')
+    return { type: first.headers.get('content-type') }
+  })
+  expect(answer.type).toMatch(/html/)
+  const kept = await page.evaluate(async () => {
+    const urls: string[] = []
+    for (const name of await caches.keys()) for (const request of await (await caches.open(name)).keys()) urls.push(new URL(request.url).pathname)
+    return urls
+  })
+  expect(kept.filter((path) => path.includes('gone'))).toEqual([])
+})
+
 test('shows an offline page, and never a page it kept, when the node cannot be reached', async ({ page, context }) => {
   await page.goto('/overview')
   await page.evaluate(async () => {

@@ -53,6 +53,9 @@ const basic = (body: string, init: ResponseInit = {}): Response => Object.define
 const get = (path: string, init: RequestInit = {}): Request => new Request(`https://agency.example${path}`, init)
 const navigation = (path: string): Request => Object.defineProperty(get(path), 'mode', { value: 'navigate' })
 
+/** A request for a file, as the browser makes it for a script, a picture, or a page's own call. */
+const asked = (path: string, destination: RequestDestination): Request => Object.defineProperty(get(path), 'destination', { value: destination })
+
 describe('the service worker', () => {
   it('keeps the built files, once, and serves them from what it kept', async () => {
     let calls = 0
@@ -117,5 +120,33 @@ describe('the service worker', () => {
     const worker = startWorker((request) => Promise.resolve(basic(request.url)))
     for (let index = 0; index < 150; index += 1) await worker.fetchEvent(get(`/assets/chunk-${index}.js`))
     expect(worker.stores.get('agency-assets-1')?.size).toBe(120)
+  })
+
+  it('does not keep the page the node answers for a built file it does not have, and does not serve it later', async () => {
+    // After a deploy, a page of the earlier build asks for a file that is gone: the node answers 200 with the page, token and all.
+    let isPage = true
+    const worker = startWorker(() => Promise.resolve(isPage ? basic('<!doctype html><meta name="agency-token" content="secret">', { headers: { 'content-type': 'text/html; charset=utf-8' } }) : basic('console.log(2)', { headers: { 'content-type': 'text/javascript' } })))
+    expect(await (await worker.fetchEvent(asked('/assets/app.OLDHASH.js', 'script')))?.text()).toContain('secret')
+    for (const store of worker.stores.values()) expect([...store.keys()].some((url) => url.includes('OLDHASH'))).toBe(false)
+    // The next request goes to the network again, and a real file is then kept.
+    isPage = false
+    expect(await (await worker.fetchEvent(asked('/assets/app.OLDHASH.js', 'script')))?.text()).toBe('console.log(2)')
+    expect([...(worker.stores.get('agency-assets-1')?.keys() ?? [])].some((url) => url.includes('OLDHASH'))).toBe(true)
+  })
+
+  it('does not keep an answer with no type, a page for an icon, or a file of a kind that was not asked for', async () => {
+    const worker = startWorker((request) =>
+      Promise.resolve(request.url.includes('/icons/') ? basic('<html>', { headers: { 'content-type': 'text/html' } }) : request.url.includes('untyped') ? new Response(null, { status: 200 }) : basic('body', { headers: { 'content-type': 'text/javascript' } })),
+    )
+    await worker.fetchEvent(asked('/icons/x.png', 'image'))
+    await worker.fetchEvent(asked('/assets/untyped.js', 'script'))
+    await worker.fetchEvent(asked('/assets/framed.js', 'iframe'))
+    for (const store of worker.stores.values()) expect([...store.keys()].filter((url) => url.includes('/assets/') || url.includes('/icons/'))).toEqual([])
+  })
+
+  it('drops a page that an earlier worker kept under a built file’s address, and asks the network instead', async () => {
+    const worker = startWorker(() => Promise.resolve(basic('console.log(3)', { headers: { 'content-type': 'text/javascript' } })))
+    worker.stores.set('agency-assets-1', new Map([['https://agency.example/assets/old.js', basic('<!doctype html>token', { headers: { 'content-type': 'text/html' } })]]))
+    expect(await (await worker.fetchEvent(asked('/assets/old.js', 'script')))?.text()).toBe('console.log(3)')
   })
 })

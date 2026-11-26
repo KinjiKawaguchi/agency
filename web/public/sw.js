@@ -5,6 +5,9 @@
 // - When the network fails for a navigation, it shows /offline.html, a static page that says the node cannot be reached. A
 //   redirect to the sign-in (Access) is not a failure: it passes through untouched, so an expired sign-in is never hidden.
 // - When the page says the viewer signed out (`signed-out`), it deletes what it kept.
+// It holds no state of its own, which is why a new worker may take over the open pages at once (`skipWaiting`, `claim`).
+// It cannot rely on the node to answer a missing built file with a 404: the node answers any path it does not know with the
+// page (a 200 `text/html` that carries the write token), so a file is kept only when it is a file of the kind that was asked for.
 const SHELL = 'agency-shell-1'
 const ASSETS = 'agency-assets-1'
 const OFFLINE = '/offline.html'
@@ -12,6 +15,14 @@ const OFFLINE = '/offline.html'
 const MAX_ASSETS = 120
 
 const isBuiltFile = (pathname) => pathname.startsWith('/assets/') || pathname.startsWith('/icons/')
+
+/** What a built file is for: a script, a style sheet, a picture, a font (an empty destination is a call of `fetch()`). */
+const KEPT_DESTINATIONS = ['script', 'style', 'image', 'font', '']
+
+const isPage = (response) => (response.headers.get('content-type') || '').toLowerCase().startsWith('text/html')
+
+/** Whether an answer is a file worth keeping: a success of this origin, not a page, and of the kind asked for. */
+const isKeepable = (request, response) => response.ok && response.type === 'basic' && !isPage(response) && (response.headers.get('content-type') || '') !== '' && KEPT_DESTINATIONS.includes(request.destination)
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll([OFFLINE, '/offline.css'])).then(() => self.skipWaiting()))
@@ -34,9 +45,11 @@ async function trim(cache) {
 async function fromCacheOrNetwork(request) {
   const cache = await caches.open(ASSETS)
   const kept = await cache.match(request)
-  if (kept !== undefined) return kept
+  // A page that was kept by mistake (by an earlier worker) is dropped, not served.
+  if (kept !== undefined && !isPage(kept)) return kept
+  if (kept !== undefined) await cache.delete(request)
   const response = await fetch(request)
-  if (response.ok && response.type === 'basic') {
+  if (isKeepable(request, response)) {
     await cache.put(request, response.clone())
     await trim(cache)
   }
