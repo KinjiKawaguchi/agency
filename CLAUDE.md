@@ -22,6 +22,7 @@ This repository is public. Never write names or details that point at a specific
 - Clients (web, iOS, desktop) talk to their home node's Client API. Clients sign decisions with device keys they hold (non-extractable where the platform allows); nodes never sign envelopes, and team nodes accept only device-signed ones. The account key stays on the node for signed reads, join requests, and adding a person's first device.
 - Types shared with TypeScript are generated from the Rust types, never copied by hand.
 - Config and definition structs (HostedTeam, TeamPlace, ...) are built through their constructor and its `with_` methods, never as struct literals outside their crate; a test in `agency-core` (`tests/built_through_constructors.rs`) fails if a source does.
+- Clients never show a placeholder value for something the node has not answered yet: no `?? 0`, `|| 0`, `?? []` or default state standing in for a node value in a view. Until the answer comes, the region shows a loading state (a skeleton under Suspense on the web, a redacted or progress state in the Apple apps); a failed read shows its failure. A number on screen is always one the node gave, so 0 means 0.
 
 ## Workflow
 

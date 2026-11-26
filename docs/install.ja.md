@@ -262,7 +262,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
-- ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https:` のアドレス。省略するとノードのホスト名）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
+- ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
 
 設定の形式が正しくないと、起動時にログに出ます（[トラブルシューティング](#トラブルシューティング)を参照）。
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。
@@ -438,6 +438,13 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | a repository of the team is not written owner/name | チームが動いているノードの設定の `delivery.repos` を直します。 |
 | the team's node did not answer | そのノードが止まっているか、届きません。 |
+
+## 事業の数字
+
+何を測るか（KPI）は組織定義に書かれますが、数字は含まれません。数字そのもの（売上、継続率、リードタイムなど）は事業のデータで、ノードのデータディレクトリの `outcomes/<組織>.jsonl` に、数字 1 件につき 1 行で保存されます。ディレクトリは所有者だけが読める権限（`0700`、ファイルは `0600`）です。ノードが返す他のどの答えにも数字は含まれず、読むのも入力するのもノードの所有者だけです。`agency outcome-add --org acme --kpi revenue --date 2026-11-24 --value 1350000` で 1 件入力し、`agency outcome-list --org acme --kpi revenue` でその KPI の数字を一覧します。
+
+- **このディレクトリをバックアップし、共有するものには入れないでください。** データディレクトリのバックアップには数字が含まれるので、アカウント鍵と同じように扱います。
+- 数字は指標の動きを読むためのもので、会計用ではありません。
 
 ## ノードの更新
 

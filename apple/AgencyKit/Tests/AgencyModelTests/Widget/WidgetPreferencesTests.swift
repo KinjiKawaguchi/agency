@@ -20,15 +20,31 @@ struct WidgetPreferencesTests {
     func choice() {
         let storage = MemoryStorage()
         let store = WidgetPreferencesStore(storage: storage)
+        store.nodeSays(hidesTitles: false)
         #expect(store.showsTitles)
         store.setShowsTitles(false)
         #expect(!store.showsTitles)
         #expect(WidgetPreferencesStore(storage: storage).preferences.showsTitles == false)
     }
 
+    @Test("until the node has said whether it hides titles, none are shown, and the switch reads as the owner's choice")
+    func unknownNode() {
+        let store = WidgetPreferencesStore(storage: MemoryStorage())
+        #expect(store.nodeHidesTitles == nil)
+        #expect(!store.showsTitles)
+        #expect(store.isSwitchOn)
+        store.nodeSays(hidesTitles: true)
+        #expect(!store.isSwitchOn)
+        store.nodeSays(hidesTitles: false)
+        #expect(store.isSwitchOn)
+        store.setShowsTitles(false)
+        #expect(!store.isSwitchOn)
+    }
+
     @Test("a node that hides titles hides them on the widgets, whatever the choice says; the choice can only hide more")
     func nodeWins() {
         let store = WidgetPreferencesStore(storage: MemoryStorage())
+        store.nodeSays(hidesTitles: false)
         #expect(store.preferences.showsTitles)
         store.nodeSays(hidesTitles: true)
         #expect(store.preferences.showsTitles)
@@ -55,5 +71,7 @@ struct WidgetPreferencesTests {
         #expect(changes == 2)
         store.nodeSays(hidesTitles: true)
         #expect(changes == 2)
+        store.nodeSays(hidesTitles: false)
+        #expect(changes == 3)
     }
 }

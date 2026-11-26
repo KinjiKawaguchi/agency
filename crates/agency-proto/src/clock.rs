@@ -1,7 +1,7 @@
 //! Times are written as RFC 3339 in UTC. Reading the current time is the caller's job (a clock port),
 //! so nothing here depends on the wall clock.
 use time::format_description::well_known::Rfc3339;
-pub use time::{Date as CalendarDate, Duration, OffsetDateTime, UtcOffset};
+pub use time::{Date as CalendarDate, Duration, Month, OffsetDateTime, UtcOffset};
 
 pub fn format(at: OffsetDateTime) -> String {
     at.replace_nanosecond(0)

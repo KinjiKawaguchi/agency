@@ -20,6 +20,8 @@ struct RequestDetail: View {
     let now: Date
     /// This phone's key is added, so a decision can be signed.
     var isDeviceReady = true
+    /// Whether it is known if this phone's key is added: while the check runs, the screen does not say it is not.
+    var isDeviceChecked = true
     /// Draws the note as plain text, for renderings that cannot draw an editable field.
     var isStatic = false
     let onText: @MainActor @Sendable (String) -> Void
@@ -115,7 +117,7 @@ struct RequestDetail: View {
             }
             Text(hasOptions ? Ja.Paper.note : Ja.Paper.noteLabelOpen).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             note
-            if !isDeviceReady {
+            if !isDeviceReady && isDeviceChecked {
                 Label(Ja.Device.heading, systemImage: "iphone.badge.exclamationmark").font(.footnote).foregroundStyle(Theme.warning).wrapping()
             }
             decideButton

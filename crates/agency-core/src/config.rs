@@ -120,6 +120,7 @@ pub struct TrustedOrg {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct NodeConfig {
     /// This node's origin, where other nodes send to.
     pub url: String,
@@ -150,6 +151,34 @@ pub struct NodeConfig {
     /// same meaning and is still read.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_titles: bool,
+}
+
+impl WebPushConfig {
+    /// Why the node cannot send with this setting: an entry of `extraHosts` that is not a host name (or `*.` and a
+    /// domain) in lowercase, such as an address or a form of one (`0x7f.1`).
+    pub fn check(&self) -> Result<(), String> {
+        if let Some(subject) = &self.subject {
+            let is_contact = subject
+                .strip_prefix("mailto:")
+                .or_else(|| subject.strip_prefix("https://"))
+                .is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace));
+            if !is_contact {
+                return Err(format!(
+                    "webPush.subject: \"{subject}\" is not a mailto: or https:// address"
+                ));
+            }
+        }
+        match self
+            .extra_hosts
+            .iter()
+            .find(|entry| !crate::web_push::is_host_pattern(entry))
+        {
+            Some(entry) => Err(format!(
+                "webPush.extraHosts: \"{entry}\" is not a host name in lowercase, or `*.` and a domain"
+            )),
+            None => Ok(()),
+        }
+    }
 }
 
 /// Web Push: the node's own VAPID key lives in its data directory, never here.
@@ -289,6 +318,28 @@ pub struct AccessConfig {
 }
 
 impl NodeConfig {
+    /// A node's configuration with no hosted teams, trusted orgs, funding sources, Access, push, or Web Push.
+    pub fn new(
+        url: impl Into<String>,
+        listen: impl Into<String>,
+        account: Account,
+        scrum: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            url: url.into(),
+            listen: listen.into(),
+            account,
+            scrum: scrum.into(),
+            teams: vec![],
+            trusted: vec![],
+            funding: vec![],
+            access: None,
+            push: None,
+            web_push: None,
+            hide_titles: false,
+        }
+    }
+
     pub fn hosted(&self, org: &Id, team: &Id) -> Option<&HostedTeam> {
         self.teams
             .iter()
@@ -375,23 +426,58 @@ mod tests {
     }
 
     #[test]
-    fn trusting_never_replaces_another_roots_fingerprint() {
-        let mut config = NodeConfig {
-            url: "http://127.0.0.1:4400".into(),
-            listen: "127.0.0.1:4400".into(),
-            account: Account {
-                id: id("alice"),
-                label: "Alice".into(),
-            },
-            scrum: "scrum".into(),
-            teams: vec![],
-            trusted: vec![],
-            funding: vec![],
-            access: None,
-            push: None,
-            web_push: None,
-            hide_titles: false,
+    fn a_web_push_subject_is_a_mailto_or_https_contact() {
+        let subject = |text: &str| WebPushConfig {
+            subject: Some(text.to_owned()),
+            extra_hosts: vec![],
         };
+        for good in ["mailto:ops@acme.example", "https://node.acme.example"] {
+            assert_eq!(subject(good).check(), Ok(()), "{good}");
+        }
+        for bad in [
+            "",
+            "mailto:",
+            "ops@acme.example",
+            "http://127.0.0.1:4400",
+            "https://",
+            "mailto:a b@x.example",
+        ] {
+            let error = subject(bad).check().unwrap_err();
+            assert!(error.contains("webPush.subject"), "{bad}: {error}");
+        }
+    }
+
+    #[test]
+    fn web_push_hosts_must_be_names_and_say_which_entry_is_not() {
+        let hosts = |list: &[&str]| WebPushConfig {
+            subject: None,
+            extra_hosts: list.iter().map(|one| (*one).to_owned()).collect(),
+        };
+        assert_eq!(hosts(&[]).check(), Ok(()));
+        assert_eq!(
+            hosts(&["push.acme.example", "*.edge.acme.example"]).check(),
+            Ok(())
+        );
+        for bad in [
+            "127.0.0.1",
+            "0x7f.1",
+            "2130706433",
+            "*.com",
+            "Push.Acme.example",
+        ] {
+            let error = hosts(&["push.acme.example", bad]).check().unwrap_err();
+            assert!(error.contains(bad), "{error}");
+        }
+    }
+
+    #[test]
+    fn trusting_never_replaces_another_roots_fingerprint() {
+        let account = Account {
+            id: id("alice"),
+            label: "Alice".into(),
+        };
+        let mut config =
+            NodeConfig::new("http://127.0.0.1:4400", "127.0.0.1:4400", account, "scrum");
         let acme = id("acme");
         config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://a.example".into());
         config.trust(acme.clone(), "b".repeat(32));

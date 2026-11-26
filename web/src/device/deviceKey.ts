@@ -31,14 +31,16 @@ export interface KeyStore {
   save: (pair: CryptoKeyPair) => Promise<void>
 }
 
-/** The key this device already has, or a new one that is stored before it is used. */
-export async function loadOrCreateDeviceKey(store: KeyStore): Promise<DeviceKey> {
+/** The key this device already has, or a new one that is stored before it is used; and whether it had to be made. */
+export async function loadDeviceKey(store: KeyStore): Promise<{ key: DeviceKey; isCreated: boolean }> {
   const existing = await store.load()
-  if (existing !== undefined) return deviceKeyOf(existing)
+  if (existing !== undefined) return { key: await deviceKeyOf(existing), isCreated: false }
   const created = await generateKeyPair()
   await store.save(created)
-  return deviceKeyOf(created)
+  return { key: await deviceKeyOf(created), isCreated: true }
 }
+
+export const loadOrCreateDeviceKey = async (store: KeyStore): Promise<DeviceKey> => (await loadDeviceKey(store)).key
 
 /** What this page has of what a device key needs, so a wrapper app can see which part is missing. */
 export function deviceKeyCapabilities(): { secureContext: boolean; webCrypto: boolean; indexedDb: boolean } {
