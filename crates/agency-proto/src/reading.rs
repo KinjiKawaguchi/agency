@@ -28,8 +28,12 @@ pub enum ReadingState {
     ShipDateUnknown,
     /// No number of the KPI in the 90 days up to the ship day.
     NoBaseline,
-    /// No number yet at least 14 days after the ship day; `readableFrom` says the day one can first be read.
+    /// No number yet at least 14 days after the ship day, and the 90 days after it are not over;
+    /// `readableFrom` says the day one can first be read.
     TooEarly,
+    /// The 90 days after the ship day are over and no number was dated at least 14 days after it: there is
+    /// nothing to compare and there will not be.
+    NoFollowUp,
     /// Fewer than `MIN_POINTS` numbers of the KPI in the 180 days around the ship day; `points` and `needs`.
     TooFew,
     Ready,
@@ -78,8 +82,8 @@ pub struct AimReading {
     pub change: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change_ratio: Option<f64>,
-    /// The other epics (by item reference) that aim at the same KPI and shipped between `before` and `after`:
-    /// their effects cannot be told apart from this one's.
+    /// With `ready`: the other epics (by item reference) that aim at the same KPI and shipped between `before`
+    /// and `after`: their effects cannot be told apart from this one's. Empty in every other state.
     pub overlapping: Vec<String>,
     pub basis: Basis,
 }
@@ -142,6 +146,8 @@ impl AimReading {
         }
         if self.state == ReadingState::Ready {
             self.check_ready()?;
+        } else if !self.overlapping.is_empty() {
+            return Err("only a `ready` reading names epics that overlap it".into());
         }
         Ok(())
     }
@@ -238,6 +244,7 @@ mod tests {
             ReadingState::ShipDateUnknown,
             ReadingState::NoBaseline,
             ReadingState::TooEarly,
+            ReadingState::NoFollowUp,
             ReadingState::TooFew,
             ReadingState::Ready,
         ] {
@@ -293,6 +300,7 @@ mod tests {
         for one in [
             ReadingState::NoBaseline,
             ReadingState::TooEarly,
+            ReadingState::NoFollowUp,
             ReadingState::TooFew,
         ] {
             let mut reading = state(&readings, one);
@@ -323,6 +331,17 @@ mod tests {
         let mut ready_with_count = ready();
         ready_with_count.points = Some(5);
         assert!(ready_with_count.check().is_err(), "a count is for `tooFew`");
+    }
+
+    #[test]
+    fn only_a_ready_reading_names_overlapping_epics() {
+        let mut early = state(&sample(), ReadingState::TooEarly);
+        early.overlapping = vec!["app#12".into()];
+        assert!(early.check().is_err());
+        assert!(
+            !ready().overlapping.is_empty(),
+            "the sample's ready reading names one"
+        );
     }
 
     #[test]
