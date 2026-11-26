@@ -51,4 +51,20 @@ struct OutcomeFormatTests {
         #expect(OutcomeFormat.day("2026-01-05") == "2026年1月5日")
         #expect(OutcomeFormat.day("soon") == "soon")
     }
+
+    @Test("a day in the year of the reference is the web's short date, and one in another year keeps its year")
+    func shortDay() {
+        #expect(OutcomeFormat.day("2026-11-20", relativeTo: "2026-11-24") == "11月20日")
+        #expect(OutcomeFormat.day("2025-12-03", relativeTo: "2026-11-24") == "2025年12月3日")
+        #expect(OutcomeFormat.day("2026-11-20", relativeTo: "soon") == "2026年11月20日", "no reference year, so the year is kept")
+    }
+
+    @Test("a change as a share of where it began has its sign, and none when it began at 0")
+    func ratio() {
+        #expect(OutcomeFormat.changeRatio(from: 40, to: 44) == "+10%")
+        #expect(OutcomeFormat.changeRatio(from: 1_200_000, to: 1_350_000) == "+12.5%")
+        #expect(OutcomeFormat.changeRatio(from: 10, to: 6) == "-40%")
+        #expect(OutcomeFormat.changeRatio(from: -10, to: -5) == "+50%", "the share of a negative start is of its size")
+        #expect(OutcomeFormat.changeRatio(from: 0, to: 5) == nil)
+    }
 }

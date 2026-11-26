@@ -132,7 +132,7 @@ public final class OutcomesStore {
             return .failed(DeskStore.reason(error))
         }
         let readings = await readReadings(org, kpis: outcomes.series.map(\.kpi), source: source, retry: retry)
-        return .answer(OrgOutcomes(id: id, label: org.label, cards: outcomes.series.map(KpiCard.init(series:)), readings: readings))
+        return .answer(OrgOutcomes(id: id, label: org.label, cards: outcomes.series.map { KpiCard(series: $0, until: outcomes.until) }, readings: readings))
     }
 
     private static func readReadings(_ org: OrgRef, kpis: [Kpi], source: any OutcomesSource, retry: RetryPolicy) async -> OrgReadings {
@@ -141,7 +141,8 @@ public final class OutcomesStore {
             let answer = try await retry.run { try await source.readings(org: id) }
             let kpiOf = Dictionary(kpis.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             let teamLabel = Dictionary(org.teams.map { ($0.id, $0.label) }, uniquingKeysWith: { first, _ in first })
-            return .lines(answer.readings.map { ReadingLine(reading: $0, team: teamLabel[$0.team] ?? $0.team, kpi: kpiOf[$0.kpi]) })
+            let today = String(answer.generatedAt.text.prefix(10))
+            return .lines(answer.readings.map { ReadingLine(reading: $0, team: teamLabel[$0.team] ?? $0.team, kpi: kpiOf[$0.kpi], today: today) })
         } catch NodeError.http(404, _), NodeError.http(403, _) {
             return .unavailable
         } catch {

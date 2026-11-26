@@ -11,7 +11,10 @@ public struct Movement: Equatable, Sendable {
     public let tone: Tone
     /// The change, signed and in the unit's words.
     public let change: String
-    /// "上がった（良い方）"; the direction alone when the KPI does not say which way is better.
+    /// The change as a share of where it began (`+10%`); none when it began at 0.
+    public let ratio: String?
+    /// "上がった +4ポイント（+10%）良い方": the direction, the change, its share, and whether it is the better way when the KPI
+    /// says which is.
     public let text: String
 
     /// The movement from `from` to `to`. `goodWhen` says which way is better; an unknown one colours nothing.
@@ -25,6 +28,7 @@ public struct Movement: Equatable, Sendable {
         case (_, .unknown): .neutral
         }
         change = OutcomeFormat.change(delta, unit: unit)
+        ratio = direction == .unchanged ? nil : OutcomeFormat.changeRatio(from: from, to: to)
         let word = switch direction {
         case .rose: Ja.Outcomes.rose
         case .fell: Ja.Outcomes.fell
@@ -35,7 +39,7 @@ public struct Movement: Equatable, Sendable {
         case .worse: Ja.Outcomes.worse
         case .neutral: nil
         }
-        text = Ja.Outcomes.movement(word, tone: toneWord)
+        text = Ja.Outcomes.movement(word, change: direction == .unchanged ? nil : change, ratio: ratio, tone: toneWord)
     }
 }
 
@@ -65,17 +69,18 @@ public struct KpiCard: Equatable, Identifiable, Sendable {
     public let points: [Point]
     public let unit: Kpi.Unit
 
-    public init(series: KpiSeries) {
+    /// - Parameter until: the period's last day, which a day in the same year is written without its year.
+    public init(series: KpiSeries, until: String? = nil) {
         let kpi = series.kpi
         id = kpi.id
         label = kpi.label
         unit = kpi.unit
         points = series.points.map { Point(day: $0.date, value: $0.value) }
         if let latest = series.points.last {
-            figure = .latest(text: OutcomeFormat.value(latest.value, unit: kpi.unit), day: OutcomeFormat.day(latest.date))
+            figure = .latest(text: OutcomeFormat.value(latest.value, unit: kpi.unit), day: OutcomeFormat.day(latest.date, relativeTo: until))
             movement = series.before.map { Movement(from: $0.value, to: latest.value, unit: kpi.unit, goodWhen: kpi.goodWhen) }
         } else if let before = series.before {
-            figure = .older(text: OutcomeFormat.value(before.value, unit: kpi.unit), day: OutcomeFormat.day(before.date))
+            figure = .older(text: OutcomeFormat.value(before.value, unit: kpi.unit), day: OutcomeFormat.day(before.date, relativeTo: until))
             movement = nil
         } else {
             figure = .none

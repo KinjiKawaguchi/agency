@@ -17,11 +17,18 @@ struct ReadingLineTests {
     func ready() throws {
         let line = line(0)
         #expect(line.epic == "Persistent sessions" && line.team == "App" && line.kpi == "Activation")
-        #expect(line.headline == "完了の前 40% → 完了のあと 44%（+4ポイント）")
+        #expect(line.headline == "完了の前 40%（2026年10月15日）→ 完了のあと 44%（2026年11月10日）")
         let movement = try #require(line.movement)
         #expect(movement.direction == .rose && movement.tone == .better)
+        #expect(movement.text == "上がった +4ポイント（+10%）良い方")
         #expect(line.note == "完了のあとで数値が動きました。この仕事が動かしたとは言えません。")
         #expect(line.overlap == "同じ期間に完了した次の仕事とは区別できません: app#12")
+    }
+
+    @Test("with the day the node made the readings, the days of that year are the short date")
+    func shortDays() {
+        let line = ReadingLine(reading: readings[0], team: "App", kpi: kpis[1], today: "2026-11-24")
+        #expect(line.headline == "完了の前 40%（10月15日）→ 完了のあと 44%（11月10日）")
     }
 
     @Test("a ready reading without an overlap says none, and an epic the view no longer lists is named by its reference")
@@ -70,7 +77,7 @@ struct ReadingLineTests {
             let line = line(index)
             return [line.headline, line.note, line.overlap].compactMap { $0 }
         } + [
-            Ja.Outcomes.note, Ja.Outcomes.readingsHeading, Ja.Outcomes.noAims, Ja.Outcomes.noKpis, Ja.Outcomes.noNumber,
+            Ja.Outcomes.note, Ja.Outcomes.readingsHeading, Ja.Outcomes.movement("上がった", change: "+1", ratio: "+10%", tone: Ja.Outcomes.better), Ja.Outcomes.noAims, Ja.Outcomes.noKpis, Ja.Outcomes.noNumber,
             Ja.Outcomes.unreadable, Ja.Outcomes.rose, Ja.Outcomes.fell, Ja.Outcomes.unchanged, Ja.Outcomes.better, Ja.Outcomes.worse,
             Ja.Outcomes.lastEntered("x"), Ja.Outcomes.lastNumber("1", day: "x"), Ja.Outcomes.title,
         ]
