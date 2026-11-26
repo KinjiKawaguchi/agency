@@ -211,6 +211,24 @@ struct DeskStoreTests {
         #expect(!store.isReadFailing)
     }
 
+    @Test("a read that was cancelled says nothing about the node: no failure, and what was known stays", arguments: [
+        CancellationError() as Error, URLError(.cancelled),
+    ])
+    func cancelledRead(error: Error) async {
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.loading == .loaded && !store.isReadFailing)
+        source.set(me: .failure(error))
+        await store.refresh()
+        #expect(!store.isReadFailing)
+        #expect(store.loading == .loaded, "the desk still shows what it read")
+        #expect(store.hasAnswer)
+        let first = makeStore()
+        source.set(me: .failure(error))
+        await first.refresh()
+        #expect(first.loading == .idle && !first.isReadFailing, "a first read that was cancelled has not failed either")
+    }
+
     @Test("an expired sign-in and a sign-in that was never made are failed reads too")
     func readFailingForTheSignIn() async {
         let store = makeStore()

@@ -113,6 +113,7 @@ public final class DeskStore {
 
     /// Reads every team's view and the recent decisions. A team that cannot be read does not hide the others.
     public func refresh() async {
+        let before = loading
         loading = .loading
         do {
             let me = try await source.me()
@@ -129,6 +130,10 @@ public final class DeskStore {
             hasAnswered = true
             isReadFailing = !teamFailures.isEmpty
             loading = .loaded
+        } catch where Self.isCancelled(error) {
+            // The screen that asked went away (the Mac's sidebar cancels the desk's read when another screen is chosen):
+            // that says nothing about the node, so what was known stays as it was.
+            loading = before
         } catch NodeError.sessionExpired {
             needsSignIn = true
             isReadFailing = true
@@ -141,6 +146,10 @@ public final class DeskStore {
             isReadFailing = true
             loading = .failed(Self.reason(error))
         }
+    }
+
+    private static func isCancelled(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// A team that was read keeps its last answer when a later read of it fails, as the web client does, and
