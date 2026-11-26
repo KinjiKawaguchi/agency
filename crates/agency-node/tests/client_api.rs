@@ -320,6 +320,7 @@ async fn reports_funding_usage_from_the_usage_file() {
         kind: FundingKind::Subscription,
         usage_file: Some(file.path().into()),
         collector: None,
+        seven_day_threshold: None,
     };
     let without = FundingConfig {
         id: id("api"),
@@ -327,6 +328,7 @@ async fn reports_funding_usage_from_the_usage_file() {
         kind: FundingKind::ApiKey,
         usage_file: None,
         collector: None,
+        seven_day_threshold: None,
     };
     alice
         .node

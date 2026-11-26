@@ -160,6 +160,7 @@ fn funding(id: &str, collector: Option<UsageCollector>) -> FundingConfig {
         kind: FundingKind::Subscription,
         usage_file: None,
         collector,
+        seven_day_threshold: None,
     }
 }
 

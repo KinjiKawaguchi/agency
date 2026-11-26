@@ -124,6 +124,10 @@ pub struct FundingConfig {
     /// other tool keeps the file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collector: Option<UsageCollector>,
+    /// New agent sessions leave this source for the next one when its 7-day window passes this many
+    /// percent (1 to 100; default 80). The order of `funding` is the order of preference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seven_day_threshold: Option<u32>,
 }
 
 impl FundingConfig {
@@ -133,6 +137,23 @@ impl FundingConfig {
             (Some(file), _) => Some(file.clone()),
             (None, Some(_)) => Some(data_dir.join("usage").join(format!("{}.json", self.id))),
             (None, None) => None,
+        }
+    }
+}
+
+/// The program an agent session runs on a funding source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Tool {
+    Claude,
+    Codex,
+}
+
+impl UsageCollector {
+    pub fn tool(&self) -> Tool {
+        match self {
+            Self::Claude { .. } => Tool::Claude,
+            Self::Codex { .. } => Tool::Codex,
         }
     }
 }

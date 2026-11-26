@@ -266,6 +266,36 @@ To read a ChatGPT plan that you use through Codex, log in with ChatGPT (`codex l
 - Codex holds its own login, so the node reads no Codex token. Codex renews its login as it does for any run.
 - A login that uses an API key has no plan windows; the log says so. Codex marks `app-server` as experimental; this was checked with Codex CLI 0.151.
 
+### Choosing the subscription for new sessions
+
+The program that launches agent sessions can ask the node which subscription a new session should run on. The order of `funding` is the order of preference, and each source with a `collector` can set a threshold on its 7-day window:
+
+```json
+{ "id": "personal-1", "label": "Claude (personal 1)", "kind": "subscription",
+  "sevenDayThreshold": 90, "collector": { "type": "claude" } }
+```
+
+`sevenDayThreshold` is a percent from 1 to 100 (default 80).
+
+```sh
+agency funding pick --tool claude
+```
+
+prints one JSON object. `source` is the source to use, `env` is what to set for the session (`CLAUDE_CONFIG_DIR`, or `CODEX_HOME` for `--tool codex`; empty for the default login), and `reason` says why. `state` is:
+
+| `state` | Meaning |
+|---|---|
+| `ok` | The first source whose 7-day window is below its threshold. |
+| `unknown` | None is known to be below its threshold, and this source's usage cannot be read (the file is older than 30 minutes, or its window has reset). Unknown is not over. |
+| `overThreshold` | Every readable source is past its threshold; this one has the most room before 100%. Sessions go on, and the overview should say so. |
+| `none` | Every source has reached a limit (a window at 100). There is no `source`, and the command exits with 3. |
+
+`agency funding list` prints the same sources in order, with their `env` and threshold, for a program that needs to know every configuration directory. Neither command needs a running node or the account key, and neither prints a secret: `env` holds paths.
+
+A session that is running keeps the source it started on; only new sessions move. The usage can be 5 minutes old, so a source can pass its threshold by what 5 minutes of work uses: leave room under 100.
+
+Each source is one person's own subscription, and a node serves one account, so switching stays within one person's subscriptions. Never share a login with another person or pool logins across people: Claude's consumer terms forbid sharing an account. Switching is also not a way around a limit: a source at its limit is not picked until its window resets.
+
 ## Updating a node
 
 ```sh
