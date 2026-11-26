@@ -50,7 +50,7 @@ final class AccessSignInFlow: NSObject {
             let callback = try await authenticate(exchange)
             let code = try exchange.code(from: callback)
             // Redeemed at the node it was made for, and nowhere else: the client is this node's.
-            let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { nil })
+            let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { nil }, clientIdentity: ClientIdentity.current())
             let jwt = try await exchange.redeem(code: code, using: client)
             tokens.save(try AccessHandoff.token(fromJWT: jwt, host: exchange.host, now: Date()))
             return .signedIn

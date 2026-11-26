@@ -14,7 +14,9 @@ enum PushUnregistration {
     static func stop(token: String?, at node: HomeNodeURL) async -> Bool {
         guard let token else { return true }
         let tokens = AccessTokenStore(host: node.host)
-        let client = NodeClient(transport: URLSessionTransport(homeNode: node), accessToken: { tokens.current()?.value })
+        let client = NodeClient(
+            transport: URLSessionTransport(homeNode: node), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
+        )
         return await withTaskGroup(of: Bool.self) { group in
             group.addTask { (try? await client.unregisterPushToken(token)) != nil }
             group.addTask {

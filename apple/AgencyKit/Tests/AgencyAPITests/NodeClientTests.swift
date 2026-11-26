@@ -80,6 +80,14 @@ struct NodeClientTests {
         }
     }
 
+    @Test("stopping a push token carries the identity on the session read and on the delete")
+    func clientHeaderOnUnregister() async throws {
+        let transport = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/ab12", json("", status: 204))])
+        try await identified(transport, identity: "ios/0.3.1 (1)").unregisterPushToken("ab12")
+        #expect(transport.requests.count == 2)
+        for request in transport.requests { #expect(request.headers["x-agency-client"] == "ios/0.3.1 (1)", "\(request.method) \(request.path)") }
+    }
+
     @Test("with no identity no header is sent")
     func noClientHeader() async throws {
         let transport = ScriptedTransport([("GET /api/me", fixture("me"))])
