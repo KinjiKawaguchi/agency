@@ -1,4 +1,6 @@
-import { Outlet, createRootRoute, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router'
+import { OutcomesPage } from '../outcomes/OutcomesPage'
+import { OUTCOMES_PERIODS } from '../outcomes/useOutcomesAccess'
+import { Outlet, createRootRoute, createRoute, createRouter, redirect, useRouterState, type RouterHistory } from '@tanstack/react-router'
 import { CostsPage } from '../costs/CostsPage'
 import { EvaluationPage, PERIODS } from '../evaluation/EvaluationPage'
 import { LivePage } from '../live/LivePage'
@@ -7,12 +9,24 @@ import { DeskPage } from '../desk/DeskPage'
 import { OrgChartPage } from '../org/OrgChartPage'
 import { OverviewPage } from '../overview/OverviewPage'
 import { PeoplePage } from '../people/PeoplePage'
+import { ClaimPage } from '../claim/ClaimPage'
 import { AddDeviceNotice } from '../device/AddDeviceNotice'
 import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { AppBar } from './AppBar'
 
+/** The claim page is a person's first page, before there is anything of the app for them: it has none of the app's bar and notices. */
+const isClaimPath = (path: string): boolean => path === '/claim' || path.startsWith('/claim/')
+
 function Shell() {
+  const path = useRouterState({ select: (state) => state.location.pathname })
+  if (isClaimPath(path)) {
+    return (
+      <main className="page">
+        <Outlet />
+      </main>
+    )
+  }
   return (
     <>
       <AppBar />
@@ -83,11 +97,30 @@ const evaluationRoute = createRoute({
   },
 })
 
+const outcomesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/outcomes',
+  validateSearch: (search: Record<string, unknown>): { org?: string; days?: number } => ({
+    ...(nonEmpty(search.org) === undefined ? {} : { org: nonEmpty(search.org) }),
+    ...(OUTCOMES_PERIODS.find((one) => one === Number(search.days)) === undefined ? {} : { days: Number(search.days) }),
+  }),
+  component: function OutcomesRoute() {
+    const { org, days } = outcomesRoute.useSearch()
+    const navigate = outcomesRoute.useNavigate()
+    return <OutcomesPage org={org} days={days} onChange={(next) => void navigate({ search: next, replace: true })} />
+  },
+})
+
 const liveRoute = createRoute({ getParentRoute: () => rootRoute, path: '/live', component: LivePage })
 
 const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: () => <DevicesPage /> })
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, devicesRoute])
+// `/claim/continue` is where the public landing page sends the person after the sign-in; `/claim` itself is the landing page,
+// which the node serves as a static file, and which this route stands in for where the node does not (a dev server).
+const claimRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim', component: ClaimPage })
+const claimContinueRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim/continue', component: ClaimPage })
+
+const routeTree = rootRoute.addChildren([indexRoute, claimRoute, claimContinueRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, costsRoute, evaluationRoute, liveRoute, outcomesRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })

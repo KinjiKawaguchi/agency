@@ -9,8 +9,11 @@ public struct Me: Decodable, Equatable, Sendable {
     /// must stay where it is. A client that shows a title outside the app (a widget) then shows none. Left out by a node that
     /// does not say, which counts as `false`.
     public let hidesTitles: Bool
+    /// The owner's other home nodes, as this node's configuration names them. Only the node's owner is told; for anyone
+    /// else, and for a node that names none, the list is empty.
+    public let homeNodes: [HomeNodeRef]
 
-    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles }
+    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
@@ -18,6 +21,18 @@ public struct Me: Decodable, Equatable, Sendable {
         orgs = try container.decode([OrgRef].self, forKey: .orgs)
         funding = try container.decode([Funding].self, forKey: .funding)
         hidesTitles = try container.decodeIfPresent(Bool.self, forKey: .hidesTitles) ?? false
+        homeNodes = try container.decodeIfPresent([HomeNodeRef].self, forKey: .homeNodes) ?? []
+    }
+}
+
+/// A home node a node's configuration names: a label and the address as the node writes it (`home_node_origin`).
+public struct HomeNodeRef: Decodable, Equatable, Sendable {
+    public let label: String
+    public let url: String
+
+    public init(label: String, url: String) {
+        self.label = label
+        self.url = url
     }
 }
 

@@ -102,6 +102,7 @@ fn bare(account: &str) -> Fixture {
         funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
         delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
         notifier: Arc::new(NoNotifier),
+        root_keys: Arc::new(agency_adapters::memory::MemoryRootKeys::default()),
     };
     let node = Node::open(ports, key).unwrap();
     Fixture {
@@ -430,10 +431,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: root.public(),
-        },
+        root: Root::new(id("alice"), root.public()),
         departments: vec![],
         people: vec![alice],
         teams: vec![],

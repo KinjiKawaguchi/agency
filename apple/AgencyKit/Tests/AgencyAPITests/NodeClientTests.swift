@@ -4,7 +4,7 @@ import Testing
 @testable import AgencyAPI
 
 /// A transport that answers from a script and remembers what it was asked.
-private final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
+final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var answers: [(String, HTTPResponse)]
     private var sent: [HTTPRequest] = []
@@ -25,8 +25,8 @@ private final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
-private func json(_ text: String, status: Int = 200) -> HTTPResponse { HTTPResponse(status: status, body: Data(text.utf8)) }
-private func fixture(_ name: String, status: Int = 200) -> HTTPResponse { HTTPResponse(status: status, body: try! Fixtures.data(name)) }
+func json(_ text: String, status: Int = 200) -> HTTPResponse { HTTPResponse(status: status, body: Data(text.utf8)) }
+func fixture(_ name: String, status: Int = 200) -> HTTPResponse { HTTPResponse(status: status, body: try! Fixtures.data(name)) }
 
 @Suite("NodeClient")
 struct NodeClientTests {
@@ -55,6 +55,36 @@ struct NodeClientTests {
         #expect(request.headers["cf-access-token"] == "access-jwt")
         #expect(request.headers["x-agency-token"] == nil)
         #expect(request.body == nil)
+    }
+
+    private func identified(_ transport: ScriptedTransport, identity: String?) -> NodeClient {
+        let phone = phone
+        return NodeClient(transport: transport, accessToken: { "access-jwt" }, clock: { phone }, clientIdentity: identity)
+    }
+
+    @Test("every call carries the app's identity: a read, the session, a write, and the write again after a stale token")
+    func clientHeaderOnEveryCall() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/me", fixture("me")),
+            ("GET /api/session", json(session)),
+            ("POST /api/push/tokens", json(#"{"error":"missing or wrong write token"}"#, status: 403)),
+            ("GET /api/session", json(#"{"writeToken":"w-2","now":"2026-11-24T12:00:00Z"}"#)),
+            ("POST /api/push/tokens", fixture("push-token")),
+        ])
+        let client = identified(transport, identity: "ios/0.3.1 (202611261830)")
+        _ = try await client.me()
+        _ = try? await client.registerPushToken(token: "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12", environment: "production", label: "iPhone", events: ["request"])
+        #expect(transport.requests.count >= 4)
+        for request in transport.requests {
+            #expect(request.headers["x-agency-client"] == "ios/0.3.1 (202611261830)", "\(request.method) \(request.path)")
+        }
+    }
+
+    @Test("with no identity no header is sent")
+    func noClientHeader() async throws {
+        let transport = ScriptedTransport([("GET /api/me", fixture("me"))])
+        _ = try await identified(transport, identity: nil).me()
+        #expect(try #require(transport.requests.first).headers["x-agency-client"] == nil)
     }
 
     @Test("every read goes to the path the node serves")
@@ -299,5 +329,89 @@ struct NodeClientTests {
         try await node.refreshSession()
         // The node says 2026-11-24T12:00:00Z; the phone's clock is 10 minutes slow.
         #expect(await node.nodeNow() == Date(timeIntervalSince1970: 1_795_521_600))
+    }
+}
+
+@Suite("NodeClient: the sign-in exchange")
+struct NodeClientRedeemTests {
+    private let code = "c0de".padding(toLength: 43, withPad: "A", startingAt: 0)
+    private let verifier = "v3r1f1er".padding(toLength: 43, withPad: "B", startingAt: 0)
+
+    private func client(_ transport: ScriptedTransport) -> NodeClient {
+        NodeClient(transport: transport, accessToken: { nil })
+    }
+
+    @Test("redeeming sends the code and the verifier, canonical, with no Access token and no write token, and asks for no session")
+    func sends() async throws {
+        let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])
+        let token = try await client(transport).redeemSignIn(code: code, verifier: verifier)
+        #expect(token == "a.b.c")
+        let request = try #require(transport.requests.first)
+        #expect(transport.requests.count == 1, "no GET /api/session first: there is no Access session to ask with")
+        #expect(String(decoding: try #require(request.body), as: UTF8.self) == #"{"code":"\#(code)","verifier":"\#(verifier)"}"#)
+        #expect(request.headers["content-type"] == "application/json")
+        #expect(request.headers["cf-access-token"] == nil)
+        #expect(request.headers["x-agency-token"] == nil)
+    }
+
+    @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")
+    func redeemIdentity() async throws {
+        let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])
+        let client = NodeClient(transport: transport, accessToken: { nil }, clientIdentity: "ios/0.3.1 (1)")
+        _ = try await client.redeemSignIn(code: code, verifier: verifier)
+        let request = try #require(transport.requests.first)
+        #expect(request.headers["x-agency-client"] == "ios/0.3.1 (1)")
+        #expect(request.headers["cf-access-token"] == nil)
+    }
+
+    @Test("a refusal is the node's one answer, a limit is 429, and a redirect says the Access policy is in the way")
+    func refusals() async throws {
+        let refused = ScriptedTransport([("POST /app/redeem", json(#"{"error":"the code is not valid"}"#, status: 400))])
+        await #expect(throws: NodeError.http(status: 400, message: "the code is not valid")) {
+            try await client(refused).redeemSignIn(code: code, verifier: verifier)
+        }
+        let limited = ScriptedTransport([("POST /app/redeem", json(#"{"error":"too many tries"}"#, status: 429))])
+        await #expect(throws: NodeError.http(status: 429, message: "too many tries")) {
+            try await client(limited).redeemSignIn(code: code, verifier: verifier)
+        }
+        let redirected = ScriptedTransport([("POST /app/redeem", HTTPResponse(status: 302, body: Data()))])
+        do {
+            _ = try await client(redirected).redeemSignIn(code: code, verifier: verifier)
+            Issue.record("a redirect is not a token")
+        } catch let NodeError.http(status, message) {
+            #expect(status == 302)
+            #expect(message?.contains("Access policy") == true)
+        }
+    }
+
+    @Test("an answer with no token is unreadable, not an empty token")
+    func unreadable() async {
+        let transport = ScriptedTransport([("POST /app/redeem", json(#"{"other":"x"}"#))])
+        await #expect(throws: NodeError.self) { try await client(transport).redeemSignIn(code: code, verifier: verifier) }
+    }
+}
+
+@Suite("Me: the owner's other home nodes")
+struct MeHomeNodesTests {
+    private func me(_ extra: String) throws -> Me {
+        let json = #"{"account":{"id":"alice","label":"A","fingerprint":"f"},"funding":[],"orgs":[]\#(extra)}"#
+        return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+    }
+
+    @Test("the node's answer lists them in its order, from the node's own fixture")
+    func fixtureAnswer() throws {
+        let me = try JSONDecoder().decode(Me.self, from: Fixtures.data("me-home-nodes"))
+        #expect(me.homeNodes == [HomeNodeRef(label: "Work", url: "https://work.example.com"), HomeNodeRef(label: "Lab", url: "http://127.0.0.1:4500")])
+    }
+
+    @Test("a node that names none, or does not tell this viewer, gives an empty list")
+    func none() throws {
+        #expect(try me("").homeNodes.isEmpty)
+        #expect(try me(#","homeNodes":[]"#).homeNodes.isEmpty)
+    }
+
+    @Test("an entry without its address is an error, not a node with no address")
+    func broken() {
+        #expect(throws: DecodingError.self) { try me(#","homeNodes":[{"label":"Work"}]"#) }
     }
 }

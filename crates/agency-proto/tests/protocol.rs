@@ -2,7 +2,8 @@
 //! The non-ASCII sample values ("開発", "ア") are on purpose: the test vectors pin UTF-8 in canonical JSON.
 use agency_proto::canonical::canonical_of;
 use agency_proto::org::{
-    verify_genesis, verify_successor, Allocation, Department, Root, SignedOrg, TeamPlace, TeamPlan,
+    verify_genesis, verify_root_successor, verify_successor, Allocation, Department, PendingRoot,
+    Root, SignedOrg, Succession, TeamPlace, TeamPlan,
 };
 use agency_proto::outcome::{
     Aim, Currency, GoodWhen, Kpi, KpiKind, KpiUnit, EPIC, MAX_AIMS, MAX_KPIS,
@@ -25,10 +26,7 @@ fn genesis(root: &AccountKey) -> SignedOrg {
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: root.public(),
-        },
+        root: Root::new(id("alice"), root.public()),
         departments: vec![Department {
             id: id("dev"),
             label: "開発".into(),
@@ -79,7 +77,7 @@ fn org_chain_accepts_only_the_next_version_signed_by_the_root() {
             devices: vec![],
         })
     });
-    assert_eq!(verify_successor(&v1, &v2), Ok(()));
+    assert_eq!(verify_successor(&v1, &v2), Ok(Succession::Root));
     assert!(v2.body.member(&id("bob")).is_some());
     // Refused: signed by a key that is not the root, a skipped version, a wrong previous fingerprint, and the same version twice.
     assert!(verify_successor(&v1, &successor(&v1, &bob, |_| ())).is_err());
@@ -330,6 +328,181 @@ fn comment_envelope() -> Envelope {
 /// the org definition and the first device change, the device key (seed 9) signs the envelope and a comment, and a
 /// P-256 device key signs the same comment and two device changes. Another implementation
 /// must produce the same values.
+/// An org moved to a new root key (seed `0d…`): version 2 names it and is signed by the old root, and
+/// version 3 is signed by the new one.
+fn root_rotation(old: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let new = AccountKey::from_seed([0x0d; 32]);
+    let mut naming = OrgDefinition::successor_of(org, AT.into());
+    naming.root.public_key = new.public();
+    let naming = Signed::sign(Kind::Org, naming, id("alice"), old).unwrap();
+    assert!(verify_successor(org, &naming).is_ok());
+    let mut after = OrgDefinition::successor_of(&naming, AT.into());
+    after.label = "Acme Inc".into();
+    let after = Signed::sign(Kind::Org, after, id("alice"), &new).unwrap();
+    assert!(verify_successor(&naming, &after).is_ok());
+    let by_old = Signed::sign(Kind::Org, after.body.clone(), id("alice"), old).unwrap();
+    assert!(
+        verify_successor(&naming, &by_old).is_err(),
+        "the old root signs no later version"
+    );
+    let signed = |doc: &SignedOrg| serde_json::json!({ "canonical": canonical_of(&doc.body).unwrap(), "signature": doc.signature, "digest": doc.digest() });
+    serde_json::json!({
+        "newSeed": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "newPublicKey": new.public().encoded(),
+        "namingTheNewRoot": signed(&naming),
+        "signedByTheNewRoot": signed(&after),
+    })
+}
+
+/// An org given a recovery key (seed `0e…`), then recovered to a new root key (seed `0f…`): the root adds
+/// the recovery key, the recovery key starts the recovery and, after the wait, finishes it; the root may
+/// instead cancel the start by signing any version. Then the recovery key replaces itself (seed `10…`)
+/// the same way. The refused versions show what neither key may sign.
+fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let (recovery, new_root, new_recovery) = (
+        AccountKey::from_seed([0x0e; 32]),
+        AccountKey::from_seed([0x0f; 32]),
+        AccountKey::from_seed([0x10; 32]),
+    );
+    let sign = |body: OrgDefinition, key: &AccountKey| {
+        Signed::sign(Kind::Org, body, id("alice"), key).unwrap()
+    };
+    let next = |doc: &SignedOrg| OrgDefinition::successor_of(doc, AT.into());
+    let is = |current: &SignedOrg, doc: &SignedOrg, succession: Succession| {
+        assert_eq!(verify_successor(current, doc), Ok(succession));
+    };
+
+    let mut body = next(org);
+    body.root.recovery = Some(recovery.public());
+    let with_recovery = sign(body, root);
+    is(org, &with_recovery, Succession::Root);
+
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: Some(new_root.public()),
+        recovery: None,
+    });
+    let start = sign(body, &recovery);
+    is(&with_recovery, &start, Succession::RecoveryStart);
+
+    let mut body = next(&start);
+    body.root.pending = None;
+    let cancel = sign(body, root);
+    is(&start, &cancel, Succession::Root);
+
+    let mut body = next(&start);
+    body.root.public_key = new_root.public();
+    body.root.pending = None;
+    let finish = sign(body, &recovery);
+    is(&start, &finish, Succession::RecoveryFinish);
+    assert!(
+        verify_root_successor(&start, &finish).is_err(),
+        "an answer from the root's node is never a recovery"
+    );
+    assert!(verify_root_successor(&start, &cancel).is_ok());
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: None,
+        recovery: None,
+    });
+    let empty_start = sign(body, &recovery);
+    for kept_on_a_node in [root.public(), org.body.people[0].public_key.clone()] {
+        let mut body = next(org);
+        body.root.recovery = Some(kept_on_a_node);
+        assert!(
+            body.validate().unwrap_err().contains("recovery key"),
+            "a recovery key a node keeps"
+        );
+    }
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: None,
+        recovery: Some(root.public()),
+    });
+    assert!(
+        body.validate().is_err(),
+        "a new recovery key that is the root key"
+    );
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: Some(org.body.people[0].public_key.clone()),
+        recovery: None,
+    });
+    assert!(
+        body.validate().is_err(),
+        "a new root key that is an account key"
+    );
+    assert!(verify_successor(&with_recovery, &empty_start)
+        .unwrap_err()
+        .contains("names no change"));
+
+    let mut body = next(&finish);
+    body.root.pending = Some(PendingRoot {
+        public_key: None,
+        recovery: Some(new_recovery.public()),
+    });
+    let replace_start = sign(body, &recovery);
+    is(&finish, &replace_start, Succession::RecoveryStart);
+    let mut body = next(&replace_start);
+    body.root.recovery = Some(new_recovery.public());
+    body.root.pending = None;
+    let replace_finish = sign(body, &recovery);
+    is(&replace_start, &replace_finish, Succession::RecoveryFinish);
+
+    let refused = |current: &SignedOrg, doc: SignedOrg, why: &str| {
+        let error = verify_successor(current, &doc).unwrap_err();
+        assert!(error.contains(why), "{error}");
+        serde_json::json!({ "after": current.body.version, "canonical": canonical_of(&doc.body).unwrap(), "signature": doc.signature, "why": error })
+    };
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: Some(new_root.public()),
+        recovery: None,
+    });
+    body.label = "Taken".into();
+    let start_changing_more = refused(
+        &with_recovery,
+        sign(body, &recovery),
+        "changes nothing but the root",
+    );
+    let mut body = next(&with_recovery);
+    body.root.public_key = new_root.public();
+    let rotation_without_a_start =
+        refused(&with_recovery, sign(body, &recovery), "names no change");
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: Some(new_root.public()),
+        recovery: None,
+    });
+    let start_by_root = refused(
+        &with_recovery,
+        sign(body, root),
+        "does not start a recovery",
+    );
+    let mut body = next(&with_recovery);
+    body.root.recovery = Some(new_recovery.public());
+    let recovery_by_root = refused(&with_recovery, sign(body, root), "only the recovery key");
+
+    let signed = |doc: &SignedOrg| serde_json::json!({ "canonical": canonical_of(&doc.body).unwrap(), "signature": doc.signature, "digest": doc.digest() });
+    serde_json::json!({
+        "recoverySeed": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "newRootSeed": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "newRecoverySeed": "1010101010101010101010101010101010101010101010101010101010101010",
+        "addingTheRecoveryKey": signed(&with_recovery),
+        "start": signed(&start),
+        "cancel": signed(&cancel),
+        "finish": signed(&finish),
+        "replacingTheWordsStart": signed(&replace_start),
+        "replacingTheWordsFinish": signed(&replace_finish),
+        "refused": {
+            "startChangingMore": start_changing_more,
+            "rotationWithoutAStart": rotation_without_a_start,
+            "startSignedByTheRoot": start_by_root,
+            "recoveryChangedByTheRoot": recovery_by_root,
+        },
+    })
+}
+
 /// The next version of `org`, with a plan for its team: how a plan is signed.
 fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
@@ -510,7 +683,7 @@ fn received(
     let signature = root.sign(&Kind::Org.message(&text));
     let sent = serde_json::json!({ "body": value, "signer": "alice", "signature": signature });
     let next: SignedOrg = serde_json::from_value(sent).map_err(|error| error.to_string())?;
-    verify_successor(org, &next)
+    verify_successor(org, &next).map(|_| ())
 }
 
 #[test]
@@ -631,6 +804,8 @@ fn vectors_match_testdata() {
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
+        "rootRotation": root_rotation(&key, &org),
+        "rootRecovery": root_recovery(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),
         "deviceChangeP256": device_change_p256(),
     });

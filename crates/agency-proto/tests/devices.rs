@@ -42,10 +42,7 @@ fn org(keys: &Keys) -> OrgDefinition {
         label: "Acme".into(),
         version: 1,
         prev: None,
-        root: Root {
-            account: id("alice"),
-            public_key: keys.alice.public(),
-        },
+        root: Root::new(id("alice"), keys.alice.public()),
         departments: vec![],
         people: vec![person("alice", &keys.alice), person("bob", &keys.bob)],
         teams: vec![],

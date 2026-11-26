@@ -3,7 +3,9 @@ mod dept_cli;
 mod device_cli;
 mod funding_cli;
 mod kpi_cli;
+mod logs_cli;
 mod outcome_cli;
+mod peer_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -12,6 +14,7 @@ use agency_core::decisions::Decided;
 use agency_core::invites::join;
 use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
+use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::push::notify_waiting;
 use agency_core::ships::record_all;
@@ -99,6 +102,12 @@ enum Command {
     PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
+    /// Moves an org to a new root key (on the root key's node): the next version names it, signed by the
+    /// current root key; the old key is forgotten once it is published
+    RootRotate {
+        #[arg(long)]
+        org: String,
+    },
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
     /// this node's URL changed
     TeamMove {
@@ -159,6 +168,8 @@ enum Command {
         #[command(subcommand)]
         command: funding_cli::FundingCommand,
     },
+    /// Prints the node's log (logs/node.jsonl and the closed files), oldest first, filtered; reads no key and needs no running node
+    Logs(logs_cli::LogsArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -260,6 +271,7 @@ fn status(node: &Node) {
             .into_iter()
             .chain(plans)
             .chain(kpi_cli::kpi_lines(&doc.body))
+            .chain(peer_cli::peer_lines(node, &doc.body.org))
         {
             println!("{line}");
         }
@@ -414,11 +426,14 @@ async fn run(cli: Cli) -> Result<()> {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
     }
+    if let Command::Logs(args) = &cli.command {
+        return logs_cli::run(&data, args);
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
     match cli.command {
-        Command::Init { .. } | Command::Funding { .. } => unreachable!(),
+        Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) => unreachable!(),
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(
@@ -444,6 +459,9 @@ async fn run(cli: Cli) -> Result<()> {
             let is_here = place_url == node.url();
             if is_here && state_dir.is_none() {
                 bail!("a team on this node needs --state-dir");
+            }
+            if !is_here {
+                peer_about::read_origin(&node, &org, &place_url).await?;
             }
             let doc = orgs::add_team(
                 &node,
@@ -483,11 +501,22 @@ async fn run(cli: Cli) -> Result<()> {
         Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
+        Command::RootRotate { org } => {
+            let doc = orgs::rotate_root(&node, &id(&org)?)?;
+            println!(
+                "Org {org} has a new root key, fingerprint {} (version {})",
+                doc.body.root.public_key.fingerprint(),
+                doc.body.version
+            );
+        }
         Command::TeamMove {
             org,
             team,
             node: origin,
         } => {
+            if origin != node.url() {
+                peer_about::read_origin(&node, &id(&org)?, &origin).await?;
+            }
             let doc = orgs::move_team(&node, &id(&org)?, &id(&team)?, origin.clone())?;
             println!(
                 "Moved team {team} of org {org} to {origin} (version {})",

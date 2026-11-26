@@ -8,7 +8,8 @@ use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;
 use agency_adapters::launch::Launch;
 use agency_adapters::memory::{
-    CountingRandom, ManualClock, MemoryDelivery, MemoryNotifier, MemoryRuntime, MemoryRuntimeState,
+    CountingRandom, ManualClock, MemoryDelivery, MemoryNotifier, MemoryRootKeys, MemoryRuntime,
+    MemoryRuntimeState,
 };
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::invites::{self, join};
@@ -65,6 +66,8 @@ pub struct Running {
     pub notifier: MemoryNotifier,
     /// The delivery facts the node reads; none until a test sets them.
     pub delivery: MemoryDelivery,
+    /// The org root keys the node holds; a test can make it refuse to sign.
+    pub root_keys: Arc<MemoryRootKeys>,
     opened: Opened,
     pub port: u16,
     /// The socket the node will serve on, held from the moment its port was chosen until `start`: a port
@@ -173,6 +176,7 @@ async fn node_from(
     let clock = ManualClock::at(T0);
     let notifier = MemoryNotifier::default();
     let delivery = MemoryDelivery::default();
+    let root_keys = Arc::new(seed.map_or_else(MemoryRootKeys::default, MemoryRootKeys::seeded));
     let overrides = Overrides {
         runtime: Some(runtime),
         clock: Some(Arc::new(clock.clone())),
@@ -185,6 +189,7 @@ async fn node_from(
             executable: "/opt/agency/bin/agency".into(),
             data_dir: "/var/lib/agency".into(),
         }),
+        root_keys: Some(root_keys.clone()),
     };
     let opened = agency_node::open(data, overrides).unwrap();
     let mut running = Running {
@@ -192,6 +197,7 @@ async fn node_from(
         clock,
         notifier,
         delivery,
+        root_keys,
         opened,
         port,
         listener: Some(listener),

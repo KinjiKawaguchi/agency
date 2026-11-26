@@ -84,13 +84,15 @@ agency status
 - `--url` is where other nodes would reach this node. On a local-only node it is its own loopback address, with the same port as `--listen`.
 - `--scrum` is the harness's command. Give its full path (as above), or a bare name that the node looks up on its `PATH`.
 - `--state-dir` is the team's state directory for the harness. A relative path is stored as an absolute one.
-- `org-create` makes this node's account the org's root key. `team-add` without `--node` runs the team on this node, owned by this node's account.
+- `org-create` makes a root key for the new org and makes this node its root's node. `team-add` without `--node` runs the team on this node, owned by this node's account.
 
 `agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`.
 
-The data directory now holds `account.key`, the org's root key.
-Anyone who can read that file can act as the org's root.
-Keep it on this machine, and out of anything that syncs or shares files.
+The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
+The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
+Keep both on this machine, and out of anything that syncs or shares files.
+A backup of the data directory does not hold the root key. Back the root key up on its own, because without it nobody can change the org again: copy `~/.config/agency/root-keys/` to storage that is offline and encrypted (for example an encrypted disk image kept off this Mac), and copy it again after `agency root-rotate`, which makes a new key and removes the old one.
+An org made before root keys were kept apart uses `account.key` as its root until you move it to its own key with `agency root-rotate --org acme`.
 
 ### Run it with launchd
 
@@ -170,7 +172,7 @@ If the browser is already added, the CLI device asks to be added instead: confir
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/node.jsonl
+agency logs --since 10m
 ```
 
 - `/api/me` lists the account, and the org with the team `app` and `"location":"local"`.
@@ -222,10 +224,11 @@ Note two values from it for the node's setting:
 
 ### Paths that bypass Access
 
-Two paths must reach the node without an Access sign-in. Add an Access application (or policy) for each path with the action Bypass:
+Three paths must reach the node without an Access sign-in. Add an Access application (or policy) for each path with the action Bypass:
 
 - `agency.example.com/fed/*`: the federation routes. Other nodes cannot sign in to Access; the node checks their signatures instead (see "Federation routes" in [protocol.md](protocol.md)).
 - `agency.example.com/.well-known/apple-app-site-association`: Apple's servers fetch it without signing in, for the iPhone app's sign-in. Needed only with `appId` below.
+- `agency.example.com/app/redeem`: the Apple apps exchange the code the sign-in gave them for the Access token, and at that moment they have no Access sign-in (the token is what they ask for). The node admits only a code that the sign-in made, with the verifier only the app has; it is single use, lasts a minute, and each client address gets a few tries a minute. Needed only with `appId` below.
 
 Bypass nothing else. The node refuses every other request from outside that has no valid Access token.
 
@@ -267,6 +270,8 @@ A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`)
 ## Installing the web client as an app
 
 The web client can be installed as an app, so that Android, Windows, and Linux have one without a native build: it opens in a window of its own, with its own icon, and keeps the sign-in of the browser it was installed from. On the **Devices** screen, **Install Agency** appears where the browser offers it (Chrome and Edge, on Android, Windows, Linux, and Mac); in Safari on a Mac, choose File, then Add to Dock. The iPhone has its own app ([apple.md](apple.md)).
+
+On the **Devices** screen, **Notifications in this browser** has two switches. The first shows what is new as a notification of the operating system while the page is hidden. The second, **When the app is closed**, is there only when the node has `webPush` (see below) and the browser has Web Push (not a browser on an iPhone, which has the app): the node then tells the browser through its push service even with no page open. The browser asks for the permission when a switch is clicked; one permission serves both. Each browser is subscribed separately, and each home node has its own subscription. If the node's key is ever made again, the screen says to subscribe again.
 
 The installed app keeps the built files of the web client (`/assets/` and `/icons/`) so that it opens fast, and nothing else: no page, since a page carries the node's write token, and no answer of the API, which holds your org's data. When the node cannot be reached it shows a page that says so. When the sign-in expires it deletes what it kept.
 
@@ -322,7 +327,10 @@ List the sources in `~/.agency/config.json`, with no secret in it, and restart t
 - The usage goes to `usage/<id>.json` in the data directory, or to `usageFile` when the source has one. A source with only a `usageFile` is kept by another tool, as before.
 - For each source the node reads the login's access token when it needs it, asks `https://api.anthropic.com/api/oauth/usage` for the 5-hour and 7-day windows, and writes only those two windows. It keeps no token and writes none to a file or the log.
 - It asks each source at most every 5 minutes. After a failure it waits twice as long each time, up to an hour, and longer when the service asks for it. A failed read leaves the last file in place, and the overview shows when the file was last written.
-- It never renews a token: that would replace the refresh token Claude Code holds for the login. An access token lasts some hours and Claude Code renews it when it runs with that login, so a login nobody has used for a day reads as expired until it is used again.
+- It never renews a token itself. A refresh token is used once and replaced by a new one, so two programs that renew the same login at once leave one with a token that no longer works, and Claude Code then forgets the login. An access token lasts some hours and Claude Code renews it when it runs with that login. A login nobody uses would stay expired, its usage would be `unknown`, and nothing would ever be moved onto it, so the node has `claude` renew it:
+  - When a login's token has been expired for 10 minutes (a session that uses the login would have renewed it by then), the node runs `claude -p "Reply with the single word: ok" --model haiku --no-session-persistence` once, with that login's `CLAUDE_CONFIG_DIR`, from an empty directory (`renewals/work` in the data directory), with `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN` removed so that it uses the login. It stops it after 60 seconds, throws its output away, and reads the login again. It does not touch the credentials itself.
+  - The limits for a login: at most one run in 3 hours and four in 24 hours, and no run for 6 hours after one that failed. They are kept in `renewals/` of the data directory, so a node that restarts does not start counting again. A run costs a few tokens of the subscription. The log says when it runs (event `usage`: `running claude once to renew an expired login`), and a failed run is in the line of the failed read, with why: `claude` was not found (put its directory on the `PATH` of the launchd agent or the systemd unit, or set `command`), it did not finish, or it exited with an error, which is usually a refused login that needs `claude` and `/login` for that `CLAUDE_CONFIG_DIR` again.
+  - The one case in which this can collide with Claude Code is a session that is open on the same login and renews it in the same second as the run, which is the collision two Claude Code sessions have with each other. The 10 minutes make it unlikely. `"renew": false` in the source's `collector` turns the run off; `"command": "/path/to/claude"` names the program (default: `claude` on the node's `PATH`).
 - On macOS, the first read of each Keychain item asks you to allow `security` to use it. Choose **Always Allow**. The node waits 20 seconds for the answer and tries again later.
 
 To read a ChatGPT plan that you use through Codex, log in with ChatGPT (`codex login`) and list it as a source:
@@ -457,6 +465,16 @@ While it runs, the node writes what it has to say to `~/.agency/logs/node.jsonl`
 - When the file passes `maxSizeMib`, the node closes it as `node-<UTC time>.jsonl` and starts a new one. It deletes the closed files that are older than `maxAgeDays` days, and all but the newest `maxFiles` of them, when it starts and each time it closes a file. Only the node's account can read the files.
 - Run in a terminal, the node also prints each line there. When the file cannot be written, the lines go to standard error, which is `serve.log` under launchd or systemd.
 
+`agency logs` reads the files, the closed ones too, also while the node is stopped, and prints the lines oldest first, without needing the account key:
+
+```sh
+agency logs --since 1h --level warn          # warn and error, from the last hour
+agency logs --event runtime                  # one part
+agency logs --json | jq 'select(.event == "push")'   # the lines as they are in the file
+```
+
+`--since` is a whole number and `s`, `m`, `h`, or `d` (`90s`, `30m`, `2h`, `1d`); `--level` keeps that level and the more urgent ones; `--event` keeps one event. A line that is not a whole line, such as the last one of a file the node was writing when it crashed, is skipped.
+
 Set it in `config.json`, then restart the node. Every field is optional, and a value out of range stops the node at start and says which:
 
 ```json
@@ -495,7 +513,7 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 | `agency: refused GET /fed/v1/…: …` | Another node's request was refused, and the line says why (for example "a read signed by bob at …, 400 seconds behind this node's clock; check the clocks"). The caller only got "not found". At most 20 such lines are written a minute, then one line says how many more were not; a refusal of a request validly signed by a member is always written. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
 | `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
-| `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. Log in again in that source's configuration directory, or use Claude Code with it, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
+| `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. The node runs `claude` to renew an expired login (see "Reading usage"); log in again in that source's configuration directory when the text says the login was refused, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
 | `agency: team acme/app: a command the team runtime runs was not found: …` | The team runtime failed because a command it runs (such as `gh` or `node`) is not on the `PATH` of the launchd agent or the systemd unit. Check with `command -v` in your terminal, run the script of "Run it with launchd" or "Run it with systemd" again from a terminal where they work, and restart. It follows the line `the team runtime fails: … ENOENT`. |
 | `agency: <message>`, and the node stops | It could not start, for example because `config.json` does not parse. launchd or systemd tries again every 10 seconds. |
