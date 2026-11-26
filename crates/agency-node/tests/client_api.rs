@@ -579,3 +579,22 @@ async fn through_access_the_session_needs_a_sign_in_and_its_token_writes_only_fo
     let alice = access_token("alice@example.com", |_| {});
     assert_eq!(write(alice).send().await.unwrap().status(), 200);
 }
+
+#[tokio::test]
+async fn me_gives_the_id_the_node_names_itself_by_in_a_push_and_leaves_it_out_when_there_is_none() {
+    let (alice, _) = alice().await;
+    let (_, me) = body(get(&alice, "/api/me").send().await.unwrap()).await;
+    let expected = agency_proto::client::node_id(&alice.url()).unwrap();
+    assert_eq!(
+        me["nodeId"], expected,
+        "the same id as `agency.node` of a push"
+    );
+
+    // A url that is not an origin has no id, so none is named, as in a push.
+    alice
+        .node
+        .update_config(|config| config.url = "not an origin".into())
+        .unwrap();
+    let (_, me) = body(get(&alice, "/api/me").send().await.unwrap()).await;
+    assert!(me.get("nodeId").is_none(), "{me}");
+}
