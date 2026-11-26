@@ -114,6 +114,7 @@ export function Paper(props: PaperProps) {
           <h2 className="doc-title" id={titleId}>{request.title}</h2>
           <p className="doc-meta">
             <span>{t.desk.paper.team(orgLabel, item.view.label)}</span>
+            {item.relayedFor === undefined ? null : <span className="doc-for">{t.desk.pile.answerFor(item.relayedFor)}</span>}
             {stoppedNames === '' ? null : <span>{t.desk.paper.stoppedBy(stoppedNames)}</span>}
           </p>
         </div>

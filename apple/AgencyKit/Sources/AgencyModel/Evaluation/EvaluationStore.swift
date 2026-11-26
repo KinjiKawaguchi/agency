@@ -85,13 +85,17 @@ public final class EvaluationStore {
     public private(set) var state: EvaluationState = .loading
     public private(set) var effort: EffortState = .loading
 
+    /// The node's own response times, shown at the end of the screen for the owner; `nil` for a store that has no node to ask.
+    public let nodeSpeed: NodeSpeedStore?
+
     @ObservationIgnored private let source: any EvaluationSource
     @ObservationIgnored private let retry: RetryPolicy
     @ObservationIgnored private var chosenOrg: String?
 
-    public init(source: any EvaluationSource, retry: RetryPolicy = .standard) {
+    public init(source: any EvaluationSource, retry: RetryPolicy = .standard, nodeSpeed: NodeSpeedStore? = nil) {
         self.source = source
         self.retry = retry
+        self.nodeSpeed = nodeSpeed
     }
 
     // MARK: Reading

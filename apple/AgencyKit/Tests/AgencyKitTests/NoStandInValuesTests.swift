@@ -52,6 +52,8 @@ struct NoStandInValuesTests {
     private static let allowedClaims: [Use: String] = [
         Use(file: "AgencyKit/Sources/AgencyModel/Costs/CostsStore.swift", line: "public private(set) var days = 14"):
             "the period the owner picks, not a value of the node",
+        Use(file: "AgencyKit/Sources/AgencyModel/Metrics/NodeSpeedStore.swift", line: "public private(set) var days = 1"):
+            "the period the owner picks, not a value of the node",
     ]
 
     @Test("a default for a missing value in a screen, a widget or the app is named and reasoned, or it fails")

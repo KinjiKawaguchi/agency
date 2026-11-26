@@ -38,11 +38,18 @@ struct EvaluationPage: View {
                         onTryAgain: { Task { await store.refresh() } }
                     )
                 }
+                if let nodeSpeed = store.nodeSpeed { NodeSpeedSection(store: nodeSpeed) }
             }
             .padding(Theme.gutter)
         }
-        .refreshable { await store.refresh() }
-        .polling { await store.refresh() }
+        .refreshable {
+            await store.refresh()
+            await store.nodeSpeed?.refresh()
+        }
+        .polling {
+            await store.refresh()
+            await store.nodeSpeed?.refresh()
+        }
     }
 
     @ViewBuilder

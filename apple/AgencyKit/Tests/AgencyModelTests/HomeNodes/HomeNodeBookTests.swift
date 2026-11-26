@@ -179,6 +179,30 @@ struct HomeNodeBookTests {
         #expect(HomeNodeBook(decoding: Data(older.utf8), legacyAddress: nil).nodeIDs.isEmpty)
     }
 
+    @Test("the active nodes are the open one and the listed ones that were not left; a left node is signed in again when it is opened")
+    func activeNodes() throws {
+        let a = try node("https://a.example.com"), b = try node("https://b.example.com"), c = try node("https://c.example.com")
+        var book = HomeNodeBook(current: a)
+        book.add(b, label: "B")
+        book.add(c, label: "C")
+        #expect(book.activeNodes.map(\.host) == ["a.example.com", "b.example.com", "c.example.com"])
+        book.leaveCurrent()
+        #expect(book.activeNodes.map(\.host) == ["b.example.com", "c.example.com"], "a left node is on the list and not active")
+        #expect(book.others.map(\.url.host).contains("a.example.com"))
+        book.switchTo(a)
+        #expect(book.activeNodes.map(\.host) == ["a.example.com", "b.example.com", "c.example.com"], "opened, so signed in again")
+        book.switchTo(b)
+        #expect(book.activeNodes.map(\.host).contains("a.example.com"),
+                "a node that was signed in again stays counted when it is no longer the open one")
+        book.leaveCurrent()
+        book.forget(b)
+        #expect(!book.signedOut.contains(b.origin), "forgotten with the node")
+        #expect(HomeNodeBook(decoding: book.encoded(), legacyAddress: nil) == book)
+        var left = HomeNodeBook(current: a)
+        left.leaveCurrent()
+        #expect(HomeNodeBook(decoding: left.encoded(), legacyAddress: nil).signedOut == [a.origin], "kept with the book")
+    }
+
     @Test("an earlier version's one address becomes the current node, and an unreadable book falls back to it")
     func legacy() throws {
         #expect(HomeNodeBook(decoding: nil, legacyAddress: "https://a.example.com").current?.host == "a.example.com")

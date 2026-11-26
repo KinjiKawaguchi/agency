@@ -191,6 +191,8 @@ final class ShellModel {
             if let me {
                 nodes.note(configured: me.homeNodes)
                 nodes.note(nodeID: me.nodeId, of: homeNode)
+                // A node known by an address other than its own changes id here, and the count recorded under the worked-out id is gone.
+                if let count = session.desk.knownWaitingCount { nodes.recordWaiting(count, for: homeNode) }
             }
             // Finished, with an answer or without: a tap that waited for it is placed now, or said not to be of this device.
             hasReadAccount = true

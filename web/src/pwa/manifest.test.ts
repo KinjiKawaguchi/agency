@@ -46,7 +46,9 @@ describe('the app manifest', () => {
   })
 
   it('is small files: nothing that a build has to wait for', () => {
-    for (const file of ['manifest.webmanifest', 'sw.js', 'push-notice.js', 'offline.html', 'offline.css']) expect(statSync(join(publicDir, file)).size).toBeLessThan(8_000)
+    for (const file of ['manifest.webmanifest', 'sw.js', 'offline.html', 'offline.css']) expect(statSync(join(publicDir, file)).size).toBeLessThan(8_000)
+    // The words of every kind of notice in both languages are in this one.
+    expect(statSync(join(publicDir, 'push-notice.js')).size).toBeLessThan(12_000)
   })
 })
 

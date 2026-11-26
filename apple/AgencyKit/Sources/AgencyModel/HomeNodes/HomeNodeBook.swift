@@ -19,10 +19,17 @@ public struct HomeNodeBook: Equatable, Sendable {
     /// and configured with another names itself by its own, so what it said is what a push is mapped by; a node that has not said
     /// is mapped by the id worked out from its address (`nodeID(of:)`).
     public private(set) var nodeIDs: [String: String]
+    /// The origins of the nodes the owner left: they are on the list but signed out, so a late push of theirs (their notifications
+    /// could not be stopped) does not put a count back on the icon. A node is signed in again when it becomes the open one.
+    public private(set) var signedOut: Set<String>
 
-    public init(current: HomeNodeURL? = nil, added: [HomeNodeEntry] = [], configured: [HomeNodeRef] = [], nodeIDs: [String: String] = [:]) {
+    public init(
+        current: HomeNodeURL? = nil, added: [HomeNodeEntry] = [], configured: [HomeNodeRef] = [], nodeIDs: [String: String] = [:],
+        signedOut: Set<String> = []
+    ) {
         self.current = current
         self.configured = configured
+        self.signedOut = signedOut
         self.nodeIDs = nodeIDs.filter { NotificationTap.isNodeID($0.value) }
         self.added = []
         for entry in added where entry.source == .added { remember(entry) }
@@ -33,6 +40,13 @@ public struct HomeNodeBook: Equatable, Sendable {
     public var others: [HomeNodeEntry] {
         guard let current else { return added }
         return HomeNodeList.others(current: current, configured: configured, added: added)
+    }
+
+    /// The nodes this device is signed in to as far as the book knows: the open one and the ones on the list that were not left.
+    /// Their pushes count on the icon.
+    public var activeNodes: [HomeNodeURL] {
+        let listed = others.map(\.url).filter { !signedOut.contains($0.origin) }
+        return (current.map { [$0] } ?? []) + listed
     }
 
     // MARK: Changes
@@ -50,6 +64,7 @@ public struct HomeNodeBook: Equatable, Sendable {
             remember(HomeNodeEntry(url: previous, label: previous.host, source: .added))
         }
         forgetEntry(of: node)
+        signedOut.remove(node.origin)
         if !node.sameNode(as: current) { configured = [] }
         current = node
     }
@@ -59,6 +74,7 @@ public struct HomeNodeBook: Equatable, Sendable {
     public mutating func leaveCurrent() {
         if let previous = current {
             remember(HomeNodeEntry(url: previous, label: previous.host, source: .added))
+            signedOut.insert(previous.origin)
         }
         current = nil
         configured = []
@@ -74,6 +90,7 @@ public struct HomeNodeBook: Equatable, Sendable {
         guard added.contains(where: { $0.url.sameNode(as: node) }) else { return false }
         forgetEntry(of: node)
         nodeIDs[node.origin] = nil
+        signedOut.remove(node.origin)
         return !hostIsUsed(by: node)
     }
 
@@ -129,6 +146,7 @@ extension HomeNodeBook {
         var added: [Entry]
         var configured: [Ref]
         var nodeIDs: [String: String]?
+        var signedOut: [String]?
 
         struct Entry: Codable {
             var url: String
@@ -147,7 +165,8 @@ extension HomeNodeBook {
             current: current?.url.absoluteString,
             added: added.map { .init(url: $0.url.url.absoluteString, label: $0.label) },
             configured: configured.map { .init(label: $0.label, url: $0.url) },
-            nodeIDs: nodeIDs
+            nodeIDs: nodeIDs,
+            signedOut: signedOut.sorted()
         )
         return (try? JSONEncoder().encode(stored)) ?? Data()
     }
@@ -162,7 +181,8 @@ extension HomeNodeBook {
                     (try? HomeNodeURL(validating: entry.url)).map { HomeNodeEntry(url: $0, label: entry.label, source: .added) }
                 },
                 configured: stored.configured.map { HomeNodeRef(label: $0.label, url: $0.url) },
-                nodeIDs: stored.nodeIDs ?? [:]
+                nodeIDs: stored.nodeIDs ?? [:],
+                signedOut: Set(stored.signedOut ?? [])
             )
         } else {
             self.init(current: legacyAddress.flatMap { try? HomeNodeURL(validating: $0) })
