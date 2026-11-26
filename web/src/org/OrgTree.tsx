@@ -1,6 +1,6 @@
 import { useI18n } from '../i18n'
-import { AgentCard, DepartmentCard, PersonCard, TeamCard } from './OrgNodes'
-import type { OrgTree as Tree, TeamNode, UnitChild } from './tree'
+import { AgentCard, DepartmentCard, OrgCard, PersonCard, TeamCard } from './OrgNodes'
+import type { OrgNode, OrgTree as Tree, TeamNode, UnitChild } from './tree'
 
 /** The agents of a team in one row under it, the lead first. */
 function Agents({ node }: { node: TeamNode }) {
@@ -17,21 +17,30 @@ function Agents({ node }: { node: TeamNode }) {
   )
 }
 
-function Branch({ children, org }: { children: readonly UnitChild[]; org: string }) {
+const keyOf = (child: UnitChild): string =>
+  `${child.kind}:${child.kind === 'department' ? child.department.id : child.kind === 'team' ? child.team.id : child.kind === 'org' ? child.org.id : child.person.id}`
+
+/** The units under a box, in a row. `compact` draws the chart of every org: a team's participants are faces in its box. */
+function Branch({ children, org, compact }: { children: readonly UnitChild[]; org: string; compact: boolean }) {
   if (children.length === 0) return null
   return (
     <ul>
       {children.map((child) => (
-        <li key={`${child.kind}:${child.kind === 'department' ? child.department.id : child.kind === 'team' ? child.team.id : child.person.id}`}>
-          {child.kind === 'department' ? (
+        <li key={keyOf(child)}>
+          {child.kind === 'org' ? (
+            <>
+              <OrgCard node={child} />
+              <Branch children={child.children} org={child.org.id} compact={compact} />
+            </>
+          ) : child.kind === 'department' ? (
             <>
               <DepartmentCard node={child} org={org} />
-              <Branch children={child.children} org={org} />
+              <Branch children={child.children} org={org} compact={compact} />
             </>
           ) : child.kind === 'team' ? (
             <>
-              <TeamCard node={child} />
-              <Agents node={child} />
+              <TeamCard node={child} compact={compact} />
+              {compact ? null : <Agents node={child} />}
             </>
           ) : (
             <PersonCard node={child} />
@@ -61,7 +70,25 @@ export function OrgTree({ tree, org, orgLabel }: OrgTreeProps) {
             <span className="oc-name">{top.label}</span>
             {top.sub === null ? null : <span className="oc-sub">{top.sub}</span>}
           </div>
-          <Branch children={tree.children} org={org} />
+          <Branch children={tree.children} org={org} compact={false} />
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+/** Every org of the account side by side under the account, each with its departments, teams, and people. */
+export function AllOrgsTree({ account, orgs }: { account: string; orgs: readonly OrgNode[] }) {
+  const { t } = useI18n()
+  return (
+    <div className="orgchart all" role="group" aria-label={t.org.allChartLabel}>
+      <ul>
+        <li>
+          <div className="oc-node person top is-you">
+            <span className="oc-kind">{t.org.kinds.account}</span>
+            <span className="oc-name">{account}</span>
+          </div>
+          <Branch children={orgs} org="" compact />
         </li>
       </ul>
     </div>
