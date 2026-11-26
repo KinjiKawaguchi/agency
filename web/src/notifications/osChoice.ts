@@ -29,9 +29,31 @@ function writeChoice(isOn: boolean): void {
 /** Whether the viewer asked for them in this browser and the browser still allows them. */
 export const isOsNoticeOn = (): boolean => readChoice() && osSupport() === 'granted'
 
+/** Calls `listener` when the permission changes in the browser's own settings, until the returned function is called. */
+function watchPermission(listener: () => void): () => void {
+  let status: PermissionStatus | undefined
+  let isStopped = false
+  void navigator.permissions
+    ?.query({ name: 'notifications' })
+    .then((found) => {
+      if (isStopped) return
+      status = found
+      found.addEventListener('change', listener)
+    })
+    .catch(() => undefined)
+  return () => {
+    isStopped = true
+    status?.removeEventListener('change', listener)
+  }
+}
+
 const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener)
-  return () => void listeners.delete(listener)
+  const stopWatching = watchPermission(listener)
+  return () => {
+    listeners.delete(listener)
+    stopWatching()
+  }
 }
 
 export interface OsNoticeChoice {

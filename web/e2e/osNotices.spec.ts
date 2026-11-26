@@ -2,14 +2,20 @@ import { mkdirSync } from 'node:fs'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { resetNode, trackErrors } from './helpers'
 
-// Notifications of the operating system, in a real browser with the permission already granted (a browser's own
-// prompt cannot be answered from here): the switch, and a notification for what is new while the page is hidden.
+// Notifications of the operating system, in a real browser: the switch, and a notification for what is new while the
+// page is hidden. The browser's own permission prompt cannot be answered from here, and the headless browser reports
+// `Notification.permission` as denied even where the context was granted (the Permissions API says granted), so the
+// permission, and only it, is answered by the page's script; the notification itself is made by the browser.
 
 let errors: () => string[]
 
 test.beforeEach(async ({ page, request, context }) => {
   await resetNode(request)
   await context.grantPermissions(['notifications'])
+  await page.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { get: () => 'granted', configurable: true })
+    Notification.requestPermission = () => Promise.resolve('granted')
+  })
   errors = trackErrors(page)
 })
 
