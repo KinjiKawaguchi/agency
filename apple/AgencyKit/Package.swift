@@ -20,7 +20,7 @@ let package = Package(
         .testTarget(name: "AgencyKitTests", dependencies: ["AgencyKit"]),
         .target(name: "AgencyProtocol", dependencies: [.product(name: "Crypto", package: "swift-crypto")]),
         .target(name: "AgencyAPI", dependencies: ["AgencyProtocol"]),
-        .target(name: "AgencyModel", dependencies: ["AgencyAPI", "AgencyProtocol"]),
+        .target(name: "AgencyModel", dependencies: ["AgencyKit", "AgencyAPI", "AgencyProtocol"]),
         .target(name: "AgencyUI", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),
         .testTarget(name: "AgencyUITests", dependencies: ["AgencyUI", "AgencyModel", "AgencyAPI"]),
         .testTarget(name: "AgencyModelTests", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),

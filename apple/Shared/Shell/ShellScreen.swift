@@ -12,17 +12,17 @@ struct ShellScreen: View {
         switch tab {
         case .desk:
             DeskScreen(
-                store: session.desk, pairing: session.pairing, notice: model.notice, openItemID: Bindable(model).openItemID,
+                store: session.desk, pairing: session.pairing, notice: model.notice, openItemID: Bindable(model.router).openItemID,
                 onSignInAgain: signInAgain, onSettings: { model.showsSettings = true }
             )
             .onChange(of: session.desk.waitingCount) { _, count in model.push.setBadge(count) }
             .onChange(of: session.desk.loading) { _, loading in model.deskLoaded(loading) }
         case .overview:
-            OverviewScreen(store: session.overview, onOpenDesk: { model.tab = .desk }, onSignInAgain: signInAgain)
+            OverviewScreen(store: session.overview, onOpenDesk: { model.router.tab = .desk }, onSignInAgain: signInAgain)
         case .organization:
             OrganizationScreen(
-                orgChart: session.orgChart, people: session.people, page: Bindable(model).organizationPage,
-                onOpenDesk: { model.tab = .desk }, onOpenOverview: { model.tab = .overview }, onSignInAgain: signInAgain
+                orgChart: session.orgChart, people: session.people, page: Bindable(model.router).organizationPage,
+                onOpenDesk: { model.router.tab = .desk }, onOpenOverview: { model.router.tab = .overview }, onSignInAgain: signInAgain
             )
         case .results:
             ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: signInAgain)
