@@ -243,6 +243,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 ```
 
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
+- Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
 - To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
@@ -413,6 +414,7 @@ The org states what it measures (its KPIs) in its definition, with no number. Th
 
 - **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
 - The numbers are for reading how a measure moves, not for accounting.
+- **The readings.** `GET /api/orgs/<org>/outcomes/readings` (the owner only, like the numbers) says how each KPI a team's plan aims an epic at stood around the day the epic shipped. A team's view keeps a finished epic for a limited time (30 days for the scrum harness), so the node writes the day it first sees an aimed epic finished into `outcomes/<org>.ships.jsonl` (the same directory, the file `0600`; it holds a team, an epic and a time, and no number) and never changes it. Keep it with the numbers, and back it up the same way: without it, a reading of an epic that left the team's view cannot be made.
 
 ## Updating a node
 

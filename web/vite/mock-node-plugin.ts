@@ -34,6 +34,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     activity: activity === '1',
     webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
+    // The other home nodes the node's configuration names, as it tells its owner.
+    ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
     ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),

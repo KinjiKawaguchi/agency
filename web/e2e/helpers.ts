@@ -15,6 +15,8 @@ export interface NodeOptions {
   empty?: boolean
   /** The node has Web Push: it gives its key and keeps a subscription for each browser. */
   webPush?: boolean
+  /** The node's configuration names two other home nodes, Work and a Lab on this machine. */
+  homeNodes?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
 }
@@ -30,6 +32,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.empty === true) query.set('empty', '1')
   if (options.moreOrgs === true) query.set('orgs', 'more')
   if (options.webPush === true) query.set('webPush', '1')
+  if (options.homeNodes === true) query.set('homeNodes', '1')
   const reply = await request.post(`/__mock/reset?${query.toString()}`)
   expect(reply.status()).toBe(204)
 }

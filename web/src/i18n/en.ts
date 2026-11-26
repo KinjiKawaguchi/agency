@@ -82,6 +82,14 @@ export const en = {
       return count === 1 ? `A decision${named} was ${state}.` : `${count} decisions were ${state}.`
     },
     more: (count: number) => `${count} more things are new.`,
+    // What a notice says outside the page when no title, label, or name may leave it: the iPhone's words for a push whose titles are hidden.
+    hidden: {
+      request: 'A request is waiting for you',
+      participant: 'A participant is waiting for you',
+      blocked: 'Work is blocked',
+      device: 'A device is waiting to be added',
+      decisionRefused: 'A decision was refused',
+    },
     devicesMark: (count: number) => `${count} waiting to be approved`,
     os: {
       title: 'Notifications in this browser',
@@ -278,6 +286,7 @@ export const en = {
       thisNode: 'Name of this home node',
       thisHost: (address: string) => `This page is served by ${address}, and the key above belongs to it.`,
       none: 'You have listed no other home node.',
+      fromNode: 'Set in this node’s configuration',
       name: 'Name',
       address: 'Address',
       add: 'Add this home node',

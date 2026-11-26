@@ -69,6 +69,10 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
+  /** The other home nodes the node's configuration names, as `GET /api/me` gives them to its owner; left out when not given. */
+  homeNodes?: ReadonlyArray<{ label: string; url: string }>
+  /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
+  hidesTitles?: boolean
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
   pushTokensFailWith?: number
   /** Makes only the decision log calls fail with this status. */
@@ -143,6 +147,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
         : []),
     ],
     funding: fundingSources(now),
+    ...(options.homeNodes === undefined ? {} : { homeNodes: [...options.homeNodes] }),
+    ...(options.hidesTitles === undefined ? {} : { hidesTitles: options.hidesTitles }),
   }
 
   const sourceOf = (view: TeamView): SnapshotSource =>
