@@ -1,16 +1,17 @@
-import type { EpicForecast } from '../api/teamview'
 import { useI18n } from '../i18n'
-import { blockedTotal, epicSegments, sortEpics, type SegmentKind } from './work'
+import { blockedTotal, doneTime, epicSegments, isDone, sortEpics, type Epic, type SegmentKind } from './work'
 
 const LEGEND: readonly SegmentKind[] = ['done', 'doing', 'blocked', 'rest']
 
-function EpicRow({ epic }: { epic: EpicForecast }) {
+function EpicRow({ epic }: { epic: Epic }) {
   const { t, fmt } = useI18n()
+  const isFinished = isDone(epic)
   const blockedText = epic.blocked.map((entry) => `${t.people.blockedReasons[entry.reason]} ${entry.count}`).join(', ')
   return (
-    <div className="goal">
+    <div className={`goal${isFinished ? ' is-done' : ''}`}>
       <div className="goal-top">
         <p className="goal-title">{epic.title}</p>
+        {isFinished ? <span className="goal-done">{t.people.epicDone}</span> : null}
         <span className="goal-count">
           {epic.done} / {epic.total}
         </span>
@@ -22,15 +23,15 @@ function EpicRow({ epic }: { epic: EpicForecast }) {
       </div>
       <p className="goal-meta" title={epic.basis}>
         <span className="mono ref">{epic.ref}</span>
-        <span>{epic.forecast === undefined ? epic.basis : t.people.epicFinish(fmt.dateTime(epic.forecast.at))}</span>
+        <span>{isFinished ? (doneTime(epic) === undefined ? t.people.epicDone : t.people.epicDoneOn(fmt.dateTime(new Date(doneTime(epic) as number).toISOString()))) : epic.forecast === undefined ? epic.basis : t.people.epicFinish(fmt.dateTime(epic.forecast.at))}</span>
         {blockedText === '' ? null : <span className="work-stop">{t.people.epicBlockedBy(blockedText)}</span>}
       </p>
     </div>
   )
 }
 
-/** Epic forecasts: how far along each epic is and when it should finish. */
-export function EpicList({ epics }: { epics: readonly EpicForecast[] }) {
+/** Epic forecasts: how far along each epic is and when it should finish; the epics finished lately come after, marked done, with no forecast. */
+export function EpicList({ epics }: { epics: readonly Epic[] }) {
   const { t } = useI18n()
   return (
     <>

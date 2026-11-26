@@ -58,7 +58,20 @@ export function siteTeamView(base: TeamView): TeamView {
     ],
     requests: [],
     work: [{ ref: 'site#3', title: 'Redesign the pricing page', status: 'inProgress', assignee: 'designer', points: 3 }, ...MANY_ITEMS],
-    epics: [],
+    // An epic that was finished two days ago: the team's view keeps it for thirty days, with nothing left in it and no forecast.
+    epics: [
+      {
+        ref: 'site#2',
+        title: 'Launch the landing page',
+        total: 4,
+        done: 4,
+        doing: 0,
+        remainingPoints: 0,
+        blocked: [],
+        basis: 'Every child is done.',
+        doneAt: new Date(new Date(base.generatedAt).getTime() - 2 * DAY).toISOString(),
+      } as TeamView['epics'][number],
+    ],
   }
 }
 
