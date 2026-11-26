@@ -36,6 +36,8 @@ final class NativeSession {
     let evaluation: EvaluationStore
     /// The org chart: every org under the account, with the overview's signals on each team.
     let orgChart: OrgChartStore
+    /// The owner's numbers for what each org measures: offered only when the node lets the owner read them.
+    let outcomes: OutcomesStore
     /// What is new since the last read, as banners.
     let news: NewsStore
     /// What the widgets show, written after the desk is read.
@@ -77,6 +79,7 @@ final class NativeSession {
         costs = CostsStore(source: cached)
         evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
         orgChart = OrgChartStore(source: CachedOrgChartSource(cache: cache, client: client))
+        outcomes = OutcomesStore(source: CachedOutcomesSource(cache: cache, client: client))
         let pairing = pairing
         let ownKey = signer?.publicKey.string ?? ""
         let news = NewsStore(source: CachedNewsSource(cache: cache, client: client)) {

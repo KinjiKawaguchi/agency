@@ -67,6 +67,7 @@ struct OutcomesStoreTests {
         guard case .lines(let lines) = acme.readings else { Issue.record("no readings"); return }
         #expect(lines.count == 8)
         #expect(lines[0].team == "App", "the team's own label")
+        #expect(acme.from == "2026-11-11" && acme.until == "2026-11-24", "the period the trends are drawn between")
     }
 
     @Test("when every org refuses, there is nothing to show, no failure, and the page is not offered")
