@@ -342,6 +342,18 @@ export const ja: Messages = {
       allOnDesk: (count) => `机の上には全部で ${count} 件あります。`,
       seePeople: '参加者と仕事を見る',
     },
+    recovery: {
+      label: '組織のルート鍵の回復',
+      started: (org) => `${org} のルート鍵の回復が始まりました。`,
+      startedTakingEffect: (org, time) => `${org} のルート鍵の回復が始まりました。${time} に有効になります。`,
+      ifNotYou: '心当たりがないときは、ルート鍵のノードで取り消してください:',
+      cancelByName: ['心当たりがないときは、ルート鍵のノードで、この組織を指定して ', ' を実行し、取り消してください。'],
+      underway: (org) => `${org} のルート鍵の回復が進んでいます。`,
+      underwayTakingEffect: (org, time) => `${org} のルート鍵の回復が進んでいます。${time} に有効になります。`,
+      ownerCanCancel: '取り消せるのは、そのルート鍵の持ち主です。',
+      newRootKey: (fingerprint) => `新しいルート鍵: ${fingerprint}`,
+      replacesRecoveryKey: '回復用の鍵も取り替えます。',
+    },
     pile: {
       label: '届いている書類',
       empty: '待っているものはありません。チームからの新しい依頼は、ここに出ます。',

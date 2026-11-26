@@ -46,6 +46,34 @@ describe('readEffort', () => {
   })
 })
 
+describe('readEvaluation: participants', () => {
+  const team = { team: 'app', ...period, summary: { merged: { feat: 1 } }, byDay: [] }
+  const one = { name: 'backend', busySeconds: 60, waitingSeconds: 30, idleSeconds: 10, costUsd: 1.5, tokens, merged: 1, costPerMergedPrUsd: 1.5 }
+
+  it('reads the participants and the pull requests nobody is named for, and keeps what the node leaves out left out', () => {
+    const read = readEvaluation({ ...header, teams: [{ ...team, participants: [one, { ...one, name: 'lead', merged: 0, costPerMergedPrUsd: undefined }], unattributedMerged: 2 }] }).teams[0]
+    expect(read?.participants?.map((p) => p.name)).toEqual(['backend', 'lead'])
+    expect(read?.participants?.[0]).toEqual(one)
+    expect(read?.participants?.[1]).not.toHaveProperty('costPerMergedPrUsd')
+    expect(read?.unattributedMerged).toBe(2)
+  })
+
+  it('has none when the node gives none: for anyone but the team’s owner, or from a runtime that does not report them', () => {
+    const read = readEvaluation({ ...header, teams: [team] }).teams[0]
+    expect(read).not.toHaveProperty('participants')
+    expect(read).not.toHaveProperty('unattributedMerged')
+  })
+
+  it.each([
+    ['a negative time', { ...one, busySeconds: -1 }],
+    ['a cost that is not a number', { ...one, costUsd: '1' }],
+    ['a participant with no name', { ...one, name: '' }],
+    ['tokens that are not numbers', { ...one, tokens: { input: 'x' } }],
+  ])('refuses the whole answer for %s', (_name, bad) => {
+    expect(() => readEvaluation({ ...header, teams: [{ ...team, participants: [bad] }] })).toThrow(/bad/)
+  })
+})
+
 describe('readEvaluation', () => {
   it('counts a pull request type the node leaves out as 0, in the summary and in a day', () => {
     const evaluation = readEvaluation({

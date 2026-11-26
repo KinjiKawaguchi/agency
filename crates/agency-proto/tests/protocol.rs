@@ -20,33 +20,33 @@ fn id(raw: &str) -> Id {
 const AT: &str = "2026-11-24T12:00:00Z";
 
 fn genesis(root: &AccountKey) -> SignedOrg {
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), root.public()),
-        departments: vec![Department {
-            id: id("dev"),
-            label: "開発".into(),
-            parent: None,
-            head: Some(id("owner")),
-        }],
-        people: vec![Person {
-            id: id("owner"),
-            label: "Alice".into(),
-            account: id("alice"),
-            public_key: root.public(),
-            department: Some(id("dev")),
-            role: Role::Member,
-            devices: vec![],
-        }],
-        teams: vec![TeamPlace::new(id("app"), "app", "https://alice.example")
-            .with_department(Some(id("dev")))],
-        revoked: vec![],
-        at: AT.into(),
-    };
+    let body = OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), root.public()),
+        AT.into(),
+    )
+    .with_departments(vec![Department {
+        id: id("dev"),
+        label: "開発".into(),
+        parent: None,
+        head: Some(id("owner")),
+    }])
+    .with_people(vec![Person {
+        id: id("owner"),
+        label: "Alice".into(),
+        account: id("alice"),
+        public_key: root.public(),
+        department: Some(id("dev")),
+        role: Role::Member,
+        devices: vec![],
+    }])
+    .with_teams(vec![TeamPlace::new(
+        id("app"),
+        "app",
+        "https://alice.example",
+    )
+    .with_department(Some(id("dev")))]);
     Signed::sign(Kind::Org, body, id("alice"), root).unwrap()
 }
 

@@ -346,6 +346,18 @@ export const en = {
       allOnDesk: (count: number) => `${count} items on your desk in all.`,
       seePeople: 'See participants and work',
     },
+    recovery: {
+      label: 'Recovery of an org',
+      started: (org: string) => `A recovery of ${org} was started.`,
+      startedTakingEffect: (org: string, time: string) => `A recovery of ${org} was started. It takes effect at ${time}.`,
+      ifNotYou: 'If this wasn’t you, cancel it on the root key’s node:',
+      cancelByName: ['If this wasn’t you, cancel it on the root key’s node by running ', ' for this org.'] satisfies Around,
+      underway: (org: string) => `${org}’s root key is being recovered.`,
+      underwayTakingEffect: (org: string, time: string) => `${org}’s root key is being recovered; it takes effect at ${time}.`,
+      ownerCanCancel: 'Its owner can cancel it.',
+      newRootKey: (fingerprint: string) => `New root key: ${fingerprint}`,
+      replacesRecoveryKey: 'It also replaces the recovery key.',
+    },
     pile: {
       label: 'Documents waiting',
       empty: 'Nothing is waiting for you. New requests from your team show up here.',

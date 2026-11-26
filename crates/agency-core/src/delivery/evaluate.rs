@@ -1,6 +1,7 @@
 //! A team's delivery numbers over a period, worked out from facts (docs/protocol.md, "Evaluation").
 use super::facts::{MainRun, MergedPullRequest};
 use super::kinds::{classify, count, Kind};
+use super::participants::round_to_cents;
 use super::period::Period;
 use super::red::red_spans;
 use agency_proto::clock::{OffsetDateTime, UtcOffset};
@@ -115,10 +116,6 @@ fn add_costs(days: &mut BTreeMap<String, Day>, period: &Period, input: &Input) {
     }
 }
 
-fn round_to_cents(cost: f64) -> f64 {
-    (cost * 100.0).round() / 100.0
-}
-
 fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> EvaluationSummary {
     let mut merged = MergedCounts::default();
     let (mut reverts, mut red, mut cost) = (0, 0, 0.0);
@@ -186,5 +183,7 @@ pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
         until: period.last(),
         summary,
         by_day,
+        participants: vec![],
+        unattributed_merged: 0,
     }
 }

@@ -34,27 +34,21 @@ fn sign(body: OrgDefinition, key: &AccountKey) -> SignedOrg {
 /// Carol's node keeps version 1 of `acme`, whose root has a recovery key.
 async fn carol_with_a_recovery_key(keys: &Keys) -> Running {
     let carol = node("carol", memory_runtime().0).await;
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("acme"),
-        label: "Acme".into(),
-        version: 1,
-        prev: None,
-        root: Root::new(id("alice"), keys.root.public()).with_recovery(keys.recovery.public()),
-        departments: vec![],
-        people: vec![Person {
-            id: id("alice"),
-            label: "Alice".into(),
-            account: id("alice"),
-            public_key: AccountKey::from_seed([0x24; 32]).public(),
-            department: None,
-            role: Role::Member,
-            devices: vec![],
-        }],
-        teams: vec![],
-        revoked: vec![],
-        at: carol.node.now_text(),
-    };
+    let body = OrgDefinition::new(
+        id("acme"),
+        "Acme".into(),
+        Root::new(id("alice"), keys.root.public()).with_recovery(keys.recovery.public()),
+        carol.node.now_text(),
+    )
+    .with_people(vec![Person {
+        id: id("alice"),
+        label: "Alice".into(),
+        account: id("alice"),
+        public_key: AccountKey::from_seed([0x24; 32]).public(),
+        department: None,
+        role: Role::Member,
+        devices: vec![],
+    }]);
     let doc = sign(body, &keys.root);
     carol.node.store().save_org(&doc).unwrap();
     carol
