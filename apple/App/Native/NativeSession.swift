@@ -59,7 +59,7 @@ final class NativeSession {
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
-        evaluation = EvaluationStore(source: client)
+        evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
