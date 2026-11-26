@@ -49,15 +49,16 @@ fi
 glibc_version="$(readelf --version-info --wide "$binary" \
   | sed -n 's/.*GLIBC_\([0-9][0-9.]*\).*/\1/p' | sort -Vu | tail -n 1)"
 [ -n "$glibc_version" ] || { echo "$binary has no GLIBC version requirement" >&2; exit 1; }
-dependencies=()
+needs=(libc6)
 while read -r library; do
   case "$library" in
-    libc.so.6) dependencies+=("libc6 (>= $glibc_version)") ;;
-    libgcc_s.so.1) dependencies+=(libgcc-s1) ;;
+    libc.so.6 | libm.so.6 | libdl.so.2 | libpthread.so.0 | librt.so.1 | libutil.so.1 | ld-linux-*.so.*) ;;
+    libgcc_s.so.1) needs+=(libgcc-s1) ;;
     *) echo "unmapped dynamic dependency: $library" >&2; exit 1 ;;
   esac
 done < <(readelf --dynamic --wide "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
-[ "${#dependencies[@]}" -gt 0 ] || { echo "$binary has no dynamic dependencies" >&2; exit 1; }
+dependencies=("libc6 (>= $glibc_version)")
+for need in "${needs[@]:1}"; do dependencies+=("$need"); done
 depends="$(IFS=', '; echo "${dependencies[*]}")"
 
 name="agency_${version}_${deb_arch}.deb"
