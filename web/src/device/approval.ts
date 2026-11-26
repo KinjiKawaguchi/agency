@@ -29,11 +29,11 @@ const MAX_COMMAND = 500
 /**
  * The command that approves a device on the node's machine, as the node wrote it for itself: the full path of the
  * running binary, its data directory when that is not the default, and `device-add`. The node sends it only to its
- * owner, so it may be missing. It is shown as text, never run.
+ * owner (`DeviceList.node`), so it may be missing. It is shown as text, never run.
  */
 export function nodeCommandOf(list: DeviceList): string | undefined {
-  const node = (list as { node?: unknown }).node
-  const command = typeof node === 'object' && node !== null ? (node as { command?: unknown }).command : undefined
+  // The type says it is a string; the answer comes from the node, and what is printed is checked all the same.
+  const command: unknown = list.node?.command
   // eslint-disable-next-line no-control-regex
   return typeof command === 'string' && command.trim() !== '' && command.length <= MAX_COMMAND && !/[\u0000-\u001f]/.test(command) ? command.trim() : undefined
 }
