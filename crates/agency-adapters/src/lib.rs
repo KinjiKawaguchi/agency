@@ -5,6 +5,7 @@
 pub const USER_AGENT: &str = concat!("agency-node/", env!("CARGO_PKG_VERSION"));
 
 pub mod access;
+mod activity_window;
 pub mod apns;
 pub mod client_api;
 pub mod files;

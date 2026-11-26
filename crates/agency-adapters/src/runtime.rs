@@ -1,10 +1,12 @@
 //! Team runtimes run as commands over agency-runtime/1 (docs/protocol.md). The node never reads or writes
 //! a runtime's files; it runs the team's configured command once per call, without a shell.
+use crate::activity_window::Window;
 use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
-use agency_proto::activity::Activity;
+use agency_proto::activity::{Activity, MAX_LIMIT};
+use agency_proto::clock;
 use agency_proto::runtime::{Decided, Describe, RuntimeError, ACTIVITY_OP, TOKEN_USAGE_OP};
 use agency_proto::{
     Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, Timestamp,
@@ -79,6 +81,12 @@ async fn call<T: DeserializeOwned>(
 pub const VIEW_KEPT: Duration = Duration::from_secs(5);
 /// How long a team's token usage is reused; it changes slowly.
 pub const USAGE_KEPT: Duration = Duration::from_secs(60);
+/// How long a team's activity read is reused. Every open activity page reads every team of the org
+/// every few seconds, and a read that cannot share one run starts a process each.
+pub const ACTIVITY_KEPT: Duration = Duration::from_secs(10);
+/// A shared activity read starts this long before the first reader's `since`, so readers whose `since`
+/// differ a little (the default is an hour before each read) can share it.
+const ACTIVITY_MARGIN_MINUTES: i64 = 5;
 
 type Team = (Id, Id);
 type Slot<T> = Arc<tokio::sync::Mutex<Option<(Instant, u32, Result<T, RuntimeError>)>>>;
@@ -141,8 +149,8 @@ pub struct CommandRuntime {
     described: Mutex<HashMap<(Id, Id), Describe>>,
     views: Shared<TeamView>,
     usage: Shared<TokenUsage>,
-    /// Activity reads differ by `since` and `limit`, so they are not shared; they run one at a time.
-    activity_gate: tokio::sync::Mutex<()>,
+    /// A window of a team's activity, cut for each reader (see `Window`).
+    activity: Shared<Window>,
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
     health: Mutex<HashMap<(Id, Id), Option<String>>>,
     log: Log,
@@ -164,7 +172,7 @@ impl CommandRuntime {
             described: Mutex::default(),
             views: Shared::new(VIEW_KEPT),
             usage: Shared::new(USAGE_KEPT),
-            activity_gate: tokio::sync::Mutex::new(()),
+            activity: Shared::new(ACTIVITY_KEPT),
             health: Mutex::default(),
             log,
         }
@@ -175,6 +183,40 @@ impl CommandRuntime {
         Self {
             views: Shared::new(view),
             usage: Shared::new(usage),
+            ..self
+        }
+    }
+
+    /// One run of the team's `activity` op, if the runtime lists it: 404 without running the command
+    /// otherwise.
+    async fn read_activity(
+        &self,
+        team: &HostedTeam,
+        since: &Timestamp,
+        limit: u32,
+    ) -> Result<Activity, RuntimeError> {
+        let run = async {
+            if !self.ensure_described(team).await?.supports(ACTIVITY_OP) {
+                return Err(RuntimeError {
+                    status: 404,
+                    message: "the team runtime does not report activity".into(),
+                });
+            }
+            let call_with = RuntimeCall::Activity {
+                since: since.clone(),
+                limit,
+            };
+            call(&team.runtime, &request(team, call_with)).await
+        };
+        let result = run.await;
+        self.observe(team, &result);
+        result
+    }
+
+    /// How long a team's activity read is reused (`ACTIVITY_KEPT` unless set here).
+    pub fn keeping_activity(self, activity: Duration) -> Self {
+        Self {
+            activity: Shared::new(activity),
             ..self
         }
     }
@@ -289,29 +331,33 @@ impl TeamRuntime for CommandRuntime {
         result
     }
 
-    /// Called only if the runtime listed `activity` in `describe`; otherwise 404.
+    /// Called only if the runtime listed `activity` in `describe`; otherwise 404. Readers share one run
+    /// of the command per team for a short time, each cut to its own `since` and `limit`.
     async fn activity(
         &self,
         team: &HostedTeam,
         since: &Timestamp,
         limit: u32,
     ) -> Result<Activity, RuntimeError> {
-        let _one_at_a_time = self.activity_gate.lock().await;
-        let run = async {
-            if !self.ensure_described(team).await?.supports(ACTIVITY_OP) {
-                return Err(RuntimeError {
-                    status: 404,
-                    message: "the team runtime does not report activity".into(),
-                });
-            }
-            let call_with = RuntimeCall::Activity {
-                since: since.clone(),
-                limit,
-            };
-            call(&team.runtime, &request(team, call_with)).await
+        let Some(wanted) = clock::parse(since.as_str()) else {
+            return self.read_activity(team, since, limit).await;
         };
-        let result = run.await;
-        self.observe(team, &result);
-        result
+        let start = wanted - clock::Duration::minutes(ACTIVITY_MARGIN_MINUTES);
+        let run = async {
+            let shared = Timestamp::parse(&clock::format(start)).map_err(|error| RuntimeError {
+                status: 500,
+                message: error.to_string(),
+            })?;
+            let activity = self.read_activity(team, &shared, MAX_LIMIT).await?;
+            Ok(Window {
+                since: start,
+                activity,
+            })
+        };
+        let window = self.activity.get(team, 0, run).await?;
+        match window.answer(since, limit) {
+            Some(answer) => Ok(answer),
+            None => self.read_activity(team, since, limit).await,
+        }
     }
 }
