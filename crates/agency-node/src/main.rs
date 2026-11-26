@@ -3,6 +3,7 @@ mod dept_cli;
 mod device_cli;
 mod funding_cli;
 mod kpi_cli;
+mod outcome_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -87,6 +88,8 @@ enum Command {
     DeptRemove(dept_cli::DeptRemove),
     TeamDept(dept_cli::TeamDept),
     TeamPlan(dept_cli::TeamPlanArgs),
+    OutcomeAdd(outcome_cli::OutcomeAdd),
+    OutcomeList(outcome_cli::OutcomeList),
     KpiAdd(kpi_cli::KpiAdd),
     KpiSet(kpi_cli::KpiSet),
     KpiRemove(kpi_cli::KpiRemove),
@@ -457,6 +460,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
+        Command::OutcomeAdd(args) => outcome_cli::outcome_add(&node, args).await?,
+        Command::OutcomeList(args) => outcome_cli::outcome_list(&node, args)?,
         Command::KpiAdd(args) => kpi_cli::kpi_add(&node, args)?,
         Command::KpiSet(args) => kpi_cli::kpi_set(&node, args)?,
         Command::KpiRemove(args) => kpi_cli::kpi_remove(&node, args)?,

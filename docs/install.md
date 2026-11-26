@@ -405,6 +405,13 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
 | the team's node did not answer | That node is down or unreachable. |
 
+## The org's numbers
+
+The org states what it measures (its KPIs) in its definition, with no number. The numbers themselves (revenue, retention, a lead time) are business data, and the node keeps them in `outcomes/<org>.jsonl` of its data directory, one line for each number, with the directory readable by its owner only (`0700`, the file `0600`). Nothing else the node serves holds them, and only the node's owner reads or enters them: `agency outcome-add --org acme --kpi revenue --date 2026-11-24 --value 1350000` enters one, and `agency outcome-list --org acme --kpi revenue` lists a KPI's numbers.
+
+- **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
+- The numbers are for reading how a measure moves, not for accounting.
+
 ## Updating a node
 
 ```sh
