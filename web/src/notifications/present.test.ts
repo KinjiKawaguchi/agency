@@ -22,7 +22,7 @@ const e = (kind: NoticeEvent['kind'], key: string): NoticeEvent => ({ kind, key 
 
 describe('what the viewer is told', () => {
   it('names a request, with its team, when one arrives, and counts them when several do', () => {
-    expect(noticesFor([e('request', `request:acme/app/${request.id}`)], lookups, en, on)).toEqual([{ tone: 'info', target: { to: '/desk', item: `acme:app:${request.id}` }, message: `A request waits for you: ${request.title} (${sampleTeamView.label}).` }])
+    expect(noticesFor([e('request', `request:acme/app/${request.id}`)], lookups, en, on)).toEqual([{ tone: 'info', target: { to: '/desk', item: `acme:app:${request.id}` }, tag: `request/acme/app/${request.id}`, message: `A request waits for you: ${request.title} (${sampleTeamView.label}).` }])
     expect(noticesFor([e('request', `request:acme/app/${request.id}`), e('request', 'request:acme/app/r-2')], lookups, en, on)[0]?.message).toBe('2 requests now wait for you.')
   })
 
@@ -38,7 +38,7 @@ describe('what the viewer is told', () => {
   })
 
   it('shows a refused decision as an error with the node’s reason, and a queued one as news', () => {
-    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, en, on)).toEqual([{ tone: 'error', target: { to: '/desk' }, message: 'A decision “Add a second frontend agent” was refused: Not the right team.' }])
+    expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, en, on)).toEqual([{ tone: 'error', target: { to: '/desk' }, tag: 'decision/d1', message: 'A decision “Add a second frontend agent” was refused: Not the right team.' }])
     expect(noticesFor([e('decision', 'decision:d2:queued')], lookups, en, on)[0]).toMatchObject({ tone: 'info', message: 'A decision “Rename the export endpoint” is queued: its node cannot be reached yet.' })
   })
 
@@ -98,5 +98,22 @@ describe('where a notice leads', () => {
     expect(targetOf(e('blocked', `blocked:acme/app/${blockedItem.ref}`))).toEqual({ to: '/people' })
     expect(targetOf(e('device', 'device:k1'))).toEqual({ to: '/devices' })
     expect(targetOf(e('decision', 'decision:d1:refused'))).toEqual({ to: '/desk' })
+  })
+})
+
+describe('what a notice is named by, so that a browser shows one notification for one event', () => {
+  const tagOf = (events: NoticeEvent[]) => noticesFor(events, lookups, en, on)[0]?.tag
+
+  it('names one request by its organization, team, and id, and one decision by its id, and a device by its kind', () => {
+    expect(tagOf([e('request', `request:acme/app/${request.id}`)])).toBe(`request/acme/app/${request.id}`)
+    expect(tagOf([e('decision', 'decision:d1:refused')])).toBe('decision/d1')
+    expect(tagOf([e('device', 'device:k1')])).toBe('device')
+  })
+
+  it('gives a notice of several events none, and one that no worker is told of none', () => {
+    expect(tagOf([e('request', 'request:acme/app/r-1'), e('request', 'request:acme/app/r-2')])).toBeUndefined()
+    expect(tagOf([e('device', 'device:k1'), e('device', 'device:k2')])).toBeUndefined()
+    expect(tagOf([e('participant', `participant:acme/app/${sampleTeamView.people[1]!.id}`)])).toBeUndefined()
+    expect(tagOf([e('blocked', `blocked:acme/app/${blockedItem.ref}`)])).toBeUndefined()
   })
 })

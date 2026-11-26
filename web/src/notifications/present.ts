@@ -16,6 +16,12 @@ export interface Notice {
   message: string
   tone: 'info' | 'error'
   target: NoticeTarget
+  /**
+   * Names what a notice is about, so that a browser replaces one notification with another about the same thing
+   * (the page's and a worker's, for one event): `request/<org>/<team>/<id>`, `device`, `decision/<id>`. Only a
+   * notice of one event, of a kind a worker is also told of, has one.
+   */
+  tag?: string
 }
 
 /** The most notices one reading shows; the rest are counted in the last. */
@@ -47,7 +53,7 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     const owner = teamOf(lookups, org, team)
     const title = owner?.view.requests.find((one) => one.id === item)?.title
     const target: NoticeTarget = requests.length === 1 ? { to: '/desk', item: `${org}:${team}:${item}` } : { to: '/desk' }
-    found.push({ tone: 'info', target, message: text.request(requests.length, title ?? item, owner?.view.label ?? team) })
+    found.push({ tone: 'info', target, ...(requests.length === 1 ? { tag: `request/${org}/${team}/${item}` } : {}), message: text.request(requests.length, title ?? item, owner?.view.label ?? team) })
   }
 
   const participants = keysOf(events, 'participant', 'participant:')
@@ -68,7 +74,7 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
   const devices = onDevices ? [] : keysOf(events, 'device', 'device:')
   if (devices.length > 0) {
     const label = lookups.devices?.requests.find((one) => one.publicKey === devices[0])?.label
-    found.push({ tone: 'info', target: { to: '/devices' }, message: text.device(devices.length, label ?? text.aDevice) })
+    found.push({ tone: 'info', target: { to: '/devices' }, ...(devices.length === 1 ? { tag: 'device' } : {}), message: text.device(devices.length, label ?? text.aDevice) })
   }
 
   const decided = events.filter((event) => event.kind === 'decision').map((event) => ({ id: event.key.slice('decision:'.length, event.key.lastIndexOf(':')), state: event.key.slice(event.key.lastIndexOf(':') + 1) }))
@@ -77,7 +83,7 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     if (some.length === 0) continue
     const entry = lookups.decisions?.entries.find((one) => one.id === some[0]?.id)
     const reason = entry?.state.kind === 'refused' ? entry.state.message : undefined
-    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, message: text.decision(state, some.length, entry?.title ?? '', reason) })
+    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, ...(some.length === 1 ? { tag: `decision/${some[0]?.id}` } : {}), message: text.decision(state, some.length, entry?.title ?? '', reason) })
   }
 
   return found.length <= MOST ? found : [...found.slice(0, MOST - 1), { tone: 'info', target: { to: '/desk' }, message: text.more(found.length - (MOST - 1)) }]

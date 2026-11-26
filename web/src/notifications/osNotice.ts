@@ -16,7 +16,7 @@ export const shouldTellOs = (): boolean => isOsNoticeOn() && document.visibility
  */
 export function showOsNotice(notice: Notice, title: string, open: (target: NoticeTarget) => void): void {
   try {
-    const shown = new Notification(title, { body: notice.message, icon: ICON })
+    const shown = new Notification(title, { body: notice.message, icon: ICON, ...(notice.tag === undefined ? {} : { tag: notice.tag }) })
     shown.onclick = () => {
       window.focus()
       shown.close()

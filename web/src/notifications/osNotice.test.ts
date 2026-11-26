@@ -46,6 +46,13 @@ describe('how a notice reaches the operating system', () => {
     expect(opened).toEqual([{ to: '/desk', item: 'acme:app:r-1' }])
   })
 
+  it('gives the browser the tag of the notice, and none when the notice has none', () => {
+    showOsNotice({ tone: 'info', message: 'a', target: { to: '/desk' }, tag: 'request/acme/app/r-1' }, 'Agency', () => undefined)
+    showOsNotice({ tone: 'info', message: 'b', target: { to: '/desk' } }, 'Agency', () => undefined)
+    expect(fake.shown[0]?.options?.tag).toBe('request/acme/app/r-1')
+    expect(fake.shown[1]?.options).not.toHaveProperty('tag')
+  })
+
   it('does not fail the page when the browser cannot make a notification from it', () => {
     Object.defineProperty(globalThis, 'Notification', {
       value: class {
