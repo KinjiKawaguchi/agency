@@ -1,5 +1,6 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
 mod device_cli;
+mod funding_cli;
 
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
@@ -130,6 +131,11 @@ enum Command {
     Sync,
     /// Shows this node: its account, orgs, hosted teams, and outbox
     Status,
+    /// Tells the program that launches agent sessions which funding source to run on (reads no key)
+    Funding {
+        #[command(subcommand)]
+        command: funding_cli::FundingCommand,
+    },
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -352,11 +358,15 @@ async fn run(cli: Cli) -> Result<()> {
     {
         return init(&data, account, label, url, listen, harness_command(scrum)?);
     }
+    if let Command::Funding { command } = &cli.command {
+        let none = funding_cli::run(&data, command)?;
+        std::process::exit(if none { 3 } else { 0 });
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
     match cli.command {
-        Command::Init { .. } => unreachable!(),
+        Command::Init { .. } | Command::Funding { .. } => unreachable!(),
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(

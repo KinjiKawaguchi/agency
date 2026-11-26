@@ -29,6 +29,7 @@ dependencies = [
  "agency-proto",
  "async-trait",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

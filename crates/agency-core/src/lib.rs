@@ -7,6 +7,7 @@ pub mod config;
 pub mod decisions;
 pub mod devices;
 pub mod error;
+pub mod funding_pick;
 pub mod invites;
 pub mod node;
 pub mod orgs;
