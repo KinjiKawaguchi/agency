@@ -68,12 +68,12 @@ struct NodeSpeedTests {
     func rows() {
         let all = [
             series("GET /a", group: "desk", [(5, 3)]), series("GET /b", group: "desk", [(5, 9)]), series("GET /c", group: "usage", [(5, 12)]),
-            series("GET /d", group: "teams", [(5, 12)]), series("GET /none", group: "teams", []), series("runtime view", kind: .call, group: "runtime", [(5, 4)]),
+            series("GET /d", group: "teams", [(5, 14)]), series("GET /none", group: "teams", []), series("runtime view", kind: .call, group: "runtime", [(5, 4)]),
         ]
         let groups = Latency.groups(of: all, kind: .serve)
-        #expect(groups.map(\.row.key) == ["desk", "teams", "usage"], "desk 12, then teams and usage 12 and 12 by name")
-        #expect(groups[0].routes.map(\.key) == ["GET /b", "GET /a"])
-        #expect(groups[1].routes.map(\.key) == ["GET /d"])
+        #expect(groups.map(\.row.key) == ["teams", "desk", "usage"], "teams 14 first, then desk and usage 12 and 12 by name")
+        #expect(groups[1].routes.map(\.key) == ["GET /b", "GET /a"])
+        #expect(groups[0].routes.map(\.key) == ["GET /d"])
         #expect(Latency.groups(of: all, kind: .call).map(\.row.key) == ["runtime"])
         #expect(Latency.groups(of: all, kind: .unknown).isEmpty)
     }

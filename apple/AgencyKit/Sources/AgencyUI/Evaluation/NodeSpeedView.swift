@@ -24,6 +24,8 @@ struct NodeSpeedSection: View {
 struct NodeSpeedContent: View {
     let days: Int
     let answer: NodeSpeedAnswer?
+    /// Whether each group is open to its routes from the start: for a rendering that shows them.
+    var showsRoutes = false
     var onChooseDays: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
 
@@ -53,13 +55,14 @@ struct NodeSpeedContent: View {
         case .couldNotAnswer(let reason)?, .failed(let reason)?:
             FailedRegion(what: Ja.NodeSpeed.title, why: reason, onTryAgain: onTryAgain)
         case .ready(let speed)?:
-            NodeSpeedReady(speed: speed)
+            NodeSpeedReady(speed: speed, showsRoutes: showsRoutes)
         }
     }
 }
 
 private struct NodeSpeedReady: View {
     let speed: NodeSpeed
+    let showsRoutes: Bool
 
     var body: some View {
         if speed.hasNoSeries {
@@ -68,8 +71,8 @@ private struct NodeSpeedReady: View {
             VStack(alignment: .leading, spacing: Theme.spacing) {
                 if let budget = speed.budget { BudgetCard(budget: budget) }
                 if !speed.objectives.isEmpty { ObjectivesCard(lines: speed.objectives) }
-                GroupsCard(title: Ja.NodeSpeed.Groups.title, groups: speed.routeGroups, inNodeReadRoutes: speed.inNodeReadRoutes)
-                GroupsCard(title: Ja.NodeSpeed.Groups.callsTitle, groups: speed.callGroups, inNodeReadRoutes: [])
+                GroupsCard(title: Ja.NodeSpeed.Groups.title, groups: speed.routeGroups, inNodeReadRoutes: speed.inNodeReadRoutes, showsRoutes: showsRoutes)
+                GroupsCard(title: Ja.NodeSpeed.Groups.callsTitle, groups: speed.callGroups, inNodeReadRoutes: [], showsRoutes: showsRoutes)
             }
         }
     }
@@ -186,6 +189,14 @@ private struct GroupsCard: View {
     let title: String
     let groups: [Latency.Group]
     let inNodeReadRoutes: Set<String>
+    @State private var open: Set<String>
+
+    init(title: String, groups: [Latency.Group], inNodeReadRoutes: Set<String>, showsRoutes: Bool) {
+        self.title = title
+        self.groups = groups
+        self.inNodeReadRoutes = inNodeReadRoutes
+        _open = State(initialValue: showsRoutes ? Set(groups.map(\.id)) : [])
+    }
 
     var body: some View {
         // Nothing is drawn for a kind with no measured call.
@@ -193,7 +204,9 @@ private struct GroupsCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.headline).wrapping()
                 ForEach(groups) { group in
-                    DisclosureGroup {
+                    DisclosureGroup(isExpanded: Binding(get: { open.contains(group.id) }, set: { isOpen in
+                        if isOpen { open.insert(group.id) } else { open.remove(group.id) }
+                    })) {
                         ForEach(group.routes) { route in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(route.key).font(.system(.footnote, design: .monospaced)).wrapping()
@@ -203,6 +216,7 @@ private struct GroupsCard: View {
                                 NumbersGrid(row: route)
                             }
                             .padding(.vertical, 4)
+                            .padding(.leading, 8)
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {

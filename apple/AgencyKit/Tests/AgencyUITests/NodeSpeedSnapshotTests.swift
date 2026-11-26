@@ -35,11 +35,12 @@ struct NodeSpeedSnapshotTests {
     func drawn() {
         let states: [(String, NodeSpeedAnswer?)] = [
             ("node-speed-sample", .ready(NodeSpeed(sample()))), ("node-speed-slow", .ready(NodeSpeed(slow()))),
+            ("node-speed-sample-open", .ready(NodeSpeed(sample()))), ("node-speed-slow-open", .ready(NodeSpeed(slow()))),
             ("node-speed-loading", nil), ("node-speed-unavailable", .unavailable), ("node-speed-failed", .failed("HTTP 502")),
         ]
         for (name, answer) in states {
             for scheme in [ColorScheme.light, .dark] {
-                let result = Snapshot.capture(name, NodeSpeedContent(days: 7, answer: answer).padding(Theme.gutter), scheme: scheme)
+                let result = Snapshot.capture(name, NodeSpeedContent(days: 7, answer: answer, showsRoutes: name.hasSuffix("open")).padding(Theme.gutter), scheme: scheme)
                 #expect(!result.png.isEmpty)
                 #expect(result.size.width == Snapshot.phoneWidth, "\(name): \(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")
             }
