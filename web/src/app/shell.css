@@ -181,9 +181,12 @@
     left: 7px;
   }
 
+  /* Four entries share the width of the screen, so they fit whichever font the phone has. */
   .mainnav {
     order: 3;
-    width: 100%;
+    justify-content: space-between;
+    gap: 0;
+    width: calc(100% + 24px);
     margin: 0 -12px;
     overflow-x: auto;
     min-height: 40px;
@@ -191,13 +194,13 @@
 
   .mainnav a {
     flex: none;
-    padding: 0 7px;
-    font-size: 13px;
+    padding: 0 6px;
+    font-size: 12.5px;
     white-space: nowrap;
   }
 
   .mainnav a[aria-current='page']::after {
-    right: 7px;
-    left: 7px;
+    right: 6px;
+    left: 6px;
   }
 }
