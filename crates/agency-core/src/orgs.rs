@@ -180,6 +180,8 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let root = Root::new(account, root_key.clone());
     let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
@@ -342,7 +344,10 @@ pub fn unknown_addressees(node: &Node) -> Vec<UnknownAddressee> {
         };
         let body = &doc.body;
         for (name, id) in &hosted.people {
-            let is_known = body.people.iter().any(|one| &one.id == id)
+            let is_known = body
+                .people
+                .iter()
+                .any(|one| &one.id == id || one.formerly.contains(id))
                 || body.seats.iter().any(|one| &one.id == id)
                 || body.externals.iter().any(|one| &one.id == id);
             if !is_known {

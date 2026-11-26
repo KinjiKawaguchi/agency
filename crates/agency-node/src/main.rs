@@ -100,6 +100,7 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    SeatMerge(seat_cli::SeatMerge),
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -141,6 +142,9 @@ enum Command {
         org: String,
         #[arg(long)]
         department: Option<String>,
+        /// A seat of the org, so that whoever joins takes it (with its department); a claim link
+        #[arg(long, conflicts_with = "department")]
+        seat: Option<String>,
         /// member (reads and answers) or answerer (only answers)
         #[arg(long, default_value = "member")]
         role: String,
@@ -563,6 +567,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
@@ -606,6 +611,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Invite {
             org,
             department,
+            seat,
             role,
         } => {
             let role = match role.as_str() {
@@ -613,8 +619,14 @@ async fn run(cli: Cli) -> Result<()> {
                 "answerer" => Role::Answerer,
                 _ => bail!("--role must be member or answerer"),
             };
-            let department = department.as_deref().map(id).transpose()?;
-            println!("{}", invites::invite(&node, &id(&org)?, department, role)?);
+            let link = match seat.as_deref() {
+                Some(seat) => invites::invite_for_seat(&node, &id(&org)?, id(seat)?, role)?,
+                None => {
+                    let department = department.as_deref().map(id).transpose()?;
+                    invites::invite(&node, &id(&org)?, department, role)?
+                }
+            };
+            println!("{link}");
         }
         Command::Join { link, yes } => {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {

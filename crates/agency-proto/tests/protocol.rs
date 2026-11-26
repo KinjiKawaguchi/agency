@@ -41,6 +41,8 @@ fn genesis(root: &AccountKey) -> SignedOrg {
         department: Some(id("dev")),
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }])
     .with_teams(vec![TeamPlace::new(
         id("app"),
@@ -76,6 +78,8 @@ fn org_chain_accepts_only_the_next_version_signed_by_the_root() {
             department: Some(id("dev")),
             role: Role::Answerer,
             devices: vec![],
+            formerly: vec![],
+            ask_about: vec![],
         })
     });
     assert_eq!(verify_successor(&v1, &v2), Ok(Succession::Root));
@@ -545,6 +549,26 @@ fn org_with_seats(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
 }
 
+/// The next version of `org`, in which dan has taken the seat carol: the seat is gone from `seats`, and dan has
+/// its id as `formerly` and what to ask about it as `askAbout`.
+fn org_with_a_claimed_seat(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let mut body = OrgDefinition::successor_of(org, AT.into());
+    body.people.push(Person {
+        id: id("dan"),
+        label: "Dan".into(),
+        account: id("dan"),
+        public_key: AccountKey::from_seed([4; 32]).public(),
+        department: Some(id("dev")),
+        role: Role::Member,
+        devices: vec![],
+        formerly: vec![id("carol")],
+        ask_about: vec!["invoices".into(), "budget approval".into()],
+    });
+    let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
+    assert!(verify_successor(org, &signed).is_ok());
+    serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
+}
+
 fn allocation() -> Allocation {
     Allocation {
         new_feature: 40,
@@ -828,6 +852,7 @@ fn vectors_match_testdata() {
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
         "orgWithSeats": org_with_seats(&key, &org),
+        "orgWithClaimedSeat": org_with_a_claimed_seat(&key, &org),
         "rootRotation": root_rotation(&key, &org),
         "rootRecovery": root_recovery(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),

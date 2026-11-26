@@ -57,8 +57,13 @@ fn party_line(kind: &str, party: &DirectoryParty) -> String {
 pub fn directory_lines(directory: &Directory) -> Vec<String> {
     let mut lines = vec![format!("Org {}:", directory.org)];
     for member in &directory.members {
+        let ask_about = if member.ask_about.is_empty() {
+            String::new()
+        } else {
+            format!(", ask about: {}", list(&member.ask_about))
+        };
         lines.push(format!(
-            "  Member {} ({}), {}, names in this node's teams: {}",
+            "  Member {} ({}), {}{ask_about}, names in this node's teams: {}",
             member.id,
             member.label,
             member.role,
@@ -106,13 +111,24 @@ mod tests {
         let directory = Directory {
             org: id("acme"),
             departments: vec![],
-            members: vec![DirectoryMember {
-                id: id("alice"),
-                label: "Alice".into(),
-                department: None,
-                role: "member".into(),
-                runtime_names: vec![names("app", &["owner", "reviewer"])],
-            }],
+            members: vec![
+                DirectoryMember {
+                    id: id("alice"),
+                    label: "Alice".into(),
+                    department: None,
+                    role: "member".into(),
+                    ask_about: vec![],
+                    runtime_names: vec![names("app", &["owner", "reviewer"])],
+                },
+                DirectoryMember {
+                    id: id("dave"),
+                    label: "Dave".into(),
+                    department: None,
+                    role: "member".into(),
+                    ask_about: vec!["invoices".into(), "budget approval".into()],
+                    runtime_names: vec![],
+                },
+            ],
             seats: vec![DirectoryParty {
                 id: id("carol"),
                 label: "Carol (finance)".into(),
@@ -128,6 +144,7 @@ mod tests {
             [
                 "Org acme:",
                 "  Member alice (Alice), member, names in this node's teams: app: owner, reviewer",
+                "  Member dave (Dave), member, ask about: invoices, budget approval, names in this node's teams: none",
                 "  Seat carol (Carol (finance)), ask about: invoices; answered by: the team's owner; names in this node's teams: none",
             ]
         );

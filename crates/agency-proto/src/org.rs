@@ -101,6 +101,16 @@ pub struct Person {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Device>>", optional)]
     pub devices: Vec<Device>,
+    /// The ids of the seats this person took, so that what named a seat (a request addressed to it, the
+    /// history) reaches them. Left out when empty, so a version signed before seats keeps its signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Id>>", optional)]
+    pub formerly: Vec<Id>,
+    /// What to ask this person about, in the org's own words: what the seat they took said. Left out when
+    /// empty, like `formerly`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub ask_about: Vec<String>,
 }
 
 /// A key held by one of a person's clients (a browser, a phone, the CLI). Its private key never leaves
