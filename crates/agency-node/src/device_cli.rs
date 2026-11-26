@@ -133,7 +133,19 @@ async fn add_requested_device(node: &Node, data: &DataDir) -> Result<()> {
     Ok(())
 }
 
+/// Says which node and data directory this run read, so a person with several can tell whether it is
+/// the one the device asked.
+fn say_which_node(node: &Node, data: &DataDir) {
+    let dir = std::path::absolute(data.root()).unwrap_or_else(|_| data.root().to_owned());
+    println!(
+        "Node {} (data directory {})",
+        node.config().url,
+        dir.display()
+    );
+}
+
 pub async fn device_add(node: &Node, data: &DataDir, is_cli: bool) -> Result<()> {
+    say_which_node(node, data);
     if is_cli {
         add_cli_device(node, data).await
     } else {

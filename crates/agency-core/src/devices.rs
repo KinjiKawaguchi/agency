@@ -112,7 +112,8 @@ pub fn request_device(node: &Node, input: DeviceRequestInput) -> Result<DeviceRe
     to_request(record)
 }
 
-/// The account's devices in each of its orgs, and the devices waiting to be added.
+/// The account's devices in each of its orgs, and the devices waiting to be added. `node` is left for the
+/// Client API to add, because it depends on who asks and on the running program.
 pub fn device_list(node: &Node) -> Result<DeviceList> {
     let account = node.account();
     let orgs = my_orgs(node)
@@ -126,7 +127,11 @@ pub fn device_list(node: &Node) -> Result<DeviceList> {
         .into_iter()
         .map(to_request)
         .collect::<Result<_>>()?;
-    Ok(DeviceList { orgs, requests })
+    Ok(DeviceList {
+        orgs,
+        requests,
+        node: None,
+    })
 }
 
 /// On the root key's node: checks a device change and writes it into the next version.
