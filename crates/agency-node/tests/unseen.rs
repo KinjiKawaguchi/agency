@@ -155,19 +155,13 @@ fn planted() -> SignedOrg {
         role: agency_proto::Role::Member,
         devices: vec![],
     };
-    let body = OrgDefinition {
-        kpis: vec![],
-        org: id("planted"),
-        label: "Planted".into(),
-        version: 1,
-        prev: None,
-        root: agency_proto::org::Root::new(id("mallory"), key.public()),
-        departments: vec![],
-        people: vec![founder],
-        teams: vec![],
-        revoked: vec![],
-        at: T0.into(),
-    };
+    let body = OrgDefinition::new(
+        id("planted"),
+        "Planted".into(),
+        agency_proto::org::Root::new(id("mallory"), key.public()),
+        T0.into(),
+    )
+    .with_people(vec![founder]);
     Signed::sign(Kind::Org, body, id("mallory"), &key).unwrap()
 }
 

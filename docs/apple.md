@@ -145,7 +145,7 @@ Copy `apple/Local.xcconfig.example` to `apple/Local.xcconfig` and set:
 
 - `DEVELOPMENT_TEAM`: the Apple Developer team ID.
 - `PRODUCT_BUNDLE_IDENTIFIER`: the bundle ID of the app record in App Store Connect.
-- `AGENCY_ASSOCIATED_HOST`: the host name of your home node. It goes into the app's associated domains and tells the app which node may use the passkey sign-in. Without it the app cannot sign in to the node (the desk says so).
+- `AGENCY_ASSOCIATED_HOST`, `AGENCY_ASSOCIATED_HOST_2`: the host names (or `*.` wildcards) of the home nodes the owner uses. They go into the app's associated domains; a node on one of them signs in through a universal link, any other `https` node through the app's own scheme. Leave the second one out when there is no second host.
 
 `Local.xcconfig` is ignored by git. Without it the project builds with a placeholder bundle ID, which cannot be signed.
 
@@ -212,24 +212,35 @@ It needs `bash`, `openssl`, `perl` and `jq`, and uses no Apple account, network,
 
 The app signs in to Access in an `ASWebAuthenticationSession`. It runs in Safari's context, so passkeys and password managers work, and it needs no password prompt of its own. (A `WKWebView` could not run WebAuthn for the Access team domain, `<team>.cloudflareaccess.com`: iOS allows that only for a relying party that is one of the app's associated domains, and the file that says so would have to be served by Cloudflare.)
 
-**The node's side has changed (agency#117): it answers the handoff with a single-use code, not the token, and the app redeems it with a verifier at `POST /app/redeem` (docs/protocol.md, "App sign-in"). The steps below describe the app until it moves to that exchange, which is the next change.**
+The token never travels in an address. The app asks for a code, and trades the code for the token over its own connection (`SignInExchange` in `apple/AgencyKit`; the node's side is "App sign-in" in `docs/protocol.md`):
 
-1. When the desk has no Access token yet, or the session ended (the node answers with a redirect to Access's login), the app starts the session on `https://<node host>/app/handoff?state=<state>`. The `state` is 256 random bits made for this sign-in. The first launch starts it by itself once.
-2. Access signs the owner in and returns to the handoff route, which sits behind Access. The node answers with a redirect to `https://<node host>/app/callback#token=<Access token>&state=<state>`.
-3. That address is a universal link, so iOS hands it only to the app that the node's `/.well-known/apple-app-site-association` file names. The app checks the host, the path, that `state` is its own, and that the token is a JWT that has not expired (`AccessHandoff` in `apple/AgencyKit`), then keeps the token in the Keychain.
-
-The token lives in the URL fragment so that it never reaches a server or a log. A callback that does not belong to a running session is ignored.
+1. When the desk has no Access token yet, or the session ended (the node answers with a redirect to Access's login), the app makes a `state` (256 random bits) and a `verifier` (256 random bits that stay in the app), and starts the session on `https://<node host>/app/handoff?state=<state>&challenge=<SHA-256 of the verifier>&via=<link or scheme>`. The first launch starts it by itself once.
+2. Access signs the owner in and returns to the handoff route, which sits behind Access. The node keeps the token, makes a single-use code for it, and answers with a redirect to the callback with `#code=<code>&state=<state>`.
+3. The callback is `https://<node host>/app/callback` (a universal link, when the build has an associated domain for the node's host) or `agency-signin://callback` (the app's own scheme, for any other node). The app checks the scheme, host, path and port, that there is no query, that the fragment is exactly the code and its own `state`, and that the code is used once and within ten minutes. A callback that is not the sign-in's own is ignored and does not end it.
+4. The app sends `POST /app/redeem` with the code and the verifier to the node it signed in to, and nowhere else. The node gives the token only for a code that is unused, young, and made for that verifier. The app keeps the token in the Keychain under that node's host.
 
 Whether it can be used is decided by the build and by the node:
 
-- The app uses it only when the home node is on `https` port 443 and its host is `AGENCY_ASSOCIATED_HOST`, because that is the only host a universal link can return from. Otherwise the screens say that the app cannot sign in to this node. Closing the sheet is not a failure.
-- Changing the home node forgets the token of the old node. The session in Safari is separate and is left alone.
+- The node must be on `https`. A node on a host the build has an associated domain for (`AGENCY_ASSOCIATED_HOST`, `AGENCY_ASSOCIATED_HOST_2`; each a host, or `*.example.com` for the hosts one label below it) signs in through a universal link, port 443 only. Any other `https` node signs in through the custom scheme, which any app on the device could also register: that is why the code is worthless without the verifier. A node that is not on `https`, or that does not take part in the exchange, makes the screens say that the app cannot sign in to it.
+- What the exchange does not stop: with `via=scheme`, any app on the device can run the whole flow itself (it makes its own `state` and `verifier`, starts the session, and receives the callback on the scheme). The verifier keeps an app that only listens for the callback from using a code it did not ask for; it does not keep an app from asking. What stands between is the owner's own sign-in on the Access page the system sheet shows: the node gives a token only after the owner has signed in there, and the sheet names the app that opened it. A node that must not be reachable this way keeps its host in the associated domains, where the callback is a universal link only this app receives.
+- Leaving a home node forgets its token. The session in Safari is separate and is left alone.
 
 What it needs:
 
-- **The node:** the `/app/handoff` and `/app/callback` routes and the association file, with the app identifier (`<team id>.<bundle id>`) in the node's configuration.
-- **Cloudflare Access:** a bypass policy for the one path `/.well-known/apple-app-site-association`, because Apple's servers fetch the file without signing in. The Access application must not bind its token to the browser, because the token is made in Safari and used by the app.
-- **The build:** `AGENCY_ASSOCIATED_HOST` in `Local.xcconfig`. The project's minimum iOS is 17.4, the first version with `ASWebAuthenticationSession` callbacks on an https address.
+- **The node:** the `/app/handoff`, `/app/callback` and `/app/redeem` routes and, for universal links, the association file, with the app identifier (`<team id>.<bundle id>`) in the node's configuration.
+- **Cloudflare Access:** a bypass policy for `/.well-known/apple-app-site-association`, because Apple's servers fetch the file without signing in, and for `/app/redeem`, which the app calls without Access (the code and the verifier are its credentials). The Access application must not bind its token to the browser, because the token is made in Safari and used by the app.
+- **The build:** `AGENCY_ASSOCIATED_HOST` (and `AGENCY_ASSOCIATED_HOST_2`) in `Local.xcconfig`. The project's minimum iOS is 17.4, the first version with `ASWebAuthenticationSession` callbacks on an https address.
+
+## Several home nodes
+
+The device keeps a list of home nodes (`HomeNodeBook`, in `apple/AgencyKit`): the current one, the ones the owner added, and the other nodes the current node names for the owner (`/api/me` `homeNodes`). Settings shows it: the owner switches to a node, adds one by its address, or forgets one.
+
+- **Switching** changes which node is current. Everything the app keeps for a node (its token, its device key, its drafts and its choices) is kept by the node's host, so switching moves no secret and the node left is signed in as it was when the owner comes back. What the old node put on the icon and on the widgets goes; the new node's desk is read and shown.
+- **Forgetting** is for a node the owner added (a node the current node names comes back from it, and is not offered). After the owner confirms, it first tells the node to stop sending notifications to this device's push token (`DELETE /api/push/tokens/<token>`, while the sign-in still works), then takes the node off the list and removes its token, its device key, its drafts and its choices. When the node cannot be told (no sign-in there, no network, no answer in ten seconds), the screen says so and the owner chooses to forget anyway or not; a node that was not told keeps sending until the device is removed on its devices screen. The node's own list of devices keeps this device either way.
+- Everything the app keeps for a node is keyed by its **host alone**, so forgetting removes it only when no other node on the device (the current one, an added one, one the current node names) has the same host with another scheme or port; the current node is never forgotten.
+- **Leaving** the current node (the button at the end of settings) tells the node the same way, forgets the token, and returns to the address screen. The node stays on the list, so it can still be forgotten, and its key, drafts and choices stay for when the owner signs in again.
+- The list is addresses and names only. The list of an earlier version (one address) is read as the current node and is replaced by the list on the first change; an earlier build then finds no address and asks for one.
+- Widgets and the background refresh follow the current node only.
 
 ## Push notifications
 

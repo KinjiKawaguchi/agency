@@ -229,7 +229,7 @@ pub(crate) fn wanting(node: &Node, notice: &Notice) -> Vec<WebSubscription> {
     node.store()
         .web_subscriptions()
         .into_iter()
-        .filter(|one| one.key_id == key.key_id && one.events.contains(&notice.event()))
+        .filter(|one| one.key_id == key.key_id && notice.is_wanted_by(&one.events))
         .collect()
 }
 

@@ -161,6 +161,11 @@ impl AccountKey {
         STANDARD.encode(self.0.to_bytes())
     }
 
+    /// The 32-byte seed, for a key that is written down rather than stored (a recovery key's words).
+    pub fn seed(&self) -> [u8; 32] {
+        self.0.to_bytes()
+    }
+
     pub fn public(&self) -> PublicKey {
         PublicKey(Key::Ed25519(self.0.verifying_key()))
     }

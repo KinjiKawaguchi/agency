@@ -24,6 +24,12 @@ pub enum NoticeKind {
         id: String,
         title: Option<String>,
     },
+    /// A recovery of an org whose root is the owner's account was started, and when it takes effect on
+    /// this node. It names the org by id, never by label, so `hideTitles` keeps it whole.
+    Recovery {
+        org: Id,
+        takes_effect_at: Option<String>,
+    },
 }
 
 /// One notification, and the badge: how many requests are the owner's to decide across all their teams
@@ -40,7 +46,18 @@ impl Notice {
             NoticeKind::Request { .. } => PushEvent::Request,
             NoticeKind::Device { .. } => PushEvent::Device,
             NoticeKind::Decision { .. } => PushEvent::Decision,
+            NoticeKind::Recovery { .. } => PushEvent::Recovery,
         }
+    }
+
+    /// Whether a token or a browser gets it whatever kinds it names.
+    pub fn is_for_everyone(&self) -> bool {
+        matches!(self.kind, NoticeKind::Recovery { .. })
+    }
+
+    /// Whether a token or a browser that names `events` gets it.
+    pub fn is_wanted_by(&self, events: &[PushEvent]) -> bool {
+        self.is_for_everyone() || events.contains(&self.event())
     }
 
     /// Notifications of one team are grouped together; the devices have a group of their own.
@@ -50,6 +67,7 @@ impl Notice {
                 format!("{org}/{team}")
             }
             NoticeKind::Device { .. } => "devices".to_owned(),
+            NoticeKind::Recovery { org, .. } => format!("recovery/{org}"),
         }
     }
 
@@ -60,6 +78,20 @@ impl Notice {
             NoticeKind::Request { request, .. } => request,
             NoticeKind::Device { device, .. } => device.as_str(),
             NoticeKind::Decision { id, .. } => id,
+            NoticeKind::Recovery { org, .. } => org.as_str(),
         }
     }
+}
+
+/// The words of a recovery notice, written by the node so that an app or a browser worker that does not know
+/// the kind yet still shows it: a title naming the org's id, and when it takes effect.
+pub fn recovery_text(org: &Id, takes_effect_at: Option<&str>) -> (String, String) {
+    let title = format!("A recovery of {org} was started");
+    let body = match takes_effect_at {
+        Some(at) => format!(
+            "It takes effect at {at}. If you did not start it, sign any version of the org now, for example with agency root-cancel-recovery."
+        ),
+        None => "If you did not start it, sign any version of the org now, for example with agency root-cancel-recovery.".to_owned(),
+    };
+    (title, body)
 }
