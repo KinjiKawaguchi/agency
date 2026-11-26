@@ -83,6 +83,15 @@ export const en = {
     },
     more: (count: number) => `${count} more things are new.`,
     devicesMark: (count: number) => `${count} waiting to be approved`,
+    os: {
+      title: 'Notifications in this browser',
+      lead: 'Show what is new as a notification of the operating system while this page is hidden. It says what the page says, and stays in this browser.',
+      turnOn: 'Turn on notifications',
+      turnOff: 'Turn off notifications',
+      isOn: 'On. A notification appears when something is new while this page is hidden. The page keeps reading in the background to see it, as far as the browser lets it, and not while the browser is closed.',
+      isBlocked: 'This browser does not allow notifications for this page. Allow them in its site settings, then turn them on here.',
+      isUnsupported: 'This browser cannot show notifications from a page.',
+    },
   },
   people: {
     title: 'Participants and work',
