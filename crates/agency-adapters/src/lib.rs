@@ -13,6 +13,7 @@ pub mod funding;
 pub mod github;
 pub mod handoff;
 pub mod launch;
+pub mod logging;
 pub mod memory;
 pub mod peers;
 pub mod refusal_log;

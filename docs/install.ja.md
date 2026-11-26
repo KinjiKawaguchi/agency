@@ -112,7 +112,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.agency.node.plist
 ```
 
 エージェントはログイン時に `agency serve` を起動し、止まったら起動し直します。
-ノードの出力は `~/.agency/logs/serve.log` に書かれます。
+ノードのログは `~/.agency/logs/node.jsonl` です（[ログ](#ログ)を参照）。`~/.agency/logs/serve.log` には、エージェントが受け取るもの（起動時の行とクラッシュ）が残ります。
 
 | したいこと | コマンド |
 |---|---|
@@ -138,7 +138,7 @@ systemctl --user enable --now agency-node
 ```
 
 ユニットはログイン時に（次のとおり linger を有効にすれば、マシンの起動時に）`agency serve` を起動し、止まったら 10 秒後に起動し直します。
-ノードの出力は `~/.agency/logs/serve.log` に書かれます。systemd が起動と停止をいつ行ったかは、`journalctl --user -u agency-node` でわかります。
+ノードのログは `~/.agency/logs/node.jsonl` です（[ログ](#ログ)を参照）。`~/.agency/logs/serve.log` には、ユニットが受け取るもの（起動時の行とクラッシュ）が残ります。systemd が起動と停止をいつ行ったかは、`journalctl --user -u agency-node` でわかります。
 
 | したいこと | コマンド |
 |---|---|
@@ -178,7 +178,7 @@ loginctl show-user "$USER" --property=Linger
 agency status
 curl -s http://127.0.0.1:4400/api/me
 curl -s -w ' %{http_code}\n' http://127.0.0.1:4400/api/orgs/acme/teams/app/view | tail -c 200
-tail -n 20 ~/.agency/logs/serve.log
+tail -n 20 ~/.agency/logs/node.jsonl
 ```
 
 - `/api/me` には、アカウントと、チーム `app` を含む組織が `"location":"local"` 付きで出ます。
@@ -478,11 +478,39 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 データディレクトリには手を加えません。
 ノードは起動のたびに書き込み用のトークンを作り直すため、開いていたページは次の書き込みの前に一度読み込み直します。
 
+### ログ
+
+ノードは、動いているあいだに伝えるべきことを `~/.agency/logs/node.jsonl` に、1 行に 1 つの JSON オブジェクトとして書きます。
+
+```json
+{"ts":"2026-11-26T04:55:22.123Z","level":"warn","event":"runtime","message":"team acme/app: the team runtime fails: …"}
+```
+
+- `ts` は UTC です。`level` は `error`、`warn`、`info`、`debug` のどれかで、`logging.level` で変えない限り、ノードは `info` とそれより緊急なものを書きます。
+- `event` は行を書いた部分の名前で、`start`、`runtime`、`refused`、`access`、`usage`、`push`、`placement`、`replicas`、`requests`、`outbox` のどれかです。`message` はノードについての文で、リクエストの本文、トークン、クエリ文字列は入りません。
+- ファイルが `maxSizeMib` を超えると、ノードはそれを `node-<UTC の時刻>.jsonl` として閉じ、新しいファイルを始めます。閉じたファイルのうち `maxAgeDays` 日より古いものと、新しい `maxFiles` 個より前のものは、ノードの起動時と、ファイルを閉じるたびに削除されます。ファイルを読めるのはノードのアカウントだけです。
+- ターミナルで動かすと、ノードは各行をそこにも表示します。ファイルに書けないときは、行は標準エラー出力へ行きます。launchd や systemd の下では、それが `serve.log` です。
+
+`config.json` に書いて、ノードを再起動します。どのフィールドも省けます。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。
+
+```json
+"logging": { "level": "info", "maxSizeMib": 20, "maxAgeDays": 14, "maxFiles": 50 }
+```
+
+| フィールド | 意味 | 値 | 既定値 |
+|---|---|---|---|
+| `level` | 書く行のうち、いちばん緊急でないレベル | `error`、`warn`、`info`、`debug` | `info` |
+| `maxSizeMib` | ファイルを閉じるサイズ（MiB） | 1 から 1024 | 20 |
+| `maxAgeDays` | 閉じたファイルを残す日数 | 1 から 365 | 14 |
+| `maxFiles` | 残す閉じたファイルの数 | 1 から 1000 | 50 |
+
+`serve.log` には、launchd や systemd が受け取るものが残ります。ノードの起動時に表示される行、ノードを止める失敗の行、クラッシュです。小さく、ローテーションはされません。
+
 ## トラブルシューティング
 
 ### ログの行
 
-ノードは `~/.agency/logs/serve.log` に次の行を書きます。
+ノードは `~/.agency/logs/node.jsonl` に次の行を書きます。表は各行を、ターミナルと `serve.log` が表示する `agency: <message>` の形で示します。`node.jsonl` では、`agency: ` のあとの文が、その行の `message` です。`cannot listen` と、ノードを止める失敗の行は、`serve.log` にだけあります。
 
 | 行 | 意味 |
 |---|---|

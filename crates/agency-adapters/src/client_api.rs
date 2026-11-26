@@ -57,6 +57,8 @@ pub trait Assets: Send + Sync {
 
 pub struct ClientApi {
     pub node: Arc<Node>,
+    /// Where the Client API writes a line for the node's log.
+    pub log: crate::Log,
     /// The write token embedded in the page. Random for each start of the node.
     pub token: String,
     /// The port the node listens on, for the `Host` check.
@@ -130,7 +132,7 @@ async fn admit(
     match access.verify(header_text(headers, ACCESS_HEADER)).await {
         Ok(identity) => Ok(Admitted::Access(identity)),
         Err(reason) => {
-            eprintln!("agency: refused an Access request ({reason})");
+            (api.log)(&format!("refused an Access request ({reason})"));
             Err((
                 StatusCode::FORBIDDEN,
                 "not signed in through Cloudflare Access",
