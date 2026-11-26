@@ -242,11 +242,12 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 ### Access を通さないパス
 
-次の二つのパスは、Access のサインインなしでノードに届く必要があります。
+次の三つのパスは、Access のサインインなしでノードに届く必要があります。
 それぞれのパスについて、アクションが Bypass の Access アプリケーション（またはポリシー）を追加します。
 
 - `agency.example.com/fed/*`：連合のルートです。ほかのノードは Access にサインインできないので、ノードは代わりに署名を検証します（[protocol.md](protocol.md) の「Federation routes」を参照）。
 - `agency.example.com/.well-known/apple-app-site-association`：iPhone アプリのサインインのために、Apple のサーバーがサインインなしで取得します。下の `appId` を設定するときだけ必要です。
+- `agency.example.com/app/redeem`：Apple のアプリが、サインインで受け取ったコードを Access のトークンに引き換えます。この時点のアプリは Access にサインインしていません（求めているのがそのトークンだからです）。ノードが受け付けるのは、サインインが作ったコードと、アプリだけが持つ検証値の組だけです。コードは 1 回しか使えず、1 分で切れ、クライアントのアドレスごとに 1 分あたり数回しか試せません。下の `appId` を設定するときだけ必要です。
 
 これ以外のパスは Bypass にしないでください。
 外から届いたリクエストのうち、ほかのパスへのものは、正しい Access トークンがなければノードが拒否します。

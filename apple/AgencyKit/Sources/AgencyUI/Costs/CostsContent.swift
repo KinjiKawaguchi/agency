@@ -40,7 +40,8 @@ struct CostsContent: View {
     }
 }
 
-private struct PeriodStyle: ButtonStyle {
+/// A period button: filled when it is the chosen one. The costs and the outcomes offer their periods the same way.
+struct PeriodStyle: ButtonStyle {
     let isSelected: Bool
 
     func makeBody(configuration: Configuration) -> some View {

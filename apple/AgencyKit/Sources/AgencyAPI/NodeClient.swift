@@ -40,6 +40,7 @@ public struct SignedDecision: Sendable {
 public actor NodeClient {
     public static let accessHeader = "cf-access-token"
     public static let writeHeader = "x-agency-token"
+    public static let clientHeader = "x-agency-client"
     /// What the node says when the write token is not the one it holds now. Any other 403 (the signed-in
     /// person is not the owner, say) is an answer and is not sent again.
     static let staleWriteTokenMessage = "missing or wrong write token"
@@ -47,20 +48,32 @@ public actor NodeClient {
     private let transport: any HTTPTransport
     private let accessToken: @Sendable () async -> String?
     private let clock: @Sendable () -> Date
+    /// The `x-agency-client` header's value, sent on every call; `nil` sends none.
+    private let clientIdentity: String?
     private var writeToken: String?
     private var clockOffset: TimeInterval = 0
 
     /// - Parameters:
     ///   - accessToken: the current Access token's value, or `nil` when the owner is not signed in or it has expired.
     ///   - clock: this phone's clock, a parameter so tests can fix it.
+    ///   - clientIdentity: what the app says of itself on every call (`ClientIdentity.current()`): its platform, version and build.
     public init(
         transport: any HTTPTransport,
         accessToken: @escaping @Sendable () async -> String?,
-        clock: @escaping @Sendable () -> Date = Date.init
+        clock: @escaping @Sendable () -> Date = Date.init,
+        clientIdentity: String? = nil
     ) {
         self.transport = transport
         self.accessToken = accessToken
         self.clock = clock
+        self.clientIdentity = clientIdentity
+    }
+
+    /// The header every call to the node carries besides its own, when the app has an identity to tell.
+    private func identified(_ request: HTTPRequest) -> HTTPRequest {
+        var request = request
+        if let clientIdentity { request.headers[Self.clientHeader] = clientIdentity }
+        return request
     }
 
     // MARK: Reads
@@ -176,7 +189,7 @@ public actor NodeClient {
         let body = Data(try CanonicalJSON.encode(.object([.init("code", .string(code)), .init("verifier", .string(verifier))])).utf8)
         var request = HTTPRequest(method: "POST", path: "/app/redeem", body: body)
         request.headers["content-type"] = "application/json"
-        let response = try await transport.send(request)
+        let response = try await transport.send(identified(request))
         switch response.status {
         case 200..<300:
             return (try decode(response) as SignInToken).token
@@ -216,7 +229,7 @@ public actor NodeClient {
             request.headers["content-type"] = "application/json"
             request.headers[Self.writeHeader] = writeToken
         }
-        let response = try await transport.send(request)
+        let response = try await transport.send(identified(request))
         switch response.status {
         case 300..<400:
             throw NodeError.sessionExpired
