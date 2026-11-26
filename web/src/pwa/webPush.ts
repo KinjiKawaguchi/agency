@@ -1,4 +1,4 @@
-import type { PushSubscriptionInput } from '../api/clientApi'
+import type { PushFailure, PushSubscription as NodeSubscription, PushSubscriptionInput } from '../api/clientApi'
 
 /** What the browser has for Web Push. A page opened over plain http, with no worker, or on an iPhone or iPad has none that the app offers. */
 export interface BrowserSupport {
@@ -66,4 +66,20 @@ export function subscriptionInput(subscription: PushSubscriptionJSON, label: str
   const { endpoint, keys } = subscription
   if (endpoint === undefined || keys?.p256dh === undefined || keys.auth === undefined) return undefined
   return { endpoint, p256dh: keys.p256dh, auth: keys.auth, label }
+}
+
+/**
+ * What the node knows of how this browser's push service took its notices: `unknown` until it has taken or refused one,
+ * `taken` (the time of the last it took), or `failing` (its last refusal is later than its last taking, or it has
+ * taken none). The last taking is given when there was one, so that "never" is a missing value and not a zero.
+ */
+export type PushDelivery = { kind: 'unknown' } | { kind: 'taken'; at: string } | { kind: 'failing'; failure: PushFailure; lastTakenAt?: string }
+
+export function deliveryOf(subscription: Pick<NodeSubscription, 'lastSucceededAt' | 'lastFailure'>): PushDelivery {
+  const { lastSucceededAt, lastFailure } = subscription
+  if (lastFailure === undefined) return lastSucceededAt === undefined ? { kind: 'unknown' } : { kind: 'taken', at: lastSucceededAt }
+  if (lastSucceededAt === undefined) return { kind: 'failing', failure: lastFailure }
+  // A time that cannot be read is not a later time: the failure is then what stands, since it is the one that tells something is wrong.
+  const isFailureLater = !(Date.parse(lastSucceededAt) >= Date.parse(lastFailure.at))
+  return isFailureLater ? { kind: 'failing', failure: lastFailure, lastTakenAt: lastSucceededAt } : { kind: 'taken', at: lastSucceededAt }
 }

@@ -9,6 +9,7 @@ use agency_core::devices::accept_device_change;
 use agency_core::evaluation::hosted_evaluation;
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, read_versions, receive};
+use agency_core::pending_root::join_answer;
 use agency_core::read_auth::ReadAuth;
 use agency_core::routes;
 use agency_core::unseen;
@@ -16,6 +17,7 @@ use agency_core::usage::hosted_usage;
 use agency_core::views::hosted_view;
 use agency_core::{Error, ErrorKind, Node};
 use agency_proto::org::SignedOrg;
+use agency_proto::root_change::RootAnswer;
 use agency_proto::{DeviceChange, Envelope, Id, JoinRequest, Signed};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
@@ -189,7 +191,33 @@ async fn post_join(
         let signed: Signed<JoinRequest> = parse_body(&bytes)?;
         accept_join(&fed.node, &org, signed).await
     };
-    respond(&fed, &method, &uri, result.await)
+    respond_root(&fed, &method, &uri, result.await)
+}
+
+/// A join the root's node holds for its owner, asked for by the joiner with its handle: `202` while it
+/// waits, the signed version once signed, and 404 for anything else.
+async fn get_held_join(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path((org, pending)): Path<(String, String)>,
+) -> Response {
+    let result = parse_id(&org).and_then(|org| join_answer(&fed.node, &org, &pending));
+    respond_root(&fed, &method, &uri, result)
+}
+
+/// The root's answer: the version it signed (`200`), or the change it holds (`202 Accepted`).
+fn respond_root(
+    fed: &Fed,
+    method: &Method,
+    uri: &Uri,
+    result: Result<RootAnswer, Error>,
+) -> Response {
+    match result {
+        Ok(RootAnswer::Signed(doc)) => respond(fed, method, uri, Ok(*doc)),
+        Ok(RootAnswer::Pending(pending)) => (StatusCode::ACCEPTED, Json(pending)).into_response(),
+        Err(error) => respond::<()>(fed, method, uri, Err(error)),
+    }
 }
 
 /// On the root key's node: a device change signed by the person, answered with the version it wrote.
@@ -205,7 +233,7 @@ async fn post_device_change(
         let signed: Signed<DeviceChange> = parse_body(&bytes)?;
         accept_device_change(&fed.node, &org, signed).await
     };
-    respond(&fed, &method, &uri, result.await)
+    respond_root(&fed, &method, &uri, result.await)
 }
 
 /// The TeamView of a team on this node, for a signed read by a member of its org.
@@ -299,6 +327,7 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
         .route("/fed/v1/orgs/{org}/about", get(get_about))
         .route("/fed/v1/orgs/{org}/versions", get(get_versions))
         .route("/fed/v1/orgs/{org}/join", post(post_join))
+        .route("/fed/v1/orgs/{org}/joins/{pending}", get(get_held_join))
         .route("/fed/v1/orgs/{org}/devices", post(post_device_change))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))

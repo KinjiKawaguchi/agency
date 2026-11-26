@@ -12,10 +12,15 @@ const idOf = (endpoint: string): string => {
 }
 
 /** The node's Web Push routes, for a mock node that has them: the key, and one subscription for each endpoint. */
-export function createMockWebPush(now: () => string) {
+/** `isFailing`: the node's record of every browser says its push service took a notice a day ago and refused the last one an hour ago. */
+export function createMockWebPush(now: () => string, isFailing = false) {
   let subscriptions: readonly PushSubscription[] = []
   return {
     subscriptions: () => subscriptions,
+    /** What the node comes to know of a browser's push service: the time it last took a notice, and the last time it did not. */
+    recordDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => {
+      subscriptions = subscriptions.map((one) => (one.id === id ? { ...one, ...delivery } : one))
+    },
     /** Answers a Web Push route, or nothing when the request is not one. `isWriteOk` is the node's check of the write token. */
     handle(request: Request, url: URL, write: () => Promise<Response | { body: unknown }>): Promise<Response> | undefined {
       if (request.method === 'GET' && url.pathname === '/api/push/vapid') return Promise.resolve(json(MOCK_VAPID_KEY))
@@ -25,7 +30,9 @@ export function createMockWebPush(now: () => string) {
           if (answer instanceof Response) return answer
           const input = answer.body as PushSubscriptionInput | null
           if (input === null || typeof input.endpoint !== 'string' || !input.endpoint.startsWith('https://')) return json({ error: 'the endpoint is not one of an allowed push service' }, 400)
-          const entry: PushSubscription = { id: idOf(input.endpoint), endpoint: `${new URL(input.endpoint).origin}/…${input.endpoint.slice(-8)}`, label: input.label, registeredAt: now(), events: input.events ?? ['request'], keyId: MOCK_VAPID_KEY.keyId }
+          const known = subscriptions.find((one) => one.id === idOf(input.endpoint))
+          const refused = isFailing ? { lastSucceededAt: new Date(Date.parse(now()) - 24 * 3_600_000).toISOString(), lastFailure: { at: new Date(Date.parse(now()) - 3_600_000).toISOString(), reason: 'push.example answered 503' } } : {}
+          const entry: PushSubscription = { ...refused, ...(known?.lastSucceededAt === undefined ? {} : { lastSucceededAt: known.lastSucceededAt }), ...(known?.lastFailure === undefined ? {} : { lastFailure: known.lastFailure }), id: idOf(input.endpoint), endpoint: `${new URL(input.endpoint).origin}/…${input.endpoint.slice(-8)}`, label: input.label, registeredAt: now(), events: input.events ?? ['request'], keyId: MOCK_VAPID_KEY.keyId }
           subscriptions = [...subscriptions.filter((one) => one.id !== entry.id), entry]
           return json(entry)
         })

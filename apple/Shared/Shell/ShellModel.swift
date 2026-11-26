@@ -14,19 +14,22 @@ final class ShellModel {
     /// Which screen is open, and where a banner or a notification leads.
     let router = ShellRouter()
     var showsSettings = false
+    /// Said once when a tapped notification belongs to a home node this device does not have.
+    var linkNotice: String?
 
     let homeNode: HomeNodeURL
     @ObservationIgnored let push: PushCoordinator
     @ObservationIgnored private let deviceLabel: String
-    @ObservationIgnored private let onChangeHomeNode: () -> Void
+    /// Who holds the home nodes: the shell asks it to switch, leave, add and forget.
+    let nodes: any HomeNodeSwitching
     @ObservationIgnored private var flow: AccessSignInFlow?
     @ObservationIgnored private var triedSignIn = false
 
-    init(homeNode: HomeNodeURL, push: PushCoordinator, deviceLabel: String, onChangeHomeNode: @escaping () -> Void) {
+    init(homeNode: HomeNodeURL, push: PushCoordinator, deviceLabel: String, nodes: any HomeNodeSwitching) {
         self.homeNode = homeNode
         self.push = push
         self.deviceLabel = deviceLabel
-        self.onChangeHomeNode = onChangeHomeNode
+        self.nodes = nodes
     }
 
     /// What the desk says is wrong with this device's key or with the sign-in, if anything.
@@ -54,6 +57,7 @@ final class ShellModel {
             push.noteSignedIn()
             registerPush()
             publishWidgets()
+            noteHomeNodes()
         case .failed:
             // The first launch has no token: ask for the sign-in once, without waiting for a tap.
             if session.desk.needsSignIn, !triedSignIn {
@@ -85,10 +89,33 @@ final class ShellModel {
         router.open(banner)
     }
 
-    /// A notification was tapped: go where it leads.
-    func takeLink() {
-        guard session != nil, let link = push.takePendingLink() else { return }
-        router.open(link)
+    /// A notification was tapped: go where it leads, on the node that sent it. A tap that names another node of this device goes
+    /// to that node first (clearing the icon number and the widgets of this one, as a switch by hand does) and stays pending until
+    /// its shell is up, which opens it; one that names a node this device does not have opens nothing of it and says so. While the
+    /// open node has not yet said its own id, a tap that is none of the others' waits for the account read, and a tap that has
+    /// waited longer than a minute is dropped.
+    func takeLink(now: Date = Date()) {
+        guard session != nil, let tap = push.pendingTap else { return }
+        guard !tap.isStale(now: now) else {
+            push.takePendingTap()
+            return
+        }
+        let others = nodes.others.map(\.url)
+        let action = NotificationRouting.action(
+            forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:), hasCurrentSaid: nodes.hasSaidID(of: homeNode)
+        )
+        switch action {
+        case .openHere:
+            push.takePendingTap()
+            router.open(tap.link)
+        case .switchTo(let node):
+            switchHomeNode(to: node)
+        case .waitForAccount:
+            break
+        case .unknownNode:
+            push.takePendingTap()
+            linkNotice = Ja.HomeNodes.notificationOfAnotherNode(org: tap.org)
+        }
     }
 
     // MARK: News
@@ -126,12 +153,43 @@ final class ShellModel {
         start()
     }
 
+    /// Asks the node to stop sending to this device's push token, before the sign-in goes: the node's alerts would otherwise
+    /// keep arriving and set the number on the icon. `false` when it could not be told.
+    func stopPush(at node: HomeNodeURL) async -> Bool {
+        await PushUnregistration.stop(token: push.registration?.token, at: node)
+    }
+
     /// The number on the icon and the sign-in belong to the node that is being left.
     func leave() {
         showsSettings = false
         push.setBadge(0)
         session?.widgets.clear()
         flow?.forget()
-        onChangeHomeNode()
+        nodes.leave()
+    }
+
+    // MARK: The owner's other home nodes
+
+    /// Goes to another home node. Its sign-in, key and choices are as they were; what this node showed on the icon and on a
+    /// widget is not the other node's.
+    func switchHomeNode(to node: HomeNodeURL) {
+        showsSettings = false
+        push.setBadge(0)
+        session?.widgets.clear()
+        nodes.switchTo(node)
+    }
+
+    /// Writes down what the node says about the owner's other nodes, once the desk has been read: it is how the list shows
+    /// them (the owner's own entries are the device's).
+    private func noteHomeNodes() {
+        guard let session else { return }
+        let nodes = nodes
+        let homeNode = homeNode
+        Task {
+            guard let me = await session.readAccount() else { return }
+            nodes.note(configured: me.homeNodes)
+            nodes.note(nodeID: me.nodeId, of: homeNode)
+            takeLink()
+        }
     }
 }
