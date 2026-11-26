@@ -10,13 +10,24 @@ use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
+/// Root keys in files under one directory. The directory may be unknown (no absolute config or home
+/// directory): the node still starts, holds no root key, and making or using one answers why.
 pub struct FileRootKeys {
-    dir: PathBuf,
+    dir: Result<PathBuf, String>,
 }
 
 impl FileRootKeys {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: Ok(dir.into()),
+        }
+    }
+
+    /// Keys under `default_dir()`, or none at all when it is unknown.
+    pub fn at_default_dir() -> Self {
+        Self {
+            dir: Self::default_dir(),
+        }
     }
 
     /// `$XDG_CONFIG_HOME/agency/root-keys`, else `~/.config/agency/root-keys`. Refused when neither
@@ -28,14 +39,15 @@ impl FileRootKeys {
         )
     }
 
-    fn path(&self, org: &Id, key: &PublicKey) -> PathBuf {
-        self.dir
+    fn path(&self, org: &Id, key: &PublicKey) -> Result<PathBuf, String> {
+        let dir = self.dir.as_ref().map_err(Clone::clone)?;
+        Ok(dir
             .join(org.as_str())
-            .join(format!("{}.key", key.fingerprint()))
+            .join(format!("{}.key", key.fingerprint())))
     }
 
     fn read(&self, org: &Id, key: &PublicKey) -> Result<AccountKey, String> {
-        let path = self.path(org, key);
+        let path = self.path(org, key)?;
         let text = fs::read_to_string(&path).map_err(|_| {
             format!(
                 "no root key of {org} with fingerprint {}",
@@ -77,7 +89,7 @@ impl RootKeys for FileRootKeys {
     fn create(&self, org: &Id) -> Result<PublicKey, String> {
         let secret = AccountKey::generate();
         let public = secret.public();
-        let path = self.path(org, &public);
+        let path = self.path(org, &public)?;
         if let Some(parent) = path.parent() {
             private_dir(parent)?;
         }
@@ -101,7 +113,7 @@ impl RootKeys for FileRootKeys {
     }
 
     fn holds(&self, org: &Id, key: &PublicKey) -> bool {
-        self.path(org, key).is_file()
+        self.path(org, key).is_ok_and(|path| path.is_file())
     }
 
     fn sign(
@@ -115,7 +127,7 @@ impl RootKeys for FileRootKeys {
     }
 
     fn forget(&self, org: &Id, key: &PublicKey) -> Result<(), String> {
-        let path = self.path(org, key);
+        let path = self.path(org, key)?;
         match fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -157,13 +169,29 @@ mod tests {
     }
 
     #[test]
+    fn without_a_directory_nothing_is_held_and_making_or_using_a_key_says_why() {
+        let keys = FileRootKeys {
+            dir: dir_from(None, None),
+        };
+        let org = Id::parse("acme").unwrap();
+        let key = AccountKey::generate().public();
+        assert!(!keys.holds(&org, &key));
+        let why = keys.create(&org).unwrap_err();
+        assert!(why.contains("HOME"), "{why}");
+        assert!(keys
+            .sign(&org, &key, b"text", "x")
+            .unwrap_err()
+            .contains("HOME"));
+    }
+
+    #[test]
     fn a_key_is_kept_privately_read_only_to_sign_and_forgotten() {
         let dir = tempfile::tempdir().unwrap();
         let keys = FileRootKeys::new(dir.path().join("root-keys"));
         let org = Id::parse("acme").unwrap();
         let public = keys.create(&org).unwrap();
         assert!(keys.holds(&org, &public));
-        let path = keys.path(&org, &public);
+        let path = keys.path(&org, &public).unwrap();
         let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&path), 0o600);
         assert_eq!(mode(path.parent().unwrap()), 0o700);
