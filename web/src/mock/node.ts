@@ -5,6 +5,7 @@ import { createMockOutcomes } from './outcomes'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import type { OrgWithRecovery, StartedRecovery } from '../recovery/provisional'
+import type { RootChangeRef } from '../rootchange/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
 import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
@@ -45,9 +46,18 @@ export interface MockNode {
   decisions: () => readonly DecisionAnswer[]
   /** What `agency root-cancel-recovery` does on the root key's node: the org has no recovery that waits any more. */
   cancelRecovery: (orgId: string) => void
+  /** What `agency root-sign` does on the root key's node: no change waits for the signature any more. */
+  signRootChanges: () => void
 }
 
+/** What the root's node says to the person who approved here, when it holds the change for its owner's `agency root-sign`. */
+export const PENDING_ROOT_MESSAGE = 'Approved here; it takes effect once the root key\'s node signs it: run `agency root-sign` there.'
+
 interface MockNodeOptions {
+  /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
+  pendingRoot?: boolean
+  /** Changes that wait for the root key's signature, as `GET /api/me` tells the owner. */
+  rootChanges?: readonly RootChangeRef[]
   /** Orgs (by id) whose recovery was started and waits, as `GET /api/me` says it. */
   recoveries?: Readonly<Record<string, StartedRecovery>>
   /** The moment the sample is shifted to, so times read as "an hour ago" whenever the node starts. */
@@ -162,6 +172,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
 
   let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
+  let rootChanges: readonly RootChangeRef[] = options.rootChanges ?? []
 
   const ownerMe: Me = {
     account: { id: 'alice', label: 'Alice', fingerprint: 'a1b2c3d4e5f6' },
@@ -338,6 +349,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       return isRefusal(asked) ? failure(asked.status, asked.message) : json(asked)
     }
     if (url.pathname === `${DEVICES_PATH}/changes`) {
+      if (options.pendingRoot === true) return json({ outcome: 'pending', message: PENDING_ROOT_MESSAGE })
       const refusal = await devices.change(write.body)
       return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
     }
@@ -351,7 +363,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
-    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgWithRecovery => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })) })
+    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgWithRecovery => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
@@ -394,6 +406,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     pushSubscriptions: () => webPush.subscriptions(),
     recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
+    signRootChanges: () => {
+      rootChanges = []
+    },
     cancelRecovery: (orgId) => {
       recoveries = Object.fromEntries(Object.entries(recoveries).filter(([id]) => id !== orgId))
     },

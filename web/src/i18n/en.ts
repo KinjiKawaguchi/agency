@@ -335,6 +335,7 @@ export const en = {
       },
     },
     confirmFailed: (reason: string) => `Could not add the device: ${reason}`,
+    pendingRoot: ['Approved here; it takes effect once the root key’s node signs it: run ', ' there.'] satisfies Around,
   },
   desk: {
     briefing: {
@@ -348,6 +349,16 @@ export const en = {
       peopleWorking: (working: number, total: number) => `${working} of ${total} participants are working.`,
       allOnDesk: (count: number) => `${count} items on your desk in all.`,
       seePeople: 'See participants and work',
+    },
+    rootChanges: {
+      label: 'Changes waiting for the root key',
+      title: (count: number) => (count === 1 ? '1 change waits for the root key’s signature.' : `${count} changes wait for the root key’s signature.`),
+      item: (what: string, org: string, when: string) => `${what} (${org}, asked ${when})`,
+      unknownChange: 'A change this page cannot describe',
+      addMember: (label: string, member: string) => `Add member ${label} (${member})`,
+      addDevice: (label: string, member: string) => `Add device ${label} for ${member}`,
+      removeDevice: (device: string, member: string) => `Remove device ${device} of ${member}`,
+      command: ['Sign them together on the root key’s node: run ', ' there.'] satisfies Around,
     },
     recovery: {
       label: 'Recovery of an org',

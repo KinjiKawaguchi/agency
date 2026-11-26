@@ -9,7 +9,15 @@ import SwiftUI
 struct OutcomesPage: View {
     let store: OutcomesStore
     let onSignInAgain: () -> Void
-    @Environment(\.scenePhase) private var scenePhase
+    /// The KPI a number is being entered for, and the org it is in.
+    @State private var entering: Entering?
+
+    private struct Entering: Identifiable {
+        let org: String
+        let today: String
+        let card: KpiCard
+        var id: String { "\(org)/\(card.id)" }
+    }
 
     var body: some View {
         ScrollView {
@@ -17,9 +25,11 @@ struct OutcomesPage: View {
                 banner
                 if store.hasAnswered {
                     OutcomesContent(
-                        orgs: store.orgs, days: store.days,
+                        orgs: store.orgs, days: store.days, histories: store.histories,
                         onChoose: { days in Task { await store.choose(days: days) } },
-                        onTryAgain: { Task { await store.refresh() } }
+                        onTryAgain: { Task { await store.refresh() } },
+                        onEnter: { org, card in entering = Entering(org: org.id, today: org.until, card: card) },
+                        onToggleHistory: { org, card in toggleHistory(org: org.id, card: card) }
                     )
                 }
             }
@@ -27,15 +37,20 @@ struct OutcomesPage: View {
         }
         .refreshable { await store.refresh() }
         .polling { await store.refresh() }
-        .overlay { if isCovered { OutcomesCover() } }
+        .coveredWhenInactive()
+        .sheet(item: $entering) { target in
+            EnterNumberSheet(card: target.card, today: target.today) { form in
+                await store.enter(org: target.org, kpi: target.card.kpi, form: form)
+            }
+        }
     }
 
-    private var isCovered: Bool {
-        #if os(iOS)
-        scenePhase != .active
-        #else
-        false
-        #endif
+    private func toggleHistory(org: String, card: KpiCard) {
+        if store.histories[OutcomesStore.historyKey(org: org, kpi: card.id)] == nil {
+            Task { await store.showHistory(org: org, kpi: card.kpi) }
+        } else {
+            store.hideHistory(org: org, kpi: card.id)
+        }
     }
 
     @ViewBuilder
@@ -55,6 +70,28 @@ struct OutcomesPage: View {
         } else if !store.hasAnswered {
             SkeletonCard()
         }
+    }
+}
+
+extension View {
+    /// A plain cover over the numbers whenever the iPhone app is not in front, so that what the system keeps of the screen for the
+    /// app switcher shows none of them. The Mac keeps no such picture and draws none.
+    func coveredWhenInactive() -> some View { modifier(InactiveCover()) }
+}
+
+private struct InactiveCover: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        content.overlay { if isCovered { OutcomesCover() } }
+    }
+
+    private var isCovered: Bool {
+        #if os(iOS)
+        scenePhase != .active
+        #else
+        false
+        #endif
     }
 }
 

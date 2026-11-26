@@ -92,6 +92,7 @@ pub fn me(node: &Node) -> Me {
         orgs: orgs.collect(),
         funding: funding(node),
         hides_titles: is_hiding_titles(node),
+        node_id: agency_proto::client::node_id(&config.url),
         home_nodes: None,
     }
 }
