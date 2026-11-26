@@ -115,6 +115,12 @@ The owner's numbers for what each org measures (`GET /api/orgs/<org>/outcomes?da
 - **The period** is 90 days by default (a monthly number is rarely in 14), or 30, the same on the web.
 - **The screen.** A third page, 成果の指標, in the 成果 tab beside the costs and the evaluation (`ResultsScreen`, the same on the iPhone and the Mac), offered only while `isAvailable`: with the node refusing the owner nothing in the tab changes and nothing says why. Each KPI is a card (label, the latest number, the day it is as of, the movement as a symbol, words and colour, and its numbers as dots on their days joined by a line, with nothing for a day without a number); then the readings. Until the node has answered, the page is grey bars, not an empty page; a failure is said over what was read. The numbers are shown on a plain cover whenever the iPhone app is not in front, so that the picture the system keeps for the app switcher holds none of them (not verified on a device).
 
+## The participants of a team's evaluation (agency#364)
+
+A team's `evaluation` has, for the team's owner reading on their own node and when the team's runtime reports them, `participants` and `unattributedMerged` (`TeamEvaluation`): for each participant the seconds in the period at least one of their sessions was working, was waiting for a human's decision (a lower bound: a runtime sees only some of the waits) or was alive and neither (overlapping sessions count once), their cost, tokens, merged pull requests, and the cost per merged pull request. For anyone else the fields are absent, which is not the same as none, so they are optional and nothing is drawn without them (an empty list draws nothing either, as on the web).
+
+Each team's evaluation shows them after its charts (`ParticipantsView`, the web's order): for each participant a bar of three parts (working, waiting, idle) by their share of the three, the three durations in words, the cost with the four kinds of token added up, the merged pull requests, and the cost per merged pull request (or 「マージなし」, never a $0); a participant with no session alive has no bar and says so; the pull requests no participant is named the author of are said when there are some. The words are the web's (`evaluation.participants`). The participants' `merged` and `unattributedMerged` add up to the summary's merged and reverts, which a test checks on the shared samples.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
