@@ -26,6 +26,8 @@ fn person(account: &str, key: &AccountKey) -> Person {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }
 }
 

@@ -80,11 +80,30 @@ fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
     all
 }
 
-/// A label this node writes now must not hold a character that could reorder or hide how a line reads
-/// (`label_ok_to_write`). Labels the version before already had stay, so an old org can still be changed.
+/// Every text of `body` that says what to ask a member, a seat, or an external party about, with whose it is.
+fn ask_about_texts(body: &OrgDefinition) -> Vec<(String, &str)> {
+    let mut all = vec![];
+    for person in &body.people {
+        let texts = person.ask_about.iter();
+        all.extend(texts.map(|text| (format!("member {}", person.id), text.as_str())));
+    }
+    for seat in &body.seats {
+        let texts = seat.ask_about.iter();
+        all.extend(texts.map(|text| (format!("seat {}", seat.id), text.as_str())));
+    }
+    for external in &body.externals {
+        let texts = external.ask_about.iter();
+        all.extend(texts.map(|text| (format!("external party {}", external.id), text.as_str())));
+    }
+    all
+}
+
+/// A label or an ask-about text this node writes now must not hold a character that could reorder or hide
+/// how a line reads (`label_ok_to_write`, `is_hidden_char`). What the version before already had stays, so an
+/// old org can still be changed.
 fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
     let before = node.store().load_org(&body.org);
-    let kept: std::collections::HashSet<&str> = before
+    let kept_labels: std::collections::HashSet<&str> = before
         .as_ref()
         .map(|doc| {
             labels(&doc.body)
@@ -93,10 +112,27 @@ fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
                 .collect()
         })
         .unwrap_or_default();
+    let kept_texts: std::collections::HashSet<&str> = before
+        .as_ref()
+        .map(|doc| {
+            ask_about_texts(&doc.body)
+                .into_iter()
+                .map(|(_, text)| text)
+                .collect()
+        })
+        .unwrap_or_default();
     for (what, label) in labels(body) {
-        if !kept.contains(label) && !agency_proto::org::label_ok_to_write(label) {
+        if !kept_labels.contains(label) && !agency_proto::org::label_ok_to_write(label) {
             return Err(Error::bad_request(format!(
                 "the label of {what} has a character that could reorder or hide how it reads"
+            )));
+        }
+    }
+    for (what, text) in ask_about_texts(body) {
+        let is_hidden = text.chars().any(agency_proto::org::is_hidden_char);
+        if !kept_texts.contains(text) && is_hidden {
+            return Err(Error::bad_request(format!(
+                "what to ask {what} about has a character that could reorder or hide how it reads"
             )));
         }
     }
@@ -241,6 +277,8 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let root = Root::new(account, root_key.clone());
     let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
@@ -411,7 +449,10 @@ pub fn unknown_addressees(node: &Node) -> Vec<UnknownAddressee> {
         };
         let body = &doc.body;
         for (name, id) in &hosted.people {
-            let is_known = body.people.iter().any(|one| &one.id == id)
+            let is_known = body
+                .people
+                .iter()
+                .any(|one| &one.id == id || one.formerly.contains(id))
                 || body.seats.iter().any(|one| &one.id == id)
                 || body.externals.iter().any(|one| &one.id == id);
             if !is_known {

@@ -53,6 +53,8 @@ fn org_with_the_account_key_as_root(running: &Running) {
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     };
     let body = OrgDefinition::new(
         id("legacy"),
@@ -180,6 +182,8 @@ fn kept_genesis(running: &Running, root: &agency_proto::AccountKey) -> SignedOrg
         department: None,
         role: Role::Member,
         devices: vec![],
+        formerly: vec![],
+        ask_about: vec![],
     }]);
     let doc = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     running.node.store().save_org(&doc).unwrap();

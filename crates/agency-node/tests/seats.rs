@@ -284,3 +284,67 @@ async fn a_node_that_does_not_list_the_capability_holds_the_version_back() {
     // An external party is another capability, which bob lists.
     seats::add_external(&alice.node, &acme(), erin()).unwrap();
 }
+
+#[tokio::test]
+async fn a_new_label_or_ask_about_text_that_could_reorder_a_line_is_refused_for_seats_and_external_parties(
+) {
+    let (alice, _) = org().await;
+    let version = current(&alice).body.version;
+    let hidden = "invoices\u{202E}x";
+    let refuse = |error: agency_core::Error| {
+        assert_eq!(error.kind, ErrorKind::BadRequest, "{error:?}");
+    };
+
+    refuse(
+        seats::add_seat(
+            &alice.node,
+            &acme(),
+            Seat {
+                label: "Carol\u{202E}x".into(),
+                ..carol()
+            },
+        )
+        .unwrap_err(),
+    );
+    refuse(
+        seats::add_seat(
+            &alice.node,
+            &acme(),
+            Seat {
+                ask_about: vec!["budget approval".into(), hidden.into()],
+                ..carol()
+            },
+        )
+        .unwrap_err(),
+    );
+    refuse(
+        seats::add_external(
+            &alice.node,
+            &acme(),
+            External {
+                label: "Erin\u{2066}x".into(),
+                ..erin()
+            },
+        )
+        .unwrap_err(),
+    );
+    refuse(
+        seats::add_external(
+            &alice.node,
+            &acme(),
+            External {
+                ask_about: vec![hidden.into()],
+                ..erin()
+            },
+        )
+        .unwrap_err(),
+    );
+    assert_eq!(current(&alice).body.version, version, "nothing was signed");
+
+    seats::add_seat(&alice.node, &acme(), carol()).unwrap();
+    let change = SeatChange {
+        ask_about: Some(vec![hidden.into()]),
+        ..SeatChange::default()
+    };
+    refuse(seats::change_seat(&alice.node, &acme(), &id("carol"), change).unwrap_err());
+}
