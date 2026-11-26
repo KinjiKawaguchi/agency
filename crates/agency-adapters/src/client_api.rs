@@ -465,6 +465,35 @@ fn index_page(api: &ClientApi) -> Response {
 }
 
 /// A built file, or the page itself for any other path (the web client's own routes).
+/// The extensions of the built client's own files.
+const FILE_EXTENSIONS: [&str; 12] = [
+    "html",
+    "js",
+    "mjs",
+    "css",
+    "json",
+    "map",
+    "webmanifest",
+    "svg",
+    "png",
+    "ico",
+    "woff2",
+    "txt",
+];
+
+/// Whether a path names one of the built client's files rather than one of its routes: anything under
+/// `assets/` or `icons/`, or a last part with a file's extension (`sw.js`, `manifest.webmanifest`).
+fn is_file_path(path: &str) -> bool {
+    let last = path.rsplit('/').next().unwrap_or(path);
+    let has_file_extension = last
+        .rsplit_once('.')
+        .is_some_and(|(_, extension)| FILE_EXTENSIONS.contains(&extension));
+    path.starts_with("assets/") || path.starts_with("icons/") || has_file_extension
+}
+
+/// A file of the built client, the page for one of its routes, or 404. A missing file is 404 and never
+/// the page: the page carries the write token, and a cache that keeps answers by path (a service worker
+/// asking for a file of an older build) must not keep it under a file's name.
 async fn page(State(api): Shared, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let is_file =
@@ -473,6 +502,11 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
         Some(bytes) => page_response(content_type(path), Body::from(bytes.into_owned())),
         None if path.starts_with("api/") || path == "api" => {
             refuse(StatusCode::NOT_FOUND, "no such route")
+        }
+        None if is_file && is_file_path(path) => {
+            let mut response = page_response("text/plain; charset=utf-8", Body::from("not found"));
+            *response.status_mut() = StatusCode::NOT_FOUND;
+            response
         }
         None => index_page(&api),
     }
