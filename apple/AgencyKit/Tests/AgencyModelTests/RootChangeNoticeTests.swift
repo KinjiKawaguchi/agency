@@ -17,6 +17,14 @@ struct RootChangeNoticeTests {
         #"{"id":"\#(id)","org":"\#(org)","receivedAt":"\#(at)"\#(fields)}"#
     }
 
+    @Test("the answer of #381 as the node writes it (the shared fixture) is worded from its kinds, in the order the node gave")
+    func theNodesAnswer() throws {
+        let notice = try #require(RootChangeNotice(me: Fixture.decode(Me.self, "me-root-changes")))
+        #expect(notice.items.map(\.what) == ["メンバー Carol（carol）の追加", "bob の端末「iPhone」の追加", "bob の端末 d-dbc298251c51 の削除"])
+        #expect(notice.items.map(\.org) == ["Acme", "Acme", "Acme"])
+        #expect(Fixture.decode(Me.self, "me-root-changes").rootChanges.compactMap(\.device) == ["d-a652124afda7", "d-dbc298251c51"])
+    }
+
     @Test("nothing is said when nothing waits")
     func none() throws {
         #expect(RootChangeNotice(me: try me([])) == nil)

@@ -237,8 +237,10 @@ struct DeviceChangeSenderTests {
 private final class FakeSource: DevicesSource, @unchecked Sendable {
     private let lock = NSLock()
     var result: Result<DeviceList, Error>
+    var held: Result<[RootChangeRef], Error> = .success([])
     init(_ result: Result<DeviceList, Error>) { self.result = result }
     func devices() async throws -> DeviceList { try lock.withLock { try result.get() } }
+    func heldChanges() async throws -> [RootChangeRef] { try lock.withLock { try held.get() } }
 }
 
 private final class FakeAdder: DeviceAdder, @unchecked Sendable {
@@ -412,6 +414,43 @@ struct DevicesHeldTests {
         let store = await confirmed(.failure(DeviceChangePartlyAnswered(answered: [result(.pending)], cause: NodeError.http(status: 403, message: "no"))))
         #expect(store.held[newKey.publicKey] == RootChangeNotice.approvedHere)
         #expect(store.confirmFailures[newKey.publicKey] == "no")
+    }
+
+    private func held(_ kind: String, device: String?) -> RootChangeRef {
+        RootChangeRef(id: "c1", org: "acme", what: "x", receivedAt: "2026-11-26T09:00:00Z", kind: kind, member: "alice", label: "iPhone", device: device)
+    }
+
+    @Test("a request approved before, which the node still holds, is held when the screen is opened again, and cannot be approved again")
+    func heldAtTheNode() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: newKey.deviceId)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        #expect(store.held[newKey.publicKey] == RootChangeNotice.approvedHere)
+        #expect(store.heldHere.isEmpty)
+    }
+
+    @Test("only the add of that device holds it: another device's, another kind's, and a held change with no device do not")
+    func heldAtTheNodeIsThatDevice() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: "d-other"), held("removeDevice", device: newKey.deviceId), held("addMember", device: nil)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        #expect(store.held.isEmpty)
+    }
+
+    @Test("what the node held is not held any more once it says so, and a read of it that fails leaves what was known")
+    func heldAtTheNodeGoes() async {
+        let source = FakeSource(.success(waiting))
+        source.held = .success([held("addDevice", device: newKey.deviceId)])
+        let store = DevicesStore(source: source, adder: FakeAdder(), ownKey: own)
+        await store.refresh()
+        source.held = .failure(NodeError.http(status: 502, message: nil))
+        await store.refresh()
+        #expect(store.held[newKey.publicKey] != nil && store.loadFailure == nil)
+        source.held = .success([])
+        await store.refresh()
+        #expect(store.held.isEmpty)
     }
 
     @Test("what is held goes when the request leaves the list")

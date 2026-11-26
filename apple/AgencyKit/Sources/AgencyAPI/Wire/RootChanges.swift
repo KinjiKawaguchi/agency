@@ -6,17 +6,18 @@ import Foundation
 public struct RootChangeRef: Decodable, Equatable, Sendable {
     public let id: String
     public let org: String
-    /// What it changes, in the node's English words ("add member carol (Carol)").
+    /// What it changes, in the node's English words ("add member carol (Carol)"). The node always gives it; it is read as optional
+    /// so that an entry the app can word from its kind and fields is not lost if a node leaves it out.
     public let what: String?
     /// When the node took the request (an RFC 3339 time, as the node wrote it).
     public let receivedAt: String
     /// `addMember`, `addDevice` or `removeDevice` for the kinds an app words itself; any other value is a kind it does not know.
     public let kind: String?
-    /// The new member for `addMember`; the owner of the device for the other two.
+    /// The member it is for: the joiner for `addMember`; the owner of the device for the other two.
     public let member: String?
     /// The member's label for `addMember`; the device's label for `addDevice`.
     public let label: String?
-    /// The device's id for `removeDevice`.
+    /// The device's id for `addDevice` and `removeDevice`: so that the device an owner approved is known to be held.
     public let device: String?
 
     public init(
