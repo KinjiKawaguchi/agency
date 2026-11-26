@@ -66,7 +66,7 @@ fn path_text(path: &Path) -> String {
 
 fn env_of(collector: &UsageCollector) -> BTreeMap<String, String> {
     let (name, path) = match collector {
-        UsageCollector::Claude { config_dir } => ("CLAUDE_CONFIG_DIR", config_dir),
+        UsageCollector::Claude { config_dir, .. } => ("CLAUDE_CONFIG_DIR", config_dir),
         UsageCollector::Codex { codex_home, .. } => ("CODEX_HOME", codex_home),
     };
     path.iter()
@@ -320,7 +320,11 @@ mod tests {
         let dir = Some(format!("/home/alice/.claude-{id}").into());
         source(
             id,
-            Some(UsageCollector::Claude { config_dir: dir }),
+            Some(UsageCollector::Claude {
+                config_dir: dir,
+                renew: true,
+                command: None,
+            }),
             threshold,
         )
     }
@@ -466,7 +470,11 @@ mod tests {
         };
         let default_login = source(
             "main",
-            Some(UsageCollector::Claude { config_dir: None }),
+            Some(UsageCollector::Claude {
+                config_dir: None,
+                renew: true,
+                command: None,
+            }),
             None,
         );
         let sources = [
