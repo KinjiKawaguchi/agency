@@ -23,6 +23,14 @@ public struct RequestLink: Equatable, Sendable {
         self.request = request
     }
 
+    /// Returns `nil` unless all three values look like identifiers.
+    public init?(org: String, team: String, request: String) {
+        guard let org = Self.identifier(org), let team = Self.identifier(team), let request = Self.identifier(request) else { return nil }
+        self.org = org
+        self.team = team
+        self.request = request
+    }
+
     private static let allowedScalars = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-".unicodeScalars)
     private static let maximumLength = 128
 
