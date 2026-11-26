@@ -1,6 +1,7 @@
 //! Team runtimes run as commands over agency-runtime/1 (docs/protocol.md). The node never reads or writes
 //! a runtime's files; it runs the team's configured command once per call, without a shell.
 use crate::activity_window::Window;
+use crate::swr::{ReadCounts, Run, Swr};
 use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::ports::TeamRuntime;
@@ -135,25 +136,32 @@ impl<T: Clone> Shared<T> {
         *kept = Some((Instant::now(), variant, answer.clone()));
         answer
     }
-
-    /// Drops what is kept for `team`, so the next call runs the command.
-    async fn forget(&self, team: &HostedTeam) {
-        *self.slot(team).lock().await = None;
-    }
 }
 
-/// Runs each hosted team's command. Remembers the description of each team that described
-/// agency-runtime/1, shares and reuses views and usage (see `Shared`), and logs when a team's runtime
-/// starts failing, fails differently, or answers again.
-pub struct CommandRuntime {
+/// How long an answer that is old but not too old is still served at once, while a refresh runs in the
+/// background. A read waits for the command only with nothing younger in memory (the first read of a team,
+/// or after the runtime has been failing for this long).
+pub const MAX_STALE: Duration = Duration::from_secs(60);
+
+/// What a runtime keeps and shares between calls. `CommandRuntime` holds it in an `Arc` so that a refresh in
+/// the background can own it.
+struct Inner {
     described: Mutex<HashMap<(Id, Id), Describe>>,
-    views: Shared<TeamView>,
+    views: Swr<TeamView>,
     usage: Shared<TokenUsage>,
     /// A window of a team's activity, cut for each reader (see `Window`).
-    activity: Shared<Window>,
+    activity: Swr<Window>,
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
     health: Mutex<HashMap<(Id, Id), Option<String>>>,
     log: Log,
+}
+
+/// Runs each hosted team's command. Remembers the description of each team that described
+/// agency-runtime/1, serves views and activity from memory and refreshes them in the background (see
+/// `Swr`), shares and reuses usage (see `Shared`), and logs when a team's runtime starts failing, fails
+/// differently, or answers again.
+pub struct CommandRuntime {
+    inner: Arc<Inner>,
 }
 
 impl Default for CommandRuntime {
@@ -168,23 +176,70 @@ fn request(team: &HostedTeam, call: RuntimeCall) -> RuntimeRequest {
 
 impl CommandRuntime {
     pub fn with_log(log: Log) -> Self {
-        Self {
+        let inner = Inner {
             described: Mutex::default(),
-            views: Shared::new(VIEW_KEPT),
+            views: Swr::new(VIEW_KEPT, MAX_STALE),
             usage: Shared::new(USAGE_KEPT),
-            activity: Shared::new(ACTIVITY_KEPT),
+            activity: Swr::new(ACTIVITY_KEPT, MAX_STALE),
             health: Mutex::default(),
             log,
+        };
+        Self {
+            inner: Arc::new(inner),
         }
     }
 
-    /// How long views and usage are reused (`VIEW_KEPT` and `USAGE_KEPT` unless set here).
-    pub fn keeping(self, view: Duration, usage: Duration) -> Self {
-        Self {
-            views: Shared::new(view),
-            usage: Shared::new(usage),
-            ..self
+    /// The state, for a setting made before the runtime is used (nothing else holds it yet).
+    fn configuring(&mut self) -> &mut Inner {
+        Arc::get_mut(&mut self.inner).expect("a runtime is set up before it is used")
+    }
+
+    /// How long a view is served as it is, and how long usage is reused (`VIEW_KEPT` and `USAGE_KEPT`
+    /// unless set here).
+    pub fn keeping(mut self, view: Duration, usage: Duration) -> Self {
+        let inner = self.configuring();
+        inner.views = Swr::new(view, MAX_STALE);
+        inner.usage = Shared::new(usage);
+        self
+    }
+
+    /// How long an activity read is served as it is (`ACTIVITY_KEPT` unless set here).
+    pub fn keeping_activity(mut self, activity: Duration) -> Self {
+        self.configuring().activity = Swr::new(activity, MAX_STALE);
+        self
+    }
+
+    /// How long an old answer is still served while it is refreshed (`MAX_STALE` unless set here).
+    pub fn serving_stale_for(mut self, max_stale: Duration) -> Self {
+        let inner = self.configuring();
+        inner.views = Swr::new(inner.views.fresh(), max_stale);
+        inner.activity = Swr::new(inner.activity.fresh(), max_stale);
+        self
+    }
+
+    /// How many view reads were served young, old (and refreshed), and cold (they waited for a run).
+    pub fn view_reads(&self) -> ReadCounts {
+        self.inner.views.counts()
+    }
+
+    /// The same for activity reads.
+    pub fn activity_reads(&self) -> ReadCounts {
+        self.inner.activity.counts()
+    }
+}
+
+impl Inner {
+    /// One run of the team's view, checked.
+    async fn run_view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError> {
+        let result = async {
+            self.ensure_described(team).await?;
+            let view: TeamView = call(&team.runtime, &request(team, RuntimeCall::View)).await?;
+            check_view(view, &team.org, &team.team)
+                .map_err(|message| unavailable(format!("the team runtime {message}")))
         }
+        .await;
+        self.observe(team, &result);
+        result
     }
 
     /// One run of the team's `activity` op, if the runtime lists it: 404 without running the command
@@ -211,14 +266,6 @@ impl CommandRuntime {
         let result = run.await;
         self.observe(team, &result);
         result
-    }
-
-    /// How long a team's activity read is reused (`ACTIVITY_KEPT` unless set here).
-    pub fn keeping_activity(self, activity: Duration) -> Self {
-        Self {
-            activity: Shared::new(activity),
-            ..self
-        }
     }
 
     /// Notes how a call went and logs a change: a failure (the command could not run, did not answer
@@ -276,19 +323,42 @@ impl CommandRuntime {
     }
 }
 
+fn view_run(inner: &Arc<Inner>, team: &HostedTeam) -> Run<TeamView> {
+    let (inner, team) = (inner.clone(), team.clone());
+    Arc::new(move || {
+        let (inner, team) = (inner.clone(), team.clone());
+        Box::pin(async move { inner.run_view(&team).await })
+    })
+}
+
+/// A run of the window of a team's activity that starts at `start`, at the largest limit.
+fn window_run(inner: &Arc<Inner>, team: &HostedTeam, start: clock::OffsetDateTime) -> Run<Window> {
+    let (inner, team) = (inner.clone(), team.clone());
+    Arc::new(move || {
+        let (inner, team) = (inner.clone(), team.clone());
+        Box::pin(async move {
+            let since = Timestamp::parse(&clock::format(start)).map_err(|error| RuntimeError {
+                status: 500,
+                message: error.to_string(),
+            })?;
+            let activity = inner.read_activity(&team, &since, MAX_LIMIT).await?;
+            Ok(Window {
+                since: start,
+                activity,
+            })
+        })
+    })
+}
+
 #[async_trait]
 impl TeamRuntime for CommandRuntime {
-    /// The team's TeamView. A view of another team is refused.
+    /// The team's TeamView, from memory when there is a usable one (see `Swr`). A view of another team is
+    /// refused.
     async fn view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError> {
-        let run = async {
-            self.ensure_described(team).await?;
-            let view: TeamView = call(&team.runtime, &request(team, RuntimeCall::View)).await?;
-            check_view(view, &team.org, &team.team)
-                .map_err(|message| unavailable(format!("the team runtime {message}")))
-        };
-        let result = self.views.get(team, 0, run).await;
-        self.observe(team, &result);
-        result
+        self.inner
+            .views
+            .get(team, view_run(&self.inner, team))
+            .await
     }
 
     async fn decide(
@@ -297,7 +367,7 @@ impl TeamRuntime for CommandRuntime {
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError> {
         let result = async {
-            self.ensure_described(team).await?;
+            self.inner.ensure_described(team).await?;
             let _: Decided = call(
                 &team.runtime,
                 &request(team, RuntimeCall::Decide { decision }),
@@ -306,15 +376,22 @@ impl TeamRuntime for CommandRuntime {
             Ok(())
         }
         .await;
-        self.views.forget(team).await;
-        self.observe(team, &result);
+        self.inner
+            .views
+            .invalidate_and_refresh(team, view_run(&self.inner, team));
+        self.inner.observe(team, &result);
         result
     }
 
     /// Called only if the runtime listed `tokenUsage` in `describe`; otherwise 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError> {
         let run = async {
-            if !self.ensure_described(team).await?.supports(TOKEN_USAGE_OP) {
+            if !self
+                .inner
+                .ensure_described(team)
+                .await?
+                .supports(TOKEN_USAGE_OP)
+            {
                 return Err(RuntimeError {
                     status: 404,
                     message: "the team runtime does not report token usage".into(),
@@ -326,13 +403,14 @@ impl TeamRuntime for CommandRuntime {
             )
             .await
         };
-        let result = self.usage.get(team, days, run).await;
-        self.observe(team, &result);
+        let result = self.inner.usage.get(team, days, run).await;
+        self.inner.observe(team, &result);
         result
     }
 
-    /// Called only if the runtime listed `activity` in `describe`; otherwise 404. Readers share one run
-    /// of the command per team for a short time, each cut to its own `since` and `limit`.
+    /// Called only if the runtime listed `activity` in `describe`; otherwise 404. Readers share one window
+    /// of the team's activity, served from memory and refreshed in the background, each cut to its own
+    /// `since` and `limit`.
     async fn activity(
         &self,
         team: &HostedTeam,
@@ -340,24 +418,17 @@ impl TeamRuntime for CommandRuntime {
         limit: u32,
     ) -> Result<Activity, RuntimeError> {
         let Some(wanted) = clock::parse(since.as_str()) else {
-            return self.read_activity(team, since, limit).await;
+            return self.inner.read_activity(team, since, limit).await;
         };
         let start = wanted - clock::Duration::minutes(ACTIVITY_MARGIN_MINUTES);
-        let run = async {
-            let shared = Timestamp::parse(&clock::format(start)).map_err(|error| RuntimeError {
-                status: 500,
-                message: error.to_string(),
-            })?;
-            let activity = self.read_activity(team, &shared, MAX_LIMIT).await?;
-            Ok(Window {
-                since: start,
-                activity,
-            })
-        };
-        let window = self.activity.get(team, 0, run).await?;
+        let window = self
+            .inner
+            .activity
+            .get(team, window_run(&self.inner, team, start))
+            .await?;
         match window.answer(since, limit) {
             Some(answer) => Ok(answer),
-            None => self.read_activity(team, since, limit).await,
+            None => self.inner.read_activity(team, since, limit).await,
         }
     }
 }
