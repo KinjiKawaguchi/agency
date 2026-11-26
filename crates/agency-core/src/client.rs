@@ -94,6 +94,7 @@ pub fn me(node: &Node) -> Me {
         hides_titles: is_hiding_titles(node),
         node_id: agency_proto::client::node_id(&config.url),
         home_nodes: None,
+        root_changes: None,
     }
 }
 

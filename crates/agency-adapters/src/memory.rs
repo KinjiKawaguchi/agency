@@ -411,6 +411,9 @@ struct MemoryRootKeysState {
     keys: Vec<(agency_proto::Id, agency_proto::AccountKey)>,
     is_refusing: bool,
     signed: usize,
+    /// Stands for a keychain: signing asks for presence, and each prompt's words are kept.
+    is_asking: bool,
+    prompts: Vec<String>,
 }
 
 impl MemoryRootKeys {
@@ -432,6 +435,16 @@ impl MemoryRootKeys {
     /// How many signatures were made.
     pub fn signed(&self) -> usize {
         self.state.lock().unwrap().signed
+    }
+
+    /// Makes signing ask for presence, as a keychain does.
+    pub fn ask_presence(&self, is_asking: bool) {
+        self.state.lock().unwrap().is_asking = is_asking;
+    }
+
+    /// The words of each presence prompt so far.
+    pub fn prompts(&self) -> Vec<String> {
+        self.state.lock().unwrap().prompts.clone()
     }
 }
 
@@ -466,9 +479,12 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
         org: &agency_proto::Id,
         key: &agency_proto::PublicKey,
         message: &[u8],
-        _purpose: &str,
+        purpose: &str,
     ) -> Result<String, String> {
         let mut state = self.state.lock().unwrap();
+        if state.is_asking {
+            state.prompts.push(purpose.to_owned());
+        }
         if state.is_refusing {
             return Err("the owner did not confirm".into());
         }
@@ -481,6 +497,39 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
             .ok_or_else(|| format!("no root key of {org} here"))?;
         state.signed += 1;
         Ok(signature)
+    }
+
+    fn needs_presence(&self) -> bool {
+        self.state.lock().unwrap().is_asking
+    }
+
+    fn with_signer(
+        &self,
+        org: &agency_proto::Id,
+        key: &agency_proto::PublicKey,
+        purpose: &str,
+        work: &mut dyn FnMut(&agency_core::ports::RootSigner) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let secret = {
+            let mut state = self.state.lock().unwrap();
+            if state.is_asking {
+                state.prompts.push(purpose.to_owned());
+            }
+            if state.is_refusing {
+                return Err("the owner did not confirm".into());
+            }
+            let found = state
+                .keys
+                .iter()
+                .find(|(one, kept)| one == org && &kept.public() == key);
+            let (_, kept) = found.ok_or_else(|| format!("no root key of {org} here"))?;
+            agency_proto::AccountKey::from_seed(kept.seed())
+        };
+        let signer = |message: &[u8]| {
+            self.state.lock().unwrap().signed += 1;
+            Ok(secret.sign(message))
+        };
+        work(&signer)
     }
 
     fn forget(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> Result<(), String> {

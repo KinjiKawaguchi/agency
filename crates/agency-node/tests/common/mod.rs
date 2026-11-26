@@ -260,9 +260,12 @@ pub async fn joined_bob(alice: &Running) -> Running {
 /// `bob` after joining alice's org acme as a member.
 pub async fn joined(alice: &Running, bob: Running) -> Running {
     let link = invites::invite(&alice.node, &id("acme"), None, Role::Member).unwrap();
-    let doc = join(&bob.node, &link, |definition| definition.label == "Acme")
+    let joined = join(&bob.node, &link, |definition| definition.label == "Acme")
         .await
         .unwrap();
+    let agency_core::invites::Joined::Member(doc) = joined else {
+        panic!("the join was held: {joined:?}")
+    };
     assert!(doc.body.member(&id("bob")).is_some());
     bob
 }
