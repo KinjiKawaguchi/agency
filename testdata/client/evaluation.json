@@ -1,0 +1,77 @@
+{
+  "days": 7,
+  "from": "2026-11-18",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "org": "acme",
+  "teams": [
+    {
+      "byDay": [
+        {
+          "costUsd": 9.55,
+          "date": "2026-11-23",
+          "issueLeadSeconds": [
+            14400
+          ],
+          "mainRedSeconds": 3600,
+          "merged": {
+            "chore": 0,
+            "docs": 0,
+            "feat": 1,
+            "fix": 0,
+            "other": 0,
+            "refactor": 0,
+            "test": 0
+          },
+          "prLeadSeconds": [
+            7200
+          ],
+          "reverts": 0
+        },
+        {
+          "costUsd": 3.75,
+          "date": "2026-11-24",
+          "issueLeadSeconds": [],
+          "mainRedSeconds": 0,
+          "merged": {
+            "chore": 0,
+            "docs": 0,
+            "feat": 0,
+            "fix": 1,
+            "other": 0,
+            "refactor": 0,
+            "test": 0
+          },
+          "prLeadSeconds": [
+            1800,
+            600
+          ],
+          "reverts": 1
+        }
+      ],
+      "from": "2026-11-18",
+      "summary": {
+        "costPerMergedPrUsd": 4.43,
+        "issueLeadMedianSeconds": 14400,
+        "issueLeadP90Seconds": 14400,
+        "longestRedSeconds": 3600,
+        "mainRedSeconds": 3600,
+        "merged": {
+          "chore": 0,
+          "docs": 0,
+          "feat": 1,
+          "fix": 1,
+          "other": 0,
+          "refactor": 0,
+          "test": 0
+        },
+        "prLeadMedianSeconds": 1800,
+        "prLeadP90Seconds": 7200,
+        "reverts": 1
+      },
+      "team": "app",
+      "until": "2026-11-24"
+    }
+  ],
+  "unavailable": [],
+  "until": "2026-11-24"
+}

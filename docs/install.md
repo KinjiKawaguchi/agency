@@ -245,6 +245,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
+- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
@@ -372,6 +373,44 @@ A program that moves running sessions off a login should do so only when that lo
 A session that is running keeps the source it started on; only new sessions move. The usage can be 5 minutes old, so a source can pass its threshold by what 5 minutes of work uses: leave room under 100.
 
 Each source is one person's own subscription, and a node serves one account, so switching stays within one person's subscriptions. Never share a login with another person or pool logins across people: Claude's consumer terms forbid sharing an account. Switching is also not a way around a limit: a source at its limit is not picked until its window resets.
+
+## Delivery metrics
+
+The evaluation screen shows how fast each team ships: the pull requests it merged by type, how long they took from open to merge, how long its default branch's CI was red, reverts, and what its tokens cost for each merged pull request ([protocol.md](protocol.md#evaluation) defines every number). The node a team runs on works the numbers out from the team's repositories on GitHub, and other nodes read them from it.
+
+To turn it on for a team, name its repositories (`owner/name`) in `teams[].delivery` of `~/.agency/config.json`, and restart the node:
+
+```json
+"teams": [
+  { "org": "acme", "team": "app", "owner": "owner",
+    "runtime": { "command": ["scrum", "runtime"] },
+    "delivery": { "repos": ["acme/app", "acme/web"] } }
+]
+```
+
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
+- What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
+
+| Reason on the screen | What to do |
+|---|---|
+| no repositories are configured for this team | Add `delivery` to the team on the node it runs on. |
+| the GitHub CLI (gh) is not installed on the team's node | Install it, and put its directory on the `PATH` of the agent or the unit. |
+| the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
+| GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
+| GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the team's node does not give delivery numbers | That node is older than this feature: update it. |
+| the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
+| a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
+| the team's node did not answer | That node is down or unreachable. |
+
+## The org's numbers
+
+The org states what it measures (its KPIs) in its definition, with no number. The numbers themselves (revenue, retention, a lead time) are business data, and the node keeps them in `outcomes/<org>.jsonl` of its data directory, one line for each number, with the directory readable by its owner only (`0700`, the file `0600`). Nothing else the node serves holds them, and only the node's owner reads or enters them: `agency outcome-add --org acme --kpi revenue --date 2026-11-24 --value 1350000` enters one, and `agency outcome-list --org acme --kpi revenue` lists a KPI's numbers.
+
+- **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
+- The numbers are for reading how a measure moves, not for accounting.
 
 ## Updating a node
 

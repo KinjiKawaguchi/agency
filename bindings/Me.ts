@@ -6,4 +6,9 @@ import type { OrgRef } from "./OrgRef.js";
 /**
  * The node's account and everything it can reach.
  */
-export type Me = { account: AccountRef, orgs: Array<OrgRef>, funding: Array<Funding>, };
+export type Me = { account: AccountRef, orgs: Array<OrgRef>, funding: Array<Funding>, 
+/**
+ * Whether the node keeps titles and labels off every notification (`hideTitles`): a client that shows
+ * them outside the app, such as a widget, leaves them out too. Left out when the node does not.
+ */
+hidesTitles?: boolean, };

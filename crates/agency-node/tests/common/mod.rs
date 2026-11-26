@@ -79,6 +79,11 @@ impl Running {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    /// The node's data directory.
+    pub fn data_dir(&self) -> std::path::PathBuf {
+        self._dir.path().join("node")
+    }
+
     /// The node's HTTP app, to call without a socket (with a chosen peer address).
     pub fn app(&self) -> axum::Router {
         self.opened
@@ -167,6 +172,8 @@ async fn node_from(
         funding: vec![],
         access: None,
         push: None,
+        web_push: None,
+        hide_titles: false,
     })
     .unwrap();
     let clock = ManualClock::at(T0);

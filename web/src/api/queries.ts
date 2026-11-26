@@ -127,11 +127,12 @@ function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult 
 /**
  * Every team of every org, each with its own outcome, so that a team that cannot be read is shown as that
  * in its place. It reads the same queries as `useTeams`, so the two share what the page has already loaded.
+ * `inBackground` keeps this reading's timer running while the tab is hidden (a hidden tab otherwise does not poll).
  */
-export function useTeamStates(): TeamStates {
+export function useTeamStates({ inBackground = false }: { inBackground?: boolean } = {}): TeamStates {
   const api = useApi()
   const me = useQuery(meQuery(api))
-  const results = useQueries({ queries: refsOf(me.data).map(({ org, team }) => teamQuery(api, org, team)) })
+  const results = useQueries({ queries: refsOf(me.data).map(({ org, team }) => ({ ...teamQuery(api, org, team), refetchIntervalInBackground: inBackground })) })
   return { me: me.data, orgs: statesOf(me.data, results), error: me.error }
 }
 

@@ -23,14 +23,15 @@ test('shows the agents, their messages, the feed, and what they work on, with no
 })
 
 test('takes the picture in light and dark, at desktop and phone width, and a message passing along its line', async ({ page }) => {
-  test.setTimeout(60_000)
+  test.setTimeout(120_000)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/live?theme=dark')
   await expect(page.locator('line.lv-edge').first()).toBeVisible()
   await page.screenshot({ path: `${DIRECTORY}/live-dark-desktop.png`, animations: 'disabled' })
   // The page reads the feed again every 10 seconds; when something new has come, a packet travels along its line.
   const packet = page.locator('.lv-packet').first()
-  await expect(packet).toBeVisible({ timeout: 25_000 })
+  // A message passes about every ten seconds for each team in the mock, so a packet is in flight now and then: wait for one.
+  await expect(packet).toBeVisible({ timeout: 70_000 })
   await page.screenshot({ path: `${DIRECTORY}/live-dark-desktop-packet.png`, animations: 'disabled' })
   await page.goto('/live?theme=light')
   await expect(page.locator('line.lv-edge').first()).toBeVisible()

@@ -58,7 +58,7 @@ struct CostsPage: View {
                 Button(Ja.Desk.reload) { Task { await store.refresh() } }.buttonStyle(.bordered)
             }
             .card()
-        } else if store.loading == .loading && store.teams.isEmpty {
+        } else if (store.loading == .loading || store.loading == .idle) && store.teams.isEmpty {
             SkeletonCard()
         }
     }

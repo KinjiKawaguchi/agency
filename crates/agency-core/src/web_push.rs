@@ -1,0 +1,308 @@
+//! Web Push for the owner's browsers (docs/protocol.md, "Push notifications"). A browser registers the
+//! subscription its push service gave it; the node sends it the same notices as an APNs token, encrypted
+//! to the browser, through that push service. The node's VAPID key and the sending are the notifier's
+//! (a port); this holds what the node decides: which endpoints it will ever send to, and the list.
+use crate::error::{Error, Result};
+use crate::node::Node;
+use crate::notice::Notice;
+use agency_proto::client::{
+    PushEvent, PushSubscription, PushSubscriptionInput, PushSubscriptionList, VapidKey,
+};
+use agency_proto::digest::sha256_hex;
+use agency_proto::Timestamp;
+use serde::{Deserialize, Serialize};
+
+/// The most subscriptions kept; the oldest is dropped first.
+pub const MAX_SUBSCRIPTIONS: usize = 20;
+const MAX_ENDPOINT: usize = 500;
+/// Push services that are always allowed: a name, or `*.` and a domain.
+const PUSH_SERVICES: [&str; 4] = [
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "*.push.apple.com",
+    "*.notify.windows.com",
+];
+
+/// A registered subscription as the node keeps it: with the endpoint and the keys it sends with.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSubscription {
+    pub id: String,
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+    pub label: String,
+    pub registered_at: Timestamp,
+    pub events: Vec<PushEvent>,
+    pub key_id: String,
+}
+
+/// A DNS host name: at least two labels of letters, digits, and hyphens, the last starting with a letter. That
+/// leaves out every form a parser may read as an IPv4 address (`127.0.0.1`, `0x7f.1`, `2130706433`, `0177.0.0.1`).
+pub fn is_host_name(host: &str) -> bool {
+    let labels: Vec<&str> = host.split('.').collect();
+    let is_label = |label: &&str| {
+        (1..=63).contains(&label.len())
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    };
+    host.len() <= 253
+        && labels.len() >= 2
+        && labels.iter().all(is_label)
+        && labels
+            .last()
+            .is_some_and(|last| last.starts_with(|c: char| c.is_ascii_alphabetic()))
+}
+
+/// An entry of the list of push services: a host name in lowercase, or `*.` and a domain of at least two labels.
+pub fn is_host_pattern(entry: &str) -> bool {
+    is_host_name(entry.strip_prefix("*.").unwrap_or(entry)) && entry == entry.to_ascii_lowercase()
+}
+
+fn host_matches(pattern: &str, host: &str) -> bool {
+    match pattern.strip_prefix("*.") {
+        Some(domain) => host
+            .strip_suffix(domain)
+            .is_some_and(|front| front.len() > 1 && front.ends_with('.')),
+        None => pattern.eq_ignore_ascii_case(host),
+    }
+}
+
+/// An endpoint the node will send to: `https`, no credentials, no port, no fragment, a host name (never an
+/// address) on the list of push services or the configured extras. Returns it with the host in lowercase.
+/// The node does not follow redirects and checks the addresses again when it connects; this is the first
+/// of the two checks, and the one that decides which services receive what the owner's teams ask.
+pub fn check_endpoint(raw: &str, extra_hosts: &[String]) -> Result<String> {
+    let refuse = || Error::bad_request("the endpoint is not one of an allowed push service");
+    if raw.len() > MAX_ENDPOINT || raw.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err(refuse());
+    }
+    let rest = raw.strip_prefix("https://").ok_or_else(refuse)?;
+    let (host, path) = rest.split_once('/').ok_or_else(refuse)?;
+    let host = host.to_ascii_lowercase();
+    if !is_host_name(&host) || path.contains('#') {
+        return Err(refuse());
+    }
+    let is_allowed = PUSH_SERVICES
+        .iter()
+        .copied()
+        .chain(
+            extra_hosts
+                .iter()
+                .map(String::as_str)
+                .filter(|entry| is_host_pattern(entry)),
+        )
+        .any(|pattern| host_matches(pattern, &host));
+    if !is_allowed {
+        return Err(refuse());
+    }
+    Ok(format!("https://{host}/{path}"))
+}
+
+/// What a subscription's key looks like before it is used: base64url without padding, of this many octets.
+fn is_key(text: &str, octets: usize) -> bool {
+    let chars = (octets * 4).div_ceil(3);
+    text.len() == chars
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn subscription_id(endpoint: &str) -> String {
+    sha256_hex(endpoint.as_bytes())[..16].to_owned()
+}
+
+/// The endpoint as a list shows it: its host and the end of its path, which is what tells two apart.
+fn shortened(endpoint: &str) -> String {
+    let rest = endpoint.strip_prefix("https://").unwrap_or(endpoint);
+    let host = rest.split('/').next().unwrap_or(rest);
+    let tail: Vec<char> = rest.chars().rev().take(8).collect();
+    format!("https://{host}/…{}", tail.iter().rev().collect::<String>())
+}
+
+fn view(one: WebSubscription) -> PushSubscription {
+    PushSubscription {
+        endpoint: shortened(&one.endpoint),
+        id: one.id,
+        label: one.label,
+        registered_at: one.registered_at,
+        events: one.events,
+        key_id: one.key_id,
+    }
+}
+
+fn extra_hosts(node: &Node) -> Vec<String> {
+    node.config()
+        .web_push
+        .map(|web| web.extra_hosts)
+        .unwrap_or_default()
+}
+
+/// The node's VAPID key, or nothing when Web Push is not set up (the routes then answer 404).
+pub fn vapid_key(node: &Node) -> Option<VapidKey> {
+    node.notifier().web_push_key()
+}
+
+fn not_set_up() -> Error {
+    Error::not_found("this node has no Web Push")
+}
+
+/// Registers a browser's subscription, or updates the one of the same endpoint (its label, keys, kinds).
+pub fn register_subscription(
+    node: &Node,
+    input: PushSubscriptionInput,
+) -> Result<PushSubscription> {
+    let key = vapid_key(node).ok_or_else(not_set_up)?;
+    let endpoint = check_endpoint(&input.endpoint, &extra_hosts(node))?;
+    if !is_key(&input.p256dh, 65) || !is_key(&input.auth, 16) {
+        return Err(Error::bad_request(
+            "p256dh is 65 octets and auth is 16, as base64url",
+        ));
+    }
+    node.notifier()
+        .web_push_check_keys(&input.p256dh, &input.auth)
+        .map_err(Error::bad_request)?;
+    let label = input.label.trim().to_owned();
+    if !(1..=80).contains(&label.chars().count()) || label.chars().any(char::is_control) {
+        return Err(Error::bad_request("the label is 1 to 80 characters"));
+    }
+    let registered_at =
+        Timestamp::parse(&node.now_text()).map_err(|error| Error::internal(error.to_string()))?;
+    let entry = WebSubscription {
+        id: subscription_id(&endpoint),
+        endpoint,
+        p256dh: input.p256dh,
+        auth: input.auth,
+        label,
+        registered_at,
+        events: crate::push::normal_events(input.events),
+        key_id: key.key_id,
+    };
+    let mut all: Vec<WebSubscription> = node
+        .store()
+        .web_subscriptions()
+        .into_iter()
+        .filter(|one| one.id != entry.id)
+        .collect();
+    all.push(entry.clone());
+    let start = all.len().saturating_sub(MAX_SUBSCRIPTIONS);
+    node.store().save_web_subscriptions(&all[start..])?;
+    Ok(view(entry))
+}
+
+/// Removes a subscription by its id. An unknown id is not an error.
+pub fn remove_subscription(node: &Node, id: &str) -> Result<()> {
+    remove_subscriptions(node, &[id.to_owned()])
+}
+
+pub(crate) fn remove_subscriptions(node: &Node, gone: &[String]) -> Result<()> {
+    let kept: Vec<WebSubscription> = node
+        .store()
+        .web_subscriptions()
+        .into_iter()
+        .filter(|one| !gone.contains(&one.id))
+        .collect();
+    node.store().save_web_subscriptions(&kept)
+}
+
+pub fn subscriptions(node: &Node) -> Result<PushSubscriptionList> {
+    vapid_key(node).ok_or_else(not_set_up)?;
+    Ok(PushSubscriptionList {
+        subscriptions: node
+            .store()
+            .web_subscriptions()
+            .into_iter()
+            .map(view)
+            .collect(),
+    })
+}
+
+/// The subscriptions that get this notice: of its kind, and made with the node's current key (one made
+/// with another key is refused by the push service, and the screen tells the owner to subscribe again).
+pub(crate) fn wanting(node: &Node, notice: &Notice) -> Vec<WebSubscription> {
+    let Some(key) = vapid_key(node) else {
+        return vec![];
+    };
+    node.store()
+        .web_subscriptions()
+        .into_iter()
+        .filter(|one| one.key_id == key.key_id && one.events.contains(&notice.event()))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_host_name_is_not_an_address_or_a_form_of_one() {
+        for name in [
+            "fcm.googleapis.com",
+            "a.b",
+            "web.push.apple.com",
+            "x-y.example",
+            "1.example",
+            "a1.b2c",
+        ] {
+            assert!(is_host_name(name), "{name}");
+        }
+        for not_name in [
+            "127.0.0.1",
+            "0x7f.1",
+            "0x7f.0.0.1",
+            "2130706433",
+            "0177.0.0.1",
+            "127.1",
+            "localhost",
+            "a.1",
+            "a.0x7f",
+            "example.com.",
+            ".example.com",
+            "a..b",
+            "-a.example",
+            "a-.example",
+            "a b.example",
+            "exa_mple.com",
+            "a@b.example",
+            "a.b:8443",
+            "",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(!is_host_name(not_name), "{not_name}");
+        }
+        assert!(
+            !is_host_name(&format!("{}.com", "a".repeat(64))),
+            "a label is at most 63 characters"
+        );
+    }
+
+    #[test]
+    fn an_entry_of_the_list_is_a_lowercase_name_or_a_wildcard_domain() {
+        for entry in [
+            "push.acme.example",
+            "*.edge.acme.example",
+            "*.push.apple.com",
+        ] {
+            assert!(is_host_pattern(entry), "{entry}");
+        }
+        for entry in [
+            "*",
+            "*.com",
+            "*.",
+            "**.acme.example",
+            "Push.Acme.example",
+            "0x7f.1",
+            "10.0.0.1",
+            "*.127.0.0.1",
+            "*.0x7f.1",
+            "acme.example/x",
+            "",
+        ] {
+            assert!(!is_host_pattern(entry), "{entry}");
+        }
+    }
+}
