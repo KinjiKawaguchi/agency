@@ -1,0 +1,169 @@
+//! `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept`: the org's departments and the
+//! department each team is in, changed on the root key's node.
+use agency_core::departments::{self, Change};
+use agency_core::Node;
+use agency_proto::org::{Department, SignedOrg};
+use agency_proto::Id;
+use anyhow::Result;
+use clap::Args;
+
+fn id(raw: &str) -> Result<Id> {
+    Id::parse(raw).map_err(anyhow::Error::msg)
+}
+
+fn optional(raw: Option<&str>) -> Result<Option<Id>> {
+    raw.map(id).transpose()
+}
+
+/// Adds a department to an org (on the root key's node)
+#[derive(Args)]
+pub struct DeptAdd {
+    #[arg(long)]
+    org: String,
+    /// The department's id
+    #[arg(long)]
+    dept: String,
+    #[arg(long)]
+    label: String,
+    /// The department it is under
+    #[arg(long)]
+    parent: Option<String>,
+    /// The member who heads it (a member id)
+    #[arg(long)]
+    head: Option<String>,
+}
+
+/// Changes a department's label, parent, or head (on the root key's node)
+#[derive(Args)]
+pub struct DeptSet {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    dept: String,
+    #[arg(long)]
+    label: Option<String>,
+    /// The department it is under
+    #[arg(long, conflicts_with = "no_parent")]
+    parent: Option<String>,
+    /// Puts it at the top, under no department
+    #[arg(long)]
+    no_parent: bool,
+    /// The member who heads it (a member id)
+    #[arg(long, conflicts_with = "no_head")]
+    head: Option<String>,
+    /// Leaves it without a head
+    #[arg(long)]
+    no_head: bool,
+}
+
+/// Removes a department that holds no department, member, or team (on the root key's node)
+#[derive(Args)]
+pub struct DeptRemove {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    dept: String,
+}
+
+/// Puts a team in a department, or with --none in none (on the root key's node)
+#[derive(Args)]
+pub struct TeamDept {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    team: String,
+    #[arg(long, required_unless_present = "none", conflicts_with = "none")]
+    dept: Option<String>,
+    #[arg(long)]
+    none: bool,
+}
+
+fn report(what: String, doc: &SignedOrg) {
+    println!("{what} (version {})", doc.body.version);
+}
+
+fn cleared_or(is_cleared: bool, value: Option<&str>) -> Result<Option<Option<Id>>> {
+    if is_cleared {
+        return Ok(Some(None));
+    }
+    Ok(optional(value)?.map(Some))
+}
+
+pub fn dept_add(node: &Node, args: DeptAdd) -> Result<()> {
+    let department = Department {
+        id: id(&args.dept)?,
+        label: args.label,
+        parent: optional(args.parent.as_deref())?,
+        head: optional(args.head.as_deref())?,
+    };
+    let doc = departments::add(node, &id(&args.org)?, department)?;
+    report(
+        format!("Added department {} to org {}", args.dept, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+pub fn dept_set(node: &Node, args: DeptSet) -> Result<()> {
+    let change = Change {
+        label: args.label,
+        parent: cleared_or(args.no_parent, args.parent.as_deref())?,
+        head: cleared_or(args.no_head, args.head.as_deref())?,
+    };
+    let doc = departments::change(node, &id(&args.org)?, &id(&args.dept)?, change)?;
+    report(
+        format!("Changed department {} of org {}", args.dept, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+pub fn dept_remove(node: &Node, args: DeptRemove) -> Result<()> {
+    let doc = departments::remove(node, &id(&args.org)?, &id(&args.dept)?)?;
+    report(
+        format!("Removed department {} from org {}", args.dept, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+pub fn team_dept(node: &Node, args: TeamDept) -> Result<()> {
+    let department = optional(args.dept.as_deref())?;
+    let doc = departments::place_team(node, &id(&args.org)?, &id(&args.team)?, department)?;
+    let place = args.dept.as_deref().map_or_else(
+        || "in no department".to_owned(),
+        |dept| format!("in department {dept}"),
+    );
+    report(
+        format!("Team {} of org {} is now {place}", args.team, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+/// The lines `agency status` shows for an org's departments, parents first.
+pub fn department_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
+    body.departments
+        .iter()
+        .map(|department| {
+            let teams: Vec<&str> = body
+                .teams
+                .iter()
+                .filter(|team| team.department.as_ref() == Some(&department.id))
+                .map(|team| team.id.as_str())
+                .collect();
+            format!(
+                "  Department {} ({}), under {}, head {}, teams: {}",
+                department.id,
+                department.label,
+                department.parent.as_ref().map_or("none", Id::as_str),
+                department.head.as_ref().map_or("none", Id::as_str),
+                if teams.is_empty() {
+                    "none".to_owned()
+                } else {
+                    teams.join(", ")
+                }
+            )
+        })
+        .collect()
+}

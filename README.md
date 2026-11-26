@@ -54,6 +54,19 @@ agency --dir ~/.agency invite --org acme --role member
 agency --dir ~/.agency serve
 ```
 
+Departments and the department each team is in are part of the org's definition, so they are changed on the root key's node too, each change signed as a new version:
+
+```sh
+agency --dir ~/.agency dept-add --org acme --dept dev --label "Development" --head alice
+agency --dir ~/.agency dept-add --org acme --dept clients --label "Clients" --parent dev
+agency --dir ~/.agency team-add --org acme --team web --label web --node https://web.example --department clients
+agency --dir ~/.agency team-dept --org acme --team app --dept dev
+agency --dir ~/.agency dept-set --org acme --dept clients --label "Client apps" --no-parent
+agency --dir ~/.agency dept-remove --org acme --dept clients
+```
+
+`dept-set` also takes `--parent`, `--head`, and `--no-head`; `team-dept --none` takes a team out of its department. A department can be removed only when no department, member, or team is in it. `agency status` lists each org's departments and their teams.
+
 Join from an invite link and answer (on the invitee's home node):
 
 ```sh

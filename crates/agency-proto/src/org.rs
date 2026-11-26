@@ -209,6 +209,9 @@ impl OrgDefinition {
         }) {
             return Err("malformed department label, or its parent or head is missing".into());
         }
+        if self.has_department_cycle() {
+            return Err("a department is under itself".into());
+        }
         if !self
             .people
             .iter()
@@ -222,6 +225,27 @@ impl OrgDefinition {
             return Err("malformed team label, department, or node URL".into());
         }
         self.validate_devices()
+    }
+
+    /// Whether following parents from some department leads back to it. Departments form a tree.
+    fn has_department_cycle(&self) -> bool {
+        let parent_of = |id: &Id| {
+            self.departments
+                .iter()
+                .find(|one| &one.id == id)
+                .and_then(|one| one.parent.as_ref())
+        };
+        self.departments.iter().any(|start| {
+            let mut at = start.parent.as_ref();
+            for _ in 0..self.departments.len() {
+                match at {
+                    Some(id) if id == &start.id => return true,
+                    Some(id) => at = parent_of(id),
+                    None => return false,
+                }
+            }
+            at.is_some()
+        })
     }
 
     /// A draft of the next version: one version higher and linked to the previous version's fingerprint. The caller edits the contents.
