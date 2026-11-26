@@ -9,6 +9,8 @@ export interface MockClaimOptions {
   org?: string
   /** Makes a redeem of the right code end in this refusal, as the node's statuses say it. */
   failWith?: ClaimFailure
+  /** The node answers this pairing code instead of the one of the key it was sent: a node that holds another key. */
+  answersCode?: string
 }
 
 const STATUS: Record<ClaimFailure, [number, string]> = {
@@ -31,6 +33,10 @@ export function createMockClaim(options: MockClaimOptions | undefined) {
       if (claimed !== undefined) claimed = { ...claimed, state: 'in' }
     },
     state: (): ClaimState | undefined => claimed,
+    /** The node comes to answer another pairing code than before: it holds another key than the one it was sent. */
+    holdOtherKey: (pairingCode: string): void => {
+      if (claimed !== undefined) claimed = { ...claimed, pairingCode }
+    },
     /** Answers a claim route, or nothing when the request is not one. `write` is the node's check of the write token. */
     handle(request: Request, url: URL, write: () => Promise<Response | { body: unknown }>): Promise<Response> | undefined {
       if (url.pathname !== '/api/claim') return undefined
@@ -43,7 +49,7 @@ export function createMockClaim(options: MockClaimOptions | undefined) {
         if (input === null || typeof input.code !== 'string' || typeof input.publicKey !== 'string' || input.code !== options.code || isUsed) return failure('unknown')
         if (options.failWith !== undefined) return failure(options.failWith)
         isUsed = true
-        claimed = { state: 'waiting', seat: options.seat ?? 'Carol (finance)', org: options.org ?? 'Acme', pairingCode: await pairingCodeOf(input.publicKey) }
+        claimed = { state: 'waiting', seat: options.seat ?? 'Carol (finance)', org: options.org ?? 'Acme', pairingCode: options.answersCode ?? (await pairingCodeOf(input.publicKey)) }
         return json(claimed)
       })
     },

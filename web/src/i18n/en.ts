@@ -90,6 +90,7 @@ export const en = {
       expired: 'This link has expired. Ask the person who invited you for a new one.',
       'other-email': 'This link was made for another address. Sign out, then sign in with the address it was sent to.',
       taken: 'This seat, or the key of this browser, is already taken. Ask the person who invited you.',
+      mismatch: 'The node holds another key than the one this browser made, so the code cannot be compared. Stop here: close this page and tell the person who invited you.',
       'signed-out': 'Your sign-in ended. Reload to sign in again.',
       unreachable: 'The node cannot be reached. Try again in a moment.',
       failed: (reason: string) => `The seat could not be taken: ${reason}`,

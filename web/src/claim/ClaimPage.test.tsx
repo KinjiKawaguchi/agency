@@ -20,8 +20,18 @@ function land(claim: Parameters<typeof createMockNode>[0] = { claim: SEAT }, opt
     return node.handle(request)
   })
   const keyStore = memoryKeyStore()
+  lastKeyStore = keyStore
   const view = renderApp({ path: '/claim/continue', node, client, enrolled: false, keyStore, ...(options.locale === undefined ? {} : { locale: options.locale }) })
   return { node, requests, keyStore, view }
+}
+
+let lastKeyStore: ReturnType<typeof memoryKeyStore> | undefined
+
+/** The key pair the last page made, once it has. */
+async function keyStoreOf(): Promise<{ held: CryptoKeyPair }> {
+  const held = await lastKeyStore?.load()
+  if (held === undefined) throw new Error('No key was made.')
+  return { held }
 }
 
 describe('claiming a seat by link', () => {
@@ -90,10 +100,9 @@ describe('claiming a seat by link', () => {
     await screen.findByLabelText('Pairing code of this browser')
     first.view.unmount()
     forgetClaimCode()
-    const keyStore = memoryKeyStore()
-    renderApp({ path: '/claim/continue', node: first.node, enrolled: false, keyStore })
+    // The same key, as the browser keeps it (another store object over it, as a reload makes one).
+    renderApp({ path: '/claim/continue', node: first.node, enrolled: false, keyStore: { load: first.keyStore.load, save: first.keyStore.save } })
     expect(await screen.findByLabelText('Pairing code of this browser')).toBeInTheDocument()
-    first.node.claim.confirm()
   })
 
   it('says it needs the link when there is no code and no claim to ask about', async () => {
@@ -171,6 +180,58 @@ describe('claiming a seat by link', () => {
     window.sessionStorage.setItem('agency.claimCode', CODE)
     renderApp({ path: '/claim/continue', node: first.node, enrolled: false, keyStore: memoryKeyStore() })
     expect(await screen.findByRole('alert')).toHaveTextContent(/not valid, or it was already used/)
+  })
+
+  it('works the pairing code out from this browser’s own key, and shows it, whatever the node answers', async () => {
+    land()
+    const code = await screen.findByLabelText('Pairing code of this browser')
+    const held = await (await import('../device/deviceKey')).deviceKeyOf((await keyStoreOf()).held)
+    expect(code).toHaveTextContent(held.pairingCode)
+  })
+
+  it('refuses, and shows no code, when the node answers another code than the one of the key this browser made: the owner’s comparison would bind nothing', async () => {
+    const { node } = land({ claim: { ...SEAT, answersCode: 'aaaa-bbbb-cccc' } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('The node holds another key than the one this browser made')
+    expect(screen.queryByLabelText('Pairing code of this browser')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('aaaa-bbbb-cccc')
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(window.sessionStorage.getItem('agency.claimCode')).toBeNull()
+    expect(node.claim.state()?.state).toBe('waiting')
+  })
+
+  it('refuses, and takes the code off the screen, when the node comes to hold another key while the page waits', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { node } = land()
+      await screen.findByLabelText('Pairing code of this browser')
+      node.claim.holdOtherKey('dddd-eeee-ffff')
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CLAIM_POLL_MS)
+      })
+      expect(await screen.findByRole('alert')).toHaveTextContent('The node holds another key')
+      expect(screen.queryByLabelText('Pairing code of this browser')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('refuses when the page is read again in a browser that no longer has the key it claimed with', async () => {
+    const first = land()
+    await screen.findByLabelText('Pairing code of this browser')
+    first.view.unmount()
+    forgetClaimCode()
+    // Another store: another key, as after the site data was cleared. The node's answer is about the first.
+    renderApp({ path: '/claim/continue', node: first.node, enrolled: false, keyStore: memoryKeyStore() })
+    expect(await screen.findByRole('alert')).toHaveTextContent('The node holds another key')
+    expect(screen.queryByLabelText('Pairing code of this browser')).not.toBeInTheDocument()
+  })
+
+  it('makes the key this browser claims with non-extractable: nothing, not even this page, can read it out', async () => {
+    const { keyStore } = land()
+    await screen.findByLabelText('Pairing code of this browser')
+    const held = (await keyStore.load()) as CryptoKeyPair
+    expect(held.privateKey.extractable).toBe(false)
+    await expect(crypto.subtle.exportKey('pkcs8', held.privateKey)).rejects.toThrow()
   })
 
   it('claims once, though the page is drawn again while the claim is on its way', async () => {

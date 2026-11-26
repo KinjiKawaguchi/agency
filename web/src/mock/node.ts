@@ -22,7 +22,7 @@ export interface MockNode {
   /** What `agency device-add` does on the node's terminal: adds the device that asked with this pairing code. */
   addDeviceFromTerminal: (pairingCode: string) => boolean
   /** The claim of a seat by link: what the owner does at the node (confirming the pairing code), and where it stands. */
-  claim: { confirm: () => void; state: () => ClaimState | undefined }
+  claim: { confirm: () => void; state: () => ClaimState | undefined; holdOtherKey: (pairingCode: string) => void }
   /** Push tokens registered so far, one entry per token, as the node keeps them. */
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
   /** Envelopes that were accepted, oldest first. */
@@ -319,6 +319,6 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     envelopes: () => accepted,
     pushTokens: () => pushTokens,
     addDeviceFromTerminal: devices.addFromTerminal,
-    claim: { confirm: claim.confirm, state: claim.state },
+    claim: { confirm: claim.confirm, state: claim.state, holdOtherKey: claim.holdOtherKey },
   }
 }

@@ -10,7 +10,7 @@ import type { ClaimFailure, ClaimState } from './provisional'
 /** How often the page asks whether the owner has confirmed, while it waits (and the tab is in front). */
 export const CLAIM_POLL_MS = 3000
 
-export type ClaimProblem = ClaimFailure | 'signed-out' | 'unreachable' | 'failed'
+export type ClaimProblem = ClaimFailure | 'mismatch' | 'signed-out' | 'unreachable' | 'failed'
 
 export type ClaimView =
   | { step: 'loading' }
@@ -30,7 +30,15 @@ function problemOf(error: unknown): { problem: ClaimProblem; message: string } {
   return { problem: 'unreachable', message }
 }
 
-const stepOf = (claim: ClaimState): ClaimView => ({ step: claim.state === 'in' ? 'in' : 'waiting', claim })
+/**
+ * Where the claim stands, with the pairing code of **this browser's own key**, worked out here as the Devices page and the phone
+ * do. The node's answer carries one too, and it is only checked against ours: if it differs, the node holds another key than
+ * the one this browser made, and a code the owner compares would bind nothing. Then there is a refusal and no code.
+ */
+function stepOf(claim: ClaimState, ownCode: string): ClaimView {
+  if (claim.pairingCode !== ownCode) return { step: 'failed', problem: 'mismatch', message: '' }
+  return { step: claim.state === 'in' ? 'in' : 'waiting', claim: { ...claim, pairingCode: ownCode } }
+}
 
 /** A code that can be tried again after the person has put it right (another address) or the node is back; the others are spent. */
 const isRetryable = (problem: ClaimProblem): boolean => problem === 'other-email' || problem === 'signed-out' || problem === 'unreachable'
@@ -50,13 +58,21 @@ async function claim({ current }: Needs): Promise<ClaimView> {
   const code = takeClaimCode()
   if (code === undefined) {
     // No link in the address: a claim that was made already (a reload, a return) is asked about, and nothing else is.
-    return current.api.claimState().then(stepOf, (error: unknown) => (error instanceof ApiError && error.status === 404 ? { step: 'no-code' } : failed(error)))
+    const answered = await current.api.claimState().then(
+      (claimed) => claimed,
+      (error: unknown) => (error instanceof ApiError && error.status === 404 ? undefined : failed(error)),
+    )
+    if (answered === undefined) return { step: 'no-code' }
+    if ('step' in answered) return answered
+    // Where it stands is about the key this browser holds (the one it made when it claimed), so that is the one the code is worked out from.
+    const held = await current.settledKey()
+    return held.status === 'ready' ? stepOf(answered, held.key.pairingCode) : { step: 'failed', problem: 'mismatch', message: '' }
   }
   const key = await current.settledKey()
   if (key.status !== 'ready') return key.status === 'failed' ? { step: 'failed', problem: 'failed', message: key.reason } : { step: 'unsupported' }
   return current.api.redeemClaim({ code, publicKey: key.key.publicKey, label: current.label }).then((claimed) => {
     forgetClaimCode()
-    return stepOf(claimed)
+    return stepOf(claimed, key.key.pairingCode)
   }, failed)
 }
 
@@ -89,17 +105,18 @@ export function useClaim(): { view: ClaimView; retry: () => void } {
   }, [attempt])
 
   const isWaiting = view.step === 'waiting'
+  const ownCode = view.step === 'waiting' ? view.claim.pairingCode : ''
   useEffect(() => {
     if (!isWaiting) return undefined
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return
       void api.claimState().then(
-        (claimed) => setView(stepOf(claimed)),
+        (claimed) => setView(stepOf(claimed, ownCode)),
         () => undefined,
       )
     }, CLAIM_POLL_MS)
     return () => window.clearInterval(timer)
-  }, [api, isWaiting])
+  }, [api, isWaiting, ownCode])
 
   return { view, retry: () => setAttempt((n) => n + 1) }
 }
