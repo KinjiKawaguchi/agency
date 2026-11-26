@@ -11,6 +11,11 @@ pub fn versions(org: &Id, after: u64) -> String {
     format!("/fed/v1/orgs/{org}/versions?after={after}")
 }
 
+/// What a node says about itself, for a member's signed read of an org.
+pub fn about(org: &Id) -> String {
+    format!("/fed/v1/orgs/{org}/about")
+}
+
 pub fn devices(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/devices")
 }
