@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// A change others asked the org's root key to sign, which its node holds until the owner signs it there (`agency root-sign`),
@@ -38,8 +39,9 @@ public struct RootChangeRef: Decodable, Equatable, Sendable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
+        // Whatever the node's words name (a member's label, a device) is shown with its hidden characters as `?`.
         func text(_ key: Keys) -> String? {
-            (try? container.decodeIfPresent(String.self, forKey: key)).flatMap { $0 }.flatMap { $0.isEmpty ? nil : $0 }
+            (try? container.decodeIfPresent(String.self, forKey: key)).flatMap { $0 }.flatMap { $0.isEmpty ? nil : NodeLabel.shown($0) }
         }
         guard let id = text(.id), let org = text(.org), let receivedAt = text(.receivedAt) else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "A held root change names no id, org or time."))
