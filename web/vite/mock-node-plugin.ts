@@ -30,6 +30,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
   const outcomes = query?.get('outcomes') ?? process.env.AGENCY_MOCK_OUTCOMES
   const webPush = query?.get('webPush') ?? process.env.AGENCY_MOCK_WEBPUSH
+  const participants = query?.get('participants') ?? process.env.AGENCY_MOCK_PARTICIPANTS
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
@@ -38,6 +39,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
+    participants: participants === '1',
     outcomes: outcomes === '1',
     // The owner's sample numbers are of fixed days; the cost beside them is drawn over the same days. This pins the day of the whole
     // mock node (the desk's times too), for the dev server and the screenshots.
