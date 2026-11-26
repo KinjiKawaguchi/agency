@@ -116,4 +116,39 @@ register_bundle_id "$BUNDLE_ID" "$APP_NAME" \
   "PUSH_NOTIFICATIONS:Push Notifications" "ASSOCIATED_DOMAINS:Associated Domains" "APP_GROUPS:App Groups"
 register_bundle_id "$BUNDLE_ID.widgets" "$WIDGET_NAME" "APP_GROUPS:App Groups"
 
+# What the Mac needs besides the bundle ID, checked here and only changed when asked: the app record may have
+# no macOS platform yet. Adding it is one-way (an app with two platforms is a universal purchase for good),
+# so it happens only with ADD_MACOS_PLATFORM=1; the web interface does the same ("Add Platform", macOS).
+check_macos() {
+  local app_id count
+  asc_api GET "/v1/bundleIds?filter%5Bidentifier%5D=$BUNDLE_ID&filter%5Bplatform%5D=MAC_OS&limit=200"
+  if jq -e --arg identifier "$BUNDLE_ID" '[.data[]? | select(.attributes.identifier == $identifier)] | length > 0' "$RESPONSE" > /dev/null; then
+    printf 'The API lists %s as a macOS bundle ID too.\n' "$BUNDLE_ID"
+  else
+    printf 'The API lists no macOS bundle ID %s, only the iOS one. Whether the Mac build can sign with it is what its first archive tells; this script does not create a second record.\n' "$BUNDLE_ID"
+  fi
+  asc_api GET "/v1/apps?filter%5BbundleId%5D=$BUNDLE_ID&limit=200"
+  app_id=$(jq -r --arg identifier "$BUNDLE_ID" '[.data[]? | select(.attributes.bundleId == $identifier)][0].id // empty' "$RESPONSE")
+  if [ -z "$app_id" ]; then
+    printf 'There is no app record for %s in App Store Connect yet, so nothing can be said of its macOS platform.\n' "$BUNDLE_ID"
+    return
+  fi
+  asc_api GET "/v1/apps/$app_id/appStoreVersions?filter%5Bplatform%5D=MAC_OS&limit=1"
+  count=$(jq '[.data[]?] | length' "$RESPONSE")
+  if [ "$count" -gt 0 ]; then
+    printf 'The app record already has a macOS platform.\n'
+  elif [ "${ADD_MACOS_PLATFORM:-}" = 1 ]; then
+    local body
+    body=$(jq -cn --arg id "$app_id" --arg version "${ASC_MACOS_VERSION:-1.0}" \
+      '{data: {type: "appStoreVersions", attributes: {platform: "MAC_OS", versionString: $version},
+      relationships: {app: {data: {type: "apps", id: $id}}}}}')
+    asc_api POST /v1/appStoreVersions "$body"
+    printf 'Added the macOS platform to the app record.\n'
+  else
+    printf 'The app record has no macOS platform. Adding it cannot be undone: add it in App Store Connect (the app, Add Platform, macOS) or run this again with ADD_MACOS_PLATFORM=1.\n'
+  fi
+}
+
+check_macos
+
 printf 'Next: the app group group.%s must exist and be ticked for both bundle IDs. The API cannot create it.\n' "$BUNDLE_ID"
