@@ -194,11 +194,11 @@ public struct DevicesScreen: View {
             .navigationTitle(Ja.Devices.title)
         }
         .task {
-            // A phone waiting to be added asks again quickly, to notice when it is.
+            // The screen asks again while it is open, so a device that asks to be added, or is approved,
+            // shows up without a reload.
             while !Task.isCancelled {
                 if let pairing { await refresh(pairing) }
-                let isWaiting: Bool = { if case .waiting? = pairing?.status { true } else { false } }()
-                try? await Task.sleep(for: .seconds(isWaiting ? 4 : 20))
+                try? await Task.sleep(for: .seconds(DevicesStore.pollSeconds))
             }
         }
     }
