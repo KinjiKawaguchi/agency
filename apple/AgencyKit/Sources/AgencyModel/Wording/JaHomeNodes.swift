@@ -16,8 +16,16 @@ extension Ja {
         public static let forget = "この端末から忘れる"
         public static let forgetConfirm = "忘れる"
         public static func forgetExplain(_ host: String) -> String {
-            "\(host) のサインインと、この端末の鍵と、書きかけの下書きを、この端末から消します。もう一度使うには、サインインと端末の追加が必要です。"
+            "\(host) のサインインと、この端末の鍵と、書きかけの下書きと、通知の選びを、この端末から消します。このホームノードに登録した通知は、先に止めます。ホームノードの端末の一覧には、この端末が残ります。もう一度使うには、サインインと端末の追加が必要です。"
         }
+        public static let stopFailedTitle = "通知を止められませんでした"
+        public static func stopFailed(_ host: String) -> String {
+            "\(host) に、この端末への通知を止めるよう伝えられませんでした。このまま進むと、ホームノードの端末の一覧からこの端末を消すまで、通知が届き続けることがあります。"
+        }
+        public static let forgetAnyway = "それでも忘れる"
+        public static let leaveAnyway = "それでも出る"
+        public static let cancel = "やめる"
+        public static let working = "ホームノードに伝えています"
         public static let switchHint = "切り替えると、このホームノードのサインインと鍵はそのまま残ります。"
         public static let signInTitle = "サインインが必要です"
     }

@@ -65,14 +65,67 @@ struct HomeNodeBookTests {
         #expect(book.current?.host == "a.example.com")
     }
 
-    @Test("leaving the current node leaves nothing current, forgets what it said, and keeps the owner's own list")
+    @Test("leaving the current node leaves nothing current, forgets what it said, and keeps it on the list to be forgotten")
     func leaving() throws {
         var book = HomeNodeBook(current: try node("a.example.com"))
         book.add(try node("b.example.com"), label: "B")
         book.note(configured: [HomeNodeRef(label: "Work", url: "https://w.example.com")])
         book.leaveCurrent()
         #expect(book.current == nil && book.configured.isEmpty)
-        #expect(book.others.map(\.label) == ["B"])
+        #expect(book.others.map(\.label) == ["B", "a.example.com"])
+        #expect(book.forget(try node("a.example.com")))
+        #expect(hosts(book.others) == ["b.example.com"])
+    }
+
+    @Test("what is kept for a host goes only when no other known node has that host, and never for the current node")
+    func forgettingByHost() throws {
+        var book = HomeNodeBook(current: try node("https://a.example.com"))
+        book.add(try node("https://a.example.com:8443"), label: "same host")
+        book.add(try node("https://b.example.com"), label: "B")
+        book.add(try node("https://c.example.com"), label: "C")
+        book.note(configured: [HomeNodeRef(label: "Named", url: "https://c.example.com:8444")])
+        #expect(book.forget(try node("https://a.example.com:8443")) == false, "the current node has the host")
+        #expect(book.forget(try node("https://b.example.com")), "nothing else has it")
+        #expect(book.forget(try node("https://c.example.com")) == false, "a node the current one names has the host")
+        #expect(book.forget(try node("https://a.example.com")) == false, "the current node is not forgotten")
+        #expect(book.current?.host == "a.example.com")
+        #expect(hosts(book.others) == ["c.example.com"])
+    }
+
+    @Test("a node that is only named by the current node is not forgotten: nothing changes and nothing may go")
+    func forgettingANamedNode() throws {
+        var book = HomeNodeBook(current: try node("a.example.com"))
+        book.note(configured: [HomeNodeRef(label: "Named", url: "https://w.example.com")])
+        let before = book
+        #expect(book.forget(try node("w.example.com")) == false)
+        #expect(book == before)
+        #expect(hosts(book.others) == ["w.example.com"])
+    }
+
+    @Test("a node the owner added that the current node also names: forgetting it clears the device's data and the named row stays")
+    func forgettingAnAddedNodeThatIsAlsoNamed() throws {
+        var book = HomeNodeBook(current: try node("a.example.com"))
+        book.add(try node("https://w.example.com"), label: "mine")
+        book.note(configured: [HomeNodeRef(label: "Named", url: "https://w.example.com")])
+        #expect(book.forget(try node("https://w.example.com")))
+        #expect(book.others.map(\.label) == ["Named"])
+    }
+
+    @Test("the current node is never forgotten, whatever else is added")
+    func currentIsNeverForgotten() throws {
+        var book = HomeNodeBook(current: try node("a.example.com"))
+        let before = book
+        #expect(book.forget(try node("https://A.example.com:443/")) == false)
+        #expect(book == before)
+    }
+
+    @Test("two added nodes of one host: the first forgotten keeps the host's data, the last takes it")
+    func forgettingTwoOfAHost() throws {
+        var book = HomeNodeBook(current: try node("https://a.example.com"))
+        book.add(try node("https://b.example.com"), label: "B1")
+        book.add(try node("https://b.example.com:8443"), label: "B2")
+        #expect(book.forget(try node("https://b.example.com")) == false)
+        #expect(book.forget(try node("https://b.example.com:8443")))
     }
 
     @Test("it is kept and read back as it was, and what cannot be opened any more is dropped")

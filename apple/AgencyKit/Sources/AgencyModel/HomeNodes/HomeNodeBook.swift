@@ -49,15 +49,33 @@ public struct HomeNodeBook: Equatable, Sendable {
         current = node
     }
 
-    /// Leave the current node: nothing is current (the setup asks for an address) and it is not kept on the list.
+    /// Leave the current node: nothing is current (the setup asks for an address), and the node stays on the list as one the
+    /// owner went to, so that it can still be forgotten, and what the device kept for it is not left without a row.
     public mutating func leaveCurrent() {
+        if let previous = current {
+            remember(HomeNodeEntry(url: previous, label: previous.host, source: .added))
+        }
         current = nil
         configured = []
     }
 
-    /// Take a node off this device's list. The current node is left alone (leave it first).
-    public mutating func forget(_ node: HomeNodeURL) {
+    /// Take a node the owner added off this device's list. Returns whether what the device kept for the node's host (its
+    /// sign-in, key, drafts and choices, all keyed by host alone) may go too: not when the node is the current one or is not an
+    /// added one (nothing changes then; a node the current node names comes back from it), and not when another node the book knows (the current one, an added one, one the current node names)
+    /// has the same host with another scheme or port.
+    @discardableResult
+    public mutating func forget(_ node: HomeNodeURL) -> Bool {
+        // The current node is never in `added`, so this also refuses it.
+        guard added.contains(where: { $0.url.sameNode(as: node) }) else { return false }
         forgetEntry(of: node)
+        return !hostIsUsed(by: node)
+    }
+
+    /// Whether a node other than `node` that the book knows has the same host.
+    private func hostIsUsed(by node: HomeNodeURL) -> Bool {
+        let configuredNodes = configured.compactMap { try? HomeNodeURL(validating: $0.url) }
+        let known = (current.map { [$0] } ?? []) + added.map(\.url) + configuredNodes
+        return known.contains { !$0.sameNode(as: node) && $0.host == node.host }
     }
 
     /// What the current node said about the owner's other nodes.

@@ -128,6 +128,12 @@ final class ShellModel {
         start()
     }
 
+    /// Asks the node to stop sending to this device's push token, before the sign-in goes: the node's alerts would otherwise
+    /// keep arriving and set the number on the icon. `false` when it could not be told.
+    func stopPush(at node: HomeNodeURL) async -> Bool {
+        await PushUnregistration.stop(token: push.registration?.token, at: node)
+    }
+
     /// The number on the icon and the sign-in belong to the node that is being left.
     func leave() {
         showsSettings = false

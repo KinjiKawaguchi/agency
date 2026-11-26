@@ -33,15 +33,22 @@ final class HomeNodeStore {
     /// Leaves the current node: the setup comes back.
     func clear() { change { $0.leaveCurrent() } }
 
-    /// Takes a node off the list and everything this device kept for it.
+    /// Takes a node the owner added off the list, and everything this device kept for its host when no other node on the
+    /// device has that host (the sign-in, key, drafts and choices are kept by host alone). The current node is never forgotten.
     func forget(_ node: HomeNodeURL) {
-        change { $0.forget(node) }
-        HomeNodeSecrets.forget(host: node.host)
+        var next = book
+        let mayRemoveSecrets = next.forget(node)
+        keep(next)
+        if mayRemoveSecrets { HomeNodeSecrets.forget(host: node.host) }
     }
 
     private func change(_ edit: (inout HomeNodeBook) -> Void) {
         var next = book
         edit(&next)
+        keep(next)
+    }
+
+    private func keep(_ next: HomeNodeBook) {
         guard next != book else { return }
         book = next
         defaults.set(next.encoded(), forKey: Self.bookKey)

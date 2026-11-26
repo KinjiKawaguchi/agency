@@ -157,6 +157,12 @@ public actor NodeClient {
         return try await write("POST", "/api/push/tokens", body: body)
     }
 
+    /// Tells the node to stop sending to this push token (`DELETE /api/push/tokens/<token>`; the node answers 204, also for a
+    /// token it does not know).
+    public func unregisterPushToken(_ token: String) async throws {
+        _ = try await writeResponse("DELETE", "/api/push/tokens/\(Self.segment(token))", body: nil)
+    }
+
     /// The Access token a sign-in made for `code`, given the verifier whose SHA-256 the sign-in was started with
     /// (`POST /app/redeem`). It needs no Access token and no write token: the app has none yet, which is what it asks
     /// for, and the node admits the code and the verifier. A refusal is the same for every cause (`NodeError.http`
@@ -188,12 +194,17 @@ public actor NodeClient {
     }
 
     private func write<Answer: Decodable>(_ method: String, _ path: String, body: Data) async throws -> Answer {
+        try decode(try await writeResponse(method, path, body: body))
+    }
+
+    /// A write with the write token, made again once with a fresh one when the node says the token is stale.
+    private func writeResponse(_ method: String, _ path: String, body: Data?) async throws -> HTTPResponse {
         if writeToken == nil { try await refreshSession() }
         do {
-            return try decode(try await send(HTTPRequest(method: method, path: path, body: body)))
+            return try await send(HTTPRequest(method: method, path: path, body: body))
         } catch NodeError.http(let status, let message) where status == 403 && message == Self.staleWriteTokenMessage {
             try await refreshSession()
-            return try decode(try await send(HTTPRequest(method: method, path: path, body: body)))
+            return try await send(HTTPRequest(method: method, path: path, body: body))
         }
     }
 
