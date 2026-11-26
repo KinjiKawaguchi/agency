@@ -1,0 +1,54 @@
+{
+  "org": "acme",
+  "days": 14,
+  "from": "2026-11-11",
+  "until": "2026-11-24",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "teams": [
+    {
+      "team": "app",
+      "summary": {
+        "merged": { "feat": 3, "fix": 1, "refactor": 0, "docs": 1, "test": 0, "chore": 1, "other": 0 },
+        "prLeadMedianSeconds": 5400,
+        "prLeadP90Seconds": 14400,
+        "issueLeadMedianSeconds": 9000,
+        "issueLeadP90Seconds": 21600,
+        "mainRedSeconds": 1800,
+        "longestRedSeconds": 1800,
+        "reverts": 1,
+        "costPerMergedPrUsd": 4.25
+      },
+      "byDay": [
+        {
+          "date": "2026-11-23",
+          "merged": { "feat": 2, "fix": 1, "refactor": 0, "docs": 0, "test": 0, "chore": 0, "other": 0 },
+          "reverts": 0,
+          "mainRedSeconds": 1800,
+          "costUsd": 9.55,
+          "prLeadSeconds": [3600, 5400, 14400],
+          "issueLeadSeconds": [9000, 21600]
+        },
+        {
+          "date": "2026-11-24",
+          "merged": { "feat": 1, "fix": 0, "refactor": 0, "docs": 1, "test": 0, "chore": 1, "other": 0 },
+          "reverts": 1,
+          "mainRedSeconds": 0,
+          "costUsd": 3.75,
+          "prLeadSeconds": [1800, 7200, 9000, 600],
+          "issueLeadSeconds": []
+        }
+      ]
+    },
+    {
+      "team": "docs",
+      "summary": {
+        "merged": { "feat": 0, "fix": 0, "refactor": 0, "docs": 0, "test": 0, "chore": 0, "other": 0 },
+        "mainRedSeconds": 0,
+        "longestRedSeconds": 0,
+        "reverts": 0
+      },
+      "byDay": []
+    }
+  ],
+  "unavailable": [{ "team": "ops", "reason": "the team's node could not be reached" }]
+}
