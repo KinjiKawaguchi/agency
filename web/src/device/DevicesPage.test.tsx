@@ -450,4 +450,21 @@ describe('whether this browser keeps its key', () => {
     await waitFor(() => expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument())
     expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
   })
+
+  it('says the key could not be read, and neither makes another nor says the earlier one is gone, when reading it fails', async () => {
+    window.localStorage.setItem('agency.deviceKeyMade', 'yes')
+    let saves = 0
+    const keyStore = {
+      load: () => Promise.reject(new Error('The database is blocked.')),
+      save: () => {
+        saves += 1
+        return Promise.resolve()
+      },
+    }
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, keyStore })
+    expect(await screen.findByRole('alert')).toHaveTextContent('The database is blocked.')
+    expect(screen.queryByText(/earlier key is gone/)).not.toBeInTheDocument()
+    expect(saves).toBe(0)
+    expect(window.localStorage.getItem('agency.deviceKeyLost')).toBeNull()
+  })
 })
