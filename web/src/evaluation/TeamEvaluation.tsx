@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { Columns } from './Columns'
 import { DayTable } from './DayTable'
 import { durationAxis, formatDuration } from './duration'
-import { countMax, fillDays, lastDayOf, niceMax, PULL_REQUEST_TYPES, rollingCostPerPullRequest, rollingMedian, allMerged, REVERT_COLOR, TYPE_COLORS } from './series'
+import { countMax, fillDays, niceMax, PULL_REQUEST_TYPES, rollingCostPerPullRequest, rollingMedian, allMerged, REVERT_COLOR, TYPE_COLORS } from './series'
 import { SummaryTiles } from './SummaryTiles'
 import { HOUR_SECONDS } from './time'
 import { TrendChart } from './TrendChart'
@@ -14,16 +14,13 @@ interface Props {
   label: string
   numbers: TeamNumbers
   days: number
-  generatedAt: string
-  /** The period's last day, when the node names it. */
-  until: string | undefined
 }
 
 /** One team's evaluation: the headline numbers, then each of them over the days. */
-export function TeamEvaluation({ label, numbers, days, generatedAt, until }: Props) {
+export function TeamEvaluation({ label, numbers, days }: Props) {
   const { t, fmt } = useI18n()
   const text = t.evaluation
-  const rows = fillDays(numbers.byDay, days, lastDayOf(numbers.byDay, until, generatedAt))
+  const rows = fillDays(numbers.byDay, days, numbers.until)
   const dates = rows.map((row) => row.date)
   const duration = (seconds: number): string => formatDuration(seconds, text.units)
 

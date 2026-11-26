@@ -40,7 +40,7 @@ export function EffortSection({ org, days, teamLabels }: Props) {
       ) : (
         <>
           {effort.data.teams.map((team) => (
-            <TeamEffortView key={team.team} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} generatedAt={effort.data.generatedAt} until={effort.data.until} />
+            <TeamEffortView key={team.team} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} />
           ))}
           {(effort.data.unavailable ?? []).map((one) => (
             <section key={one.team} className="ev-team">

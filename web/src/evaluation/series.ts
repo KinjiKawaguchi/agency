@@ -27,15 +27,6 @@ export const allMerged = (row: { merged: MergedCounts; reverts: number }): numbe
 /** The color of the reverts in the merged chart: the last of the fixed series. */
 export const REVERT_COLOR = 'var(--series-8)'
 
-/**
- * The last day of the period, in the node's time zone: the `until` the node names; failing that, the newest
- * day it reports (its date is in the node's time zone, where a timestamp's UTC date may be a day behind);
- * and only for a period with no day at all, the UTC date of when the report was made.
- */
-export function lastDayOf(byDay: readonly { date: string }[], until: string | undefined, generatedAt: string): string {
-  return until ?? byDay.map((day) => day.date).toSorted().at(-1) ?? generatedAt.slice(0, 10)
-}
-
 /** The `days` calendar days that end at `last`, oldest first. */
 export function daysEnding(last: string, days: number): string[] {
   const end = Date.parse(`${last}T00:00:00Z`)
