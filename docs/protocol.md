@@ -496,7 +496,8 @@ Contracts    { federation: number[], signedText: number[], runtime: number[], cl
 - `node` is the node's release, `MAJOR.MINOR.PATCH`. `contracts` lists, for each contract, the versions this release speaks (two at once during an overlap); `clientApi` is the version it serves and the oldest it still serves.
 - `capabilities` are **strings**, so that a reader ignores a name it does not know (a newer node may list one). The names this release knows, and what each means, are in the table of compatibility.md ("Capabilities"); they start at what came after the first release. A test fails when an optional field is added to the org definition without one.
 - `oldestApp` (per platform, `ios` or `macos`) is the oldest app version the node serves, and is **absent while the node sets no floor**, which is until a breaking Client API change needs one. `GET /api/about` may carry it; the federation answer never does.
-- Readers ignore fields they do not know in an `About`.
+- Readers ignore fields they do not know in an `About`. A node keeps an answer only within limits: at most 64 entries in a list (versions of a contract, capabilities, platforms) and at most 64 characters, without control characters, in any text of it.
+- A node keeps what it reads of each of the org's other nodes in `about/<org>.json` of its data directory, with when it read it and, if the last try failed, why (see compatibility.md, "Discovery", for when it reads again).
 - `GET /api/about` is admitted like any Client API read. `GET /fed/v1/orgs/<org>/about` is a member's signed read of the org (checked as in "Signed reads", against that org's members, which is why the path names the org), so a stranger cannot learn a node's version. The shared sample is `testdata/about.sample.json`.
 
 ## Test vectors

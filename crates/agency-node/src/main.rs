@@ -4,6 +4,7 @@ mod device_cli;
 mod funding_cli;
 mod kpi_cli;
 mod outcome_cli;
+mod peer_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
@@ -260,6 +261,7 @@ fn status(node: &Node) {
             .into_iter()
             .chain(plans)
             .chain(kpi_cli::kpi_lines(&doc.body))
+            .chain(peer_cli::peer_lines(node, &doc.body.org))
         {
             println!("{line}");
         }
