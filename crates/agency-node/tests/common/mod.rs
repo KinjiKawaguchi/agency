@@ -8,7 +8,7 @@ use agency_adapters::client_api::Assets;
 use agency_adapters::files::DataDir;
 use agency_adapters::launch::Launch;
 use agency_adapters::memory::{
-    CountingRandom, ManualClock, MemoryNotifier, MemoryRuntime, MemoryRuntimeState,
+    CountingRandom, ManualClock, MemoryDelivery, MemoryNotifier, MemoryRuntime, MemoryRuntimeState,
 };
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::invites::{self, join};
@@ -63,6 +63,8 @@ pub struct Running {
     pub clock: ManualClock,
     /// Records the notifications the node sends; it sends none until a token is registered.
     pub notifier: MemoryNotifier,
+    /// The delivery facts the node reads; none until a test sets them.
+    pub delivery: MemoryDelivery,
     opened: Opened,
     pub port: u16,
     server: Option<JoinHandle<()>>,
@@ -168,6 +170,7 @@ async fn node_from(
     .unwrap();
     let clock = ManualClock::at(T0);
     let notifier = MemoryNotifier::default();
+    let delivery = MemoryDelivery::default();
     let overrides = Overrides {
         runtime: Some(runtime),
         clock: Some(Arc::new(clock.clone())),
@@ -175,6 +178,7 @@ async fn node_from(
             .map(|_| Arc::new(CountingRandom::default()) as Arc<dyn agency_core::ports::Random>),
         certs,
         notifier: Some(Arc::new(notifier.clone())),
+        delivery: Some(Arc::new(delivery.clone())),
         launch: Some(Launch {
             executable: "/opt/agency/bin/agency".into(),
             data_dir: "/var/lib/agency".into(),
@@ -185,6 +189,7 @@ async fn node_from(
         node: opened.node.clone(),
         clock,
         notifier,
+        delivery,
         opened,
         port,
         server: None,

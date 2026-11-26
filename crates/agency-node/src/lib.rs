@@ -6,6 +6,7 @@ use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
+use agency_adapters::github::{CachedDelivery, GithubDelivery};
 use agency_adapters::handoff;
 use agency_adapters::launch::Launch;
 use agency_adapters::memory::NoNotifier;
@@ -16,11 +17,14 @@ use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore as _;
-use agency_core::ports::{Clock, Notifier, Random, TeamRuntime};
+use agency_core::ports::{Clock, DeliverySource, Notifier, Random, TeamRuntime};
 use agency_core::{Node, Ports};
 use axum::Router;
 use std::borrow::Cow;
 use std::sync::Arc;
+
+/// How long what GitHub said is kept, so that reading a screen does not spend GitHub's rate limit.
+const DELIVERY_KEPT: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Ports to use instead of the real ones (tests).
 #[derive(Default)]
@@ -30,6 +34,7 @@ pub struct Overrides {
     pub random: Option<Arc<dyn Random>>,
     pub certs: Option<Arc<dyn CertSource>>,
     pub notifier: Option<Arc<dyn Notifier>>,
+    pub delivery: Option<Arc<dyn DeliverySource>>,
     /// The program and data directory a client tells the owner to run (default: this process).
     pub launch: Option<Launch>,
 }
@@ -79,6 +84,12 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(data_dir.clone())),
+        delivery: overrides.delivery.unwrap_or_else(|| {
+            Arc::new(CachedDelivery::new(
+                GithubDelivery::default(),
+                DELIVERY_KEPT,
+            ))
+        }),
         notifier,
     };
     let node = Arc::new(Node::open(ports, key)?);
