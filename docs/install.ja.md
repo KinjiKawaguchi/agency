@@ -55,7 +55,7 @@ cp target/release/agency ~/.local/bin/agency.new && mv ~/.local/bin/agency.new ~
 
 #### Debian パッケージ（Linux）
 
-Debian とその派生ディストリビューションでは、まず使っているアーキテクチャ向けのパッケージを入れます。`agency` は `/usr/bin/agency` に、この文書とライセンスは `/usr/share/doc/agency/` に入ります。システムサービスは入らず、ユーザーも作りません。
+Debian とその派生ディストリビューションでは、まず使っているアーキテクチャ向けのパッケージを入れます。`agency` は `/usr/bin/agency` に、この文書とライセンスは `/usr/share/doc/agency/` に入ります。システムサービスは入らず、アカウントも作りません。
 
 1. リリースから `.deb` とその `.sha256` をダウンロードします。GitHub CLI なら `gh release download <タグ> --repo <このリポジトリ> --pattern 'agency_*_<arch>.deb*'` です。`<arch>` は `amd64` か `arm64` です。
 2. 確かめてインストールします。
@@ -66,7 +66,7 @@ sudo apt install ./agency_*.deb
 agency --version
 ```
 
-次に、[systemd で動かす](#systemd-で動かすlinux)の手順で systemd のユーザーユニットを作ります。そのときは `/usr/share/doc/agency/systemd-unit.sh` を使い、`--agency /usr/bin/agency` を指定してください。
+次に、[systemd で動かす](#systemd-で動かすlinux)の手順で systemd の個人用ユニットを作ります。そのときは `/usr/share/doc/agency/systemd-unit.sh` を使い、`--agency /usr/bin/agency` を指定してください。
 
 #### tarball（macOS または Linux）
 
