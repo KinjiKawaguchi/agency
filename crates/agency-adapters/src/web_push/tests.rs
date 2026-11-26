@@ -43,6 +43,8 @@ impl Browser {
             registered_at: Timestamp::parse(T0).unwrap(),
             events: vec![agency_proto::client::PushEvent::Request],
             key_id: "k".into(),
+            last_succeeded_at: None,
+            last_failure: None,
         }
     }
 
@@ -536,4 +538,30 @@ async fn several_subscriptions_are_sent_to_a_few_at_once_and_answered_in_their_o
         .send_many(&[], &request_notice())
         .await
         .is_empty());
+}
+
+#[tokio::test]
+async fn a_failure_names_the_service_and_the_status_and_never_what_the_service_said() {
+    let app = axum::Router::new().route(
+        "/status",
+        axum::routing::post(|| async {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the body says: secret detail about the browser",
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let answer = web_push()
+        .send(
+            &Browser::new().subscription(&format!("{url}/status")),
+            &request_notice(),
+        )
+        .await;
+    assert_eq!(
+        answer,
+        Err(PushError::Failed(format!("{url} answered 503")))
+    );
 }

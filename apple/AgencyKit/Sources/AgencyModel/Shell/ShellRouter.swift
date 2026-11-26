@@ -42,7 +42,7 @@ public final class ShellRouter {
             openItemID = DeskItem.key(org: request.org, team: request.team, request: request.request)
         case .devices:
             tab = .devices
-        case .decision:
+        case .decision, .recovery:
             tab = .desk
         }
     }

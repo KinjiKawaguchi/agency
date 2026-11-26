@@ -7,6 +7,7 @@ mod network;
 mod vapid;
 
 use agency_core::config::WebPushConfig;
+use agency_core::notice::recovery_text;
 use agency_core::ports::{Clock, Notifier};
 use agency_core::push::{Notice, NoticeKind, PushError};
 use agency_core::web_push::{check_endpoint, WebSubscription};
@@ -163,6 +164,16 @@ pub fn payload(notice: &Notice) -> Value {
             ),
             json!({ "detail": title.as_deref().map(cut) }),
         ),
+        NoticeKind::Recovery {
+            org,
+            takes_effect_at,
+        } => {
+            let (title, body) = recovery_text(org, takes_effect_at.as_deref());
+            (
+                json!({ "type": "recovery", "org": org }),
+                json!({ "title": cut(&title), "body": cut(&body) }),
+            )
+        }
     };
     let mut message = json!({ "agency": agency, "badge": notice.badge });
     if let (Some(all), Some(extra)) = (message.as_object_mut(), text.as_object()) {

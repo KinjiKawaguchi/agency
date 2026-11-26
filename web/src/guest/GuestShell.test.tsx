@@ -72,6 +72,31 @@ describe('what a member hosted by the node has', () => {
     expect(paths.filter((one) => OWNERS.test(one))).toEqual([])
   })
 
+  it('leaves the claim page as it is, with none of the app’s pages and none of the owner’s reads', async () => {
+    const { client, paths } = recording(guestNode())
+    const { history } = renderApp({ node: guestNode(), client, path: '/claim', enrolled: true })
+    expect(await screen.findByText(/link/i)).toBeInTheDocument()
+    expect(history.location.pathname).toBe('/claim')
+    expect(screen.queryByRole('navigation', { name: 'Main menu' })).not.toBeInTheDocument()
+    expect(paths.filter((one) => OWNERS.test(one))).toEqual([])
+  })
+
+  it.each(['/desk/x', '/devices/x'])('stays on %s, a page that is not there, and makes none of the owner’s reads', async (path) => {
+    const { client, paths } = recording(guestNode())
+    const { history } = renderApp({ node: guestNode(), client, path, enrolled: true })
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(history.location.pathname).toBe(path)
+    expect(labels(await screen.findByRole('navigation', { name: 'Main menu' }))).toEqual(['Decisions', 'Devices'])
+    expect(paths.filter((one) => OWNERS.test(one))).toEqual([])
+  })
+
+  it.each(['/desk', '/devices'])('draws no area of funding on %s: the node says none for a guest, and none is shown', async (path) => {
+    renderApp({ node: guestNode(), path, enrolled: true })
+    await screen.findByRole('navigation', { name: 'Main menu' })
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Loading…' })).not.toBeInTheDocument())
+    expect(screen.queryByText(/Usage limits|Subscriptions/)).not.toBeInTheDocument()
+  })
+
   it('keeps them on their devices, and leaves out what is the owner’s there: the other nodes of the owner', async () => {
     const { history } = renderApp({ node: guestNode(), path: '/devices', enrolled: true })
     await screen.findByRole('heading', { level: 1, name: 'Devices' })
@@ -99,7 +124,7 @@ describe('what a member hosted by the node has', () => {
     const node = guestNode()
     const api = createApiClient((request) => node.handle(request))
     const me = await api.me()
-    expect(me).toMatchObject({ account: { id: 'carol' }, funding: [] })
+    expect(me).toMatchObject({ account: { id: 'carol' }, funding: [], guest: { member: 'carol', org: 'acme' } })
     expect(me.orgs.flatMap((org) => org.teams.map((team) => team.id))).toEqual(['app'])
     expect((await api.devices()).node).toBeUndefined()
   })
@@ -119,6 +144,16 @@ describe('before the node has said who the viewer is', () => {
     expect(labels(await screen.findByRole('navigation', { name: 'Main menu' }))).toEqual(['Decisions', 'Devices'])
   })
 
+  it('shows no home nodes of the owner before the node has said who the viewer is, and shows them to the owner once it has', async () => {
+    const node = createMockNode({ homeNodes: [{ label: 'Work', url: 'https://work.example.com' }] })
+    const { client, release } = heldNode(node, ['/api/me'])
+    renderApp({ node, client, path: '/devices', enrolled: true })
+    await screen.findByRole('heading', { level: 1, name: 'Devices' })
+    expect(screen.queryByRole('region', { name: 'Home nodes' })).not.toBeInTheDocument()
+    release()
+    expect(await screen.findByRole('region', { name: 'Home nodes' })).toBeInTheDocument()
+  })
+
   it('gives everyone else their pages as before, once it has', async () => {
     const node = createMockNode()
     const { client, release } = heldNode(node, ['/api/me'])
@@ -135,6 +170,16 @@ describe('before the node has said who the viewer is', () => {
     const { history } = renderApp({ node, client, path: '/overview', enrolled: true })
     await waitFor(() => expect(labels(screen.getByRole('navigation', { name: 'Main menu' }))).toEqual(['Decisions', 'Overview', 'Organization', 'Results']))
     expect(history.location.pathname).toBe('/overview')
+  })
+
+  it('opens the owner’s menu for a guest whose first read of the viewer failed, as for anyone: the node refuses each read, so nothing of the owner’s is shown', async () => {
+    const node = guestNode()
+    const client = createApiClient((request) => (new URL(request.url, 'http://mock.local').pathname === '/api/me' ? Promise.resolve(new Response(JSON.stringify({ error: 'down' }), { status: 500, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    const { history } = renderApp({ node, client, path: '/overview', enrolled: true })
+    await waitFor(() => expect(labels(screen.getByRole('navigation', { name: 'Main menu' }))).toEqual(['Decisions', 'Overview', 'Organization', 'Results']))
+    expect(history.location.pathname).toBe('/overview')
+    expect(screen.queryByText(BOBS)).not.toBeInTheDocument()
+    expect(screen.queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
   it('keeps an owner’s page open while a read of the viewer is tried again after it failed', async () => {
@@ -180,8 +225,10 @@ describe('how the node says a viewer is a guest', () => {
     const me = await (await base).json()
     expect(guestOf(me)).toBeUndefined()
     expect(guestOf({ ...me, guest: null })).toBeUndefined()
+    expect(guestOf({ ...me, guest: { member: 'carol', org: 'acme' } })).toEqual({ member: 'carol', org: 'acme' })
     expect(guestOf({ ...me, guest: { member: 'carol' } })).toEqual({ member: 'carol' })
-    for (const guest of ['carol', 7, true, {}, { member: '' }, { member: 3 }, { member: null }, [], { id: 'carol' }]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toEqual({})
+    expect(guestOf({ ...me, guest: { member: 'carol', org: 7 } }), 'an org that is not text is not read').toEqual({ member: 'carol' })
+    for (const guest of ['carol', 7, true, {}, { member: '' }, { member: 3 }, { member: null }, [], { id: 'carol' }, { org: '' }]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toEqual({})
   })
 
   it('opens a guest’s pages, not the owner’s, when the node says the guest in another shape', async () => {

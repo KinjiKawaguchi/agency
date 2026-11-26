@@ -2,6 +2,7 @@ import { useApi } from '../api/context'
 import { useI18n } from '../i18n'
 import { useWebPushBrowser } from '../pwa/WebPushBrowserContext'
 import { useWebPush, type WebPushState } from '../pwa/useWebPush'
+import type { PushDelivery } from '../pwa/webPush'
 import { Skeleton } from '../shared/Skeleton'
 import '../pwa/push.css'
 import { useOsNotices } from './osChoice'
@@ -11,6 +12,17 @@ import { useOsNotices } from './osChoice'
  * the browser has no Web Push (or it is an iPhone, which has the app) or the node has none; where the browser refuses
  * notifications, the first switch says so for both.
  */
+function Failing({ delivery }: { delivery: PushDelivery }) {
+  const { t, fmt } = useI18n()
+  const text = t.notices.os.push
+  if (delivery.kind !== 'failing') return null
+  return (
+    <p role="status" className="push-failing">
+      {text.isFailing(fmt.dateTime(delivery.failure.at), delivery.failure.reason)} {delivery.lastTakenAt === undefined ? text.neverTaken : text.lastTaken(fmt.dateTime(delivery.lastTakenAt))}
+    </p>
+  )
+}
+
 function WebPushSwitch({ state, turnOn, turnOff }: { state: WebPushState; turnOn: () => void; turnOff: () => void }) {
   const { t } = useI18n()
   const text = t.notices.os.push
@@ -21,6 +33,7 @@ function WebPushSwitch({ state, turnOn, turnOff }: { state: WebPushState; turnOn
       <p className="muted">{text.lead}</p>
       {state.kind === 'loading' ? <Skeleton kind="short" /> : null}
       {state.kind === 'on' ? <p>{text.isOn}</p> : null}
+      {state.kind === 'on' ? <Failing delivery={state.delivery} /> : null}
       {state.kind === 'stale' ? <p>{text.isStale}</p> : null}
       {state.kind === 'failed' ? <p role="alert">{text.failed(state.message)}</p> : null}
       {state.kind === 'loading' ? null : (

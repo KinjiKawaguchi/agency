@@ -524,3 +524,106 @@ async fn me_says_when_the_node_hides_titles_and_otherwise_says_nothing() {
         "push.hideTitles means the same"
     );
 }
+
+fn refuse_browser(running: &Running, id: &str) {
+    running.notifier.0.lock().unwrap().refusing = vec![id.to_owned()];
+}
+
+#[tokio::test]
+async fn the_node_keeps_when_a_browsers_push_service_last_took_a_notice_and_when_it_last_did_not() {
+    let (alice, memory) = alice().await;
+    with_web_push(&alice);
+    let (_, registered) = register(&alice, &subscription(ENDPOINT)).await;
+    let id = registered["id"].as_str().unwrap().to_owned();
+    assert!(
+        registered.get("lastSucceededAt").is_none() && registered.get("lastFailure").is_none(),
+        "nothing is known before a notice is sent"
+    );
+    notify_waiting(&alice.node).await.unwrap();
+
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-2".into(), "Ship it?".into()));
+    refuse_browser(&alice, &id);
+    notify_waiting(&alice.node).await.unwrap();
+    let after_failure = list(&alice).await[0].clone();
+    assert_eq!(
+        after_failure["lastFailure"]["reason"],
+        "a push service did not answer"
+    );
+    assert_eq!(after_failure["lastFailure"]["at"], "2026-11-24T12:00:00Z");
+    assert!(
+        after_failure.get("lastSucceededAt").is_none(),
+        "it has never taken one"
+    );
+
+    alice
+        .clock
+        .advance(agency_proto::clock::Duration::minutes(5));
+    alice.notifier.0.lock().unwrap().refusing = vec![];
+    notify_waiting(&alice.node).await.unwrap();
+    let after_retry = list(&alice).await[0].clone();
+    assert_eq!(
+        after_retry["lastSucceededAt"], "2026-11-24T12:05:00Z",
+        "the retry took it"
+    );
+    assert_eq!(
+        after_retry["lastFailure"]["at"], "2026-11-24T12:00:00Z",
+        "the last failure stays, older than the success"
+    );
+}
+
+#[tokio::test]
+async fn registering_again_keeps_what_is_known_of_the_push_service() {
+    let (alice, memory) = alice().await;
+    with_web_push(&alice);
+    let (_, first) = register(&alice, &subscription(ENDPOINT)).await;
+    let id = first["id"].as_str().unwrap().to_owned();
+    notify_waiting(&alice.node).await.unwrap();
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-2".into(), "Ship it?".into()));
+    notify_waiting(&alice.node).await.unwrap();
+    refuse_browser(&alice, &id);
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-3".into(), "Again?".into()));
+    notify_waiting(&alice.node).await.unwrap();
+    let (_, again) = register(&alice, &subscription(ENDPOINT)).await;
+    assert!(
+        again["lastSucceededAt"].is_string(),
+        "the success of r-2 is kept: {again}"
+    );
+    assert!(
+        again["lastFailure"]["reason"].is_string(),
+        "and the failure of r-3: {again}"
+    );
+}
+
+#[tokio::test]
+async fn a_subscription_the_push_service_calls_gone_is_removed_and_not_kept_as_a_failure() {
+    let (alice, memory) = alice().await;
+    with_web_push(&alice);
+    let (_, registered) = register(&alice, &subscription(ENDPOINT)).await;
+    notify_waiting(&alice.node).await.unwrap();
+    alice
+        .notifier
+        .0
+        .lock()
+        .unwrap()
+        .gone
+        .push(registered["id"].as_str().unwrap().to_owned());
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-2".into(), "Ship it?".into()));
+    notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(list(&alice).await, json!([]));
+}

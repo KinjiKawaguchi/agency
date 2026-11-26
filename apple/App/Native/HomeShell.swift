@@ -6,8 +6,8 @@ import SwiftUI
 struct HomeShell: View {
     @State private var model: ShellModel
 
-    init(homeNode: HomeNodeURL, push: PushCoordinator, onChangeHomeNode: @escaping () -> Void) {
-        _model = State(initialValue: ShellModel(homeNode: homeNode, push: push, deviceLabel: Ja.Device.label, onChangeHomeNode: onChangeHomeNode))
+    init(homeNode: HomeNodeURL, push: PushCoordinator, nodes: any HomeNodeSwitching) {
+        _model = State(initialValue: ShellModel(homeNode: homeNode, push: push, deviceLabel: Ja.Device.label, nodes: nodes))
     }
 
     var body: some View {

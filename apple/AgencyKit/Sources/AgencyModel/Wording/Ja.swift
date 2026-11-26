@@ -17,7 +17,7 @@ public enum Ja {
         public static let signInAgain = "サインインし直す"
         public static let signInUnavailable = "このノードでは、アプリからのサインインを使えません。ノードの設定を確認してください。"
         public static let settings = "設定"
-        public static let changeNode = "ホームノードを変える"
+        public static let changeNode = "このホームノードから出る"
         public static let homeNode = "ホームノード"
         public static let close = "閉じる"
 
@@ -26,6 +26,7 @@ public enum Ja {
             case .proposal: "決裁する稟議"
             case .question: "あなたへの質問"
             case .pendingDecision: "ボードで判断待ちのもの"
+            case .unrecognized: "このアプリが知らない種類の依頼"
             case .others: "ほかの人の返事待ち"
             }
         }
@@ -35,6 +36,7 @@ public enum Ja {
             case .proposal: "稟議"
             case .question: "質問"
             case .pendingDecision: "判断待ち"
+            case .unknown: "依頼"
             }
         }
 
@@ -73,12 +75,14 @@ public enum Ja {
         public static let needAnswer = "答えを書いてください。"
         public static let needDecision = "判断を書いてください。"
         public static let queued = "保存しました。チームのノードが休止中なので、起動したときに届きます。"
+        public static let cannotAnswerHere = "この依頼には、このアプリではまだ答えられません。アプリを新しくするか、ほかの端末で答えてください。"
 
         public static func type(_ kind: Request.Kind) -> String {
             switch kind {
             case .proposal: "稟議書"
             case .question: "質問"
             case .pendingDecision: "判断のお願い"
+            case .unknown: "依頼"
             }
         }
 
@@ -87,6 +91,7 @@ public enum Ja {
             case .proposal: "決裁する"
             case .question: "答える"
             case .pendingDecision: "判断を送る"
+            case .unknown: "返事を送る"
             }
         }
 
@@ -95,6 +100,7 @@ public enum Ja {
             case .proposal: "決裁しました"
             case .question: "答えました"
             case .pendingDecision: "判断を送りました"
+            case .unknown: "返事を送りました"
             }
         }
 
@@ -139,6 +145,7 @@ public enum Ja {
             case .delivered: "届きました"
             case .queued: "送信待ち"
             case .refused: "断られました"
+            case .unknown: "状態を読み取れません"
             }
         }
 

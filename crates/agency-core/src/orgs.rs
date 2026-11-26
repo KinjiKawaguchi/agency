@@ -6,6 +6,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
+use crate::ports::RootSigner;
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
@@ -32,23 +33,26 @@ pub(crate) fn sign(node: &Node, body: OrgDefinition) -> Result<SignedOrg> {
 /// account key for an org made before root keys were kept apart. A rotation signs the version that
 /// names the new root with the current one.
 fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOrg> {
+    if key == &node.key().public() {
+        return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
+    }
+    let purpose = format!("Sign version {} of {}", body.version, body.label);
+    let org = body.org.clone();
+    sign_by(node, body, &|text: &[u8]| {
+        node.root_keys().sign(&org, key, text, &purpose)
+    })
+}
+
+/// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
+/// presence prompt: `RootKeys::with_signer`).
+pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
     // A version the root signs never carries a waiting recovery, so signing any version cancels it.
     let mut body = body;
     body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
-    let signer = node.account();
-    if key == &node.key().public() {
-        return Signed::sign(Kind::Org, body, signer, node.key())
-            .map_err(|error| Error::internal(error.to_string()));
-    }
-    let (org, purpose) = (
-        body.org.clone(),
-        format!("Sign version {} of {}", body.version, body.label),
-    );
-    let signed = Signed::sign_with(Kind::Org, body, signer, |text| {
-        node.root_keys().sign(&org, key, text, &purpose)
-    })
-    .map_err(|error| Error::internal(error.to_string()))?;
+    let org = body.org.clone();
+    let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
+        .map_err(|error| Error::internal(error.to_string()))?;
     signed.map_err(|why| {
         Error::new(
             ErrorKind::Forbidden,
@@ -117,6 +121,21 @@ fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Resul
         .filter(|url| url != &me && !kept.contains(&url))
         .collect();
     queue_for(node, doc, targets)
+}
+
+/// A root key this node made for a recovery that was then cancelled will sign nothing: it is forgotten.
+fn forget_cancelled_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) {
+    let made = previous
+        .body
+        .root
+        .pending
+        .as_ref()
+        .and_then(|one| one.public_key.as_ref());
+    let Some(made) = made else { return };
+    let is_cancelled = next.body.root.pending.is_none() && &next.body.root.public_key != made;
+    if is_cancelled && node.root_keys().holds(&next.body.org, made) {
+        let _ = node.root_keys().forget(&next.body.org, made);
+    }
 }
 
 /// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
@@ -225,6 +244,7 @@ pub fn amend(
     capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
     publish(node, &doc)?;
+    forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;
     forget_removed(node, &current.body, &doc.body)?;
     Ok(doc)
@@ -371,6 +391,7 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
     node.store().save_org(&doc)?;
+    forget_cancelled_root(node, &current, &doc);
     forget_removed(node, &current.body, &doc.body)
 }
 

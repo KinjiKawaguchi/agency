@@ -58,6 +58,8 @@ struct RequestDetail: View {
             if !item.isMine {
                 Text(Ja.Paper.waitingOn(item.decider?.label ?? request.to ?? "—"))
                     .font(.subheadline).foregroundStyle(.secondary).wrapping().card()
+            } else if !item.isAnswerableHere {
+                Text(Ja.Paper.cannotAnswerHere).font(.subheadline).foregroundStyle(.secondary).wrapping().card()
             } else {
                 answerSection
             }

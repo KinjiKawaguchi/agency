@@ -27,6 +27,7 @@ public enum WidgetWording {
         case .proposal: "稟議"
         case .question: "質問"
         case .pendingDecision: "判断待ち"
+        case .other: "依頼"
         }
     }
 }

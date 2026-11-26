@@ -11,7 +11,7 @@ Ids are lowercase letters, digits, and hyphens (`[a-z0-9][a-z0-9-]{0,39}`).
 
 ## Requirements
 
-- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.35 or later, and systemd to run the node as a service.
+- macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.34 or later, and systemd to run the node as a service.
 - macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler and `curl`, for example `sudo apt install build-essential curl`.
 - Rust, stable, 1.87 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
 - Node.js 24 with npm, to build the web client. Check with `node --version`.
@@ -47,9 +47,27 @@ Without `--dir`, `agency` keeps its data in `$AGENCY_DIR`, or in `~/.agency` whe
 
 ### A release build
 
-Instead of building from source, you can use a release build: for each release, the Releases page of the repository has a tarball for macOS on Apple silicon (`arm64`) and on Intel (`x86_64`), and for Linux on `x86_64` and on `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). A Linux build runs on a system with glibc 2.35 or later. [releasing.md](releasing.md) says how releases are made.
+Instead of building from source, use a release build. Each release has builds for macOS on Apple silicon (`arm64`) and Intel (`x86_64`), and Linux on `x86_64` and `arm64` (`uname -m` says `x86_64` or, on Linux, `aarch64` for arm64). Linux builds need glibc 2.34 or later; Debian 12 or later and Ubuntu 22.04 or later can install the Debian package. [releasing.md](releasing.md) says how releases are made.
 
-1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`. A build that is not of a release is a workflow artifact of the **release** workflow in the **Actions** tab (named `agency-<version>-<commit>-linux-<arch>`).
+#### Debian package (Linux)
+
+On Debian and its derivatives, install the package for your architecture first. It installs `agency` at `/usr/bin/agency` and these guides and licenses at `/usr/share/doc/agency/`; it does not install a system service or create a user.
+
+1. Download the `.deb` and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency_*_<arch>.deb*'`, where `<arch>` is `amd64` or `arm64`.
+2. Check and install it:
+
+```sh
+sha256sum -c agency_*.deb.sha256
+sudo apt install ./agency_*.deb
+agency --version
+```
+
+Then create the systemd user unit in [Run it with systemd](#run-it-with-systemd-linux), using `/usr/share/doc/agency/systemd-unit.sh` and `--agency /usr/bin/agency`.
+Installing a newer downloaded package with `sudo apt install ./agency_*.deb` upgrades it in place. `sudo apt remove agency` leaves `~/.agency` and your systemd user unit alone.
+
+#### Tarball (macOS or Linux)
+
+1. Download the tarball for your machine and its `.sha256` from the release. With the GitHub CLI: `gh release download <tag> --repo <this repository> --pattern 'agency-*-<os>-<arch>.tar.gz*'`, where `<os>` is `macos` or `linux`.
 2. Check and unpack it, and install the binary the way the previous section does:
 
 ```sh
@@ -94,6 +112,12 @@ Keep both on this machine, and out of anything that syncs or shares files.
 A backup of the data directory does not hold the root key. Back the root key up on its own, because without it nobody can change the org again: copy `~/.config/agency/root-keys/` to storage that is offline and encrypted (for example an encrypted disk image kept off this Mac), and copy it again after `agency root-rotate`, which makes a new key and removes the old one.
 An org made before root keys were kept apart uses `account.key` as its root until you move it to its own key with `agency root-rotate --org acme`.
 
+Give each org a recovery key, so that the org is not lost with the root key: `agency root-recovery --org acme` shows 24 words once. Write them on paper, keep them away from this Mac, and type back the three words it asks for. With the words, `agency root-recover --org acme` moves the org to a new root key made on the node you run it on, 72 hours later (`agency root-recover --org acme --finish`, on that same node). In those 72 hours your devices are told, `agency status` shows it, and the node's log says it, and anything the root key signs cancels it, for example `agency root-cancel-recovery --org acme`. Whoever has the words can start a recovery, and only your answer in those 72 hours stops it.
+
+When the root key asks for your presence, the node never signs because someone else asked: a member's new device, a join with your invite, or a device you approve from your phone waits until you run `agency root-sign` on this Mac. It lists every waiting change, then signs them all after one Touch ID press that names them. `agency status` and the desk in the app show what waits; a change that waits 7 days is dropped.
+
+If you have several orgs, each gets its own words by default. `agency root-recovery --org beta --same-words-as acme` instead asks for acme's words and gives beta the same recovery key, so one set of words recovers both. The trade-off: whoever gets those words can start a recovery of both orgs at once (each still waits 72 hours and tells you). Keep separate words for an org that holds other people's work.
+
 ### Run it with launchd
 
 `scripts/launchd-plist.sh` writes the agent's file.
@@ -121,11 +145,12 @@ If your `PATH` changes (for example, the harness moves), run the script again, t
 
 ### Run it with systemd (Linux)
 
-`scripts/systemd-unit.sh` writes the unit's file (the release tarball holds the script as `systemd-unit.sh`).
+`scripts/systemd-unit.sh` writes the unit's file (the Debian package installs it at `/usr/share/doc/agency/systemd-unit.sh`, and the release tarball holds it as `systemd-unit.sh`).
 The unit gets the `PATH` of the shell you run the script from, so the team runtime finds the same tools as your terminal does: a systemd user service otherwise gets only a short default `PATH`.
 Run it from a terminal where `scrum` and the harness's tools work. As for the launchd agent above, every command the team runtime runs (for the scrum harness, `node` and `gh`) must be in a directory on that `PATH`.
 
 ```sh
+# Use /usr/share/doc/agency/systemd-unit.sh and /usr/bin/agency after a Debian package install.
 scripts/systemd-unit.sh --agency ~/.local/bin/agency --dir ~/.agency \
   --out ~/.config/systemd/user/agency-node.service
 systemctl --user daemon-reload
@@ -283,6 +308,17 @@ Behind Cloudflare Access the node asks for the sign-in on every request, the man
 4. Turn the network off and open the app: it says the node cannot be reached.
 
 If the icon is blank in step 2, the browser did not send the sign-in with the icon request; tell the team, and the icons will be inlined in the manifest.
+
+### Notifications with the app closed: check, and turn off
+
+Once the node has `webPush` in `config.json` (it makes its own key in the data directory the first time it starts with it: `web-push-vapid.key`, readable by its account only), each browser of yours can be told. To check it, once for each browser you want notified (Chrome, Edge, or Firefox on a desktop or Android; not a browser on an iPhone, which has the app):
+
+1. **On the node.** `https://<your node>/api/push/vapid` answers a key (404 means the node has no `webPush`). The start-up log has no line `agency: web push is off: …` (see "Log lines"). Without `access`, set `"subject"` to a `mailto:` address you own: Apple's push service refuses the node's own `http` address, and the log says so.
+2. **In the browser.** Open **Devices**. Under **Notifications in this browser**, click **Turn on notifications** and allow them (the browser asks once), then click **Turn on for a closed app**. The card then says **On. The node tells this browser when something is new, with the page closed.**
+3. **See one.** Close every page of the app (the browser itself must keep running; a browser that is quit is told when it starts again, if the push service still has it: it keeps a message for an hour). When a request starts waiting for you, a device asks to be added, or a decision of yours is refused, a notification arrives within about a minute (the node checks every 30 seconds): "Agency", and under it the team and the request's title, or only "A request is waiting for you" on a node that hides titles. Clicking it opens the request on the desk (a device, the Devices screen). There is no test button: to see one at once, ask one of the team's agents a question that waits for you.
+4. **If nothing arrives.** When the node has sent a notice that the browser's push service did not take, the card says so under the line that says it is on: that the push service did not take the last notice, when, and why (its host and the status it answered, or that it could not be reached), and when it last took one, or that it has taken none yet. The card is read when the page is opened, so open it again to see a newer answer. The card says **Subscribe again** when the node's key was made again: click it. If **Notifications in this browser** says this browser does not allow notifications, allow them in the browser's site settings for this address, and turn them on again. The node's log has `agency: a push notification was not sent: …` for a push service that did not take one (it is tried again, to that browser alone, for a day).
+
+To turn it off, click **Turn off for a closed app** on the card of each browser (the browser is then removed from the node, and the notifications stop), or remove `webPush` from `config.json` and restart the node: nothing is sent, and the browsers' subscriptions are kept for when it is on again. To stop one browser without opening it, delete its entry: `GET /api/push/subscriptions` lists them by `id`, and `DELETE /api/push/subscriptions/<id>` (with the page's write token) removes one.
 
 ## AI subscriptions and their usage
 
@@ -513,7 +549,8 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 | `agency: team acme/app: the team runtime answers again` | The runtime works again after a failure. |
 | `agency: refused GET /fed/v1/…: …` | Another node's request was refused, and the line says why (for example "a read signed by bob at …, 400 seconds behind this node's clock; check the clocks"). The caller only got "not found". At most 20 such lines are written a minute, then one line says how many more were not; a refusal of a request validly signed by a member is always written. |
 | `agency: push notifications are off: …` | The `push` key cannot be read. Nothing is sent. |
-| `agency: a push notification was not sent: …` | APNs refused one; it is tried again 30 seconds later. |
+| `agency: a push notification was not sent: …` | APNs, or a browser's push service, did not take one (the line names the host and the status, never the message); it is tried again at each check, to that destination alone, for a day. |
+| `agency: web push is off: …` | The `webPush` setting or its key file cannot be used (a host that is not a name in `extraHosts`, a `subject` that is not a `mailto:` or `https://` address, a key file other accounts can read). Nothing is sent to browsers. |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | The collector of that funding source failed; the text says why (no login found, expired token, refused token, the service unavailable). The last usage file stays. The node runs `claude` to renew an expired login (see "Reading usage"); log in again in that source's configuration directory when the text says the login was refused, and the next read succeeds. `agency: usage of "<id>" is read again` follows. |
 | `agency: re-reading the replicas failed: …`, `agency: checking for new requests failed: …`, or `agency: retrying the outbox failed: …` | The node could not write to its data directory (for example, the disk is full). Another node that cannot be reached is not logged: `agency status` lists what waits in the outbox, and the web client shows when the replica of a team on another node was last read. |
 | `agency: team acme/app: a command the team runtime runs was not found: …` | The team runtime failed because a command it runs (such as `gh` or `node`) is not on the `PATH` of the launchd agent or the systemd unit. Check with `command -v` in your terminal, run the script of "Run it with launchd" or "Run it with systemd" again from a terminal where they work, and restart. It follows the line `the team runtime fails: … ENOENT`. |

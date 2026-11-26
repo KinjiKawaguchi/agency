@@ -4,6 +4,7 @@ use agency_core::read_auth::ReadAuth;
 use agency_proto::about::About;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
+use agency_proto::root_change::{PendingRootAnswer, RootAnswer};
 use agency_proto::view::FederatedView;
 use agency_proto::{DeviceChange, Envelope, JoinRequest, Signed, TokenUsage};
 use async_trait::async_trait;
@@ -91,6 +92,24 @@ async fn answer<T: DeserializeOwned>(
         status: status.as_u16(),
         message,
     })
+}
+
+/// The root's node's answer to a join or a device change: the version it signed (`200`), or the handle of
+/// the change it holds for its owner (`202`). The two shapes have no field in common.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum RootWire {
+    Pending(PendingRootAnswer),
+    Signed(Box<SignedOrg>),
+}
+
+impl RootWire {
+    fn into_answer(self) -> RootAnswer {
+        match self {
+            Self::Pending(pending) => RootAnswer::Pending(pending),
+            Self::Signed(doc) => RootAnswer::Signed(doc),
+        }
+    }
 }
 
 impl HttpPeers {
@@ -212,8 +231,10 @@ impl Peers for HttpPeers {
         node: &str,
         path: &str,
         change: &Signed<DeviceChange>,
-    ) -> Result<SignedOrg, PeerError> {
-        self.post(node, path, change).await
+    ) -> Result<RootAnswer, PeerError> {
+        self.post::<_, RootWire>(node, path, change)
+            .await
+            .map(RootWire::into_answer)
     }
 
     async fn post_join(
@@ -221,7 +242,15 @@ impl Peers for HttpPeers {
         node: &str,
         path: &str,
         request: &Signed<JoinRequest>,
-    ) -> Result<SignedOrg, PeerError> {
-        self.post(node, path, request).await
+    ) -> Result<RootAnswer, PeerError> {
+        self.post::<_, RootWire>(node, path, request)
+            .await
+            .map(RootWire::into_answer)
+    }
+
+    async fn get_join(&self, node: &str, path: &str) -> Result<RootAnswer, PeerError> {
+        answer::<RootWire>(self.http.get(format!("{node}{path}")).send().await)
+            .await
+            .map(RootWire::into_answer)
     }
 }
