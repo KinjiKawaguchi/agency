@@ -53,6 +53,14 @@ fn alerts(running: &Running) -> usize {
     running.notifier.0.lock().unwrap().sent.len()
 }
 
+fn attempts(running: &Running) -> usize {
+    running.notifier.0.lock().unwrap().desk_attempts
+}
+
+fn pass_after_seconds(running: &Running, seconds: i64) {
+    running.clock.advance(Duration::seconds(seconds));
+}
+
 fn pass_after(running: &Running, minutes: i64) {
     running.clock.advance(Duration::minutes(minutes));
 }
@@ -196,7 +204,7 @@ async fn with_no_iphone_registered_nothing_is_sent_and_the_desk_is_recorded_all_
 }
 
 #[tokio::test]
-async fn a_push_that_fails_is_tried_again_at_once_and_does_not_count_as_sent() {
+async fn a_push_that_fails_is_tried_again_after_the_floor_not_at_every_pass() {
     let (alice, memory) = alice().await;
     register(&alice, json!({})).await;
     notify_waiting(&alice.node).await.unwrap();
@@ -210,9 +218,41 @@ async fn a_push_that_fails_is_tried_again_at_once_and_does_not_count_as_sent() {
         vec!["acme/app/r-1".to_owned()],
         "the failed change is still pending"
     );
+    pass_after(&alice, 1);
+    let again = notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(
+        again.failures.len(),
+        0,
+        "no second attempt inside the window"
+    );
+    assert_eq!(attempts(&alice), 1);
     alice.notifier.0.lock().unwrap().failing = false;
+    pass_after(&alice, REFRESH_FLOOR_MINUTES);
     notify_waiting(&alice.node).await.unwrap();
-    assert_eq!(woken(&alice), 1, "the next pass sends it, with no new wait");
+    assert_eq!(woken(&alice), 1, "after the floor the pending change goes");
+}
+
+#[tokio::test]
+async fn with_apns_down_for_an_hour_a_node_tries_four_times_and_not_every_pass() {
+    let (alice, memory) = alice().await;
+    register(&alice, json!({})).await;
+    notify_waiting(&alice.node).await.unwrap();
+    pass_after(&alice, REFRESH_FLOOR_MINUTES);
+    decide(&memory, "r-1");
+    alice.notifier.0.lock().unwrap().failing = true;
+    for _ in 0..120 {
+        pass_after_seconds(&alice, 30);
+        notify_waiting(&alice.node).await.unwrap();
+    }
+    assert_eq!(
+        attempts(&alice),
+        4,
+        "one pass every 30 seconds for an hour: 120 passes"
+    );
+    alice.notifier.0.lock().unwrap().failing = false;
+    pass_after(&alice, REFRESH_FLOOR_MINUTES);
+    notify_waiting(&alice.node).await.unwrap();
+    assert_eq!(woken(&alice), 1, "and the change was kept the whole time");
 }
 
 #[tokio::test]

@@ -278,6 +278,8 @@ pub struct MemoryNotifierState {
     pub sent: Vec<(String, Notice)>,
     /// The tokens that were asked to read the desk (a push with no alert).
     pub desk_changed: Vec<String>,
+    /// How many times a wake was tried, those that failed included.
+    pub desk_attempts: usize,
     pub gone: Vec<String>,
     pub failing: bool,
     /// The VAPID key of a node with Web Push; none for a node without it.
@@ -311,6 +313,7 @@ impl Notifier for MemoryNotifier {
             .0
             .lock()
             .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
+        state.desk_attempts += 1;
         if state.failing {
             return Err(PushError::Failed("APNs did not answer".into()));
         }

@@ -309,7 +309,8 @@ fn is_refresh_due(last: &DeskRefresh, now: clock::OffsetDateTime) -> bool {
 /// decided and left), so that the widgets show them while the app is closed. The push carries nothing of
 /// the desk. It goes at once after a quiet time and at most once in `REFRESH_FLOOR_MINUTES`: a change
 /// inside the window stays pending and goes when it ends. A request's alert that reached an iPhone
-/// already woke it, so that change needs no push. The first pass only records.
+/// already woke it, so that change needs no push. A push that fails restarts the window, with the change still
+/// pending. The first pass only records.
 async fn refresh_desks(
     node: &Node,
     waiting: Vec<String>,
@@ -335,7 +336,12 @@ async fn refresh_desks(
     if wake_iphones(node, pass).await? {
         return record(waiting);
     }
-    Ok(())
+    // It failed (APNs is down, or refused): the change stays pending, and the window restarts, so that a node whose
+    // pushes fail asks again after the floor and not at every pass, which is what the floor is for.
+    node.store().save_desk_refresh(&DeskRefresh {
+        waiting: last.waiting,
+        at: clock::format(now),
+    })
 }
 
 /// Whether the node leaves titles and labels out of every notification: one meaning for APNs and Web
