@@ -29,6 +29,16 @@ async fn a_missing_file_is_not_found_and_only_a_route_gets_the_page() {
     for missing in [
         "/assets/app-0ld0ld.js",
         "/assets/missing.css",
+        "/assets/none",
+        // Outside assets/ and icons/, so each is caught by its extension alone.
+        "/app.js.map",
+        "/worker.mjs",
+        "/inter.woff2",
+        "/logo.svg",
+        "/favicon.ico",
+        "/data.json",
+        "/missing.css",
+        "/missing.png",
         "/icons/icon-192.png",
         "/icons/none",
         "/sw.js",
