@@ -199,7 +199,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
           account: { id: options.guest.member, label: options.guest.label, fingerprint: 'c0ffee123456' },
           orgs: [{ id: app.org, label: ORG_DEFINITION.label, isRoot: false, teams: [{ id: app.team, label: app.label, location: 'local', viewer: options.guest.member }] }],
           funding: [],
-          guest: { member: options.guest.member },
+          guest: { member: options.guest.member, org: app.org },
         }
   const viewerName = options.guest?.member ?? 'owner'
 
