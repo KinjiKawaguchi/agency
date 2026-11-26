@@ -66,11 +66,20 @@ public final class DeskStore {
     @ObservationIgnored private let source: any DeskSource
     @ObservationIgnored private let sender: any DeskSender
     @ObservationIgnored private let storage: any DraftStorage
+    @ObservationIgnored private let afterSend: @Sendable () async -> Void
+    /// The last view read of each team, kept when a later read of it fails.
+    @ObservationIgnored private var lastRead: [String: Team] = [:]
 
-    public init(source: any DeskSource, sender: any DeskSender, storage: any DraftStorage) {
+    /// - Parameter afterSend: runs after a decision was sent and before the desk is read again, to drop
+    ///   what a shared cache holds from before it.
+    public init(
+        source: any DeskSource, sender: any DeskSender, storage: any DraftStorage,
+        afterSend: @escaping @Sendable () async -> Void = {}
+    ) {
         self.source = source
         self.sender = sender
         self.storage = storage
+        self.afterSend = afterSend
         drafts = storage.load()
     }
 
@@ -100,7 +109,8 @@ public final class DeskStore {
                 }
                 for await one in group { snapshots.append((key: one.0, result: one.1)) }
             }
-            apply(snapshots.sorted { $0.key < $1.key })
+            let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
+            apply(snapshots.sorted { $0.key < $1.key }, keys: keys)
             await refreshRecent()
             needsSignIn = false
             loading = .loaded
@@ -115,15 +125,19 @@ public final class DeskStore {
         }
     }
 
-    private func apply(_ snapshots: [(key: String, result: Result<TeamSnapshot, Error>)]) {
-        var loaded: [Team] = []
+    /// A team that was read keeps its last answer when a later read of it fails, as the web client does, and
+    /// its failure is still reported; a team the account no longer lists is dropped.
+    private func apply(_ snapshots: [(key: String, result: Result<TeamSnapshot, Error>)], keys: Set<String>) {
         var failures: [String: String] = [:]
+        var read = lastRead.filter { keys.contains($0.key) }
         for (key, result) in snapshots {
             switch result {
-            case .success(let snapshot): loaded.append(Team(snapshot: snapshot))
+            case .success(let snapshot): read[key] = Team(snapshot: snapshot)
             case .failure(let error): failures[key] = Self.reason(error)
             }
         }
+        lastRead = read
+        let loaded = snapshots.compactMap { read[$0.key] }
         teams = loaded
         teamFailures = failures
         items = Desk.openItems(loaded)
@@ -179,6 +193,7 @@ public final class DeskStore {
             drafts[id] = nil
             storage.save(drafts)
             sent[id] = SentReply(isComment: decision.isComment, outcome: result.outcome, message: result.message)
+            await afterSend()
             await refresh()
         } catch NodeError.sessionExpired {
             needsSignIn = true
