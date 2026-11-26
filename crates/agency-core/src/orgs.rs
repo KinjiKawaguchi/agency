@@ -123,8 +123,6 @@ fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Resul
     queue_for(node, doc, targets)
 }
 
-/// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
-/// trust this node keeps for the org moves to the new root, so a later first copy is checked against it.
 /// A root key this node made for a recovery that was then cancelled will sign nothing: it is forgotten.
 fn forget_cancelled_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) {
     let made = previous
@@ -140,6 +138,8 @@ fn forget_cancelled_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) {
     }
 }
 
+/// After a version that names a new root (signed by the old one, as `verify_successor` checked), the
+/// trust this node keeps for the org moves to the new root, so a later first copy is checked against it.
 fn follow_new_root(node: &Node, previous: &SignedOrg, next: &SignedOrg) -> Result<()> {
     let (old, new) = (&previous.body.root.public_key, &next.body.root.public_key);
     if old == new {
