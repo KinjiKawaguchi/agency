@@ -13,6 +13,7 @@ pub mod error;
 pub mod evaluation;
 pub mod funding_pick;
 pub mod invites;
+pub mod kpis;
 pub mod node;
 pub mod notice;
 pub mod orgs;

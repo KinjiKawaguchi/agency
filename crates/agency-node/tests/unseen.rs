@@ -156,6 +156,7 @@ fn planted() -> SignedOrg {
         devices: vec![],
     };
     let body = OrgDefinition {
+        kpis: vec![],
         org: id("planted"),
         label: "Planted".into(),
         version: 1,
