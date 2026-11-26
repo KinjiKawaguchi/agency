@@ -416,6 +416,14 @@ export const en = {
       source: (path: string) => `The same numbers, for an agent to cite: GET ${path}. The intended shares are \`teams[].plan\` of the org definition.`,
     },
   },
+  loading: {
+    label: 'Loading…',
+    failed: (what: string, reason: string) => `Could not load ${what}: ${reason}`,
+    retryIn: (seconds: number) => `Trying again in ${seconds} s.`,
+    retrying: 'Trying again…',
+    tryAgain: 'Try again',
+    what: { overview: 'the overview', orgChart: 'the org chart', people: 'participants and work' },
+  },
 } as const
 
 type Widen<T> = T extends string

@@ -411,4 +411,12 @@ export const ja: Messages = {
       source: (path) => `エージェントが引用する同じ数字: GET ${path}。意図する割合は組織定義の \`teams[].plan\` です。`,
     },
   },
+  loading: {
+    label: '読み込んでいます…',
+    failed: (what, reason) => `${what}を読み込めませんでした: ${reason}`,
+    retryIn: (seconds) => `${seconds} 秒後にもう一度試します。`,
+    retrying: 'もう一度試しています…',
+    tryAgain: 'もう一度試す',
+    what: { overview: '全体', orgChart: '組織図', people: '参加者と仕事' },
+  },
 }

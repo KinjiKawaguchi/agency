@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import { useState } from 'react'
 import { KeyStoreProvider } from '../device/context'
@@ -12,6 +12,7 @@ import { NativeBadge } from '../native/NativeBadge'
 import { NativePushRegistration } from '../native/NativePushRegistration'
 import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { ToastProvider } from '../shared/Toasts'
+import { createQueryClient } from './queryClient'
 import { createAppRouter } from './router'
 
 interface AppProps {
@@ -20,11 +21,13 @@ interface AppProps {
   locale?: Locale
   /** Where this device's key is kept; the browser's IndexedDB when absent. */
   keyStore?: KeyStore
+  /** The client every read goes through; one with the app's retry rule when absent. */
+  queryClient?: QueryClient
 }
 
-export function App({ client, history, locale, keyStore }: AppProps) {
+export function App({ client, history, locale, keyStore, queryClient: given }: AppProps) {
   const [api] = useState(() => client ?? createApiClient())
-  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } }))
+  const [queryClient] = useState(() => given ?? createQueryClient())
   const [router] = useState(() => createAppRouter(history))
   return (
     <I18nProvider {...(locale === undefined ? {} : { initial: locale })}>

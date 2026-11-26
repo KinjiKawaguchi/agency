@@ -2,13 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
-import { SignInExpiredError } from '../api/session'
 import { usageQuery, type TeamState } from '../api/queries'
 import type { TeamRef } from '../api/clientApi'
 import type { Team } from '../api/teams'
 import { teamKey } from '../api/teams'
 import { totalsOf } from '../costs/usage'
 import { useI18n } from '../i18n'
+import { Loading, Skeleton } from '../shared/Skeleton'
+import { TeamFailed } from '../shared/TeamFailed'
 import { summarize } from './summary'
 
 const USAGE_DAYS = 7
@@ -86,8 +87,13 @@ export function TeamCard({ orgId, teamRef, state }: { orgId: string; teamRef: Te
         {tag === undefined ? null : <span className={`ov-tag tag-${tag}`}>{t.overview.tags[tag]}</span>}
       </header>
       {state.status === 'ready' ? <Body team={state.team} /> : null}
-      {state.status === 'loading' ? <p className="ov-line ov-quiet">{t.app.loading}</p> : null}
-      {state.status === 'failed' ? <p className="ov-line ov-failed" role="status">{state.error instanceof SignInExpiredError ? t.app.signInExpired.nothingToShow : t.overview.loadFailed(state.error.message)}</p> : null}
+      {state.status === 'loading' ? (
+        <Loading>
+          <Skeleton />
+          <Skeleton kind="short" />
+        </Loading>
+      ) : null}
+      {state.status === 'failed' ? <TeamFailed org={orgId} team={teamRef.id} failure={state} /> : null}
     </article>
   )
 }
