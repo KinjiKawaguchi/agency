@@ -44,7 +44,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationC
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let link = NotificationLink(userInfo: response.notification.request.content.userInfo) else { return }
-        await push.open(link)
+        guard let tap = NotificationTap(userInfo: response.notification.request.content.userInfo) else { return }
+        await push.open(tap)
     }
 }
