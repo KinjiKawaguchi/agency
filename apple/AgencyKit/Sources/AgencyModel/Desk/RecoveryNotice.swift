@@ -34,8 +34,14 @@ public struct RecoveryNotice: Equatable, Identifiable, Sendable {
     }
 
     /// What the notice says before the command: what started, when it takes effect (when known), and the key it moves to.
-    public func lines(in timeZone: TimeZone = .current) -> [String] {
-        var lines = [isRoot ? Ja.Recovery.title(org: label) : Ja.Recovery.titleForMember(org: label)]
+    public func lines(in timeZone: TimeZone = .current) -> [String] { [headline] + details(in: timeZone) }
+
+    /// What started: the first sentence, for the owner of the root key or for any other member.
+    public var headline: String { isRoot ? Ja.Recovery.title(org: label) : Ja.Recovery.titleForMember(org: label) }
+
+    /// The sentences after it: when it takes effect, the keys, and for a member who cannot cancel it who can.
+    public func details(in timeZone: TimeZone = .current) -> [String] {
+        var lines: [String] = []
         if let takesEffectAt { lines.append(Ja.Recovery.takesEffect(at: JaFormat.dateTime(takesEffectAt, in: timeZone))) }
         if let newRootKey { lines.append(Ja.Recovery.newRootKey(newRootKey)) }
         if replacesRecoveryKey { lines.append(Ja.Recovery.replacesRecoveryKey) }

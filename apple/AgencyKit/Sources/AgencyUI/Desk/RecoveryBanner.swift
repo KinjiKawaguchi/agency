@@ -13,9 +13,9 @@ struct RecoveryBanner: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning).accessibilityHidden(true)
-                Text(notice.lines(in: timeZone).first ?? "").font(.subheadline.weight(.semibold)).wrapping()
+                Text(notice.headline).font(.subheadline.weight(.semibold)).wrapping()
             }
-            ForEach(Array(notice.lines(in: timeZone).dropFirst().enumerated()), id: \.offset) { _, line in
+            ForEach(Array(notice.details(in: timeZone).enumerated()), id: \.offset) { _, line in
                 Text(line).font(.subheadline).wrapping()
             }
             if let command = notice.cancelCommand {
