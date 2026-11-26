@@ -1,0 +1,4 @@
+#!/bin/bash
+# A stand-in for curl: the node "answers" when the installed binary's text has GOOD in it. Notes the URL.
+echo "${*: -1}" >> "${FAKE_STATE:?}/urls"
+grep -q GOOD "${FAKE_AGENCY:?}" 2>/dev/null

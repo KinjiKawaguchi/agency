@@ -1,0 +1,24 @@
+#!/bin/bash
+# A stand-in for launchctl, for scripts/test/deploy-macos.sh. The "job" is running with the process id in
+# $FAKE_STATE/pid; a restart gives it a new one. An installed binary whose text has CRASH in it keeps the
+# job restarting: its process id changes every time it is asked for.
+state="${FAKE_STATE:?}"
+pid="$(cat "$state/pid" 2>/dev/null || echo 0)"
+case "$1" in
+  print)
+    [ -z "${FAKE_NOT_LOADED:-}" ] || exit 113
+    if grep -q CRASH "${FAKE_AGENCY:?}" 2>/dev/null; then
+      pid=$((pid + 1))
+      echo "$pid" > "$state/pid"
+    fi
+    printf 'gui/501/fake = {\n\tstate = running\n'
+    [ "$pid" -eq 0 ] || printf '\tpid = %s\n' "$pid"
+    printf '}\n'
+    ;;
+  kickstart)
+    # FAKE_NO_RESTART: the old process lives on, as when the restart did not take effect.
+    [ -n "${FAKE_NO_RESTART:-}" ] || echo "$((pid + 100))" > "$state/pid"
+    echo "$*" >> "$state/kickstarts"
+    ;;
+  *) echo "launchctl stand-in: unexpected $*" >&2; exit 64 ;;
+esac
