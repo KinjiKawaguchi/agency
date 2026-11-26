@@ -19,11 +19,11 @@ package="$(find "$work/out" -name '*.deb' -print -quit)"
 [ -n "$package" ] || { fail "the package was not written"; exit "$failures"; }
 expect "the package is for amd64" "$(dpkg-deb -f "$package" Architecture)" amd64
 expect "the maintainer is the project" "$(dpkg-deb -f "$package" Maintainer)" "Agency Project <agency@agency.invalid>"
-expect "the package describes the node" "$(dpkg-deb -f "$package" Description | head -n 1)" "Agency node"
+expect "the package describes the node" "$(dpkg-deb -f "$package" Description | head -n 1)" "node of a self-hosted organization of AI agents and people"
 expect "a non-release build records its commit" "$(dpkg-deb -f "$package" Version | sed "s/$version//")" "+git$(git rev-parse --short=7 HEAD)"
 case "$(dpkg-deb -f "$package" Depends)" in *libc6\ \(\>=\ [0-9]*\.[0-9]*\)*) ;; *) fail "the package does not depend on the binary's libc: $(dpkg-deb -f "$package" Depends)" ;; esac
 contents="$(dpkg-deb --contents "$package")"
-for path in usr/bin/agency usr/share/doc/agency/install.md usr/share/doc/agency/install.ja.md usr/share/doc/agency/LICENSE-MIT usr/share/doc/agency/LICENSE-APACHE usr/share/doc/agency/copyright usr/share/doc/agency/systemd-unit.sh; do
+for path in usr/bin/agency usr/share/doc/agency/install.md usr/share/doc/agency/install.ja.md usr/share/doc/agency/LICENSE-MIT usr/share/doc/agency/LICENSE-APACHE usr/share/doc/agency/copyright usr/share/doc/agency/changelog.gz usr/share/doc/agency/systemd-unit.sh; do
   case "$contents" in *"./$path"*) ;; *) fail "the package does not contain $path" ;; esac
 done
 case "$contents" in *"./lib/systemd/"* | *"./usr/lib/systemd/"*) fail "the package installs a system unit" ;; esac

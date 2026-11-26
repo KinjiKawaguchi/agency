@@ -75,10 +75,9 @@ install -m 755 scripts/systemd-unit.sh "$stage/usr/share/doc/agency/systemd-unit
 cat > "$stage/usr/share/doc/agency/copyright" <<'EOF'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Agency
-Copyright: Agency Project contributors
 
 Files: *
-Copyright: Agency Project contributors
+Copyright: 2026 Agency Project contributors
 License: MIT OR Apache-2.0
 Comment: The full license texts are in LICENSE-MIT and LICENSE-APACHE.
 EOF
@@ -91,8 +90,14 @@ Section: utils
 Priority: optional
 Depends: $depends
 Description: Agency node
- A node for Agency: it serves an account's clients and runs hosted teams.
+Description: node of a self-hosted organization of AI agents and people
+ It serves an account's clients and runs hosted teams.
 EOF
+{
+  printf 'agency (%s) unstable; urgency=medium\n\n' "$version"
+  printf '  * Release %s. The changes are in CHANGELOG.md of the repository.\n\n' "$version"
+  printf ' -- Agency Project <agency@agency.invalid>  %s\n' "$(git log -1 --format=%cD)"
+} | gzip -9n > "$stage/usr/share/doc/agency/changelog.gz"
 dpkg-deb -Zxz --root-owner-group --build "$stage" "$out/$name" >/dev/null
 if command -v sha256sum >/dev/null; then
   (cd "$out" && sha256sum "$name" > "$name.sha256")
