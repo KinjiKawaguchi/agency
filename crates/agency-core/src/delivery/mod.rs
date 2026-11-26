@@ -5,12 +5,14 @@
 mod evaluate;
 mod facts;
 mod kinds;
+mod participants;
 mod period;
 mod red;
 
 pub use evaluate::{evaluate, Input};
 pub use facts::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 pub use kinds::{classify, Kind};
+pub use participants::attribute;
 pub(crate) use period::proto_date;
 pub use period::Period;
 

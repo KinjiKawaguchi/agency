@@ -39,7 +39,39 @@
           "prLeadSeconds": [1800, 7200, 9000, 600],
           "issueLeadSeconds": []
         }
-      ]
+      ],
+      "participants": [
+        {
+          "name": "backend",
+          "busySeconds": 30600,
+          "waitingSeconds": 2400,
+          "idleSeconds": 4800,
+          "costUsd": 8.45,
+          "tokens": { "input": 120000, "output": 45000, "cacheRead": 2400000, "cacheWrite": 180000 },
+          "merged": 3,
+          "costPerMergedPrUsd": 2.82
+        },
+        {
+          "name": "lead",
+          "busySeconds": 10800,
+          "waitingSeconds": 4800,
+          "idleSeconds": 25200,
+          "costUsd": 4.35,
+          "tokens": { "input": 60000, "output": 21000, "cacheRead": 1300000, "cacheWrite": 90000 },
+          "merged": 3,
+          "costPerMergedPrUsd": 1.45
+        },
+        {
+          "name": "reviewer",
+          "busySeconds": 1500,
+          "waitingSeconds": 0,
+          "idleSeconds": 300,
+          "costUsd": 0.5,
+          "tokens": { "input": 8000, "output": 3000, "cacheRead": 150000, "cacheWrite": 12000 },
+          "merged": 0
+        }
+      ],
+      "unattributedMerged": 1
     },
     {
       "team": "docs",

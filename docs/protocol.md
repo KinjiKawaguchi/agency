@@ -307,11 +307,14 @@ How fast a team's work ships, and where its tokens go. The team's node works the
 ```
 Evaluation       { org, days, from: Date, until: Date, generatedAt, teams: TeamEvaluation[], unavailable: TeamUnavailable[] }
 TeamUnavailable  { team: Id, reason: string }
-TeamEvaluation   { team, from: Date, until: Date, summary: EvaluationSummary, byDay: DayEvaluation[] }
+TeamEvaluation   { team, from: Date, until: Date, summary: EvaluationSummary, byDay: DayEvaluation[],
+                   participants?: ParticipantEvaluation[], unattributedMerged? }
 EvaluationSummary{ merged: MergedCounts, prLeadMedianSeconds?, prLeadP90Seconds?, issueLeadMedianSeconds?, issueLeadP90Seconds?,
                    mainRedSeconds, longestRedSeconds, reverts, costPerMergedPrUsd? }     // ? = left out when there is no value
 MergedCounts     { feat, fix, refactor, docs, test, chore, other }
 DayEvaluation    { date, merged: MergedCounts, reverts, mainRedSeconds, costUsd, prLeadSeconds: int[], issueLeadSeconds: int[] }
+ParticipantEvaluation { name, busySeconds, waitingSeconds, idleSeconds, costUsd, tokens: { input, output, cacheRead, cacheWrite },
+                   merged, costPerMergedPrUsd? }
 
 Effort           { org, days, from, until, generatedAt, teams: TeamEffort[], unavailable: TeamUnavailable[] }
 TeamEffort       { team, from, until, byType: ByWorkType<TypeUsage>, byDay: DayEffort[] }
@@ -329,6 +332,7 @@ TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWri
 - The summary's p90 is the nearest rank (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples, rounded down. A median or p90 is left out with no samples.
 - `costPerMergedPrUsd` is the period's cost divided by the pull requests merged in it (`merged` and `reverts`). Token usage is per day, so there is no per-pull-request attribution. It is left out when nothing merged.
 - **Work type** (`Effort`): the board's "Work type" field when the item has one; otherwise the pull request's type: `feat` is `newFeature`, `refactor` is `debt`, `fix` is `maintenance` (`incident` when its issue carries the label `incident`), and `docs`, `test`, `chore` are `maintenance`. Work with neither is `unclassified`. `improvement` comes only from the board field. The intended allocation and budget are the org definition's team plan; `Effort` does not copy them.
+- **Participants** (`participants`, `unattributedMerged`) are there only when the team's runtime lists `participantMetrics` and answered (see "Participant metrics"); without them a team's numbers are the same as before, and a node that does not know of them leaves them out. The node asks for the same `days` at its own time zone, so the days of the two are the same days, and adds up each participant's times, cost, and tokens over the period (`costUsd` rounded to cents). A participant's `merged` is the number of pull requests merged in the period (`merged` and `reverts` of the summary together) that the runtime names that participant the author of, found by `repo` and `number`; `unattributedMerged` is the rest, so that the `merged` of the participants and `unattributedMerged` add up to the summary's. A participant the runtime names only as an author has zero times. `costPerMergedPrUsd` of a participant is their cost divided by their `merged`, left out when it is 0. Time spent waiting for a human is a lower bound where a runtime sees only some of the waits.
 - A team whose answer cannot be had (not configured, its node unreachable, GitHub unavailable) is listed in `unavailable` with a reason in plain text, without a secret or an address, and the other teams are answered. A malformed answer from another node is such a failure.
 - Before passing a report on, the node checks that `org` and `days` are the ones it asked for; that each `from` and `until` (the answer's and each team's) are `days` calendar days apart, counting both (`until` − `from` + 1 = `days`); that no team is named twice (in `teams` and in `unavailable`); that each team's days are in order and inside its own period, at most `days` of them; and that every cost is a number that is not negative. For a federation answer it also checks that the one team named is the team it asked for.
 - The shared samples are `testdata/evaluation.sample.json` and `testdata/effort.sample.json`.

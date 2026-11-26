@@ -22,7 +22,7 @@ fn facts() -> DeliveryFacts {
     DeliveryFacts {
         pull_requests: vec![MergedPullRequest {
             repo: "acme/app".into(),
-            number: 1,
+            number: 101,
             title: "feat(web): add a screen".into(),
             body: String::new(),
             opened_at: at("2026-11-24T08:00:00Z"),
@@ -116,6 +116,111 @@ async fn a_member_reads_the_evaluation_of_a_team_that_has_repositories() {
         asked,
         [(vec!["acme/app".to_string()], at("2026-11-11T00:00:00Z"))],
         "the period's start"
+    );
+}
+
+const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
+
+/// alice's evaluation of `acme/app` over 14 days as bob reads it, and what her runtime was asked.
+async fn evaluation_with_participants(
+    report: Option<agency_proto::participant_metrics::ParticipantMetrics>,
+    offset_hours: i8,
+) -> (agency_proto::evaluation::TeamEvaluation, Vec<(u32, i32)>) {
+    evaluation_cut_at(report, offset_hours, None).await
+}
+
+/// The same, with the runtime's report cut at `cut_at_minutes` (the node's time zone when `None`).
+async fn evaluation_cut_at(
+    report: Option<agency_proto::participant_metrics::ParticipantMetrics>,
+    offset_hours: i8,
+    cut_at_minutes: Option<i32>,
+) -> (agency_proto::evaluation::TeamEvaluation, Vec<(u32, i32)>) {
+    let (alice, memory) = alice().await;
+    configure(&alice);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    alice
+        .clock
+        .set_utc_offset(agency_proto::clock::UtcOffset::from_hms(offset_hours, 0, 0).unwrap());
+    memory.lock().unwrap().participants = report.map(|report| {
+        // A runtime that was asked for the node's time zone has cut its days there.
+        agency_proto::participant_metrics::ParticipantMetrics {
+            utc_offset_minutes: cut_at_minutes.unwrap_or(i32::from(offset_hours) * 60),
+            ..report
+        }
+    });
+    let bob = joined_bob(&alice).await;
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let evaluation: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!(evaluation.check(&id("acme"), 14), Ok(()));
+    let asks = memory.lock().unwrap().participant_asks.clone();
+    (evaluation.teams[0].clone(), asks)
+}
+
+#[tokio::test]
+async fn the_participants_of_a_runtime_that_reports_them_are_in_the_evaluation_at_the_nodes_time_zone(
+) {
+    let report = serde_json::from_str(PARTICIPANTS).unwrap();
+    let (team, asks) = evaluation_with_participants(Some(report), 9).await;
+    assert_eq!(asks, [(14, 540)], "the range, and the node's own time zone");
+    let names: Vec<&str> = team.participants.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["backend", "lead", "reviewer"]);
+    let backend = &team.participants[0];
+    assert_eq!(
+        (
+            backend.busy_seconds,
+            backend.waiting_seconds,
+            backend.idle_seconds
+        ),
+        (30_600, 2_400, 4_800)
+    );
+    assert_eq!(backend.cost_usd, 8.45);
+    assert_eq!(
+        (backend.merged, backend.cost_per_merged_pr_usd),
+        (1, Some(8.45)),
+        "#101 is backend's, and it is the one pull request merged"
+    );
+    assert_eq!(team.unattributed_merged, 0);
+    assert_eq!(
+        team.summary.merged.feat, 1,
+        "the delivery numbers are the same as without participants"
+    );
+}
+
+#[tokio::test]
+async fn a_runtime_that_does_not_report_participants_or_reports_the_wrong_ones_leaves_them_out() {
+    let (without, _) = evaluation_with_participants(None, 0).await;
+    assert!(without.participants.is_empty() && without.unattributed_merged == 0);
+    assert_eq!(without.summary.merged.feat, 1);
+
+    let mut another_team: agency_proto::participant_metrics::ParticipantMetrics =
+        serde_json::from_str(PARTICIPANTS).unwrap();
+    another_team.team = id("other");
+    let (wrong, asks) = evaluation_with_participants(Some(another_team), 0).await;
+    assert_eq!(asks, [(14, 0)], "it was asked");
+    assert!(
+        wrong.participants.is_empty(),
+        "but a report of another team is not used"
+    );
+    assert_eq!(
+        wrong.summary.merged.feat, 1,
+        "and the numbers do not wait for it"
+    );
+
+    // A runtime that cut its days in another time zone than the node's is not used.
+    let (elsewhere, _) = {
+        let report = serde_json::from_str(PARTICIPANTS).unwrap();
+        evaluation_cut_at(Some(report), 0, Some(540)).await
+    };
+    assert!(elsewhere.participants.is_empty());
+
+    let mut malformed: agency_proto::participant_metrics::ParticipantMetrics =
+        serde_json::from_str(PARTICIPANTS).unwrap();
+    malformed.participants[0].by_day[0].cost_usd = -1.0;
+    let (bad, _) = evaluation_with_participants(Some(malformed), 0).await;
+    assert!(
+        bad.participants.is_empty(),
+        "nor a report that is not well formed"
     );
 }
 

@@ -3,7 +3,7 @@
 //! Nothing is stored here; a read of GitHub is kept for a short while by the adapter, not by this module.
 use crate::client::membership;
 use crate::config::HostedTeam;
-use crate::delivery::{evaluate, Input, Period};
+use crate::delivery::{attribute, evaluate, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
@@ -13,6 +13,7 @@ use crate::unseen;
 use crate::usage::check_days;
 use agency_proto::evaluation::{Evaluation, TeamUnavailable};
 use agency_proto::org::TeamPlace;
+use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::usage::DEFAULT_USAGE_DAYS;
 use agency_proto::{Date, Id, Role, Timestamp};
 
@@ -55,6 +56,26 @@ async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, 
         .collect()
 }
 
+/// The team's participants over the period, if its runtime reports them and what it reports is what was
+/// asked for (the team, the range, and the node's time zone, so that its days are the evaluation's days).
+/// Without it the numbers are the same as before: they do not wait for participants.
+async fn participants_of(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+    offset_minutes: i32,
+) -> Option<ParticipantMetrics> {
+    let report = node
+        .runtime()
+        .participant_metrics(hosted, days, offset_minutes)
+        .await
+        .ok()?;
+    report
+        .check(&hosted.org, &hosted.team, days, Some(offset_minutes))
+        .ok()?;
+    Some(report)
+}
+
 /// The repositories of a hosted team, if its configuration names any.
 fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
     hosted
@@ -79,6 +100,8 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };
     let costs = daily_costs(node, hosted, days).await;
+    let offset_minutes = i32::from(node.utc_offset().whole_minutes());
+    let participants = participants_of(node, hosted, days, offset_minutes).await;
     let input = Input {
         now,
         offset: node.utc_offset(),
@@ -87,13 +110,18 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
         runs: &facts.runs,
         cost_by_day: &costs,
     };
+    let mut team = evaluate(hosted.team.clone(), &input);
+    if let Some(report) = &participants {
+        (team.participants, team.unattributed_merged) =
+            attribute(report, &facts.pull_requests, &period);
+    }
     Evaluation {
         org: hosted.org.clone(),
         days,
         from: period.first(),
         until: period.last(),
         generated_at: generated_at(node),
-        teams: vec![evaluate(hosted.team.clone(), &input)],
+        teams: vec![team],
         unavailable: vec![],
     }
 }
