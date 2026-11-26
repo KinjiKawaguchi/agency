@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi } from '../api/context'
 import type { DeviceList, DeviceRequest } from '../api/clientApi'
-import { DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
+import { DEVICES_KEY, DEVICES_LIVE_MS, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { useToast } from '../shared/Toasts'
 import { addChangeFor, signChange } from './changes'
@@ -12,8 +12,6 @@ import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
-const WAITING_POLL_MS = 3_000
-const POLL_MS = 30_000
 
 const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure))
 
@@ -152,11 +150,8 @@ function YourDevices({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLi
 function WithDeviceKey({ deviceKey }: { deviceKey: DeviceKey }) {
   const { t } = useI18n()
   const api = useApi()
-  // A device waiting to be added asks again quickly, to notice when it is.
-  const devices = useQuery({
-    ...devicesQuery(api),
-    refetchInterval: (query) => (query.state.data !== undefined && enrollmentOf(deviceKey.publicKey, query.state.data).status === 'pending' ? WAITING_POLL_MS : POLL_MS),
-  })
+  // While this screen is open the list is read every few seconds (not in a hidden tab), so a device that asks to be added, or that was approved, shows up by itself.
+  const devices = useQuery(devicesQuery(api, DEVICES_LIVE_MS))
   if (devices.data === undefined) {
     return devices.error === null ? <p className="muted">{t.devices.loadingList}</p> : <p className="empty" role="alert">{t.devices.listFailed(messageOf(devices.error))}</p>
   }

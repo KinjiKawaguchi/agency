@@ -1,7 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useApi } from '../api/context'
-import { devicesQuery } from '../api/queries'
+import { DEVICES_LIVE_MS, devicesQuery, POLL_MS } from '../api/queries'
 import { useI18n } from '../i18n'
 import { enrollmentOf } from './enrollment'
 import { useDeviceKey } from './useDeviceKey'
@@ -16,7 +16,8 @@ export function AddDeviceNotice() {
   const { t } = useI18n()
   const api = useApi()
   const key = useDeviceKey()
-  const devices = useQuery(devicesQuery(api))
+  // While this device is not added, the list is read often, so the notice changes when it asks and goes when it is approved.
+  const devices = useQuery({ ...devicesQuery(api), refetchInterval: (query) => (query.state.data !== undefined && key.status === 'ready' && enrollmentOf(key.key.publicKey, query.state.data).status !== 'enrolled' ? DEVICES_LIVE_MS : POLL_MS) })
   const path = useRouterState({ select: (state) => state.location.pathname })
   if (key.status !== 'ready' || devices.data === undefined || path === '/devices') return null
   const { status } = enrollmentOf(key.key.publicKey, devices.data)

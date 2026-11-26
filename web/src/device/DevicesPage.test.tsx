@@ -1,8 +1,10 @@
+import { focusManager } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { memoryKeyStore, renderApp } from '../test/render'
+import { createTestNode } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair, type DeviceKey } from './deviceKey'
 import { settledDeviceKey } from './useDeviceKey'
 
@@ -170,6 +172,48 @@ describe('devices screen', () => {
       'Check that the code it shows is exactly the one above.',
       'Confirm there.',
     ])
+  })
+})
+
+describe('a device list that stays current while the screen is open', () => {
+  afterEach(() => focusManager.setFocused(undefined))
+
+  it('shows a request that arrives after the screen has loaded, with its button, without a reload', async () => {
+    const node = createTestNode()
+    renderApp({ path: '/devices', node, enrolled: true })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
+    const other = await otherDeviceAsks(node, 'Phone')
+    expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 9000 })).toHaveTextContent(other.pairingCode)
+    expect(screen.getByRole('button', { name: 'The codes match: add it' })).toBeInTheDocument()
+  })
+
+  it('does not read the list while the tab is hidden, and reads it again when the tab is back', async () => {
+    const node = createTestNode()
+    let reads = 0
+    const counted = createApiClient((request) => {
+      if (request.method === 'GET' && new URL(request.url, 'http://mock.local').pathname === '/api/devices') reads += 1
+      return node.handle(request)
+    })
+    renderApp({ path: '/devices', node, enrolled: true, client: counted })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
+    focusManager.setFocused(false)
+    const whileHidden = reads
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    expect(reads).toBe(whileHidden)
+    const other = await otherDeviceAsks(node, 'Tablet')
+    focusManager.setFocused(true)
+    expect(await screen.findByLabelText('Pairing code of Tablet')).toHaveTextContent(other.pairingCode)
+  }, 20_000)
+
+  it('takes the notice on the other screens away by itself once the device is approved', async () => {
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/overview', node, enrolled: false, keyStore })
+    const key = await browserKey(keyStore)
+    await createApiClient((request) => node.handle(request)).requestDevice({ label: 'Browser', publicKey: key.publicKey })
+    expect(await screen.findByText('This device is waiting to be added. Open it to see the code to confirm.', undefined, { timeout: 9000 })).toBeInTheDocument()
+    node.addDeviceFromTerminal(key.pairingCode)
+    await waitFor(() => expect(screen.queryByText('This device is waiting to be added. Open it to see the code to confirm.')).not.toBeInTheDocument(), { timeout: 9000 })
   })
 })
 
