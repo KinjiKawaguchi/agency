@@ -2,6 +2,7 @@
 import type { Blocked } from "./Blocked.js";
 import type { Eta } from "./Eta.js";
 import type { WorkStatus } from "./WorkStatus.js";
+import type { WorkType } from "./WorkType.js";
 
 export type WorkItem = { 
 /**
@@ -11,4 +12,9 @@ ref: string, title: string, status: WorkStatus, assignee?: string, blocked?: Blo
 /**
  * The parent epic's ref (`repo#N`).
  */
-epic?: string, points?: number, eta?: Eta, };
+epic?: string, points?: number, eta?: Eta, 
+/**
+ * What the work is for, as the board's "Work type" field says. Absent when the item has none: the
+ * field is the board's value and is never guessed here.
+ */
+workType?: WorkType, };

@@ -183,7 +183,9 @@ RequestOption { key, text, isRecommended: boolean, detail?: string }
 ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
-                points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
+                points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
+                workType?: WorkType }
+WorkType      "newFeature" | "improvement" | "maintenance" | "debt" | "incident"
 BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
                 forecast?: { days, at: Timestamp }, basis }
@@ -194,6 +196,10 @@ Participants (`people`, humans and agents):
 - `state` says whether the participant is active; `waitingOn` says who has to act before they can continue. A participant can be `working` and still wait on someone, for example on a permission prompt: then `waitingOn` names the participant who answers the prompt and `status` says it is a permission prompt.
 - `waitingOn.person` uses the same names as `Request.to`.
 - Who waits on the reader is decided by the reader's home node and given to clients as `TeamSnapshot.waitingOnViewer`: the `id`s of the participants whose `waitingOn` is `person` with the reader's runtime name in that team (`viewer`). Unlike a request's `to`, a name that is not the reader's is never theirs, because `waitingOn` can name anyone on the team, agents included. A reader the team does not address (no `viewer`) has nobody waiting on them.
+
+Work items:
+
+- `workType` is the board's "Work type" field of the item (see "Work type" in the glossary), as the team's runtime reads it. It is left out when the board has none; a runtime never guesses it, and whoever needs a type for an item without one (the node, when it splits effort by work type) works it out from the item's pull request itself. A value outside the five names fails the view's parse, like any other malformed field.
 
 Requests:
 
