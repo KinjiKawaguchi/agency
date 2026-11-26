@@ -88,6 +88,17 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/effort?days=\(days)")
     }
 
+    /// The numbers the owner keeps for what the org measures over the last `days` days (1 to 90). Owner only: anyone else
+    /// gets 403, and a client then shows nothing of it.
+    public func outcomes(org: String, days: Int) async throws -> Outcomes {
+        try await get("/api/orgs/\(Self.segment(org))/outcomes?days=\(days)")
+    }
+
+    /// How each KPI an aim of the org names stood around the day its epic shipped. Owner only, like `outcomes`.
+    public func readings(org: String) async throws -> Readings {
+        try await get("/api/orgs/\(Self.segment(org))/outcomes/readings")
+    }
+
     /// What the org intends for each of its teams, from its definition. A team without a valid plan has none here.
     public func orgPlans(org: String) async throws -> OrgPlans {
         try await get("/api/orgs/\(Self.segment(org))")

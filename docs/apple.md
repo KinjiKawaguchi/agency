@@ -100,6 +100,16 @@ A node answers 503 for a team's view while its board is still being read (and fo
 
 A screen never shows a value the node has not given: a `0`, an empty list or a default before the answer makes "not read yet" look like "really nothing". Until the node has answered, a screen shows grey bars (a skeleton) in the place of the content; when the read fails and nothing was read before, it says so and why. What was read before stays when a later read fails. The desk has `hasAnswer` (a team was read, or a read finished) and `knownWaitingCount` (`nil` until a read has finished, `0` only when the node said nothing waits); once a read has finished the desk stays answered, so a refresh under way or a failed one keeps the pile and the number; a place outside the window that shows the number (the Mac's menu-bar item, a badge) uses the optional one. What the node says about itself (`hidesTitles`, whether it sends the kinds of notification) is optional until it has said: the widgets show no title, and the settings claim nothing, until then. `NoStandInValuesTests` reads the sources of the screens, the widgets and the app for `?? 0`, `?? []`, `?? ""`, `?? false`, `?? true` and state that starts as a number or `true`, and fails for any that is not named in the test with the reason it is not a stand-in.
 
+## The outcomes page (agency#206)
+
+The owner's numbers for what each org measures (`GET /api/orgs/<org>/outcomes?days=`) and how a KPI stood around the day the epic an aim names shipped (`.../outcomes/readings`), as the web client shows them. `OutcomesStore` reads both for every org of the account.
+
+- **Owner only.** A node answers anyone else 403 (and an org it cannot answer 404): the org is left out and nothing says why. The page is offered only after a read has let the owner see at least one org (`isAvailable`): not while it loads, not on a refusal, not when the read failed before one ever worked; once one worked it stays, until a read finishes with every org refusing. A failed refresh keeps what was read and says it failed.
+- **Business data.** The numbers are in memory only: not in the cache that the screens share, not on the disk, in a widget, a notification or a log, and they go with the session.
+- **What a card says.** The latest number of the period by its KPI's unit: money in its own currency (an ISO code, never converted), a percent as it is (never clipped), a count grouped, a ratio with its `×`, a duration as the evaluation writes one; a unit this app does not know is a plain number. The movement is read from the baseline (`before`) to the latest number, with a word and a tone by `goodWhen` (a direction the node does not say colours nothing). A KPI with no number in the period but one before it shows that one as older; a KPI with none shows a gap. A 0 the node gave is a 0, and a missing number is never one.
+- **Readings.** One line for each aim, in the words of the state (`ready` gives the two numbers, the change and a line that the figure moved after the work and that this does not say the work moved it; every other state says what is missing). A test fails if any of the page's words claims a cause.
+- **The period** is 90 days by default (a monthly number is rarely in 14), or 30, the same on the web.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
