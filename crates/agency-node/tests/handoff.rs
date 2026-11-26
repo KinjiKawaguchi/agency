@@ -511,44 +511,88 @@ async fn a_client_address_gets_twenty_tries_a_minute() {
     );
 }
 
+async fn try_redeem(running: &Running, address: &str) -> u16 {
+    redeem(running, &"A".repeat(43), VERIFIER, address)
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
+}
+
+fn address_of(number: u32) -> String {
+    format!(
+        "10.{}.{}.{}",
+        number >> 16,
+        (number >> 8) & 255,
+        number & 255
+    )
+}
+
+fn pass_a_second(running: &Running) {
+    running
+        .clock
+        .advance(agency_proto::clock::Duration::seconds(1));
+}
+
 #[tokio::test]
-async fn only_so_many_client_addresses_are_remembered_and_a_new_one_beyond_that_is_refused() {
+async fn a_full_address_table_forgets_the_quietest_address_and_never_refuses_a_new_one() {
+    let running = behind_access(Some(APP_ID)).await;
+    // The quietest address uses up its allowance first.
+    for _ in 0..20 {
+        assert_eq!(try_redeem(&running, "192.0.2.9").await, 400);
+    }
+    assert_eq!(try_redeem(&running, "192.0.2.9").await, 429);
+    pass_a_second(&running);
+    for number in 0..1022u32 {
+        assert_eq!(try_redeem(&running, &address_of(number)).await, 400);
+    }
+    pass_a_second(&running);
+    // The most recent address uses up its allowance too: the table now holds 1024 addresses.
+    for _ in 0..20 {
+        assert_eq!(try_redeem(&running, "192.0.2.10").await, 400);
+    }
+    assert_eq!(try_redeem(&running, "192.0.2.10").await, 429);
+
+    assert_eq!(
+        try_redeem(&running, "192.0.2.9").await,
+        429,
+        "a known address is not forgotten by its own try, even the quietest one"
+    );
+    assert_eq!(
+        try_redeem(&running, "198.51.100.1").await,
+        400,
+        "a new address is heard when the table is full"
+    );
+    assert_eq!(
+        try_redeem(&running, "192.0.2.9").await,
+        400,
+        "the address that had been quiet the longest was forgotten, so it has its allowance again"
+    );
+    assert_eq!(
+        try_redeem(&running, "192.0.2.10").await,
+        429,
+        "a recent address is remembered, with its tries"
+    );
+}
+
+#[tokio::test]
+async fn the_address_table_empties_a_minute_after_the_last_try() {
     let running = behind_access(Some(APP_ID)).await;
     for number in 0..1024u32 {
-        let address = format!(
-            "10.{}.{}.{}",
-            number >> 16,
-            (number >> 8) & 255,
-            number & 255
-        );
-        let answer = redeem(&running, &"A".repeat(43), VERIFIER, &address)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(answer.status(), 400, "{address}");
+        assert_eq!(try_redeem(&running, &address_of(number)).await, 400);
     }
-    let beyond = redeem(&running, &"A".repeat(43), VERIFIER, "192.0.2.1")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(beyond.status(), 429, "the table is full");
-    let known = redeem(&running, &"A".repeat(43), VERIFIER, "10.0.0.1")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        known.status(),
-        400,
-        "one that is already remembered is still heard"
-    );
     running
         .clock
         .advance(agency_proto::clock::Duration::seconds(61));
-    let later = redeem(&running, &"A".repeat(43), VERIFIER, "192.0.2.1")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(later.status(), 400, "a minute later the table has emptied");
+    for _ in 0..20 {
+        assert_eq!(try_redeem(&running, &address_of(0)).await, 400);
+    }
+    assert_eq!(try_redeem(&running, &address_of(0)).await, 429);
+    running
+        .clock
+        .advance(agency_proto::clock::Duration::seconds(61));
+    assert_eq!(try_redeem(&running, &address_of(0)).await, 400);
 }
 
 #[tokio::test]

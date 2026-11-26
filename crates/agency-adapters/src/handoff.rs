@@ -40,7 +40,8 @@ const SECRET_LENGTH: usize = 43;
 const CODE_LIFETIME_SECONDS: i64 = 60;
 /// The most codes waiting to be redeemed: a sign-in is the owner's, so this is generous.
 const MOST_PENDING: usize = 64;
-/// How many redeems one client address may try in a minute, and how many client addresses are remembered.
+/// How many redeems one client address may try in a minute, and how many client addresses are remembered (beyond
+/// that, the one that has been quiet the longest is forgotten).
 const REDEEMS_PER_MINUTE: usize = 20;
 const MOST_CLIENTS: usize = 1024;
 const CALLBACK_PAGE: &str =
@@ -168,7 +169,17 @@ impl Codes {
             !times.is_empty()
         });
         if !pool.attempts.contains_key(client) && pool.attempts.len() >= MOST_CLIENTS {
-            return Redeemed::Limited(60);
+            // A full table forgets the address that has been quiet the longest, so that filling it can never
+            // lock the owner out: a forgotten address starts with its full allowance again, and each try still
+            // needs a code that is 256 random bits and is tried once.
+            let quietest = pool
+                .attempts
+                .iter()
+                .min_by_key(|(_, times)| times.iter().max().copied())
+                .map(|(address, _)| address.clone());
+            if let Some(address) = quietest {
+                pool.attempts.remove(&address);
+            }
         }
         let times = pool.attempts.entry(client.to_owned()).or_default();
         if times.len() >= REDEEMS_PER_MINUTE {
