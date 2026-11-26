@@ -260,6 +260,21 @@ Each browser and phone that decides for you has its own key, which it makes and 
 A request waits for an hour, and the node keeps at most 10.
 A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`); elsewhere the page says it cannot.
 
+## Installing the web client as an app
+
+The web client can be installed as an app, so that Android, Windows, and Linux have one without a native build: it opens in a window of its own, with its own icon, and keeps the sign-in of the browser it was installed from. On the **Devices** screen, **Install Agency** appears where the browser offers it (Chrome and Edge, on Android, Windows, Linux, and Mac); in Safari on a Mac, choose File, then Add to Dock. The iPhone has its own app ([apple.md](apple.md)).
+
+The installed app keeps the built files of the web client (`/assets/` and `/icons/`) so that it opens fast, and nothing else: no page, since a page carries the node's write token, and no answer of the API, which holds your org's data. When the node cannot be reached it shows a page that says so. When the sign-in expires it deletes what it kept.
+
+Behind Cloudflare Access the node asks for the sign-in on every request, the manifest and the icons included, so the page fetches the manifest with the browser's credentials. No path needs to bypass Access for this. To check an install once the node is deployed:
+
+1. Open `https://agency.example.com/` in Chrome (on Android and on a desktop), sign in, and open **Devices**: **Install Agency** appears.
+2. Install it. The app opens in its own window on the desk, with the seal icon (not a blank one), already signed in.
+3. Close the app, and sign out of Access (or wait for the session to end). Open the app again: it shows the Access sign-in, not an old page.
+4. Turn the network off and open the app: it says the node cannot be reached.
+
+If the icon is blank in step 2, the browser did not send the sign-in with the icon request; tell the team, and the icons will be inlined in the manifest.
+
 ## AI subscriptions and their usage
 
 The overview lists the node's funding sources with how much of each subscription's limits is used.
