@@ -1,6 +1,8 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
-use agency_proto::metrics::{Metrics, SeriesKind};
+use agency_proto::metrics::{
+    is_error_status, valid_name, valid_status, Metrics, Series, SeriesKind,
+};
 use serde_json::Value;
 
 const SAMPLE: &str = include_str!("../../../testdata/metrics.sample.json");
@@ -38,7 +40,15 @@ fn the_sample_is_ordered_and_a_percentile_in_the_slowest_bucket_is_left_out() {
     let keys: Vec<_> = metrics
         .series
         .iter()
-        .map(|s| (s.kind, s.name.clone(), s.status.clone()))
+        .map(|s| {
+            (
+                s.kind,
+                s.name.clone(),
+                s.status.clone(),
+                s.peer.clone(),
+                s.client.clone(),
+            )
+        })
         .collect();
     let mut sorted = keys.clone();
     sorted.sort();
@@ -95,4 +105,140 @@ fn a_series_kind_is_written_in_lower_case_and_the_peer_and_client_only_where_the
     assert!(series[0].get("peer").is_none() && series[0].get("client").is_none());
     assert_eq!(series[2]["peer"], "node-b.example");
     assert_eq!(series[4]["client"], "web");
+}
+
+fn first() -> Series {
+    sample().series[0].clone()
+}
+
+fn series_of(kind: SeriesKind) -> Series {
+    sample()
+        .series
+        .into_iter()
+        .find(|s| s.kind == kind)
+        .unwrap()
+}
+
+#[test]
+fn a_name_is_a_template_or_a_fixed_phrase_and_never_what_a_requester_could_choose() {
+    use SeriesKind::{Call, Client, Serve};
+    for good in [
+        "GET /api/me",
+        "OTHER /api/me",
+        "POST /fed/v1/teams/{org}/{team}/envelopes",
+        "unmatched",
+        "overflow",
+        "invalid",
+    ] {
+        assert!(valid_name(Serve, good), "{good}");
+        assert!(valid_name(Client, good), "{good}");
+    }
+    for bad in [
+        "",
+        "/api/me",
+        "GET",
+        "GET ",
+        "get /api/me",
+        "TRACE /api/me",
+        "BREW /coffee",
+        "GET /api/me?token=abc",
+        "GET /api/me#frag",
+        "GET /a\nb",
+        "GET /a\u{7f}b",
+    ] {
+        assert!(!valid_name(Serve, bad), "{bad:?}");
+    }
+    assert!(valid_name(Serve, &format!("GET /{}", "x".repeat(115))));
+    assert!(
+        !valid_name(Serve, &format!("GET /{}", "x".repeat(117))),
+        "121 characters"
+    );
+    assert!(
+        valid_name(Call, "runtime view")
+            && valid_name(Call, "peer get_view")
+            && valid_name(Call, "overflow")
+    );
+    assert!(
+        !valid_name(Call, "") && !valid_name(Call, "runtime?view") && !valid_name(Call, "a\tb")
+    );
+}
+
+#[test]
+fn a_status_is_one_of_the_set_of_its_kind_and_a_series_has_the_extra_fields_only_where_they_apply()
+{
+    use SeriesKind::{Call, Client, Serve};
+    for (kind, status, valid) in [
+        (Serve, "2xx", true),
+        (Serve, "5xx", true),
+        (Serve, "ok", false),
+        (Serve, "network", false),
+        (Serve, "500", false),
+        (Call, "ok", true),
+        (Call, "timeout", true),
+        (Call, "error", true),
+        (Call, "4xx", true),
+        (Call, "network", false),
+        (Client, "network", true),
+        (Client, "2xx", true),
+        (Client, "ok", false),
+        (Client, "timeout", false),
+    ] {
+        assert_eq!(valid_status(kind, status), valid, "{kind:?} {status}");
+    }
+    let mut serve = first();
+    serve.status = "ok".into();
+    let mut peer_on_a_route = first();
+    peer_on_a_route.peer = Some("b.example".into());
+    let mut client_on_a_route = first();
+    client_on_a_route.client = Some("web".into());
+    let mut other_client = series_of(Client);
+    other_client.client = Some("android".into());
+    let mut no_client = series_of(Client);
+    no_client.client = None;
+    let mut bad_name = first();
+    bad_name.name = "GET /api/me?token=abc".into();
+    for bad in [
+        serve,
+        peer_on_a_route,
+        client_on_a_route,
+        other_client,
+        no_client,
+        bad_name,
+    ] {
+        assert!(!bad.is_consistent(), "{bad:?}");
+    }
+}
+
+#[test]
+fn errors_are_all_of_the_calls_or_none_as_the_status_says() {
+    use SeriesKind::{Call, Client, Serve};
+    assert!(
+        is_error_status(Serve, "5xx")
+            && !is_error_status(Serve, "4xx")
+            && !is_error_status(Serve, "2xx")
+    );
+    assert!(
+        is_error_status(Call, "error")
+            && is_error_status(Call, "timeout")
+            && is_error_status(Call, "5xx")
+            && !is_error_status(Call, "ok")
+    );
+    assert!(is_error_status(Client, "network") && !is_error_status(Serve, "network"));
+    assert!(
+        !is_error_status(Serve, "timeout")
+            && !is_error_status(Client, "error")
+            && !is_error_status(Client, "timeout")
+    );
+    let five_xx = sample()
+        .series
+        .into_iter()
+        .find(|s| s.status == "5xx")
+        .unwrap();
+    assert_eq!(five_xx.errors, five_xx.count);
+    let mut some = five_xx.clone();
+    some.errors = some.count - 1;
+    let mut errors_on_a_success = first();
+    errors_on_a_success.errors = 1;
+    assert!(!some.is_consistent() && !errors_on_a_success.is_consistent());
+    assert!(five_xx.is_consistent() && first().is_consistent());
 }
