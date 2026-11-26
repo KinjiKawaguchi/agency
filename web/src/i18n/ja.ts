@@ -440,6 +440,15 @@ export const ja: Messages = {
       from: (word, change, base, date) => `${date} の ${base} から ${change} ${word}。`,
       same: (base, date) => `${date} の ${base} から変わっていません。`,
     },
+    cost: {
+      title: '同じ日のコスト',
+      series: 'コスト',
+      day: (date, cost) => `${date}: ${cost}`,
+      unavailable: 'この期間のコストを読み込めませんでした。',
+      none: 'この期間のコストは報告されていません。',
+      noCost: 'コストの報告なし',
+      partial: (count) => `報告できなかった ${count} チームを除きます。`,
+    },
     enter: {
       open: '数値を入れる',
       close: '閉じる',

@@ -149,3 +149,12 @@
   padding: 0 6px;
   font-size: 12px;
 }
+
+.oc-cost {
+  margin-top: 10px;
+}
+
+.oc-cost-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
