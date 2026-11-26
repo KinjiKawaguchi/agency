@@ -26,11 +26,11 @@ struct DevicesSnapshotTests {
 
     private func content(
         pairing: PairingStore.Status, code: String = "a652-124a-fda7", rows: [DeviceFacts.Row] = [], requests: [DeviceRequest] = [],
-        confirming: Set<String> = [], confirmed: [String: String] = [:], failures: [String: String] = [:], isAsking: Bool = false
+        confirming: Set<String> = [], confirmed: [String: String] = [:], held: [String: String] = [:], failures: [String: String] = [:], isAsking: Bool = false
     ) -> DevicesContent {
         DevicesContent(
             code: code, pairing: pairing, isAsking: isAsking, rows: rows, requests: requests, isLoaded: true, loadFailure: nil,
-            confirming: confirming, confirmed: confirmed, confirmFailures: failures, now: now, onAdd: {}, onCheck: {}, onConfirm: { _ in }
+            confirming: confirming, confirmed: confirmed, held: held, confirmFailures: failures, now: now, onAdd: {}, onCheck: {}, onConfirm: { _ in }
         )
     }
 
@@ -53,18 +53,20 @@ struct DevicesSnapshotTests {
         }
     }
 
-    @Test("a request being confirmed, confirmed, queued, and failed")
+    @Test("a request being confirmed, confirmed, queued, held for the root key, and failed")
     func requestStates() {
         let devices = list()
         let rows = DeviceFacts.rows(devices, ownKey: devices.orgs[0].devices[0].publicKey)
         let requests = DeviceFacts.requestsFromOthers(devices, ownKey: "none")
         let key = requests[0].publicKey
-        func shot(_ name: String, confirming: Set<String> = [], confirmed: [String: String] = [:], failures: [String: String] = [:]) {
-            expectFits(Snapshot.capture(name, content(pairing: .ready(orgs: ["acme"]), code: "dbc2-9825-1c51", rows: rows, requests: requests, confirming: confirming, confirmed: confirmed, failures: failures)), name)
+        func shot(_ name: String, confirming: Set<String> = [], confirmed: [String: String] = [:], held: [String: String] = [:], failures: [String: String] = [:]) {
+            expectFits(Snapshot.capture(name, content(pairing: .ready(orgs: ["acme"]), code: "dbc2-9825-1c51", rows: rows, requests: requests, confirming: confirming, confirmed: confirmed, held: held, failures: failures)), name)
         }
         shot("devices-confirming", confirming: [key])
         shot("devices-confirmed", confirmed: [key: Ja.Devices.confirmed("iPhone")])
         shot("devices-queued", confirmed: [key: Ja.Devices.queued("node asleep")])
+        shot("devices-held", held: [key: RootChangeNotice.approvedHere])
+        shot("devices-held-and-failed", held: [key: RootChangeNotice.approvedHere], failures: [key: "HTTP 502"])
         shot("devices-failed", failures: [key: Ja.Devices.codeMismatch])
     }
 

@@ -3,15 +3,31 @@ import Foundation
 
 /// The answer to `POST /api/devices/changes`.
 public struct DeviceChangeResult: Decodable, Equatable, Sendable {
-    public enum Outcome: String, Decodable, Sendable {
+    public enum Outcome: Decodable, Equatable, Sendable {
         /// This node holds the root key and wrote the change.
         case applied
         case delivered
         case queued
+        /// The root key asks for its owner's presence: the root's node holds the change until the owner signs it there
+        /// (`agency root-sign`). It is neither added nor refused.
+        case pending
+        /// An outcome this app does not know. It is kept, so that the answer still reads and is not taken for a success.
+        case unknown(String)
+
+        public init(from decoder: any Decoder) throws {
+            let word = try decoder.singleValueContainer().decode(String.self)
+            switch word {
+            case "applied": self = .applied
+            case "delivered": self = .delivered
+            case "queued": self = .queued
+            case "pending": self = .pending
+            default: self = .unknown(word)
+            }
+        }
     }
 
     public let outcome: Outcome
-    /// Why a change was queued.
+    /// Why a change was queued, or what the node says of an outcome.
     public let message: String?
 
     public init(outcome: Outcome, message: String?) {

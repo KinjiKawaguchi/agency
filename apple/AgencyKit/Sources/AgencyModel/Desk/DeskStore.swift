@@ -52,6 +52,8 @@ public final class DeskStore {
     /// The recoveries the node says wait, one for each org: shown above the desk until the node stops saying it. What was
     /// said last stays when a later read fails.
     public private(set) var recoveries: [RecoveryNotice] = []
+    /// What waits for the root key's owner to sign, once the node has said; `nil` when nothing waits or before it answered.
+    public private(set) var rootChanges: RootChangeNotice?
     public private(set) var recentFailure: String?
     public private(set) var loading: Loading = .idle
     /// Teams whose view could not be read, by `org/team`, with the reason.
@@ -121,6 +123,7 @@ public final class DeskStore {
         do {
             let me = try await source.me()
             recoveries = RecoveryNotice.all(in: me.orgs)
+            rootChanges = RootChangeNotice(me: me)
             let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
             var snapshots: [(key: String, result: Result<TeamSnapshot, Error>)] = []
             // Each team is shown as soon as it answers, so one that is not ready does not hold back the others.

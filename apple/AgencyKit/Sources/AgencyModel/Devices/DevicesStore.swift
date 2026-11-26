@@ -33,6 +33,9 @@ public final class DevicesStore {
     public private(set) var confirming: Set<String> = []
     /// What was said for a confirmed request, by key, until the request leaves the list.
     public private(set) var confirmed: [String: String] = [:]
+    /// What was said for a request this device approved that is neither added nor refused (the root's node holds it for its owner),
+    /// by key, until the request leaves the list. A request in it cannot be approved again.
+    public private(set) var held: [String: String] = [:]
     public private(set) var confirmFailures: [String: String] = [:]
 
     @ObservationIgnored private let source: any DevicesSource
@@ -63,6 +66,7 @@ public final class DevicesStore {
             requests = DeviceFacts.requestsFromOthers(list, ownKey: ownKey)
             let waiting = Set(requests.map(\.publicKey))
             confirmed = confirmed.filter { waiting.contains($0.key) }
+            held = held.filter { waiting.contains($0.key) }
             loadFailure = nil
             isLoaded = true
         } catch {
@@ -78,13 +82,35 @@ public final class DevicesStore {
         confirmFailures[key] = nil
         defer { confirming.remove(key) }
         do {
-            let results = try await adder.add(request)
-            let queued = results.first { $0.outcome == .queued }
-            confirmed[key] = queued.map { Ja.Devices.queued($0.message) } ?? Ja.Devices.confirmed(request.label)
+            say(try await adder.add(request), for: request)
             await refresh()
+        } catch let partly as DeviceChangePartlyAnswered {
+            say(partly.answered, for: request)
+            confirmFailures[key] = DeskStore.reason(partly.cause)
         } catch {
             confirmFailures[key] = DeskStore.reason(error)
         }
+    }
+
+    /// What the node answered, said for the request. A change the root's node holds, or an outcome this app does not know but the
+    /// node explains, is not a success: it is said as it is and the request is not approved again. Anything else that came back
+    /// is an add (`confirmed`), and a node that was asleep says so.
+    private func say(_ results: [DeviceChangeResult], for request: DeviceRequest) {
+        let heldWords = results.compactMap { result -> String? in
+            switch result.outcome {
+            case .pending: RootChangeNotice.approvedHere
+            case .unknown: result.message
+            case .applied, .delivered, .queued: nil
+            }
+        }
+        let queuedWords = results.first { $0.outcome == .queued }.map { Ja.Devices.queued($0.message) }
+        guard !heldWords.isEmpty else {
+            confirmed[request.publicKey] = queuedWords ?? Ja.Devices.confirmed(request.label)
+            return
+        }
+        var lines: [String] = []
+        for line in heldWords + [queuedWords].compactMap({ $0 }) where !lines.contains(line) { lines.append(line) }
+        held[request.publicKey] = lines.joined(separator: "\n")
     }
 }
 

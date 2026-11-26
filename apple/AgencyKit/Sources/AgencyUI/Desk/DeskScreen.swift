@@ -92,6 +92,7 @@ public struct DeskScreen: View {
     private var banners: some View {
         // A started recovery comes first and cannot be hidden: the owner can cancel it only while it waits.
         ForEach(store.recoveries) { RecoveryBanner(notice: $0) }
+        if let rootChanges = store.rootChanges { RootChangeBanner(notice: rootChanges) }
         if let notice {
             Text(notice).font(.subheadline).foregroundStyle(Theme.danger).wrapping().card()
         }
