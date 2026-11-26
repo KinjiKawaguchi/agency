@@ -107,8 +107,8 @@ struct EnterNumberSheet: View {
     }
 
     static func text(of date: Date) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+        // Written by a formatter of the same UTC calendar, so no part of the day can be missing and need a default.
+        date.formatted(Date.ISO8601FormatStyle(timeZone: calendar.timeZone).year().month().day())
     }
 }
 #endif
