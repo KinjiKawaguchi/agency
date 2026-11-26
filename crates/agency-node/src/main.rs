@@ -210,7 +210,6 @@ fn init(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
     })?;
