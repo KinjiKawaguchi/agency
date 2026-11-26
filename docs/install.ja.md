@@ -366,6 +366,37 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 
 資金源はそれぞれ一人の人が自分で契約しているサブスクリプションで、ノードが受け持つアカウントは 1 つです。したがって、切り替えは一人の人のサブスクリプションの中で行われます。ログインを別の人と共有したり、複数の人のログインをまとめて使ったりしてはいけません。Claude の個人向け規約は、アカウントの共有を禁じています。また、切り替えは上限を回避する手段ではありません。上限に達した資金源は、窓が更新されるまで選ばれません。
 
+## 配送メトリクス
+
+評価の画面には、各チームがどれだけ速く出荷しているかが出ます。種類別にマージした PR の数、開いてからマージするまでの時間、デフォルトブランチの CI が赤だった時間、リバート、マージした PR 1 件あたりのトークンの費用です（すべての数の定義は [protocol.md](protocol.md#evaluation) にあります）。チームが動いているノードが、そのチームの GitHub のリポジトリから数を計算し、ほかのノードはそこから読みます。
+
+チームで有効にするには、`~/.agency/config.json` の `teams[].delivery` にリポジトリ（`owner/name`）を書き、ノードを再起動します。
+
+```json
+"teams": [
+  { "org": "acme", "team": "app", "owner": "owner",
+    "runtime": { "command": ["scrum", "runtime"] },
+    "delivery": { "repos": ["acme/app", "acme/web"] } }
+]
+```
+
+- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
+- 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
+- GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
+
+| 画面に出る理由 | すること |
+|---|---|
+| no repositories are configured for this team | チームが動いているノードで、チームに `delivery` を足します。 |
+| the GitHub CLI (gh) is not installed on the team's node | 入れて、エージェントやユニットの `PATH` にそのディレクトリを入れます。 |
+| the GitHub CLI (gh) on the team's node is not logged in | そのノードを動かすアカウントで `gh auth login` を実行します。 |
+| GitHub's rate limit is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
+| GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
+| the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
+| the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
+| a repository of the team is not written owner/name | チームが動いているノードの設定の `delivery.repos` を直します。 |
+| the team's node did not answer | そのノードが止まっているか、届きません。 |
+
 ## ノードの更新
 
 ```sh

@@ -17,6 +17,7 @@ use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
+use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::{Error, Node};
@@ -268,6 +269,21 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// The delivery evaluation of every team of an org over the last `days` days (default 14, at most 90).
+async fn get_evaluation(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_evaluation(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
 /// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
 /// (default 200, at most 500), oldest first.
 async fn get_activity(
@@ -453,6 +469,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
+        .route("/api/orgs/{org}/evaluation", get(get_evaluation))
         .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",

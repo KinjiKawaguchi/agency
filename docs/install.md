@@ -348,6 +348,37 @@ A session that is running keeps the source it started on; only new sessions move
 
 Each source is one person's own subscription, and a node serves one account, so switching stays within one person's subscriptions. Never share a login with another person or pool logins across people: Claude's consumer terms forbid sharing an account. Switching is also not a way around a limit: a source at its limit is not picked until its window resets.
 
+## Delivery metrics
+
+The evaluation screen shows how fast each team ships: the pull requests it merged by type, how long they took from open to merge, how long its default branch's CI was red, reverts, and what its tokens cost for each merged pull request ([protocol.md](protocol.md#evaluation) defines every number). The node a team runs on works the numbers out from the team's repositories on GitHub, and other nodes read them from it.
+
+To turn it on for a team, name its repositories (`owner/name`) in `teams[].delivery` of `~/.agency/config.json`, and restart the node:
+
+```json
+"teams": [
+  { "org": "acme", "team": "app", "owner": "owner",
+    "runtime": { "command": ["scrum", "runtime"] },
+    "delivery": { "repos": ["acme/app", "acme/web"] } }
+]
+```
+
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
+- What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
+
+| Reason on the screen | What to do |
+|---|---|
+| no repositories are configured for this team | Add `delivery` to the team on the node it runs on. |
+| the GitHub CLI (gh) is not installed on the team's node | Install it, and put its directory on the `PATH` of the agent or the unit. |
+| the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
+| GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
+| GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the team's node does not give delivery numbers | That node is older than this feature: update it. |
+| the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
+| a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
+| the team's node did not answer | That node is down or unreachable. |
+
 ## Updating a node
 
 ```sh
