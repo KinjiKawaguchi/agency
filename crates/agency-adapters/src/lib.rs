@@ -15,6 +15,7 @@ pub mod handoff;
 pub mod launch;
 pub mod logging;
 pub mod memory;
+pub mod metrics;
 pub mod peers;
 mod push_facts;
 pub mod refusal_log;
