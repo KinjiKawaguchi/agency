@@ -15,6 +15,20 @@ pub const BUCKET_BOUNDS_MS: [u32; 14] = [
 pub const BUCKETS: usize = BUCKET_BOUNDS_MS.len() + 1;
 /// The longest range a metrics read may cover, in days (the node keeps 30).
 pub const MAX_METRICS_DAYS: u32 = 30;
+/// The longest a series' name may be, in characters.
+pub const MAX_NAME_CHARS: usize = 120;
+/// The methods a name of a route may begin with; any other method is `OTHER`, because a requester picks the
+/// method and a name made from it would otherwise be unbounded.
+pub const METHODS: [&str; 8] = [
+    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "OTHER",
+];
+/// The names of a route that no template names: a request that matched no route (every 404 and scanner is
+/// one series), a series the node had no room for, and a name that was not one a series may have.
+pub const UNMATCHED: &str = "unmatched";
+pub const OVERFLOW: &str = "overflow";
+pub const INVALID: &str = "invalid";
+/// The clients that report what they observed.
+pub const CLIENTS: [&str; 2] = ["web", "ios"];
 
 /// What a series measures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
@@ -102,6 +116,51 @@ pub struct Metrics {
     pub series: Vec<Series>,
 }
 
+/// Whether `name` is one a series of `kind` may have: not empty, at most `MAX_NAME_CHARS`, no control
+/// character, `?`, or `#` (so never a query or a fragment); for a route (`serve`, `client`) a method of
+/// `METHODS` and a template, or one of the fixed names `UNMATCHED`, `OVERFLOW`, and `INVALID`; for a call,
+/// a fixed phrase, or `OVERFLOW` or `INVALID`.
+pub fn valid_name(kind: SeriesKind, name: &str) -> bool {
+    let is_plain = !name.is_empty()
+        && name.chars().count() <= MAX_NAME_CHARS
+        && !name.chars().any(|c| c.is_control() || c == '?' || c == '#');
+    if !is_plain {
+        return false;
+    }
+    if [OVERFLOW, INVALID].contains(&name) {
+        return true;
+    }
+    match kind {
+        SeriesKind::Call => true,
+        SeriesKind::Serve | SeriesKind::Client => {
+            name == UNMATCHED
+                || name.split_once(' ').is_some_and(|(method, template)| {
+                    METHODS.contains(&method) && !template.is_empty()
+                })
+        }
+    }
+}
+
+/// Whether `status` is one a series of `kind` may have.
+pub fn valid_status(kind: SeriesKind, status: &str) -> bool {
+    let classes = ["2xx", "3xx", "4xx", "5xx"];
+    match kind {
+        SeriesKind::Serve => classes.contains(&status),
+        SeriesKind::Call => {
+            classes.contains(&status) || ["ok", "error", "timeout"].contains(&status)
+        }
+        SeriesKind::Client => classes.contains(&status) || status == "network",
+    }
+}
+
+/// Whether a call of `kind` with `status` is an error: a 5xx; for a call, also `error` and `timeout`; for
+/// what a client observed, also `network`. A series has one status, so all of its calls are or none are.
+pub fn is_error_status(kind: SeriesKind, status: &str) -> bool {
+    status == "5xx"
+        || (kind == SeriesKind::Call && ["error", "timeout"].contains(&status))
+        || (kind == SeriesKind::Client && status == "network")
+}
+
 /// Whether `days` is a range a metrics read may cover.
 pub fn valid_metrics_days(days: u32) -> bool {
     (1..=MAX_METRICS_DAYS).contains(&days)
@@ -134,12 +193,27 @@ pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
 }
 
 impl Series {
-    /// Whether the numbers of the series agree with each other: `BUCKETS` buckets that add up to `count`,
-    /// no more errors than calls, and the percentiles those of the buckets (so a reader can trust either).
+    /// Whether the series is what the protocol allows: a name, status, peer, and client that a series of its
+    /// kind may have (the answer holds nothing a requester could choose freely), `BUCKETS` buckets that add up
+    /// to `count`, errors that are all of the calls or none as the status says, and the percentiles those of
+    /// the buckets (so a reader can trust either).
     pub fn is_consistent(&self) -> bool {
-        self.buckets.len() == BUCKETS
+        let errors_agree = if is_error_status(self.kind, &self.status) {
+            self.errors == self.count
+        } else {
+            self.errors == 0
+        };
+        valid_name(self.kind, &self.name)
+            && valid_status(self.kind, &self.status)
+            && (self.peer.is_none() || self.kind == SeriesKind::Call)
+            && self
+                .client
+                .as_deref()
+                .is_none_or(|client| CLIENTS.contains(&client))
+            && self.client.is_some() == (self.kind == SeriesKind::Client)
+            && errors_agree
+            && self.buckets.len() == BUCKETS
             && self.buckets.iter().sum::<u64>() == self.count
-            && self.errors <= self.count
             && self.p50_ms == percentile_ms(&self.buckets, 50)
             && self.p95_ms == percentile_ms(&self.buckets, 95)
             && self.p99_ms == percentile_ms(&self.buckets, 99)
