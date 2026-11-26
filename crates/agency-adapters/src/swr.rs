@@ -75,12 +75,15 @@ impl<T: Clone + Send + 'static> Slot<T> {
         }
     }
 
-    /// Keeps `answer`, except that a failure does not replace a good answer: that one is served until it
-    /// is too old.
-    fn keep(&self, answer: Result<T, RuntimeError>) {
+    /// Keeps `answer`, except that a failure does not replace a good answer that can still be served (it is
+    /// younger than `max_stale`). One that can no longer be served is replaced by the failure, so the readers
+    /// waiting for this run share it for a while and do not each run the failing command.
+    fn keep(&self, answer: Result<T, RuntimeError>, max_stale: Duration) {
         let mut kept = self.kept();
-        let has_good = kept.as_ref().is_some_and(|one| one.answer.is_ok());
-        if answer.is_err() && has_good {
+        let has_servable_good = kept
+            .as_ref()
+            .is_some_and(|one| one.answer.is_ok() && one.at.elapsed() < max_stale);
+        if answer.is_err() && has_servable_good {
             return;
         }
         *kept = Some(Kept {
@@ -91,23 +94,23 @@ impl<T: Clone + Send + 'static> Slot<T> {
 
     /// Runs the command and keeps its answer, unless a decision came meanwhile and made it out of date.
     /// The caller holds `flight`.
-    async fn run_and_keep(&self, run: &Run<T>) -> Result<T, RuntimeError> {
+    async fn run_and_keep(&self, run: &Run<T>, max_stale: Duration) -> Result<T, RuntimeError> {
         let epoch = self.epoch.load(Ordering::SeqCst);
         let answer = run().await;
         if self.epoch.load(Ordering::SeqCst) == epoch {
-            self.keep(answer.clone());
+            self.keep(answer.clone(), max_stale);
         }
         answer
     }
 
     /// Starts a refresh unless a run is already in flight.
-    fn refresh_in_background(self: &Arc<Self>, run: Run<T>) {
+    fn refresh_in_background(self: &Arc<Self>, run: Run<T>, max_stale: Duration) {
         let Ok(flight) = self.flight.clone().try_lock_owned() else {
             return;
         };
         let slot = self.clone();
         tokio::spawn(async move {
-            let _ = slot.run_and_keep(&run).await;
+            let _ = slot.run_and_keep(&run, max_stale).await;
             drop(flight);
         });
     }
@@ -175,7 +178,7 @@ impl<T: Clone + Send + 'static> Swr<T> {
             }
             Look::Stale(answer) => {
                 self.count(|counts| counts.stale += 1);
-                slot.refresh_in_background(run);
+                slot.refresh_in_background(run, self.max_stale);
                 return answer;
             }
             Look::Nothing => self.count(|counts| counts.cold += 1),
@@ -184,7 +187,7 @@ impl<T: Clone + Send + 'static> Swr<T> {
         if let Look::Fresh(answer) = slot.look(self.fresh, self.max_stale) {
             return answer;
         }
-        slot.run_and_keep(&run).await
+        slot.run_and_keep(&run, self.max_stale).await
     }
 
     /// Drops what is kept for `team` after a decision, and starts a run at once, so the read that follows
@@ -194,9 +197,10 @@ impl<T: Clone + Send + 'static> Swr<T> {
         slot.epoch.fetch_add(1, Ordering::SeqCst);
         *slot.kept() = None;
         let flight = slot.flight.clone();
+        let max_stale = self.max_stale;
         tokio::spawn(async move {
             let _flight = flight.lock().await;
-            let _ = slot.run_and_keep(&run).await;
+            let _ = slot.run_and_keep(&run, max_stale).await;
         });
     }
 }

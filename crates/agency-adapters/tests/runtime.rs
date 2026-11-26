@@ -645,3 +645,46 @@ async fn a_run_that_began_before_a_decision_is_not_kept() {
     tokio::time::sleep(Duration::from_millis(1100)).await;
     assert_eq!(runtime.view(&team).await.unwrap().label, "post");
 }
+
+#[tokio::test]
+async fn readers_of_a_runtime_that_stays_down_share_one_failure() {
+    let fake = Fake::new();
+    let runtime = std::sync::Arc::new(
+        CommandRuntime::default()
+            .keeping(Duration::from_millis(150), Duration::from_secs(60))
+            .serving_stale_for(Duration::from_millis(300)),
+    );
+    let team = fake.team("app");
+    runtime.view(&team).await.unwrap();
+
+    // The good answer is now too old to serve, and the runtime fails, slowly.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    fake.answer("view", "not json", 1);
+    fake.delay("view", "0.6");
+    let readers = (0..10).map(|_| {
+        let (runtime, team) = (runtime.clone(), team.clone());
+        tokio::spawn(async move { runtime.view(&team).await.is_err() })
+    });
+    for reader in readers {
+        assert!(reader.await.unwrap(), "every reader gets the failure");
+    }
+    assert_eq!(
+        fake.read("calls").matches("view").count(),
+        2,
+        "ten readers, one run of the failing command"
+    );
+
+    assert!(runtime.view(&team).await.is_err());
+    assert_eq!(
+        fake.read("calls").matches("view").count(),
+        2,
+        "a read soon after finds the failure kept and starts no run"
+    );
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert!(runtime.view(&team).await.is_err());
+    assert_eq!(
+        fake.read("calls").matches("view").count(),
+        3,
+        "once it is old, the command is run again"
+    );
+}
