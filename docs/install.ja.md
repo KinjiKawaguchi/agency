@@ -36,7 +36,7 @@ cd ..
 cargo build --release -p agency-node
 ```
 
-できたバイナリは、再ビルドや `cargo clean` の影響を受けない場所に置きます。
+できたバイナリは、再ビルドや `cargo clean` の影響を受けない場所に置きます。Cargo はバイナリを、リポジトリの `target/release/` に、`CARGO_TARGET_DIR` を設定しているときは `$CARGO_TARGET_DIR/release/` に作ります。
 いったん別名でコピーしてから名前を変えるのは、動いているノードのバイナリをその場で書き換えないためです。
 
 ```sh

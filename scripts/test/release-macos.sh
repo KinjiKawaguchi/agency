@@ -57,6 +57,11 @@ expect "a Linux tarball holds the systemd unit script" \
   "$(tar tzf "$out/$linux" | grep -c systemd-unit.sh)" 1
 (cd "$out" && { sha256sum -c "agency-$version-macos-x86_64.tar.gz.sha256" 2>/dev/null || shasum -a 256 -c "agency-$version-macos-x86_64.tar.gz.sha256"; } >/dev/null) || fail "the checksum does not match the tarball"
 
+fresh; CARGO_TARGET_DIR="$work/elsewhere" release "v$version" --skip-smoke
+expect "a build that cargo puts elsewhere (CARGO_TARGET_DIR) is found there" "$status" 0
+[ -x "$work/elsewhere/release/agency" ] && [ ! -e "$work/repo/target" ] || fail "the binary was not built where cargo says"
+expect "and is the one that is packed and uploaded" "$(sed 's#[^ ]*/##g' "$FAKE_STATE/uploads" | cut -d' ' -f2)" "agency-$version-macos-arm64.tar.gz"
+
 fresh; FAKE_ARCH=x86_64 release "v$version" --skip-smoke
 expect "an Intel Mac names its build x86_64" "$(sed 's#[^ ]*/##g' "$FAKE_STATE/uploads" | cut -d' ' -f2)" "agency-$version-macos-x86_64.tar.gz"
 
