@@ -14,6 +14,12 @@ export const en = {
     },
     unreachable: (reason: string) => `Could not reach the node: ${reason}`,
     signInExpired: { message: 'Your sign-in expired. Reload to sign in again.', reload: 'Reload', nothingToShow: 'Nothing can be shown until you sign in again.' },
+    pageLoad: {
+      failed: 'This page could not be loaded.',
+      tryAgain: 'Try again',
+      newVersion: 'This page could not be loaded. A new version of Agency may have been installed, so what this tab has is out of date.',
+      reload: 'Reload',
+    },
   },
   nav: {
     label: 'Main menu',
