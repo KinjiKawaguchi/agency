@@ -112,21 +112,19 @@ describe('devices screen', () => {
 
   it('says why when the node refuses to add the device', async () => {
     const user = userEvent.setup()
-    const node = createMockNode()
-    const keyStore = memoryKeyStore()
-    renderApp({ path: '/devices', node, keyStore })
-    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
-    window.dispatchEvent(new Event('visibilitychange'))
-    await screen.findByText(/This device is added\./)
+    const node = createTestNode()
+    // The node refuses the change itself, so nothing depends on when the list is read again: the request stays on the screen until it is answered.
+    const refusing = createApiClient(async (request) =>
+      request.method === 'POST' && new URL(request.url, 'http://mock.local').pathname === '/api/devices/changes'
+        ? new Response(JSON.stringify({ error: 'The device is already added.' }), { status: 409, headers: { 'content-type': 'application/json' } })
+        : node.handle(request),
+    )
+    renderApp({ path: '/devices', node, enrolled: true, client: refusing })
+    expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     await otherDeviceAsks(node, 'Tablet')
     window.dispatchEvent(new Event('visibilitychange'))
-    // The device is added elsewhere in the meantime, so the node refuses the second add.
-    const tablet = (await createApiClient((request) => node.handle(request)).devices()).requests[0]
-    expect(tablet).toBeDefined()
-    node.addDeviceFromTerminal(tablet?.pairingCode ?? '')
     await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
-    expect(await screen.findByText(/Could not add the device: /)).toBeInTheDocument()
+    expect(await screen.findByText('Could not add the device: The device is already added.')).toBeInTheDocument()
   })
 
   it('says so when this device is added to none of the orgs that lack the new one, and sends nothing', async () => {
