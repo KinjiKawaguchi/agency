@@ -188,7 +188,7 @@ public struct DevicesScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     if let notice { Text(notice).font(.subheadline).foregroundStyle(Theme.danger).wrapping().card() }
-                    if let pushDelivery, let lines = pushDelivery.lines { PushDeliveryCard(lines: lines, isFailing: pushDelivery.isFailing) }
+                    if let pushDelivery, let lines = pushDelivery.lines { PushDeliveryCard(lines: lines) }
                     if let pairing {
                         DevicesContent(
                             code: pairing.pairingCode, pairing: pairing.status, isAsking: pairing.isAsking,

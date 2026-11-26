@@ -44,13 +44,11 @@ extension Ja {
     /// APNs' own words.
     public enum PushDelivery {
         public static func isFailing(_ when: String, _ reason: String) -> String {
-            "この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（\(when)）: \(reason)。ノードは最大 1 日のあいだ再送します。失敗が続くときは、端末の通知の設定を確かめてください。"
+            "この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（\(when)）: \(reason)。ノードは最大 1 日のあいだ再送します。失敗が続くときは、端末の通知の設定と、ノードの APNs の設定を確かめてください。"
         }
 
         public static func lastTaken(_ when: String) -> String { "最後に受け付けた通知は \(when) のものです。" }
         public static let neverTaken = "まだ 1 件も受け付けていません。"
-        /// The node lists this phone's token and has sent it no notice yet, or has no word of it.
-        public static let noneYet = "APNs は、この端末にまだ通知を受け付けていません。"
     }
 }
 

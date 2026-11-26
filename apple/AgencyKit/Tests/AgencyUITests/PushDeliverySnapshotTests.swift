@@ -17,18 +17,17 @@ struct PushDeliverySnapshotTests {
         return try! JSONDecoder().decode(RegisteredPushToken.self, from: Data(json.utf8))
     }
 
-    @Test("a refusal with a long reason and a taking before it, one with none taken, and nothing to say yet")
+    @Test("a refusal with a long reason and a taking before it, and one with none taken")
     func drawn() {
         let long = "APNs refused the provider token (\(UIFixtures.unbrokenID))"
         let states: [(String, PushDelivery)] = [
             ("push-failing", PushDelivery(token: token(taken: "2026-11-26T08:00:00Z", failed: "2026-11-26T09:00:00Z", reason: long))),
             ("push-never", PushDelivery(token: token(taken: nil, failed: "2026-11-26T09:00:00Z", reason: "APNs could not be reached"))),
-            ("push-none-yet", PushDelivery(token: token(taken: nil, failed: nil, reason: ""))),
         ]
         for (name, delivery) in states {
             let lines = try! #require(delivery.lines(in: TimeZone(identifier: "Asia/Tokyo")!))
             for scheme in [ColorScheme.light, .dark] {
-                let result = Snapshot.capture(name, PushDeliveryCard(lines: lines, isFailing: delivery.isFailing), scheme: scheme)
+                let result = Snapshot.capture(name, PushDeliveryCard(lines: lines), scheme: scheme)
                 #expect(!result.png.isEmpty)
                 #expect(result.size.width == Snapshot.phoneWidth, "\(name): \(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")
             }

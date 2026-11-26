@@ -37,7 +37,7 @@ public final class PushDeliveryStore {
     /// What the Devices screen says, when it says anything.
     public var lines: [String]? { delivery?.lines() }
 
-    /// Whether what it says is a trouble (a warning), and not only that nothing was taken yet.
+    /// Whether it says a notice was refused.
     public var isFailing: Bool { delivery?.isFailing ?? false }
 
     /// Reads the node's list. `force` asks even when a read is still good (a pull to reload).

@@ -15,16 +15,16 @@ struct PushDeliveryTests {
         return try JSONDecoder().decode(RegisteredPushToken.self, from: Data(json.utf8))
     }
 
-    private func date(_ text: String) -> Date { Timestamp.date(from: text)! }
+    private func at(_ text: String) -> ReportedTime { ReportedTime(text: text) }
 
     @Test("nothing known, a taking, a refusal with none taken, a refusal later than a taking, and a taking later than a refusal")
     func rule() throws {
         #expect(PushDelivery(token: try token()) == .unknown)
-        #expect(PushDelivery(token: try token(taken: "2026-11-26T09:00:00Z")) == .taken(date("2026-11-26T09:00:00Z")))
-        #expect(PushDelivery(token: try token(failed: "2026-11-26T09:00:00Z")) == .failing(at: date("2026-11-26T09:00:00Z"), reason: "APNs answered 503", lastTakenAt: nil))
+        #expect(PushDelivery(token: try token(taken: "2026-11-26T09:00:00Z")) == .taken(at("2026-11-26T09:00:00Z")))
+        #expect(PushDelivery(token: try token(failed: "2026-11-26T09:00:00Z")) == .failing(at: at("2026-11-26T09:00:00Z"), reason: "APNs answered 503", lastTakenAt: nil))
         #expect(PushDelivery(token: try token(taken: "2026-11-26T08:00:00Z", failed: "2026-11-26T09:00:00Z"))
-            == .failing(at: date("2026-11-26T09:00:00Z"), reason: "APNs answered 503", lastTakenAt: date("2026-11-26T08:00:00Z")))
-        #expect(PushDelivery(token: try token(taken: "2026-11-26T10:00:00Z", failed: "2026-11-26T09:00:00Z")) == .taken(date("2026-11-26T10:00:00Z")))
+            == .failing(at: at("2026-11-26T09:00:00Z"), reason: "APNs answered 503", lastTakenAt: at("2026-11-26T08:00:00Z")))
+        #expect(PushDelivery(token: try token(taken: "2026-11-26T10:00:00Z", failed: "2026-11-26T09:00:00Z")) == .taken(at("2026-11-26T10:00:00Z")))
     }
 
     @Test("a taking at the same moment as a refusal, or the same moment written in another zone, means the notices go through")
@@ -38,7 +38,7 @@ struct PushDeliveryTests {
     func words() throws {
         let failing = PushDelivery(token: try token(taken: "2026-11-26T08:00:00Z", failed: "2026-11-26T09:00:00Z", reason: "APNs refused the provider token (ExpiredProviderToken)"))
         #expect(failing.lines(in: tokyo) == [
-            "この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（11月26日 18:00）: APNs refused the provider token (ExpiredProviderToken)。ノードは最大 1 日のあいだ再送します。失敗が続くときは、端末の通知の設定を確かめてください。",
+            "この端末へのプッシュ通知を、APNs は最後に受け付けませんでした（11月26日 18:00）: APNs refused the provider token (ExpiredProviderToken)。ノードは最大 1 日のあいだ再送します。失敗が続くときは、端末の通知の設定と、ノードの APNs の設定を確かめてください。",
             "最後に受け付けた通知は 11月26日 17:00 のものです。",
         ])
         let never = PushDelivery(token: try token(failed: "2026-11-26T09:00:00Z"))
@@ -46,11 +46,21 @@ struct PushDeliveryTests {
         #expect(never.isFailing)
     }
 
-    @Test("a taking says nothing, and a token the node lists with nothing to say says that no notice was taken yet, and is not a trouble")
+    @Test("a taking says nothing, and so does a token the node lists with nothing to say: that is not a refusal (an older node records none, a new phone has been sent none)")
     func quiet() throws {
-        #expect(PushDelivery.taken(date("2026-11-26T09:00:00Z")).lines() == nil)
-        #expect(PushDelivery.unknown.lines() == ["APNs は、この端末にまだ通知を受け付けていません。"])
+        #expect(PushDelivery.taken(at("2026-11-26T09:00:00Z")).lines() == nil)
+        #expect(PushDelivery.unknown.lines() == nil)
         #expect(!PushDelivery.unknown.isFailing)
+    }
+
+    @Test("a time that cannot be read is not a later time: the refusal stands, and is said with the text the node wrote")
+    func unreadable() throws {
+        let both = PushDelivery(token: try token(taken: "yesterday", failed: "2026-11-26T09:00:00Z"))
+        #expect(both.isFailing, "a taking whose time cannot be compared does not hide a refusal")
+        let badFailure = PushDelivery(token: try token(taken: "2026-11-26T09:00:00Z", failed: "this morning"))
+        #expect(badFailure.isFailing)
+        #expect(badFailure.lines(in: tokyo)?.first?.contains("（this morning）") == true, "the node's text where a time cannot be formatted")
+        #expect(PushDelivery(token: try token(taken: "now", failed: nil)) == .taken(at("now")))
     }
 
     @Test("this phone's token is found among the listed ones by its last 8 characters, in either case, and a token not listed is nothing")
