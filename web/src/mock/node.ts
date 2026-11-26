@@ -7,6 +7,9 @@ import { effortReport, withPlans } from './effort.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
 
+/** What the mock node says approves a first device on its machine. */
+export const MOCK_DEVICE_COMMAND = '/usr/local/bin/agency --dir /var/agency device-add'
+
 /** The token the mock node's index.html carries and its writes demand. */
 export const MOCK_TOKEN = 'mock-token'
 
@@ -48,6 +51,8 @@ interface MockNodeOptions {
   evaluationUnavailableTeam?: string
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
+  /** False to leave out the node's own command for approving a device, as the node does for anyone but its owner. */
+  deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -224,7 +229,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const handleDevices = async (request: Request, url: URL): Promise<Response> => {
-    if (request.method === 'GET' && url.pathname === DEVICES_PATH) return json(devices.list())
+    // The node tells its owner the command that approves a device on its machine; a loopback request is the owner's.
+    if (request.method === 'GET' && url.pathname === DEVICES_PATH) return json(options.deviceCommand === false ? devices.list() : { ...devices.list(), node: { url: 'http://127.0.0.1:4400', dataDir: '/var/agency', command: MOCK_DEVICE_COMMAND } })
     const write = request.method === 'POST' ? await readWrite(request) : undefined
     if (write === undefined) return failure(404, 'No such route.')
     if (write instanceof Response) return write

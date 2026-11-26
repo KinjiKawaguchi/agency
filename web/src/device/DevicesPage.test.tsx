@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { createMockNode } from '../mock/node'
 import { memoryKeyStore, renderApp } from '../test/render'
+import { createTestNode } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair, type DeviceKey } from './deviceKey'
 import { settledDeviceKey } from './useDeviceKey'
 
@@ -61,7 +62,7 @@ describe('devices screen', () => {
     await user.clear(field)
     await user.type(field, 'Work laptop')
     await user.click(screen.getByRole('button', { name: 'Add this device' }))
-    expect(await screen.findByText(/Waiting for you to confirm this device/)).toBeInTheDocument()
+    expect(await screen.findByText(/Waiting for you to approve this device/)).toBeInTheDocument()
     const key = await browserKey(keyStore)
     const { requests } = await createApiClient((request) => node.handle(request)).devices()
     expect(requests).toMatchObject([{ label: 'Work laptop', publicKey: key.publicKey, pairingCode: key.pairingCode }])
@@ -74,7 +75,7 @@ describe('devices screen', () => {
     const keyStore = memoryKeyStore()
     renderApp({ path: '/devices', node, keyStore })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    await screen.findByText(/Waiting for you to confirm this device/)
+    await screen.findByText(/Waiting for you to approve this device/)
     expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
     window.dispatchEvent(new Event('visibilitychange'))
     expect(await screen.findByText(/This device is added\./)).toBeInTheDocument()
@@ -160,16 +161,70 @@ describe('devices screen', () => {
     }
   })
 
-  it('tells a first-time person what to do while waiting: run the command on the node’s machine and compare the code', async () => {
+  it('tells an account with no device to approve it on the node’s machine, with the exact command for this node', async () => {
     const user = userEvent.setup()
-    renderApp({ path: '/devices', enrolled: false })
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    const steps = await screen.findAllByRole('listitem')
-    expect(steps.map((one) => one.textContent)).toEqual([
-      'On the machine that runs the node, run “agency device-add”.',
-      'Check that the code it shows is exactly the one above.',
-      'Confirm there.',
-    ])
+    const steps = within(await screen.findByText('How it gets approved').then((heading) => heading.parentElement as HTMLElement))
+    expect(steps.getByText(/You have no device yet, so approve it on the machine that runs this node/)).toBeInTheDocument()
+    expect(steps.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeInTheDocument()
+    expect(steps.queryByText(/Approve it from one of your devices/)).not.toBeInTheDocument()
+    expect(steps.getByText(/Compare the code above with the one the approving device shows/)).toBeInTheDocument()
+  })
+
+  it('tells an account that has a device to approve it from one of them, by name, and not from the terminal', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createTestNode(), enrolled: false })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    const steps = within(await screen.findByText('How it gets approved').then((heading) => heading.parentElement as HTMLElement))
+    expect(steps.getByText(/Approve it from one of your devices: Browser\. Open Agency there, go to Devices/)).toBeInTheDocument()
+    expect(steps.getByText(/The terminal cannot add a second device unless the command line is already one of your devices/)).toBeInTheDocument()
+    expect(steps.queryByText('/usr/local/bin/agency --dir /var/agency device-add')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the plain command and the install guide when the node does not give its own', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode({ deviceCommand: false }), enrolled: false })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    expect(await screen.findByText('agency device-add')).toBeInTheDocument()
+    expect(screen.getByText(/the install guide \(docs\/install\.md\) says how/)).toBeInTheDocument()
+  })
+
+  it('names the orgs when one has a device to approve from and another has none yet', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode({ moreOrgs: true })
+    const mixed = async (request: Request): Promise<Response> => {
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/devices' || request.method !== 'GET') return node.handle(request)
+      const real = (await (await node.handle(request)).json()) as { orgs: unknown[]; requests: unknown[] }
+      const lab = { org: 'lab', devices: [] }
+      const acme = { org: 'acme', devices: [{ id: 'd-aaaaaaaaaaaa', label: 'Laptop', publicKey: 'A'.repeat(43) + '=', addedAt: '2026-11-24T12:00:00Z' }] }
+      return new Response(JSON.stringify({ ...real, orgs: [acme, lab] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    renderApp({ path: '/devices', node, enrolled: false, client: createApiClient(mixed) })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    expect(await screen.findByText(/^In Acme: Approve it from one of your devices: Laptop\./)).toBeInTheDocument()
+    expect(screen.getByText(/^In Lab: You have no device yet, so approve it on the machine/)).toBeInTheDocument()
+  })
+
+  it('shows the code large while it waits, and says it is approved once it is', async () => {
+    const user = userEvent.setup()
+    const node = createMockNode()
+    const keyStore = memoryKeyStore()
+    renderApp({ path: '/devices', node, enrolled: false, keyStore })
+    await user.click(await screen.findByRole('button', { name: 'Add this device' }))
+    const code = await screen.findByLabelText('Pairing code of this device')
+    expect(code).toHaveClass('large')
+    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
+    expect(await screen.findByText(/This device is added\./, undefined, { timeout: 8000 })).toBeInTheDocument()
+    expect(screen.queryByText('How it gets approved')).not.toBeInTheDocument()
+  })
+
+  it('reads in Japanese', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: createMockNode(), enrolled: false, locale: 'ja' })
+    await user.click(await screen.findByRole('button', { name: 'この端末を追加' }))
+    expect(await screen.findByText('承認のしかた')).toBeInTheDocument()
+    expect(screen.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeInTheDocument()
   })
 })
 

@@ -6,6 +6,7 @@ import { DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { useToast } from '../shared/Toasts'
 import { addChangeFor, signChange } from './changes'
+import { ApprovalSteps } from './ApprovalSteps'
 import { deviceKeyCapabilities, type DeviceKey } from './deviceKey'
 import { deviceIdIn, enrollmentOf, orgsLacking, requestsFromOthers } from './enrollment'
 import { useDeviceKey } from './useDeviceKey'
@@ -40,8 +41,8 @@ function AskToBeAdded({ deviceKey }: { deviceKey: DeviceKey }) {
   )
 }
 
-function PairingCode({ code, label }: { code: string; label: string }) {
-  return <p className="pairing-code" aria-label={label}>{code}</p>
+function PairingCode({ code, label, large = false }: { code: string; label: string; large?: boolean }) {
+  return <p className={`pairing-code${large ? ' large' : ''}`} aria-label={label}>{code}</p>
 }
 
 function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceList }) {
@@ -50,17 +51,12 @@ function ThisDevice({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLis
   return (
     <section className="device-card">
       <h2 className="sub-head">{t.devices.thisDevice}</h2>
-      <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} />
+      <PairingCode code={deviceKey.pairingCode} label={t.devices.codeLabel} large={enrollment.status === 'pending'} />
       {enrollment.status === 'none' ? <AskToBeAdded deviceKey={deviceKey} /> : null}
       {enrollment.status === 'pending' ? (
         <>
           <p className="device-lead" role="status">{t.devices.waitingLead}</p>
-          <ol className="device-steps">
-            {t.devices.waitingSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          <p className="muted">{t.devices.waitingOther}</p>
+          <ApprovalSteps list={list} publicKey={deviceKey.publicKey} />
         </>
       ) : null}
       {enrollment.status === 'enrolled' ? (

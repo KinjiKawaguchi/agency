@@ -79,7 +79,7 @@ for (const theme of ['light', 'dark'] as const) {
     await shoot('add-device')
 
     await page.getByRole('button', { name: 'Add this device' }).click()
-    await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+    await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
     await shoot('waiting')
 
     await resetNode(request, { empty: true })

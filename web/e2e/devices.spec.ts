@@ -55,13 +55,16 @@ async function askToBeAdded(page: Page, label: string): Promise<string> {
   await page.goto('/devices')
   await page.getByRole('textbox', { name: 'Name for this device' }).fill(label)
   await page.getByRole('button', { name: 'Add this device' }).click()
-  await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+  await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
   return (await page.getByLabel('Pairing code of this device').textContent()) ?? ''
 }
 
 test('asks to be added, is confirmed in the terminal, then signs a decision the node verifies', async ({ page, request }) => {
   const code = await askToBeAdded(page, 'Work laptop')
   expect(code).toMatch(CODE)
+  // The account has no device yet: it says to approve on the node's machine, with the node's own command.
+  await expect(page.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toBeVisible()
+  await expect(page.getByText(/Approve it from one of your devices/)).toHaveCount(0)
   await confirmInTerminal(request, code)
   // It asks again every few seconds while it waits.
   await expect(page.getByText(/This device is added\./)).toBeVisible({ timeout: 10_000 })
@@ -88,6 +91,9 @@ test('confirms a second device from the first, by comparing codes', async ({ pag
   try {
     const phone = await phoneContext.newPage()
     const phoneCode = await askToBeAdded(phone, 'Phone')
+    // The account has a device now: it names it, and does not send the owner to the terminal.
+    await expect(phone.getByText(/Approve it from one of your devices: Laptop\./)).toBeVisible()
+    await expect(phone.getByText('/usr/local/bin/agency --dir /var/agency device-add')).toHaveCount(0)
     expect(phoneCode).not.toBe(await page.getByLabel('Pairing code of this device').textContent())
 
     await page.reload()
@@ -121,7 +127,7 @@ for (const view of VIEWS) {
 
     await page.getByRole('textbox', { name: 'Name for this device' }).fill('Work laptop')
     await page.getByRole('button', { name: 'Add this device' }).click()
-    await expect(page.getByText(/Waiting for you to confirm this device/)).toBeVisible()
+    await expect(page.getByText(/Waiting for you to approve this device/)).toBeVisible()
     await shoot('waiting', page)
 
     await confirmInTerminal(request, (await page.getByLabel('Pairing code of this device').textContent()) ?? '')

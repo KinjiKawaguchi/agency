@@ -146,3 +146,46 @@
   justify-content: center;
   text-decoration: none;
 }
+
+/* A device that waits to be approved: its code large, and what to do next. */
+.pairing-code.large {
+  font-size: 44px;
+}
+
+.device-approval {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.device-approval .sub-head {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.device-why {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+}
+
+.device-way {
+  margin: 0 0 12px;
+}
+
+.device-command {
+  display: block;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font: 13px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+@media (max-width: 720px) {
+  .pairing-code.large {
+    font-size: 34px;
+  }
+}
