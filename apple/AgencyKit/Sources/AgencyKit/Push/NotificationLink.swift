@@ -14,6 +14,16 @@ public enum NotificationLink: Equatable, Sendable {
     /// A recovery of an org was started: the desk, where it is said at the top.
     case recovery(org: String)
 
+    /// The org the notification is about, when it names one.
+    public var org: String? {
+        switch self {
+        case .request(let link): link.org
+        case .decision(let org, _, _): org
+        case .recovery(let org): org
+        case .devices: nil
+        }
+    }
+
     /// Returns `nil` for a payload that is not ours, a type this app does not know, or an identifier that
     /// is missing or odd, so that nothing in a payload can change which screen is opened.
     public init?(userInfo: [AnyHashable: Any]) {

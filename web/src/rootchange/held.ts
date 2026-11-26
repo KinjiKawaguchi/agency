@@ -1,6 +1,6 @@
 import type { Me } from '../api/clientApi'
 import { deviceIdOf } from '../device/fingerprint'
-import { rootChangesOf } from './provisional'
+import { rootChangesOf } from './changes'
 
 /**
  * Whether the root's node holds the approval of this device's request for its owner to sign: a held `addDevice` of this
