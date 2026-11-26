@@ -16,3 +16,6 @@ DerivedData/
 .build/
 *.xcarchive
 *.ipa
+
+# Which source each TestFlight upload was made from (apple/scripts/testflight.sh).
+uploads.log

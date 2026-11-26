@@ -20,8 +20,17 @@ fn rust_files(dir: &Path, found: &mut Vec<PathBuf>) {
     }
 }
 
+/// Whether `line` holds `text` where the name in it starts a word, so that `HomeNodeConfig`, another
+/// type, is not taken for `NodeConfig`.
+fn contains_word(line: &str, text: &str) -> bool {
+    line.match_indices(text).any(|(at, _)| {
+        let before = line[..at].chars().next_back();
+        !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
+}
+
 /// A struct literal of `name`: `Name {` that is not its definition, one of its impls, or a function that
-/// returns one.
+/// returns one. Only the whole name counts, so a type whose name ends with it is not taken for it.
 fn builds_by_hand(line: &str, name: &str) -> bool {
     // Spelled in two parts so this file does not match its own needle.
     let needle = format!("{name}{}", " {");
@@ -33,7 +42,23 @@ fn builds_by_hand(line: &str, name: &str) -> bool {
     ]
     .iter()
     .any(|text| line.contains(text));
-    line.contains(&needle) && !is_not_literal
+    contains_word(line, &needle) && !is_not_literal
+}
+
+#[test]
+fn only_the_whole_name_is_taken_for_a_literal() {
+    let literal = format!("let config = NodeConfig{}", " {");
+    let other = format!("let entry = HomeNodeConfig{}", " {");
+    let qualified = format!("agency_core::config::NodeConfig{}", " {");
+    assert!(builds_by_hand(&literal, "NodeConfig"));
+    assert!(
+        builds_by_hand(&qualified, "NodeConfig"),
+        "a path before the name still counts"
+    );
+    assert!(
+        !builds_by_hand(&other, "NodeConfig"),
+        "another type that ends with the name"
+    );
 }
 
 #[test]

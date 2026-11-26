@@ -23,6 +23,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         push.didFailToRegister(error)
     }
 
+    /// A push that asks the app to read the desk while it is closed (`content-available`): the widgets show the
+    /// result. The app reads nothing when it is in front, where the screens read for themselves.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
+        guard DeskWake.isWake(userInfo), application.applicationState != .active else { return .noData }
+        switch await BackgroundDeskRefresh.run() {
+        case .written?: return .newData
+        case .notRead?: return .failed
+        case nil: return .noData
+        }
+    }
+
     /// A notification that arrives while the app is open still shows as a banner and sets the badge.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,

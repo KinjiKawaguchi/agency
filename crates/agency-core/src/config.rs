@@ -152,9 +152,30 @@ pub struct NodeConfig {
     /// same meaning and is still read.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hide_titles: bool,
+    /// The owner's other home nodes, for their other accounts, which clients offer to switch to. The
+    /// node says only where they are; it never reads or copies anything from them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub home_nodes: Vec<HomeNodeConfig>,
     /// The node's log: its level, and when its files are rotated and deleted.
     #[serde(default, skip_serializing_if = "LoggingConfig::is_default")]
     pub logging: LoggingConfig,
+}
+
+/// One of the owner's other home nodes, as configured: a label and its node origin.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HomeNodeConfig {
+    pub label: String,
+    pub url: String,
+}
+
+impl HomeNodeConfig {
+    pub fn new(label: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            url: url.into(),
+        }
+    }
 }
 
 impl WebPushConfig {
@@ -322,7 +343,8 @@ pub struct AccessConfig {
 }
 
 impl NodeConfig {
-    /// A node's configuration with no hosted teams, trusted orgs, funding sources, Access, push, or Web Push.
+    /// A node's configuration with no hosted teams, trusted orgs, funding sources, Access, push, Web Push,
+    /// or other home nodes.
     pub fn new(
         url: impl Into<String>,
         listen: impl Into<String>,
@@ -341,8 +363,14 @@ impl NodeConfig {
             push: None,
             web_push: None,
             hide_titles: false,
+            home_nodes: vec![],
             logging: LoggingConfig::default(),
         }
+    }
+
+    /// The owner's other home nodes (`homeNodes`).
+    pub fn with_home_nodes(self, home_nodes: Vec<HomeNodeConfig>) -> Self {
+        Self { home_nodes, ..self }
     }
 
     pub fn hosted(&self, org: &Id, team: &Id) -> Option<&HostedTeam> {

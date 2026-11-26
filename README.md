@@ -129,6 +129,12 @@ To notify the owner's browsers as well (Chrome, Edge, Firefox, Safari on a Mac, 
 
 See "Client API" in docs/protocol.md for what is checked.
 
+If you have more than one account, each with its own home node (for example a personal one and a work one), list the others in each node's `config.json`, so the web client and the iPhone app offer to switch to them. A node says only where the others are, and only to its owner:
+
+```json
+"homeNodes": [{ "label": "Work", "url": "https://work.example.com" }]
+```
+
 ## iPhone app
 
 `apple/` holds the iPhone app, native screens that talk to the home node, for TestFlight. See [docs/apple.md](docs/apple.md).

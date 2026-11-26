@@ -1,0 +1,33 @@
+{
+  "account": {
+    "fingerprint": "34750f98bd59fcfc946da45aaabe933b",
+    "id": "alice",
+    "label": "ALICE"
+  },
+  "funding": [],
+  "homeNodes": [
+    {
+      "label": "Work",
+      "url": "https://work.example.com"
+    },
+    {
+      "label": "Lab",
+      "url": "http://127.0.0.1:4500"
+    }
+  ],
+  "orgs": [
+    {
+      "id": "acme",
+      "isRoot": true,
+      "label": "Acme",
+      "teams": [
+        {
+          "id": "app",
+          "label": "app",
+          "location": "local",
+          "viewer": "owner"
+        }
+      ]
+    }
+  ]
+}
