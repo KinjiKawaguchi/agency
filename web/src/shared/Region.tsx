@@ -1,4 +1,4 @@
-import { QueryErrorResetBoundary } from '@tanstack/react-query'
+import { QueryErrorResetBoundary, useQueryClient } from '@tanstack/react-query'
 import { Component, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { failureText } from '../api/failure'
 import { POLL_MS } from '../api/queries'
@@ -6,19 +6,36 @@ import { SignInExpiredError } from '../api/session'
 import { useI18n } from '../i18n'
 import { useSecondsUntil } from './useCountdown'
 
-/** The region went wrong for good: what, why, when it tries again by itself, and a button to try now. */
+const hasFailed = (query: { state: { status: string } }): boolean => query.state.status === 'error'
+
+/**
+ * The region went wrong for good: what, why, when it tries again by itself, and a button to try now. The
+ * automatic try is made quietly: the failure stays on screen ("Trying again…") while the queries that failed
+ * are read again, and the region is shown again only once they have passed, so that it does not flash
+ * between a skeleton and the failure every half minute. If they fail again the countdown starts over.
+ */
 function RegionFailed({ what, error, retry }: { what: string; error: Error; retry: () => void }) {
   const { t } = useI18n()
-  const [failedAt] = useState(() => Date.now())
+  const queryClient = useQueryClient()
+  const [failedAt, setFailedAt] = useState(() => Date.now())
+  const [isTrying, setIsTrying] = useState(false)
   const seconds = useSecondsUntil(failedAt + POLL_MS)
   useEffect(() => {
-    if (seconds === 0) retry()
-  }, [seconds, retry])
+    if (seconds > 0 || isTrying) return
+    setIsTrying(true)
+    void queryClient.refetchQueries({ predicate: hasFailed }).then(() => {
+      if (queryClient.getQueryCache().findAll({ predicate: hasFailed }).length === 0) retry()
+      else {
+        setFailedAt(Date.now())
+        setIsTrying(false)
+      }
+    })
+  }, [seconds, isTrying, queryClient, retry])
   return (
     <div className="region-failed" role="alert">
       <p>
         {error instanceof SignInExpiredError ? failureText(t, error) : t.loading.failed(what, error.message)}
-        <span className="muted">{seconds > 0 ? t.loading.retryIn(seconds) : t.loading.retrying}</span>
+        <span className="muted">{isTrying ? t.loading.retrying : t.loading.retryIn(seconds)}</span>
       </p>
       <button type="button" className="btn small" onClick={retry}>{t.loading.tryAgain}</button>
     </div>

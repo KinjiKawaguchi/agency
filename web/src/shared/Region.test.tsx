@@ -70,4 +70,22 @@ describe('a region', () => {
       vi.useRealTimers()
     }
   })
+
+  it('keeps the failure on screen while it tries again by itself, and starts the countdown over when that fails too', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { Content, calls } = reader(2, 'Back at last')
+      renderRegion(Content)
+      expect(await screen.findByRole('alert')).toHaveTextContent('Trying again in 30 s.')
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      // The second read failed as well: still the failure, never a skeleton in between, and the countdown is 30 s again.
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(await screen.findByText(/Trying again in (29|30) s\./)).toBeInTheDocument()
+      expect(calls()).toBe(2)
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      expect(await screen.findByText('Back at last')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
