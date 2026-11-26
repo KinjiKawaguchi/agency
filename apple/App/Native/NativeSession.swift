@@ -28,6 +28,8 @@ final class NativeSession {
     let people: PeopleStore
     /// The funding sources and each team's token use, read from the same client.
     let costs: CostsStore
+    /// How fast each team ships, and where its effort goes, read from the same client.
+    let evaluation: EvaluationStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -57,6 +59,7 @@ final class NativeSession {
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
+        evaluation = EvaluationStore(source: client)
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
@@ -69,6 +72,7 @@ final class NativeSession {
             await overview.refresh()
             await people.refresh()
             await costs.refresh()
+            await evaluation.refresh()
         case .canceled:
             break
         case .unavailable:

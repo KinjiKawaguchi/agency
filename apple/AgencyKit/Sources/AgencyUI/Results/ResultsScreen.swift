@@ -15,8 +15,8 @@ public struct ResultsScreen: View {
 
         var title: String {
             switch self {
-            case .costs: Ja.Results.costs
-            case .evaluation: Ja.Results.evaluation
+            case .costs: Ja.Tabs.costs
+            case .evaluation: Ja.Evaluation.title
             }
         }
     }
@@ -31,7 +31,7 @@ public struct ResultsScreen: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker(Ja.Results.title, selection: $page) {
+                Picker(Ja.Tabs.results, selection: $page) {
                     ForEach(Page.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
@@ -42,7 +42,7 @@ public struct ResultsScreen: View {
                 case .evaluation: EvaluationPage(store: evaluation, onSignInAgain: onSignInAgain)
                 }
             }
-            .navigationTitle(Ja.Results.title)
+            .navigationTitle(Ja.Tabs.results)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

@@ -11,14 +11,14 @@ struct HomeShell: View {
 
     /// The tabs, in the order of the bar. Each has its own view in `screen(_:session:)`.
     enum Tab: CaseIterable, Hashable {
-        case desk, overview, people, costs, devices
+        case desk, overview, people, results, devices
 
         var title: String {
             switch self {
             case .desk: Ja.Tabs.desk
             case .overview: Ja.Tabs.overview
             case .people: Ja.Tabs.people
-            case .costs: Ja.Tabs.costs
+            case .results: Ja.Tabs.results
             case .devices: Ja.Tabs.devices
             }
         }
@@ -28,7 +28,7 @@ struct HomeShell: View {
             case .desk: "tray.full"
             case .overview: "square.grid.2x2"
             case .people: "person.2"
-            case .costs: "yensign.circle"
+            case .results: "chart.line.uptrend.xyaxis"
             case .devices: "iphone"
             }
         }
@@ -101,8 +101,8 @@ struct HomeShell: View {
                 store: session.people, onOpenDesk: { self.tab = .desk },
                 onSignInAgain: { Task { await session.signInAgain() } }
             )
-        case .costs:
-            CostsScreen(store: session.costs, onSignInAgain: { Task { await session.signInAgain() } })
+        case .results:
+            ResultsScreen(costs: session.costs, evaluation: session.evaluation, onSignInAgain: { Task { await session.signInAgain() } })
         case .devices:
             DevicesScreen(store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Device.noKey })
         }
