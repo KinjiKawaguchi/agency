@@ -55,6 +55,9 @@ public final class CostsStore {
     public static let periods = [7, 14, 30]
 
     public private(set) var loading: Loading = .idle
+    /// Whether a read has finished at least once. Set once and never reset: a refresh under way, a failed one or a cancelled one
+    /// does not make the screen unread again, so an account with nothing in it keeps saying so instead of going back to bars.
+    public private(set) var hasAnswered = false
     /// The Access session ended: the sign-in has to run again before anything else works.
     public private(set) var needsSignIn = false
     public private(set) var days = 14
@@ -103,6 +106,7 @@ public final class CostsStore {
             usage = usage.filter { key, _ in read[key] != nil }
             publish()
             await readUsage()
+            hasAnswered = true
             loading = .loaded
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true

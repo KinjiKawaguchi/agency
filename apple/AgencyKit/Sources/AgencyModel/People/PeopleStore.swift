@@ -14,6 +14,9 @@ public final class PeopleStore {
     }
 
     public private(set) var loading: Loading = .idle
+    /// Whether a read has finished at least once. Set once and never reset: a refresh under way, a failed one or a cancelled one
+    /// does not make the screen unread again, so an account with nothing in it keeps saying so instead of going back to bars.
+    public private(set) var hasAnswered = false
     /// The Access session ended: the sign-in has to run again before anything else works.
     public private(set) var needsSignIn = false
     /// The teams that were read, in the order the node lists them.
@@ -57,6 +60,7 @@ public final class PeopleStore {
             failures = failed.mapValues(\.reason)
             // A session that ended while the teams were being read shows as that, not as failures of each team.
             needsSignIn = failed.values.contains { $0.signInEnded }
+            hasAnswered = true
             loading = .loaded
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
