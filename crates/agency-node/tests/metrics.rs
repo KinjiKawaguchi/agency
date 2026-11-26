@@ -287,14 +287,14 @@ async fn an_objective_that_is_not_one_stops_the_node_and_names_the_setting() {
                 group: "nothing".into(),
                 p95_ms: 100,
             },
-            "\"nothing\" is not a group of routes",
+            "metrics.objectives[0].group: \"nothing\" is not a group of routes",
         ),
         (
             Objective {
                 group: "desk".into(),
                 p95_ms: 0,
             },
-            "p95Ms of \"desk\" must be 1 to 30000",
+            "metrics.objectives[0].p95Ms: 0 must be 1 to 30000",
         ),
     ] {
         let mut config = NodeConfig::new(

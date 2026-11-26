@@ -41,25 +41,25 @@ impl MetricsConfig {
                 "metrics.objectives has more than {MOST_OBJECTIVES} entries"
             ));
         }
-        let mut seen = std::collections::BTreeSet::new();
-        for objective in &self.objectives {
+        let mut seen: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        for (index, objective) in self.objectives.iter().enumerate() {
             let is_group =
                 ROUTE_GROUPS.contains(&objective.group.as_str()) && objective.group != "unmatched";
             if !is_group {
                 return Err(format!(
-                    "metrics.objectives: \"{}\" is not a group of routes (desk, teams, usage, evaluation, outcomes, devices, push, federation, metrics, other)",
+                    "metrics.objectives[{index}].group: \"{}\" is not a group of routes (desk, teams, usage, evaluation, outcomes, devices, push, federation, metrics, other)",
                     objective.group
                 ));
             }
             if !(1..=MOST_P95_MS).contains(&objective.p95_ms) {
                 return Err(format!(
-                    "metrics.objectives: p95Ms of \"{}\" must be 1 to {MOST_P95_MS}",
-                    objective.group
+                    "metrics.objectives[{index}].p95Ms: {} must be 1 to {MOST_P95_MS} (the group \"{}\")",
+                    objective.p95_ms, objective.group
                 ));
             }
-            if !seen.insert(objective.group.as_str()) {
+            if let Some(first) = seen.insert(objective.group.as_str(), index) {
                 return Err(format!(
-                    "metrics.objectives: \"{}\" has two objectives",
+                    "metrics.objectives[{index}].group: \"{}\" is already set by metrics.objectives[{first}]",
                     objective.group
                 ));
             }
@@ -98,15 +98,24 @@ mod tests {
         let refused = |text: &str| config(text).check().unwrap_err();
         assert!(
             refused(r#"{"objectives":[{"group":"nothing","p95Ms":100}]}"#)
-                .contains("\"nothing\" is not a group")
+                .starts_with("metrics.objectives[0].group: \"nothing\" is not a group")
         );
         assert!(
             refused(r#"{"objectives":[{"group":"unmatched","p95Ms":100}]}"#)
                 .contains("not a group"),
             "unmatched is not a group to hold"
         );
-        assert!(refused(r#"{"objectives":[{"group":"desk","p95Ms":0}]}"#)
-            .contains("p95Ms of \"desk\" must be 1 to 30000"));
+        assert_eq!(
+            refused(r#"{"objectives":[{"group":"desk","p95Ms":0}]}"#),
+            "metrics.objectives[0].p95Ms: 0 must be 1 to 30000 (the group \"desk\")"
+        );
+        assert!(
+            refused(
+                r#"{"objectives":[{"group":"teams","p95Ms":10},{"group":"desk","p95Ms":40000}]}"#
+            )
+            .starts_with("metrics.objectives[1].p95Ms: 40000 must be"),
+            "the index of the one that is wrong"
+        );
         assert!(
             refused(r#"{"objectives":[{"group":"desk","p95Ms":30001}]}"#)
                 .contains("must be 1 to 30000")
@@ -114,7 +123,21 @@ mod tests {
         assert!(refused(
             r#"{"objectives":[{"group":"desk","p95Ms":10},{"group":"desk","p95Ms":20}]}"#
         )
-        .contains("\"desk\" has two objectives"));
+        .eq("metrics.objectives[1].group: \"desk\" is already set by metrics.objectives[0]"));
+        assert_eq!(
+            refused(
+                r#"{"objectives":[{"group":"teams","p95Ms":5},{"group":"desk","p95Ms":10},{"group":"usage","p95Ms":7},{"group":"desk","p95Ms":20}]}"#
+            ),
+            "metrics.objectives[3].group: \"desk\" is already set by metrics.objectives[1]",
+            "the index of the second and of the first"
+        );
+        assert!(
+            refused(
+                r#"{"objectives":[{"group":"desk","p95Ms":10},{"group":"nothing","p95Ms":5}]}"#
+            )
+            .starts_with("metrics.objectives[1].group: \"nothing\""),
+            "the index of a group that is not one"
+        );
         let many: Vec<String> = (0..=MOST_OBJECTIVES)
             .map(|_| r#"{"group":"desk","p95Ms":10}"#.to_owned())
             .collect();

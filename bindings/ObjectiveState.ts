@@ -3,4 +3,4 @@
 /**
  * Whether an objective the operator set for a group is kept.
  */
-export type ObjectiveState = "met" | "notMet" | "unknown";
+export type ObjectiveState = "met" | "notMet" | "undetermined" | "unknown";
