@@ -213,11 +213,7 @@ fn canonical_cases() -> serde_json::Value {
 fn p256_device(comment: &str) -> serde_json::Value {
     use base64::Engine;
     use p256::ecdsa::signature::Signer;
-    let scalar = [0x0b_u8; 32];
-    let key = p256::ecdsa::SigningKey::from_slice(&scalar).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
-    let encoded = base64::engine::general_purpose::STANDARD.encode(point.as_bytes());
-    let public = agency_proto::PublicKey::try_from(format!("p256:{encoded}")).unwrap();
+    let (key, public) = p256_key(0x0b);
     let message = Kind::Envelope.message(comment);
     let signature: p256::ecdsa::Signature = key.sign(&message);
     let signature = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
@@ -229,6 +225,68 @@ fn p256_device(comment: &str) -> serde_json::Value {
         "pairingCode": public.pairing_code(),
         "deviceId": public.device_id(),
         "commentSignature": signature,
+    })
+}
+
+/// A P-256 key from a fixed private scalar.
+fn p256_key(byte: u8) -> (p256::ecdsa::SigningKey, agency_proto::PublicKey) {
+    use base64::Engine;
+    let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
+    let point = key.verifying_key().to_encoded_point(false);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(point.as_bytes());
+    let public = agency_proto::PublicKey::try_from(format!("p256:{encoded}")).unwrap();
+    (key, public)
+}
+
+/// A device change signed by the P-256 device (scalar `0b`), as the iPhone app signs one: the canonical
+/// JSON, the signed text, the signer's device id, and the signature.
+fn p256_signed_change(change: &DeviceChange) -> serde_json::Value {
+    use base64::Engine;
+    use p256::ecdsa::signature::Signer;
+    let (key, public) = p256_key(0x0b);
+    let canonical = canonical_of(change).unwrap();
+    let message = Kind::Device.message(&canonical);
+    let signature: p256::ecdsa::Signature = key.sign(&message);
+    let signature = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+    assert!(public.verify(&message, &signature));
+    serde_json::json!({
+        "canonical": canonical,
+        "signedText": String::from_utf8(message).unwrap(),
+        "signer": public.device_id(),
+        "signature": signature,
+    })
+}
+
+/// Device changes signed by a P-256 device: it adds a second P-256 device (a nested `device`) and removes
+/// it again (a bare device id).
+fn device_change_p256() -> serde_json::Value {
+    let (_, tablet) = p256_key(0x0c);
+    let at = Timestamp::parse(AT).unwrap();
+    let add = DeviceChange {
+        org: id("acme"),
+        account: id("alice"),
+        op: DeviceOp::Add {
+            device: Box::new(Device {
+                id: id("tablet"),
+                label: "Tablet".into(),
+                public_key: tablet,
+                added_at: at.clone(),
+            }),
+        },
+        at: at.clone(),
+    };
+    let remove = DeviceChange {
+        org: id("acme"),
+        account: id("alice"),
+        op: DeviceOp::Remove {
+            device: id("tablet"),
+        },
+        at,
+    };
+    serde_json::json!({
+        "signerKey": p256_key(0x0b).1.encoded(),
+        "add": p256_signed_change(&add),
+        "remove": p256_signed_change(&remove),
     })
 }
 
@@ -245,7 +303,7 @@ fn comment_envelope() -> Envelope {
 
 /// Test vectors: canonical JSON and signatures of fixed bodies with keys from fixed seeds: the account key (seed 7) signs
 /// the org definition and the first device change, the device key (seed 9) signs the envelope and a comment, and a
-/// P-256 device key signs the same comment. Another implementation
+/// P-256 device key signs the same comment and two device changes. Another implementation
 /// must produce the same values.
 #[test]
 fn vectors_match_testdata() {
@@ -287,6 +345,7 @@ fn vectors_match_testdata() {
         "commentEnvelope": { "canonical": canonical_of(&comment).unwrap(), "signer": "laptop", "signature": signed_comment.signature },
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
+        "deviceChangeP256": device_change_p256(),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
     if std::env::var("AGENCY_WRITE_VECTORS").is_ok() {
