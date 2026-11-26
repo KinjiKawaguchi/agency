@@ -211,7 +211,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       ? { kind: 'replica', fetchedAt: new Date(now.getTime() - 2 * 60_000).toISOString(), triedAt: new Date(now.getTime() - 30_000).toISOString(), ...(options.siteError === undefined ? {} : { error: options.siteError }) }
       : { kind: 'local' }
   // The node's rule for the one viewer here, the team's owner: a request with no addressee, or addressed to them.
-  const relayedForOf = (view: TeamView): Record<string, { id: string; label: string }> => Object.fromEntries(view.requests.flatMap((request): Array<[string, { id: string; label: string }]> => { const who = options.relayedFor?.[request.id]; return who === undefined ? [] : [[request.id, who]] }))
+  const relayedForOf = (view: TeamView): Record<string, string> => Object.fromEntries(view.requests.flatMap((request): Array<[string, string]> => { const who = options.relayedFor?.[request.id]; return who === undefined ? [] : [[request.id, who.label]] }))
   const mineOf = (view: TeamView): string[] => view.requests.filter((request) => (request.to ?? 'owner') === viewerName || options.relayedFor?.[request.id] !== undefined).map((request) => request.id)
   // And who waits on them: the people whose `waitingOn` names the viewer.
   const waitingOnViewerOf = (view: TeamView): string[] => view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === viewerName).map((person) => person.id)

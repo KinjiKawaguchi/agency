@@ -71,7 +71,7 @@ describe('a request addressed to a seat or an external party the viewer answers 
 describe('how the snapshot says whom a request is for', () => {
   it('is kept as the label for each request id, and is nothing when the node leaves it out', () => {
     const base = { view: withRequestFor('finance'), viewer: 'owner', mine: [REQUEST], waitingOnViewer: [], source: { kind: 'local' as const } }
-    const [item] = openItems([toTeam({ ...base, relayedFor: { [REQUEST]: { id: 'finance', label: 'Erin' } } })]).filter((one) => one.request.id === REQUEST)
+    const [item] = openItems([toTeam({ ...base, relayedFor: { [REQUEST]: 'Erin' } })]).filter((one) => one.request.id === REQUEST)
     expect(item?.relayedFor).toBe('Erin')
     const [bare] = openItems([toTeam(base)]).filter((one) => one.request.id === REQUEST)
     expect(bare?.relayedFor).toBeUndefined()
