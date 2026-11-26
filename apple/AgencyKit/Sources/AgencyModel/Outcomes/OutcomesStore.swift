@@ -105,6 +105,10 @@ public final class OutcomesStore {
     /// How long a read cost is kept before a refresh asks again.
     public static let costLifetime: TimeInterval = 300
     @ObservationIgnored private var costsReadAt: [String: Date] = [:]
+    /// The cost reads under way, by org: each is the in-flight marker of its org.
+    @ObservationIgnored private var costTasks: [String: Task<Void, Never>] = [:]
+    /// Which period's cost reads the markers belong to; another period starts a new one.
+    @ObservationIgnored private var costGeneration = 0
     @ObservationIgnored private let now: @Sendable () -> Date
 
     @ObservationIgnored private let source: any OutcomesSource
@@ -136,7 +140,7 @@ public final class OutcomesStore {
             // A period chosen meanwhile has its own answer coming; this one is for the old one.
             guard days == self.days else { return }
             apply(results, before: before)
-            await readCosts()
+            startCostReads()
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
@@ -148,29 +152,40 @@ public final class OutcomesStore {
         }
     }
 
-    /// Reads the cost of each org on the days of its KPIs, unless a cost read lately is still good. A cost that cannot be read says
-    /// so for that org and leaves the numbers alone.
-    private func readCosts() async {
-        let (days, source, retry, stamp) = (days, source, retry, now())
-        let wanted = orgs.filter { org in
-            // Only a cost that was read is kept: one that could not be read is asked for again.
-            guard case .ready? = costs[org.id], let readAt = costsReadAt[org.id] else { return true }
-            return stamp.timeIntervalSince(readAt) >= Self.costLifetime
-        }
-        let found = await withTaskGroup(of: (String, OrgCost?).self) { group in
-            for org in wanted {
-                group.addTask { (org.id, await Self.readCost(of: org, source: source, retry: retry)) }
+    /// Starts the read of the cost of each org that needs one, in a task of its own, and returns at once: an evaluation asks every team's
+    /// runtime and is slow, so the numbers and the refresh that brought them are not held back for it. An org whose cost is being read
+    /// is not asked again by a second refresh (the task is its in-flight marker), one whose cost was read lately is not asked either, and
+    /// one whose cost could not be read is asked again. Another period cancels what is under way.
+    private func startCostReads() {
+        let (source, retry, stamp, generation) = (source, retry, now(), costGeneration)
+        for org in orgs where costTasks[org.id] == nil && needsCost(org, at: stamp) {
+            costTasks[org.id] = Task { [weak self] in
+                let cost = await Self.readCost(of: org, source: source, retry: retry)
+                self?.finishCost(of: org.id, cost, generation: generation, at: stamp)
             }
-            var results: [String: OrgCost] = [:]
-            for await (id, cost) in group { if let cost { results[id] = cost } }
-            return results
         }
-        // A period chosen meanwhile has its own cost coming.
-        guard days == self.days else { return }
-        for (id, cost) in found {
-            costs[id] = cost
-            costsReadAt[id] = stamp
-        }
+    }
+
+    private func needsCost(_ org: OrgOutcomes, at stamp: Date) -> Bool {
+        // Only a cost that was read is kept: one that could not be read is asked for again.
+        guard case .ready? = costs[org.id], let readAt = costsReadAt[org.id] else { return true }
+        return stamp.timeIntervalSince(readAt) >= Self.costLifetime
+    }
+
+    private func finishCost(of id: String, _ cost: OrgCost?, generation: Int, at stamp: Date) {
+        // A period chosen meanwhile has its own cost coming (and its own markers): what is left of the old one touches nothing.
+        guard generation == costGeneration else { return }
+        costTasks[id] = nil
+        // A read that was cancelled says nothing.
+        guard let cost else { return }
+        costs[id] = cost
+        costsReadAt[id] = stamp
+    }
+
+    /// Waits for the costs that are being read: for a test, or a screen that has to show them before it goes on.
+    public func waitForCosts() async {
+        // A task removes its marker when it finishes.
+        while let task = costTasks.values.first { await task.value }
     }
 
     /// `nil` when the read was cancelled, which says nothing.
@@ -248,6 +263,9 @@ public final class OutcomesStore {
     public func choose(days: Int) async {
         guard Self.periods.contains(days), days != self.days else { return }
         self.days = days
+        costTasks.values.forEach { $0.cancel() }
+        costTasks = [:]
+        costGeneration += 1
         costs = [:]
         costsReadAt = [:]
         await refresh()
