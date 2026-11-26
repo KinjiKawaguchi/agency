@@ -36,7 +36,7 @@ public struct NotificationTap: Equatable, Sendable {
     }
 
     /// The node's id, when the payload carries one in the shape the node writes.
-    static func nodeID(in userInfo: [AnyHashable: Any]) -> String? {
+    public static func nodeID(in userInfo: [AnyHashable: Any]) -> String? {
         guard let keys = userInfo["agency"] as? [String: Any], let id = keys["node"] as? String else { return nil }
         return isNodeID(id) ? id : nil
     }

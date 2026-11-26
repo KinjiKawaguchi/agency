@@ -74,8 +74,7 @@ final class HomeNodeStore {
 
     /// The nodes this device has: the open one and the ones on its list. A node that is not one any more loses its count.
     private func syncBadges() {
-        let nodes = [book.current].compactMap { $0 } + book.others.map(\.url)
-        badges?.activate(Set(nodes.map { book.nodeID(of: $0) }))
+        badges?.activate(Set(book.activeNodes.map { book.nodeID(of: $0) }))
     }
 }
 
