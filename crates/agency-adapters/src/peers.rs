@@ -40,19 +40,45 @@ fn unreachable(error: impl std::fmt::Display) -> PeerError {
     PeerError::Unreachable(error.to_string())
 }
 
+/// The most this node reads of another node's answer. Another node is chosen by others (an org's root
+/// places teams at any origin), so its answers are bounded before they are parsed or kept.
+pub const MAX_ANSWER_BYTES: usize = 2 * 1024 * 1024;
+
+/// The answer's body, refused once it is longer than `MAX_ANSWER_BYTES`.
+async fn capped_body(mut response: reqwest::Response) -> Result<Vec<u8>, PeerError> {
+    let too_long = || {
+        unreachable(format!(
+            "the answer is longer than {MAX_ANSWER_BYTES} bytes"
+        ))
+    };
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_ANSWER_BYTES as u64)
+    {
+        return Err(too_long());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(unreachable)? {
+        if body.len() + chunk.len() > MAX_ANSWER_BYTES {
+            return Err(too_long());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// A 2xx answer parsed as `T`; otherwise the status and the answer's `error` text.
 async fn answer<T: DeserializeOwned>(
     sent: reqwest::Result<reqwest::Response>,
 ) -> Result<T, PeerError> {
     let response = sent.map_err(unreachable)?;
     let status = response.status();
+    let bytes = capped_body(response).await?;
     if status.is_success() {
-        return response
-            .json()
-            .await
+        return serde_json::from_slice(&bytes)
             .map_err(|error| unreachable(format!("unreadable answer ({status}): {error}")));
     }
-    let body: serde_json::Value = response.json().await.unwrap_or_default();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
     let message = body["error"]
         .as_str()
         .map_or_else(|| status.to_string(), str::to_owned);

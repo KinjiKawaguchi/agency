@@ -1,6 +1,7 @@
 //! Signed reads (kind `read`): the reader signs the method, path, time, and account; the reading node
 //! checks the signature against the org definition and answers only members of the org.
 use crate::error::Result;
+use crate::node::Node;
 use crate::unseen;
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::org::OrgDefinition;
@@ -26,7 +27,7 @@ pub fn sign_read(
     path: &str,
     now: OffsetDateTime,
 ) -> ReadAuth {
-    let date = clock::format(now);
+    let date = clock::format_millis(now);
     let signature = key.sign(&Kind::Read.message(&read_text(method, path, &date, account)));
     ReadAuth {
         account: account.to_string(),
@@ -59,4 +60,21 @@ pub fn verify_read<'a>(
     let message = Kind::Read.message(&read_text(method, path, &auth.date, &account));
     let is_valid = key.verify(&message, &auth.signature);
     person.filter(|_| is_valid).ok_or_else(unseen::not_found)
+}
+
+/// `verify_read`, accepted once per signature (`Node::accept_read_once`): a copy of a valid read sent
+/// again is refused like any failed read.
+pub fn verify_read_once<'a>(
+    node: &Node,
+    definition: Option<&'a OrgDefinition>,
+    auth: &ReadAuth,
+    method: &str,
+    path: &str,
+) -> Result<&'a Person> {
+    let person = verify_read(definition, auth, method, path, node.now())?;
+    let signed_at = clock::parse(&auth.date).ok_or_else(unseen::not_found)?;
+    if !node.accept_read_once(&auth.signature, signed_at) {
+        return Err(unseen::not_found());
+    }
+    Ok(person)
 }

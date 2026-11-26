@@ -5,7 +5,7 @@ use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::PeerError;
-use crate::read_auth::{sign_read, verify_read, ReadAuth};
+use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::TeamPlace;
@@ -89,12 +89,12 @@ pub async fn hosted_usage(
 ) -> Result<TokenUsage> {
     let hosted = node.config().hosted(org, team).cloned();
     let doc = node.store().load_org(org).filter(|_| hosted.is_some());
-    let reader = verify_read(
+    let reader = verify_read_once(
+        node,
         doc.as_ref().map(|doc| &doc.body),
         auth,
         "GET",
         &routes::usage(org, team, days),
-        node.now(),
     )?;
     let hosted = hosted.ok_or_else(unseen::not_found)?;
     if reader.role == Role::Answerer {

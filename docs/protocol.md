@@ -85,12 +85,13 @@ A device change adds or removes one of a member's devices:
 A node that reads a team on another node adds these headers:
 
 - `x-agency-account`: the account id
-- `x-agency-date`: the time
+- `x-agency-date`: the time, with milliseconds (`2026-11-24T12:00:00.123Z`), so two reads made in one second are signed differently
 - `x-agency-signature`: the signature of `agency/v1/read\n` + `<method>\n<path>\n<time>\n<account>`
 
 `<path>` is the request path without its query, except on a route that takes a query (`usage`): there it is the path with the query exactly as the route table writes it, built from the parsed values, so a signature covers the range it reads.
 
 The receiving node answers only when the time is within 5 minutes either way, the signature matches the account's public key in the org definition, and the account is a member of the team's org.
+It accepts each signature once: within the 5 minutes a signature is good for, a copy of it is refused.
 A read that fails any of these checks is refused like a read of an org or team the node does not have (see "Federation routes").
 
 ## Decision envelope (kind `envelope`)
@@ -145,7 +146,9 @@ The checks that do not depend on what the node holds come first and answer as th
 A TeamView is what a team runtime reports about its team: its participants (`people`), the requests waiting for a decision, its work items, and its epic forecasts.
 The node reads it from the team runtime (`view` in agency-runtime/1), returns it from `GET /fed/v1/teams/<org>/<team>/view` as `{ "view": TeamView, "viewer"?: <runtime name> }`, and serves it to clients.
 `viewer` is the signed reader's name in the team runtime (see "Requests" below for the mapping); it is absent when the team does not address the reader.
-A node that reads another node's TeamView parses it into these types before keeping a replica, and drops it if it does not parse.
+A node that reads another node's TeamView parses it into these types before keeping a replica, and drops it if it does not parse or is beyond the limits below. It reads at most 2 MiB of any answer from another node.
+
+Limits, in characters for text: ids, labels, names, and refs 200; a request's or work item's `title` 200; `context` 4,000; `document` 40,000; a person's `status`, an option's `text`, and a forecast's `basis` 500; an option's `detail` and a thread message 4,000. At most 200 people, 200 requests, 5,000 work items, 500 epics, 20 options per request, 200 thread messages, and 100 entries in `holding`, `blocks`, or an epic's `blocked`. A node serves a runtime's view only within them too (`agency_proto::view::limits`).
 
 The Rust types in `agency-proto` (`view.rs`, `runtime.rs`, `timestamp.rs`) are the source of truth.
 The TypeScript types in `bindings/` are generated from them with ts-rs and are never edited by hand; `scripts/check-bindings.sh` regenerates them and fails on any difference.
@@ -218,6 +221,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
+- It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses it for 5 seconds (a view) or 60 seconds (usage for the same range). A decision makes the next view run the command again.
 - The node calls `decide` only after it has verified the decision envelope (signature, membership, expiry, team, replay, and that the decider is the request's addressee). `by` is the org member who decided, and `byParticipant` the same decider as a participant of the team: their runtime name, in the same name space as a request's `to` (their key in the hosted team's `people`, otherwise `owner`). The node sends `byParticipant` with every decision; a runtime should refuse (404) a decision on a request whose `to` names another runtime name. The node maps a `to` it does not know to the owner, and the runtime does not know the map, so for such a request only a decision with `byParticipant` `owner` is the addressee's.
 - Error statuses: 400 (malformed input), 404 (no such request or work item), 503 (the runtime cannot act now). The node treats 400 and 404 as refusals and does not retry them; it retries every other failure, including a timeout or output that is not a response.
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.

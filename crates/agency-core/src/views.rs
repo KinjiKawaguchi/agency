@@ -4,7 +4,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
 use crate::ports::DefinitionAccess;
-use crate::read_auth::{sign_read, verify_read, ReadAuth};
+use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
@@ -83,7 +83,8 @@ pub fn waiting_on_viewer(view: &TeamView, viewer: Option<&str>) -> Vec<String> {
     waiting.map(|person| person.id.clone()).collect()
 }
 
-/// A view is kept only if it is a view of the team that was asked for.
+/// A view is served or kept only if it is a view of the team that was asked for, within the limits of
+/// a TeamView (`agency_proto::view::limits`). Both a runtime's view and another node's go through here.
 pub fn check_view(view: TeamView, org: &Id, team: &Id) -> Result<TeamView, String> {
     if &view.org != org || &view.team != team {
         return Err(format!(
@@ -91,6 +92,8 @@ pub fn check_view(view: TeamView, org: &Id, team: &Id) -> Result<TeamView, Strin
             view.org, view.team
         ));
     }
+    view.check_limits()
+        .map_err(|over| format!("sent a view beyond the limits: {over}"))?;
     Ok(view)
 }
 
@@ -113,13 +116,7 @@ pub async fn hosted_view(
 ) -> Result<FederatedView> {
     let hosted = node.config().hosted(org, team).cloned();
     let doc = node.store().load_org(org).filter(|_| hosted.is_some());
-    let reader = verify_read(
-        doc.as_ref().map(|doc| &doc.body),
-        auth,
-        "GET",
-        path,
-        node.now(),
-    )?;
+    let reader = verify_read_once(node, doc.as_ref().map(|doc| &doc.body), auth, "GET", path)?;
     let hosted = hosted.ok_or_else(unseen::not_found)?;
     let view = runtime_view(node, &hosted).await?;
     let view = match reader.role {

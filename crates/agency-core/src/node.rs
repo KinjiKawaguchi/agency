@@ -4,7 +4,8 @@ use crate::error::Result;
 use crate::ports::{Clock, FundingSource, Notifier, Peers, Random, Store, TeamRuntime, WriteLock};
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
-use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Ports {
     pub store: Arc<dyn Store>,
@@ -21,7 +22,13 @@ pub struct Node {
     ports: Ports,
     key: AccountKey,
     config: RwLock<NodeConfig>,
+    /// The signed reads accepted recently, with when they were signed (see `accept_read_once`).
+    reads: Mutex<HashMap<String, OffsetDateTime>>,
 }
+
+/// At most this many recent signed reads are remembered. A signature is remembered only once it is
+/// valid, so only members fill it; beyond it, the oldest are forgotten first.
+const READS_KEPT: usize = 10_000;
 
 impl Node {
     /// `key` is this node's account key; it never leaves the node.
@@ -31,7 +38,35 @@ impl Node {
             ports,
             key,
             config: RwLock::new(config),
+            reads: Mutex::default(),
         })
+    }
+
+    /// Accepts a valid signed read once. A signed read is good for `SKEW_SECONDS` either way of its
+    /// time, so a copy of it could be sent again; the same signature within that window is refused.
+    /// Entries are dropped once their time is out of the window.
+    pub fn accept_read_once(&self, signature: &str, signed_at: OffsetDateTime) -> bool {
+        let window = clock::Duration::seconds(crate::read_auth::SKEW_SECONDS);
+        let now = self.now();
+        let mut reads = self
+            .reads
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reads.retain(|_, at| (now - *at).abs() <= window);
+        if reads.contains_key(signature) {
+            return false;
+        }
+        if reads.len() >= READS_KEPT {
+            let oldest = reads
+                .iter()
+                .min_by_key(|(_, at)| **at)
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                reads.remove(&oldest);
+            }
+        }
+        reads.insert(signature.to_owned(), signed_at);
+        true
     }
 
     pub fn store(&self) -> &dyn Store {

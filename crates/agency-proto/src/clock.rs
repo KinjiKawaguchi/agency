@@ -10,6 +10,17 @@ pub fn format(at: OffsetDateTime) -> String {
         .unwrap_or_default()
 }
 
+/// `format` with milliseconds, for a signed time that should differ between two signatures made in
+/// the same second (a signed read is accepted once).
+pub fn format_millis(at: OffsetDateTime) -> String {
+    let millis = at.millisecond();
+    let whole = format(at);
+    match whole.strip_suffix('Z') {
+        Some(seconds) => format!("{seconds}.{millis:03}Z"),
+        None => whole,
+    }
+}
+
 pub fn parse(raw: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(raw, &Rfc3339).ok()
 }

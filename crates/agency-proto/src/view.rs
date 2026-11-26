@@ -270,3 +270,135 @@ pub struct FederatedView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer: Option<String>,
 }
+
+/// How much a TeamView may hold. A view beyond them is not served or kept: another node chooses what it
+/// sends, and a runtime's view is served to other nodes. Lengths are in characters.
+pub mod limits {
+    /// Ids, labels, names, refs, and the other one-line names.
+    pub const NAME: usize = 200;
+    pub const TITLE: usize = 200;
+    pub const CONTEXT: usize = 4_000;
+    pub const DOCUMENT: usize = 40_000;
+    /// A person's status line, an option's text, and a forecast's basis.
+    pub const LINE: usize = 500;
+    /// An option's detail and a thread message.
+    pub const TEXT: usize = 4_000;
+    pub const PEOPLE: usize = 200;
+    pub const REQUESTS: usize = 200;
+    pub const WORK: usize = 5_000;
+    pub const EPICS: usize = 500;
+    pub const OPTIONS: usize = 20;
+    pub const THREAD: usize = 200;
+    /// A person's `holding`, a request's `blocks`, and an epic's `blocked`.
+    pub const LIST: usize = 100;
+}
+
+fn within(what: &str, text: &str, limit: usize) -> Result<(), String> {
+    if text.chars().count() > limit {
+        return Err(format!("{what} is longer than {limit} characters"));
+    }
+    Ok(())
+}
+
+fn at_most<T>(what: &str, items: &[T], limit: usize) -> Result<(), String> {
+    if items.len() > limit {
+        return Err(format!("{what} has more than {limit} entries"));
+    }
+    Ok(())
+}
+
+fn names<'a>(what: &str, names: impl IntoIterator<Item = &'a String>) -> Result<(), String> {
+    names
+        .into_iter()
+        .try_for_each(|name| within(what, name, limits::NAME))
+}
+
+impl PersonStatus {
+    fn check_limits(&self) -> Result<(), String> {
+        names("a person's name", [&self.id, &self.label])?;
+        within("a person's status", &self.status, limits::LINE)?;
+        at_most("a person's holding", &self.holding, limits::LIST)?;
+        names("a held item", &self.holding)?;
+        match &self.waiting_on {
+            Some(WaitingOn::Person { person }) => within("waitingOn", person, limits::NAME),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Request {
+    fn check_limits(&self) -> Result<(), String> {
+        let optional = [&self.to, &self.issue].into_iter().flatten();
+        names(
+            "a request's name",
+            [&self.id, &self.from, &self.answer_with.target],
+        )?;
+        names("a request's name", optional)?;
+        within("a request's title", &self.title, limits::TITLE)?;
+        within("a request's context", &self.context, limits::CONTEXT)?;
+        if let Some(document) = &self.document {
+            within("a request's document", document, limits::DOCUMENT)?;
+        }
+        at_most("a request's blocks", &self.blocks, limits::LIST)?;
+        names("a blocked item", &self.blocks)?;
+        at_most("a request's options", &self.options, limits::OPTIONS)?;
+        for option in &self.options {
+            within("an option's key", &option.key, limits::NAME)?;
+            within("an option's text", &option.text, limits::LINE)?;
+            if let Some(detail) = &option.detail {
+                within("an option's detail", detail, limits::TEXT)?;
+            }
+        }
+        let thread = self.thread.as_deref().unwrap_or_default();
+        at_most("a request's thread", thread, limits::THREAD)?;
+        for message in thread {
+            names(
+                "a message's name",
+                [&message.from].into_iter().chain(&message.choice),
+            )?;
+            within("a message", &message.text, limits::TEXT)?;
+        }
+        Ok(())
+    }
+}
+
+impl WorkItem {
+    fn check_limits(&self) -> Result<(), String> {
+        let optional = [&self.assignee, &self.epic].into_iter().flatten();
+        names(
+            "a work item's name",
+            [&self.reference].into_iter().chain(optional),
+        )?;
+        within("a work item's title", &self.title, limits::TITLE)?;
+        match &self.eta {
+            Some(eta) => within("an estimate's basis", &eta.basis, limits::LINE),
+            None => Ok(()),
+        }
+    }
+}
+
+impl EpicForecast {
+    fn check_limits(&self) -> Result<(), String> {
+        within("an epic's ref", &self.reference, limits::NAME)?;
+        within("an epic's title", &self.title, limits::TITLE)?;
+        within("an epic's basis", &self.basis, limits::LINE)?;
+        at_most("an epic's blocked", &self.blocked, limits::LIST)
+    }
+}
+
+impl TeamView {
+    /// Checks the view against `limits`, and says what is over.
+    pub fn check_limits(&self) -> Result<(), String> {
+        within("the team's label", &self.label, limits::NAME)?;
+        at_most("people", &self.people, limits::PEOPLE)?;
+        at_most("requests", &self.requests, limits::REQUESTS)?;
+        at_most("work", &self.work, limits::WORK)?;
+        at_most("epics", &self.epics, limits::EPICS)?;
+        self.people
+            .iter()
+            .try_for_each(PersonStatus::check_limits)?;
+        self.requests.iter().try_for_each(Request::check_limits)?;
+        self.work.iter().try_for_each(WorkItem::check_limits)?;
+        self.epics.iter().try_for_each(EpicForecast::check_limits)
+    }
+}
