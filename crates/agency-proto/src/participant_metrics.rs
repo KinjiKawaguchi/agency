@@ -11,8 +11,9 @@ use ts_rs::TS;
 /// The offsets from UTC that a time zone has had, in minutes east: UTC-12:00 to UTC+14:00.
 pub const MIN_UTC_OFFSET_MINUTES: i32 = -720;
 pub const MAX_UTC_OFFSET_MINUTES: i32 = 840;
-/// The longest a calendar day lasts, in seconds: 25 hours, when the clocks go back.
-pub const MAX_DAY_SECONDS: u32 = 25 * 3600;
+/// The length of a calendar day cut at a fixed offset from UTC, in seconds: exactly 24 hours, whatever the
+/// clocks do, so no participant has more than this in a day.
+pub const MAX_DAY_SECONDS: u32 = 24 * 3600;
 /// The longest a participant's name or a pull request's repository may be, in bytes.
 pub const MAX_NAME_BYTES: usize = 200;
 /// How many participants and how many pull requests a report may list.

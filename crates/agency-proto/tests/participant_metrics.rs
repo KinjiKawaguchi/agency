@@ -144,7 +144,8 @@ fn refuses_a_report_that_is_not_well_formed() {
             r.participants[0].by_day[1].date = r.participants[0].by_day[0].date.clone();
         }),
         ("more time than a day holds", |r| {
-            r.participants[0].by_day[0].busy_seconds = 90_001
+            let day = &mut r.participants[0].by_day[0];
+            (day.busy_seconds, day.waiting_seconds, day.idle_seconds) = (86_400, 1, 0);
         }),
         ("the times add up past a day", |r| {
             r.participants[0].by_day[0].busy_seconds = 50_000;
@@ -177,17 +178,17 @@ fn refuses_a_report_that_is_not_well_formed() {
         edit(&mut report);
         assert!(check(&report).is_err(), "{name}");
     }
-    let some_day_of_25_hours = {
+    let a_whole_day = {
         let mut report = sample();
-        report.participants[0].by_day[0].busy_seconds = 90_000;
+        report.participants[0].by_day[0].busy_seconds = 86_400;
         report.participants[0].by_day[0].waiting_seconds = 0;
         report.participants[0].by_day[0].idle_seconds = 0;
         report
     };
     assert_eq!(
-        check(&some_day_of_25_hours),
+        check(&a_whole_day),
         Ok(()),
-        "the day the clocks go back"
+        "a day is 24 hours at a fixed offset, and a participant may be busy all of it"
     );
     let other = PullRequestAuthor {
         repo: "acme/web.app_2".into(),
