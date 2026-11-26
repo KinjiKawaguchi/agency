@@ -173,6 +173,50 @@ struct OutcomesStoreTests {
         #expect(!store.isAvailable)
     }
 
+    @Test("a read that is cancelled after the page answered leaves it as it was: the numbers do not turn back into bars")
+    func cancelledKeepsTheAnswer() async {
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.loading == .loaded)
+        source.set(outcomes: { _, _ in throw CancellationError() })
+        await store.refresh()
+        #expect(store.loading == .loaded && store.isAvailable && store.hasAnswered && !store.orgs.isEmpty)
+    }
+
+    @Test("the same when it is the account's read that is cancelled")
+    func cancelledAccountRead() async {
+        let store = makeStore()
+        await store.refresh()
+        source.set(me: .failure(CancellationError()))
+        await store.refresh()
+        #expect(store.loading == .loaded && store.isAvailable && !store.orgs.isEmpty)
+    }
+
+    @Test("a first read that is cancelled stays as it was before it, not answered")
+    func cancelledFirstRead() async {
+        source.set(outcomes: { _, _ in throw CancellationError() })
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.loading == .idle && !store.hasAnswered && !store.isAvailable)
+    }
+
+    @Test("a session that ends in the middle of the read asks for the sign-in again, and is not a failure of the numbers")
+    func signInEndsInTheMiddle() async {
+        let store = makeStore()
+        await store.refresh()
+        source.set(outcomes: { _, _ in throw NodeError.sessionExpired })
+        await store.refresh()
+        #expect(store.needsSignIn)
+        #expect(store.loading == .failed(Ja.Desk.signInEnded))
+        #expect(store.isAvailable && !store.orgs.isEmpty, "what was read stays")
+        source.set(outcomes: { _, _ in throw NodeError.notSignedIn })
+        await store.refresh()
+        #expect(store.needsSignIn)
+        source.set(outcomes: { _, _ in try OutcomeSamples.outcomes() })
+        await store.refresh()
+        #expect(!store.needsSignIn && store.loading == .loaded)
+    }
+
     @Test("an account with no orgs has answered with nothing, and the page is not offered")
     func noOrgs() async throws {
         let none = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
