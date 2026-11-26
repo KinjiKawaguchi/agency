@@ -20,10 +20,12 @@ interface Props {
   now: number
   /** Some team's feed has not been read yet: what is counted from the events is not the whole. */
   isReading: boolean
+  /** Some team has not been read at all (its reads failed): the numbers over the events are not the whole, and are not shown. */
+  hasUnread: boolean
 }
 
 /** Merges per hour as they land, the lead time, and the day's merges; a tile lights up, and says what landed, when a merge arrives. */
-export function Throughput({ events, fresh, orgs, now, isReading }: Props) {
+export function Throughput({ events, fresh, orgs, now, isReading, hasUnread }: Props) {
   const { t } = useI18n()
   const api = useApi()
   const evaluations = useQueries({ queries: orgs.map((org) => ({ ...evaluationQuery(api, org, 14), refetchInterval: 60_000 })) })
@@ -50,10 +52,10 @@ export function Throughput({ events, fresh, orgs, now, isReading }: Props) {
     <div className={`lv-tiles${landed === undefined ? '' : ' is-landed'}`}>
       <div className="lv-tile">
         <span className="lv-tile-label">{t.live.throughput.lastHour}</span>
-        <span className="lv-tile-value">{isReading ? <Skeleton kind="short" /> : counts.lastHour}</span>
+        <span className="lv-tile-value">{isReading ? <Skeleton kind="short" /> : hasUnread ? t.live.throughput.none : counts.lastHour}</span>
         {isReading ? (
           <Skeleton kind="box" />
-        ) : (
+        ) : hasUnread ? null : (
           <div className="lv-bins" role="img" aria-label={t.live.throughput.bins}>
             {bins.map((count, index) => (
               <span key={index} className="lv-bin" style={{ height: `${(count / peak) * 100}%` }} title={String(count)} />
@@ -64,7 +66,7 @@ export function Throughput({ events, fresh, orgs, now, isReading }: Props) {
       </div>
       <div className="lv-tile">
         <span className="lv-tile-label">{t.live.throughput.today}</span>
-        <span className="lv-tile-value">{isReading || isEvaluating ? <Skeleton kind="short" /> : hasEvaluationFailed ? t.live.throughput.none : counts.today}</span>
+        <span className="lv-tile-value">{isReading || isEvaluating ? <Skeleton kind="short" /> : hasEvaluationFailed || hasUnread ? t.live.throughput.none : counts.today}</span>
       </div>
       <div className="lv-tile">
         <span className="lv-tile-label">{t.live.throughput.lead}</span>

@@ -16,5 +16,5 @@ export function useActivityStream(teams: readonly Team[]): StreamSnapshot {
     return () => stream.stop()
   }, [api, stable])
   // Before the first effect there is no stream yet: every team is still to be read, and nothing is known of its events.
-  return snapshot ?? { events: [], fresh: [], failing: [], unreported: [], pending: names === '' ? [] : names.split(',') }
+  return snapshot ?? { events: [], fresh: [], failing: [], unreported: [], pending: names === '' ? [] : names.split(','), neverRead: [] }
 }

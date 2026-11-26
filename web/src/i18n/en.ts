@@ -52,6 +52,8 @@ export const en = {
     title: 'Overview',
     lead: (requests: number, teams: number) =>
       requests === 0 ? 'Nothing waits for you in any team.' : `${requests} ${requests === 1 ? 'request waits' : 'requests wait'} for you, in ${teams} ${teams === 1 ? 'team' : 'teams'}.`,
+    leadPartial: (requests: number, teams: number, unread: number) =>
+      `${requests === 0 ? 'Nothing waits for you in the teams that answered.' : `${requests} ${requests === 1 ? 'request waits' : 'requests wait'} for you, in ${teams} ${teams === 1 ? 'team' : 'teams'} that answered.`} ${unread} ${unread === 1 ? 'team' : 'teams'} could not be read.`,
     noTeams: 'This org has no teams yet.',
     waitingForYou: (count: number) => (count === 1 ? '1 request waits for you' : `${count} requests wait for you`),
     nothingWaits: 'Nothing waits for you.',
@@ -139,6 +141,7 @@ export const en = {
     allOrgs: 'All organizations',
     allTitle: 'All your organizations',
     orgUnavailable: 'Could not be read',
+    someUnread: 'Some teams could not be read',
     title: (label: string) => `${label} organization`,
     whole: 'Back to the whole organization',
     chooseOrg: 'Organization',
@@ -475,6 +478,7 @@ export const en = {
     feed: {
       title: 'What is happening',
       empty: 'Nothing in the last hour yet.',
+      notRead: 'The feed could not be read yet.',
       added: (ref: string, title: string) => `New: ${ref} ${title}`,
       changed: (ref: string, title: string, from: string, to: string) => `${ref} ${title}: ${from} → ${to}`,
       opened: (ref: string, title: string) => `Pull request opened: ${ref} ${title}`,

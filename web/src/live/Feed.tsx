@@ -13,6 +13,8 @@ interface Props {
   teamLabels: ReadonlyMap<string, string>
   /** Some team's feed has not been read yet: an empty list is not yet "nothing happened". */
   isReading: boolean
+  /** Some team has not been read at all: an empty list is then not "nothing happened". */
+  hasUnread: boolean
 }
 
 function useDescribe(): (event: ActivityEvent) => { text: string; note?: string } {
@@ -35,12 +37,13 @@ function useDescribe(): (event: ActivityEvent) => { text: string; note?: string 
 }
 
 /** What is happening, newest first: items added, status changes, pull requests opened and merged, and messages between agents. */
-export function Feed({ events, fresh, teamLabels, isReading }: Props) {
+export function Feed({ events, fresh, teamLabels, isReading, hasUnread }: Props) {
   const { t, fmt } = useI18n()
   const describe = useDescribe()
   const isFresh = new Set(fresh.map((one) => one.event.id))
   const shown = events.slice(-SHOWN).toReversed()
-  if (shown.length === 0) return isReading ? <Loading quiet><Skeleton kind="box" /></Loading> : <p className="muted lv-empty">{t.live.feed.empty}</p>
+  if (shown.length === 0 && isReading) return <Loading quiet><Skeleton kind="box" /></Loading>
+  if (shown.length === 0) return <p className={`muted lv-empty${hasUnread ? ' lv-unread' : ''}`}>{hasUnread ? t.live.feed.notRead : t.live.feed.empty}</p>
   return (
     <ol className="lv-feed" aria-label={t.live.feed.title}>
       {shown.map(({ org, team, event }) => {

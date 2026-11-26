@@ -28,6 +28,8 @@ export interface StreamSnapshot {
   unreported: readonly string[]
   /** The teams that have not been read yet, once: until then what is counted from the events is not the whole. */
   pending: readonly string[]
+  /** The teams whose reads have all failed so far: nothing is known of them, which is not the same as nothing having happened. */
+  neverRead: readonly string[]
 }
 
 interface Options {
@@ -84,11 +86,13 @@ interface TeamFeed {
  */
 export class ActivityStream {
   private readonly options: Required<Options>
-  private snapshot: StreamSnapshot = { events: [], fresh: [], failing: [], unreported: [], pending: [] }
+  private snapshot: StreamSnapshot = { events: [], fresh: [], failing: [], unreported: [], pending: [], neverRead: [] }
   private readonly listeners = new Set<(snapshot: StreamSnapshot) => void>()
   private readonly feeds: ReadonlyMap<string, TeamFeed>
   private readonly failing = new Set<string>()
   private readonly unreported = new Set<string>()
+  /** The teams that have answered once, with events or with the node saying it does not report activity. */
+  private readonly hasRead = new Set<string>()
   private isStopped = false
   private isPaused = true
   private readonly controllers = new Set<AbortController>()
@@ -173,7 +177,7 @@ export class ActivityStream {
       this.arrivals = [...this.arrivals, ...(feed.isFirstRead || isAfterGap ? [] : added.map((tagged) => ({ tagged, at: now })))].filter((one) => now - one.at < FRESH_MS)
       feed.isFirstRead = false
       const pending = [...this.feeds.entries()].filter(([, one]) => one.isFirstRead).map(([name]) => name).toSorted()
-      this.snapshot = { events, fresh: this.arrivals.map((one) => one.tagged), failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted(), pending }
+      this.snapshot = { events, fresh: this.arrivals.map((one) => one.tagged), failing: [...this.failing].toSorted(), unreported: [...this.unreported].toSorted(), pending, neverRead: [...this.failing].filter((name) => !this.hasRead.has(name)).toSorted() }
       for (const listener of this.listeners) listener(this.snapshot)
     } finally {
       feed.isReading = false
@@ -199,10 +203,12 @@ export class ActivityStream {
       }
       this.failing.delete(name)
       this.unreported.delete(name)
+      this.hasRead.add(name)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         this.unreported.add(name)
         this.failing.delete(name)
+        this.hasRead.add(name)
       } else this.failing.add(name)
     }
     return added

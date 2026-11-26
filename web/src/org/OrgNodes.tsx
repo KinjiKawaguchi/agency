@@ -9,6 +9,7 @@ import type { AgentNode, DepartmentNode, Mine, OrgNode, PersonNode, TeamNode } f
 function Waiting({ count }: { count: Mine }) {
   const { t } = useI18n()
   if (count === 'loading') return <Skeleton kind="short" />
+  if (count === 'unknown') return <span className="oc-wait oc-unread">{t.org.someUnread}</span>
   return typeof count === 'number' && count > 0 ? <span className="oc-wait">{t.overview.waitingForYou(count)}</span> : null
 }
 

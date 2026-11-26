@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
+import { flakyNode } from '../test/flakyNode'
 import { heldNode } from '../test/heldNode'
 import { renderApp } from '../test/render'
 import { createTestNode } from '../test/testDevice'
@@ -86,7 +87,7 @@ describe('a screen before the node has answered', () => {
     const { release } = await held('/live', ['/activity'], { activity: true, evaluation: true })
     await waitFor(() => expect(document.querySelectorAll('.lv-tile-value .skeleton').length).toBeGreaterThan(1))
     expect(document.querySelector('.lv-bins')).toBeNull()
-    expect(screen.queryByText(/Nothing has happened|No activity yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing in the last hour yet.')).not.toBeInTheDocument()
     await release()
     await waitFor(() => expect(document.querySelectorAll('.lv-tile-value .skeleton').length).toBe(0))
     expect(document.querySelector('.lv-bins')).not.toBeNull()
@@ -99,4 +100,54 @@ describe('a screen before the node has answered', () => {
     await release()
     await waitFor(() => expect(document.querySelector('[aria-busy="true"] .skeleton.box')).toBeNull())
   })
+
+  it('has a placeholder for the lead time and the day until the evaluation has answered, then the numbers', async () => {
+    const { release } = await held('/live', ['/evaluation'], { activity: true, evaluation: true })
+    await screen.findByRole('heading', { level: 1 })
+    const tiles = () => [...document.querySelectorAll('.lv-tile')]
+    await waitFor(() => expect(tiles().filter((tile) => tile.querySelector('.skeleton') !== null).length).toBeGreaterThanOrEqual(2))
+    const lead = () => tiles().find((tile) => tile.textContent?.includes('Lead time'))
+    expect(lead()?.querySelector('.skeleton')).not.toBeNull()
+    await release()
+    await waitFor(() => expect(lead()?.querySelector('.skeleton')).toBeNull())
+    expect(lead()?.textContent).toMatch(/\d/)
+  })
+
+  it('shows a dash, not a figure, for the lead time and the day when the evaluation could not be read', async () => {
+    renderApp({ path: '/live', activity: true, evaluation: true, evaluationFailsWith: 500 })
+    await waitFor(() => expect(document.querySelectorAll('.lv-tile-value').length).toBe(3), { timeout: 4_000 })
+    await waitFor(() => expect(document.querySelectorAll('.lv-tile-value .skeleton').length).toBe(0), { timeout: 4_000 })
+    const values = [...document.querySelectorAll('.lv-tile-value')].map((one) => one.textContent)
+    expect(values[1], 'the day').toBe('—')
+    expect(values[2], 'the lead time').toBe('—')
+  })
+
+  it('shows a dash and not 0, and says the feed could not be read, for a team that was never read', async () => {
+    renderApp({ path: '/live', activity: true, activityFailsWith: 500, evaluation: true })
+    await screen.findByText('The feed could not be read yet.', undefined, { timeout: 8_000 })
+    const values = [...document.querySelectorAll('.lv-tile-value')].map((one) => one.textContent)
+    expect(values.slice(0, 2)).toEqual(['—', '—'])
+    expect(document.querySelector('.lv-bins')).toBeNull()
+    expect(screen.queryByText('Nothing in the last hour yet.')).not.toBeInTheDocument()
+  })
+
+  it('has a placeholder for the week cost of a team card until its usage has answered, then the cost', async () => {
+    const { release } = await held('/overview', ['/usage'], { usage: true })
+    await waitFor(() => expect(document.querySelector('.ov-teams .ov-line .skeleton')).not.toBeNull())
+    expect(screen.queryByText(/this week|API price/i)).not.toBeInTheDocument()
+    await release()
+    await waitFor(() => expect(document.querySelector('.ov-teams .ov-line .skeleton')).toBeNull())
+  })
+
+  it('says some teams could not be read, on the org and the department, and not that nothing waits', async () => {
+    renderApp({ path: '/org', client: flakyNode([{ match: '/teams/site/view', status: 500 }]).client })
+    await waitFor(() => expect(screen.getAllByText('Some teams could not be read').length).toBeGreaterThan(0), { timeout: 8_000 })
+  })
+
+  it('does not let the overview lead pass for the whole when a team could not be read', async () => {
+    renderApp({ path: '/overview', client: flakyNode([{ match: '/teams/site/view', status: 500 }]).client })
+    await screen.findByText(/team could not be read\./, undefined, { timeout: 8_000 })
+    expect(document.querySelector('.ov-lead')?.textContent).toMatch(/that answered/)
+  })
 })
+
