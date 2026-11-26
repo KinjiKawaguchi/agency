@@ -56,7 +56,8 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
   if (blocked.length > 0) {
     const { org, team, item } = placeOf(blocked[0] ?? '')
     const owner = teamOf(lookups, org, team)
-    found.push({ tone: 'info', message: text.blocked(blocked.length, owner?.view.work.find((one) => one.ref === item)?.title ?? item, owner?.view.label ?? team) })
+    const work = owner?.view.work.find((one) => one.ref === item)
+    found.push({ tone: 'info', message: text.blocked(blocked.length, work?.title ?? item, owner?.view.label ?? team, work?.blocked === undefined ? undefined : t.people.blockedReasons[work.blocked.reason]) })
   }
 
   const devices = onDevices ? [] : keysOf(events, 'device', 'device:')
