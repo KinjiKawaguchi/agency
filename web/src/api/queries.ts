@@ -51,9 +51,13 @@ export const teamQuery = (api: ApiClient, org: string, team: string) =>
 
 export const DEVICES_KEY = ['devices'] as const
 
+/** How often the device list is read: `pollMs`, unless the client was made with another (a test's). */
+export const devicesPoll = (query: { meta?: Record<string, unknown> | undefined }, pollMs: number | false): number | false =>
+  typeof query.meta?.devicesPollMs === 'number' ? query.meta.devicesPollMs : pollMs
+
 /** The account's devices. A device waiting to be added polls quickly, to notice when it is. */
 export const devicesQuery = (api: ApiClient, pollMs: number | false = POLL_MS) =>
-  queryOptions({ queryKey: DEVICES_KEY, queryFn: () => api.devices(), refetchInterval: pollMs })
+  queryOptions({ queryKey: DEVICES_KEY, queryFn: () => api.devices(), refetchInterval: (query) => devicesPoll(query, pollMs) })
 
 export const DECISIONS_KEY = ['decisions'] as const
 
