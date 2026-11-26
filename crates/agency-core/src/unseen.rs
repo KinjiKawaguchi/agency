@@ -3,7 +3,9 @@
 //! and a key that is not the one required all get the same `NotFound` with the same message. Each also
 //! spends one signature check, so an answer about something that does not exist takes about as long
 //! as one about something that does. The federation routes bypass Cloudflare Access, so anyone can ask.
-use crate::error::Error;
+//!
+//! The real reason travels in the error's `reason`, for the node's own log only.
+use crate::error::{Error, Reason};
 use agency_proto::{AccountKey, Kind, PublicKey, Signed};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -12,8 +14,24 @@ use std::sync::OnceLock;
 /// The message of every unauthenticated refusal.
 pub const MESSAGE: &str = "not found";
 
-pub fn not_found() -> Error {
-    Error::not_found(MESSAGE)
+fn refusal(text: String, is_from_member: bool) -> Error {
+    Error {
+        reason: Some(Reason {
+            text,
+            is_from_member,
+        }),
+        ..Error::not_found(MESSAGE)
+    }
+}
+
+/// A refusal of a request that no member's valid signature vouches for.
+pub fn refused(text: impl Into<String>) -> Error {
+    refusal(text.into(), false)
+}
+
+/// A refusal of a request with a valid signature by a member or the org's root.
+pub fn refused_member(text: impl Into<String>) -> Error {
+    refusal(text.into(), true)
 }
 
 /// A key that stands in when there is no key to check against. Checking a signature with it costs
@@ -24,22 +42,18 @@ pub(crate) fn stand_in_key() -> &'static PublicKey {
     KEY.get_or_init(|| AccountKey::from_seed([0x5a; 32]).public())
 }
 
-/// Checks `signed` with `key`. Without a key, it spends the same check on the stand-in key and fails.
-pub(crate) fn verify<T: Serialize + DeserializeOwned>(
+/// Whether `signed` is signed by `key`. Without a key, it spends the same check on the stand-in key
+/// and answers no.
+pub(crate) fn check<T: Serialize + DeserializeOwned>(
     signed: &Signed<T>,
     kind: Kind,
     key: Option<&PublicKey>,
-) -> Result<(), Error> {
-    let is_valid = match key {
+) -> bool {
+    match key {
         Some(key) => signed.verify(kind, key),
         None => {
             let _ = signed.verify(kind, stand_in_key());
             false
         }
-    };
-    if is_valid {
-        Ok(())
-    } else {
-        Err(not_found())
     }
 }

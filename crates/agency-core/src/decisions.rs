@@ -151,13 +151,38 @@ pub async fn accept_envelope(
         ));
     }
     let hosted = node.config().hosted(org, team).cloned();
-    let doc = node.store().load_org(org).filter(|_| hosted.is_some());
-    let found = doc
-        .as_ref()
-        .and_then(|doc| envelope_key(&doc.body, &signed));
-    unseen::verify(&signed, Kind::Envelope, found.map(|(_, key)| key))?;
-    let (Some(hosted), Some((person, _))) = (hosted, found) else {
-        return Err(unseen::not_found());
+    let doc = node.store().load_org(org);
+    let definition = doc.as_ref().map(|doc| &doc.body);
+    let found = definition.and_then(|definition| envelope_key(definition, &signed));
+    let is_valid = unseen::check(&signed, Kind::Envelope, found.map(|(_, key)| key));
+    let (account, signer) = (&envelope.account, &signed.signer);
+    let person = match (definition, found) {
+        (None, _) => {
+            return Err(unseen::refused(format!(
+                "an envelope from {account} for {org}, an org this node does not have"
+            )))
+        }
+        (Some(definition), None) if definition.member(account).is_none() => {
+            return Err(unseen::refused(format!(
+                "an envelope from {account}, who is not a member of {org}"
+            )))
+        }
+        (Some(_), None) => {
+            return Err(unseen::refused(format!(
+                "an envelope from {account} signed as {signer}, which is not one of their devices"
+            )))
+        }
+        (Some(_), Some(_)) if !is_valid => {
+            return Err(unseen::refused(format!(
+                "an envelope from {account} whose signature does not match device {signer}"
+            )))
+        }
+        (Some(_), Some((person, _))) => person,
+    };
+    let Some(hosted) = hosted else {
+        return Err(unseen::refused_member(format!(
+            "an envelope from {account} for {org}/{team}, which does not run on this node"
+        )));
     };
     if !envelope.is_fresh(node.now()) {
         return Err(Error::bad_request(

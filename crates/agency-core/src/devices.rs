@@ -140,8 +140,31 @@ pub async fn accept_device_change(
     let key = current
         .as_ref()
         .and_then(|current| device_change_key(&current.body, &signed));
-    unseen::verify(&signed, Kind::Device, key)?;
-    let current = current.ok_or_else(unseen::not_found)?;
+    let is_valid = unseen::check(&signed, Kind::Device, key);
+    let (account, signer) = (&signed.body.account, &signed.signer);
+    let current = match current {
+        None => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} in {org}, an org this node does not have"
+            )))
+        }
+        Some(current) if key.is_none() && current.body.member(account).is_none() => {
+            return Err(unseen::refused(format!(
+                "a device change for {account}, who is not a member of {org}"
+            )))
+        }
+        Some(_) if key.is_none() => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} signed as {signer}, which is not the key it needs"
+            )))
+        }
+        Some(_) if !is_valid => {
+            return Err(unseen::refused(format!(
+                "a device change for {account} whose signature does not match {signer}"
+            )))
+        }
+        Some(current) => current,
+    };
     if !is_root(node, &current) {
         return Err(Error::new(
             ErrorKind::Forbidden,

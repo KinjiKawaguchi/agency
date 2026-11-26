@@ -140,6 +140,8 @@ Every request that fails before that gets `404` with the body `{"error":"not fou
 
 A node never follows a redirect in an answer to its own requests (to other nodes, to the Access certs, or to APNs): others choose where it sends, and a redirect would carry its signed requests elsewhere. A 3xx answer is a failed one.
 
+The node writes the real reason for such a refusal to its own log, never to the caller: at most 20 lines a minute, then a count of the rest, except that a refusal of a request with a valid signature by a member (for example one whose clock is off) is always written.
+
 Once the request is authenticated, refusals are specific (an expired envelope, a version that is not the next one, a node that does not hold the root key).
 A request whose signature is well formed spends one signature check even when the org, team, member, or device is missing, so the time of an answer does not tell either (apart from reading the node's files).
 The checks that do not depend on what the node holds come first and answer as they always do: a malformed body (400), an envelope whose org and team differ from the path (400), and a join request (whose invite code is its credential: 403 for an unknown, used, or expired code, also in an org the node does not have).

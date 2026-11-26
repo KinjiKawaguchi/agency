@@ -346,6 +346,9 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` が自分のチームドメインと違います。 |
 | `agency: refused an Access request (expired)` または `(not valid yet)` | サインインの期限が切れたか、この Mac の時計がずれています。 |
 | `agency: refused an Access request (cannot fetch the Access certs: …)`、`(unknown signing key)`、`(the signature does not match)` | ノードが `teamDomain` から Access の鍵を取得できないか、トークンがこのチームドメインのものではありません。 |
+| `agency: team acme/app: the team runtime fails: …` | チームランタイムが動かないか、5xx を返しました。行の残りに理由があります（下の応答の表を参照）。失敗し始めたときに 1 回書かれ、そのあとは理由が変わったときだけ書かれます。 |
+| `agency: team acme/app: the team runtime answers again` | 失敗していたランタイムが、また応答するようになりました。 |
+| `agency: refused GET /fed/v1/…: …` | ほかのノードからのリクエストを拒否しました。行に理由が書かれます（たとえば「a read signed by bob at …, 400 seconds behind this node's clock; check the clocks」）。相手には「not found」としか返していません。この種の行は 1 分に 20 行までで、それを超えた分は件数だけを 1 行で書きます。メンバーの正しい署名がある要求の拒否は、必ず書かれます。 |
 | `agency: push notifications are off: …` | `push` のキーを読めません。通知は送られません。 |
 | `agency: a push notification was not sent: …` | APNs が通知を受け付けませんでした。30 秒後にもう一度送ります。 |
 | `agency: usage of "<id>" could not be read: …; trying again in <n> minutes` | その資金源の収集に失敗しました。理由が続きます（ログインが見つからない、トークンの期限切れ、トークンの拒否、サービスの不調）。最後の使用量ファイルは残ります。その資金源の設定ディレクトリでログインし直すか、そのログインで Claude Code を使うと、次の読み取りは成功します。続いて `agency: usage of "<id>" is read again` が出ます。 |
@@ -354,7 +357,7 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 
 ### ノードの応答
 
-ログには出ず、ブラウザや `curl` で見えるノードの応答にだけ現れる問題もあります。
+ブラウザや `curl` で見えるノードの応答では、`error` に何が起きたかが書かれます。
 
 | 応答 | 意味 |
 |---|---|
