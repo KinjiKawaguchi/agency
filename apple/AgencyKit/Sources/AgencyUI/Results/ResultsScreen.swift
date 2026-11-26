@@ -34,13 +34,21 @@ public struct ResultsScreen: View {
     }
 
     /// The pages on offer: the outcomes only once the node has let the owner read them, with nothing said otherwise.
-    private var pages: [Page] { outcomes.isAvailable ? Page.allCases : [.costs, .evaluation] }
-    private var shownPage: Page { pages.contains(page) ? page : .costs }
+    private var pages: [Page] { Self.pages(isOutcomesAvailable: outcomes.isAvailable) }
+    private var shownPage: Page { Self.shown(page, isOutcomesAvailable: outcomes.isAvailable) }
+
+    static func pages(isOutcomesAvailable: Bool) -> [Page] { isOutcomesAvailable ? Page.allCases : [.costs, .evaluation] }
+
+    /// The page to draw, and the one the picker shows selected: the chosen one when it is on offer, else the costs. The picker
+    /// reads this too, so that it never holds a selection that is not one of its pages.
+    static func shown(_ chosen: Page, isOutcomesAvailable: Bool) -> Page {
+        pages(isOutcomesAvailable: isOutcomesAvailable).contains(chosen) ? chosen : .costs
+    }
 
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker(Ja.Tabs.results, selection: $page) {
+                Picker(Ja.Tabs.results, selection: Binding(get: { shownPage }, set: { page = $0 })) {
                     ForEach(pages, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
