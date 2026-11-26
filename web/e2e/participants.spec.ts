@@ -36,3 +36,24 @@ for (const [theme, width, height] of [['light', 1280, 900], ['dark', 390, 844]] 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
+
+test.describe('in Japanese', () => {
+  test.use({ locale: 'ja-JP' })
+  for (const theme of ['light', 'dark'] as const) {
+    test(`shows the participants card in ${theme} at 375px, with no sideways scroll and no word cut off`, async ({ page, request }) => {
+      mkdirSync(DIRECTORY, { recursive: true })
+      await resetNode(request, { evaluation: true, participants: true })
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.goto(`/evaluation?theme=${theme}`)
+      const card = page.locator('.ev-participants').first()
+      await expect(card.getByText('参加者', { exact: true })).toBeVisible()
+      await expect(card.getByText('マージなし').first()).toBeVisible()
+      await expect(card.getByText('判断待ち（下限）').first()).toBeVisible()
+      await card.scrollIntoViewIfNeeded()
+      await card.screenshot({ path: `${DIRECTORY}/participants-ja-${theme}-375.png`, animations: 'disabled' })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      // Nothing inside the card is wider than the card: a long word that does not break would push out of it.
+      expect(await card.evaluate((element) => Array.from(element.querySelectorAll('*')).filter((child) => child.getBoundingClientRect().right > element.getBoundingClientRect().right + 1).length)).toBe(0)
+    })
+  }
+})

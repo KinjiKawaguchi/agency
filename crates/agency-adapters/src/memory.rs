@@ -414,6 +414,9 @@ struct MemoryRootKeysState {
     /// Stands for a keychain: signing asks for presence, and each prompt's words are kept.
     is_asking: bool,
     prompts: Vec<String>,
+    is_needing_recovery: bool,
+    /// Stands for a locked keychain: it may hold the keys but says nothing for sure, and signs nothing.
+    is_locked: bool,
 }
 
 impl MemoryRootKeys {
@@ -430,6 +433,16 @@ impl MemoryRootKeys {
     /// Refuses every signature from now on, or stops refusing.
     pub fn refuse(&self, is_refusing: bool) {
         self.state.lock().unwrap().is_refusing = is_refusing;
+    }
+
+    /// Stands for a locked keychain.
+    pub fn lock(&self, is_locked: bool) {
+        self.state.lock().unwrap().is_locked = is_locked;
+    }
+
+    /// Stands for a keychain: keys made here cannot be copied out.
+    pub fn need_recovery(&self, is_needing_recovery: bool) {
+        self.state.lock().unwrap().is_needing_recovery = is_needing_recovery;
     }
 
     /// How many signatures were made.
@@ -449,6 +462,10 @@ impl MemoryRootKeys {
 }
 
 impl agency_core::ports::RootKeys for MemoryRootKeys {
+    fn needs_recovery(&self) -> bool {
+        self.state.lock().unwrap().is_needing_recovery
+    }
+
     fn create(&self, org: &agency_proto::Id) -> Result<agency_proto::PublicKey, String> {
         let mut state = self.state.lock().unwrap();
         state.made = state.made.wrapping_add(1);
@@ -468,10 +485,16 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
 
     fn holds(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> bool {
         let state = self.state.lock().unwrap();
-        state
-            .keys
-            .iter()
-            .any(|(one, kept)| one == org && &kept.public() == key)
+        !state.is_locked
+            && state
+                .keys
+                .iter()
+                .any(|(one, kept)| one == org && &kept.public() == key)
+    }
+
+    fn may_hold(&self, org: &agency_proto::Id, key: &agency_proto::PublicKey) -> bool {
+        let is_locked = self.state.lock().unwrap().is_locked;
+        is_locked || self.holds(org, key)
     }
 
     fn sign(
@@ -484,6 +507,9 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
         let mut state = self.state.lock().unwrap();
         if state.is_asking {
             state.prompts.push(purpose.to_owned());
+        }
+        if state.is_locked {
+            return Err("the keychain is locked".into());
         }
         if state.is_refusing {
             return Err("the owner did not confirm".into());
@@ -514,6 +540,9 @@ impl agency_core::ports::RootKeys for MemoryRootKeys {
             let mut state = self.state.lock().unwrap();
             if state.is_asking {
                 state.prompts.push(purpose.to_owned());
+            }
+            if state.is_locked {
+                return Err("the keychain is locked".into());
             }
             if state.is_refusing {
                 return Err("the owner did not confirm".into());
