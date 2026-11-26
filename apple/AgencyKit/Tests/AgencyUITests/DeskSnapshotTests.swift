@@ -142,7 +142,8 @@ struct DeskSnapshotTests {
         }
         for scheme in [ColorScheme.light, .dark] {
             expectFits(Snapshot.capture("pairing-not-requested", card(.notRequested), scheme: scheme), "not requested (\(scheme))")
-            expectFits(Snapshot.capture("pairing-waiting", card(.waiting(code: "a652-124a-fda7")), scheme: scheme), "waiting (\(scheme))")
+            expectFits(Snapshot.capture("pairing-waiting", card(.waiting(code: "a652-124a-fda7", approval: .fromDevices(labels: ["MacBook", "iPad"]))), scheme: scheme), "waiting (\(scheme))")
+            expectFits(Snapshot.capture("pairing-waiting-node", card(.waiting(code: "a652-124a-fda7", approval: .atTheNode(command: "agency device-add --dir /srv/agency"))), scheme: scheme), "waiting at the node (\(scheme))")
         }
         expectFits(Snapshot.capture("pairing-asking", card(.notRequested, asking: true)), "asking")
         expectFits(Snapshot.capture("pairing-failed", card(.failed("HTTP 502"))), "failed")

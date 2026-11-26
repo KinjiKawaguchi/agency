@@ -11,6 +11,15 @@ public protocol PairingClient: Sendable {
 
 extension NodeClient: PairingClient {}
 
+/// How a device that asked to be added gets approved: from one of the person's devices when they have
+/// one, and otherwise at the node's machine, because only the account key can add a first device.
+public enum ApprovalWay: Equatable, Sendable {
+    /// Open Agency on one of these devices (their labels) and approve it under Devices.
+    case fromDevices(labels: [String])
+    /// The account has no device yet: run this command on the machine the node runs on.
+    case atTheNode(command: String)
+}
+
 /// Whether this phone's key is one of the person's devices, and how to get it added.
 ///
 /// A key signs decisions only once it is added to the org. The phone asks to be added; the node keeps
@@ -19,13 +28,16 @@ extension NodeClient: PairingClient {}
 @MainActor
 @Observable
 public final class PairingStore {
+    /// What the node's machine is told when it has no device yet and the node says nothing more exact.
+    public static let defaultCommand = "agency device-add"
+
     public enum Status: Equatable, Sendable {
         case checking
         /// The key is a device in these orgs.
         case ready(orgs: [String])
         case notRequested
-        /// Asked, and not added yet: the code to compare.
-        case waiting(code: String)
+        /// Asked, and not added yet: the code to compare, and how to approve it.
+        case waiting(code: String, approval: ApprovalWay)
         case failed(String)
     }
 
@@ -60,13 +72,31 @@ public final class PairingStore {
             if !orgs.isEmpty {
                 status = .ready(orgs: orgs)
             } else if let request = list.requests.first(where: { $0.publicKey == mine }) {
-                status = .waiting(code: request.pairingCode)
+                status = .waiting(code: request.pairingCode, approval: Self.approval(in: list))
             } else {
                 status = .notRequested
             }
         } catch {
             status = .failed(DeskStore.reason(error))
         }
+    }
+
+    /// The person's devices, whatever the number of orgs each is in, oldest first: the places to approve from.
+    static func approval(in list: DeviceList) -> ApprovalWay {
+        var seen = Set<String>()
+        let devices = list.orgs.flatMap(\.devices).sorted { $0.addedAt < $1.addedAt }.filter { seen.insert($0.id).inserted }
+        return devices.isEmpty ? .atTheNode(command: command(in: list)) : .fromDevices(labels: devices.map(\.label))
+    }
+
+    /// The command the node gave for its machine, or the default. A value that is empty, over 500
+    /// characters or holds a control character is not shown: it is only ever displayed, never run, and
+    /// it must not be able to hide anything on a screen.
+    static func command(in list: DeviceList) -> String {
+        guard let command = list.node?.command?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty,
+              command.unicodeScalars.count <= 500,
+              !command.unicodeScalars.contains(where: { $0.properties.generalCategory == .control })
+        else { return defaultCommand }
+        return command
     }
 
     /// Asks the node to add this phone.
@@ -76,7 +106,9 @@ public final class PairingStore {
         defer { isAsking = false }
         do {
             let request = try await client.requestDevice(label: label, publicKey: key.string)
-            status = .waiting(code: request.pairingCode)
+            // The list says how it gets approved; without it, the node's machine is the way that always works.
+            let list = try? await client.devices()
+            status = .waiting(code: request.pairingCode, approval: list.map(Self.approval(in:)) ?? .atTheNode(command: Self.defaultCommand))
         } catch {
             status = .failed(DeskStore.reason(error))
         }
