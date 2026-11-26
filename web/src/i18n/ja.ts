@@ -10,6 +10,12 @@ export const ja: Messages = {
     },
     unreachable: (reason) => `ノードに接続できません: ${reason}`,
     signInExpired: { message: 'サインインの有効期限が切れました。再読み込みして、もう一度サインインしてください。', reload: '再読み込み', nothingToShow: 'サインインし直すまで、表示できるものがありません。' },
+    pageLoad: {
+      failed: 'このページを読み込めませんでした。',
+      tryAgain: 'もう一度試す',
+      newVersion: 'このページを読み込めませんでした。新しい版の Agency が入った可能性があり、このタブが持っている画面は古くなっています。',
+      reload: '再読み込み',
+    },
   },
   nav: {
     label: 'メインメニュー',
