@@ -67,6 +67,7 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/usr/share/doc/agency" "$out"
 install -m 755 "$binary" "$stage/usr/bin/agency"
+strip --strip-unneeded "$stage/usr/bin/agency"
 for file in docs/install.md docs/install.ja.md LICENSE-MIT LICENSE-APACHE; do
   install -m 644 "$file" "$stage/usr/share/doc/agency/$(basename "$file")"
 done
@@ -74,6 +75,7 @@ install -m 755 scripts/systemd-unit.sh "$stage/usr/share/doc/agency/systemd-unit
 cat > "$stage/usr/share/doc/agency/copyright" <<'EOF'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Agency
+Copyright: Agency Project contributors
 
 Files: *
 Copyright: Agency Project contributors
