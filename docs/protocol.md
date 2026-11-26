@@ -137,6 +137,8 @@ Every request that fails before that gets `404` with the body `{"error":"not fou
 - a device change names another org or a non-member, or is not signed by the key that "Devices" requires;
 - an org definition is not signed by the root key the node knows for the org (the root of its copy, or, without a copy, the root whose fingerprint it trusts).
 
+A node never follows a redirect in an answer to its own requests (to other nodes, to the Access certs, or to APNs): others choose where it sends, and a redirect would carry its signed requests elsewhere. A 3xx answer is a failed one.
+
 Once the request is authenticated, refusals are specific (an expired envelope, a version that is not the next one, a node that does not hold the root key).
 A request whose signature is well formed spends one signature check even when the org, team, member, or device is missing, so the time of an answer does not tell either (apart from reading the node's files).
 The checks that do not depend on what the node holds come first and answer as they always do: a malformed body (400), an envelope whose org and team differ from the path (400), and a join request (whose invite code is its credential: 403 for an unknown, used, or expired code, also in an org the node does not have).
