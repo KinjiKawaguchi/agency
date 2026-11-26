@@ -6,13 +6,13 @@ import { SignInExpiredError } from '../api/session'
 import { useI18n } from '../i18n'
 import { useSecondsUntil } from './useCountdown'
 
-const hasFailed = (query: { state: { status: string } }): boolean => query.state.status === 'error'
-
 /**
  * The region went wrong for good: what, why, when it tries again by itself, and a button to try now. The
- * automatic try is made quietly: the failure stays on screen ("Trying again…") while the queries that failed
- * are read again, and the region is shown again only once they have passed, so that it does not flash
- * between a skeleton and the failure every half minute. If they fail again the countdown starts over.
+ * automatic try is made quietly: the failure stays on screen ("Trying again…") while the read that threw is
+ * read again, and the region is shown again only once it has passed, so that it does not flash between a
+ * skeleton and the failure every half minute. If it fails again the countdown starts over. Only the read that
+ * threw is read again (the error the boundary caught is that read's own `state.error`): another read of the
+ * app that is in error on purpose, such as token use that a team does not report (404), does not hold it back.
  */
 function RegionFailed({ what, error, retry }: { what: string; error: Error; retry: () => void }) {
   const { t } = useI18n()
@@ -23,14 +23,15 @@ function RegionFailed({ what, error, retry }: { what: string; error: Error; retr
   useEffect(() => {
     if (seconds > 0 || isTrying) return
     setIsTrying(true)
-    void queryClient.refetchQueries({ predicate: hasFailed }).then(() => {
-      if (queryClient.getQueryCache().findAll({ predicate: hasFailed }).length === 0) retry()
+    const thrown = queryClient.getQueryCache().findAll({ predicate: (query) => query.state.error === error })
+    void Promise.all(thrown.map((query) => query.fetch().catch(() => undefined))).then(() => {
+      if (thrown.every((query) => query.state.status !== 'error')) retry()
       else {
         setFailedAt(Date.now())
         setIsTrying(false)
       }
     })
-  }, [seconds, isTrying, queryClient, retry])
+  }, [seconds, isTrying, queryClient, retry, error])
   return (
     <div className="region-failed" role="alert">
       <p>
