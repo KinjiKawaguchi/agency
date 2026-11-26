@@ -51,8 +51,9 @@ public struct WidgetContent: View {
         return WidgetWording.updated(minutes: minutes)
     }
 
+    /// The request's title, or its kind when titles are hidden.
     private func title(_ request: WidgetRequest, lines: Int) -> some View {
-        Text(request.title).font(.footnote.weight(.semibold)).lineLimit(lines).multilineTextAlignment(.leading).privacySensitive()
+        Text(request.title ?? WidgetWording.kind(request.kind)).font(.footnote.weight(.semibold)).lineLimit(lines).multilineTextAlignment(.leading).privacySensitive()
     }
 
     private var emptyText: String { snapshot == nil ? WidgetWording.notSynced : WidgetWording.nothingWaits }
@@ -93,7 +94,7 @@ public struct WidgetContent: View {
             }
             if let first = snapshot?.requests.first {
                 title(first, lines: 2)
-                Text(first.teamLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                if let team = first.teamLabel { Text(team).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
             } else {
                 Text(emptyText).font(.caption).foregroundStyle(.secondary)
             }
@@ -133,7 +134,9 @@ public struct WidgetContent: View {
     private func row(_ request: WidgetRequest) -> some View {
         let content = VStack(alignment: .leading, spacing: 0) {
             title(request, lines: 1)
-            Text("\(request.teamLabel) · \(WidgetWording.kind(request.kind))").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            if let team = request.teamLabel {
+                Text("\(team) · \(WidgetWording.kind(request.kind))").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if showsLinks, let link = RequestLink(org: request.org, team: request.team, request: request.request) {

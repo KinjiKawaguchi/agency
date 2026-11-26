@@ -47,13 +47,7 @@ fn alice() -> Fixture {
     let node = &fixture.node;
     orgs::create(node, id("acme"), "Acme".into()).unwrap();
     // The team is in the org's definition, as `team-add` makes it: a node serves only such a team.
-    let place = TeamPlace {
-        plan: None,
-        id: id("app"),
-        label: "app".into(),
-        department: None,
-        node: node.url(),
-    };
+    let place = TeamPlace::new(id("app"), "app", node.url());
     orgs::add_team(node, &id("acme"), place).unwrap();
     let runtime = RuntimeCommand::of(vec!["unused".into()]);
     let hosted = HostedTeam::new(id("acme"), id("app"), id("alice"), runtime);
@@ -95,7 +89,6 @@ fn bare(account: &str) -> Fixture {
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
         web_push: None,
@@ -311,13 +304,7 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
 #[tokio::test]
 async fn the_outbox_retries_only_when_the_backoff_is_due() {
     let alice = alice();
-    let place = TeamPlace {
-        id: id("far"),
-        label: "Far".into(),
-        department: None,
-        node: NOWHERE.into(),
-        plan: None,
-    };
+    let place = TeamPlace::new(id("far"), "Far", NOWHERE);
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     let (key, key_id) = (laptop(), laptop().public().device_id());
     let device = DeviceSigner {
@@ -449,6 +436,7 @@ fn first_copy(root: &AccountKey, signer: &AccountKey) -> SignedOrg {
         devices: vec![],
     };
     let body = OrgDefinition {
+        kpis: vec![],
         org: id("acme"),
         label: "Acme".into(),
         version: 1,

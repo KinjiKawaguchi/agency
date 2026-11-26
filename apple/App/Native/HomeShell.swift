@@ -13,7 +13,7 @@ struct HomeShell: View {
     var body: some View {
         Group {
             if let session = model.session {
-                TabView(selection: $model.tab) {
+                TabView(selection: Bindable(model.router).tab) {
                     ForEach(AppTab.allCases, id: \.self) { tab in
                         ShellScreen(tab: tab, model: model, session: session)
                             .tabItem { Label(tab.title, systemImage: tab.symbol) }

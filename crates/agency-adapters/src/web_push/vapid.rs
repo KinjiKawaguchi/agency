@@ -7,7 +7,7 @@ use p256::ecdsa::{Signature, SigningKey};
 use p256::SecretKey;
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 /// How long a signed header is valid: at most 24 hours are allowed.
@@ -36,6 +36,16 @@ impl Vapid {
             file.write_all(encoded.as_bytes()).map_err(|error| {
                 format!("cannot write the VAPID key {}: {error}", path.display())
             })?;
+        }
+        let mode = std::fs::metadata(path)
+            .map_err(|error| format!("cannot read the VAPID key {}: {error}", path.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "the VAPID key {} can be read by other accounts; run `chmod 600` on it",
+                path.display()
+            ));
         }
         let raw = std::fs::read_to_string(path)
             .map_err(|error| format!("cannot read the VAPID key {}: {error}", path.display()))?;
@@ -129,6 +139,26 @@ mod tests {
     }
 
     #[test]
+    fn a_key_file_that_other_accounts_can_read_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vapid.key");
+        Vapid::load_or_create(&path).unwrap();
+        for mode in [0o640, 0o604, 0o644, 0o666, 0o660] {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            let error = Vapid::load_or_create(&path).err().expect("refused");
+            assert!(
+                error.contains("chmod 600") && !error.contains("BP"),
+                "{mode:o}: {error}"
+            );
+        }
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        assert!(
+            Vapid::load_or_create(&path).is_ok(),
+            "read-only to this account is fine"
+        );
+    }
+
+    #[test]
     fn the_key_is_made_once_kept_private_and_gives_the_same_id_again() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vapid.key");
@@ -137,12 +167,12 @@ mod tests {
         assert_eq!(made.public_key(), again.public_key());
         assert_eq!(made.key_id(), again.key_id());
         assert_eq!(made.key_id().len(), 12);
-        use std::os::unix::fs::PermissionsExt;
         assert_eq!(
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
         std::fs::write(&path, "not a key\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert!(Vapid::load_or_create(&path).is_err());
         assert_ne!(vapid().key_id(), made.key_id(), "another key, another id");
     }

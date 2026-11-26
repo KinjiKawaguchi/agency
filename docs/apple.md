@@ -10,6 +10,9 @@ apple/
   Shared/               The app code every platform uses: first-launch setup, the session, the shell's
                         model and screens (`Shell/`), the sign-in, the Keychain, the Secure Enclave key, push,
                         the alert strings. Nothing here imports UIKit or AppKit.
+  Mac/                  What is the Mac's alone: the app entry and delegate, the sidebar, the window the
+                        sign-in sheet opens over, asking for a push token, the app icon, the sandbox
+                        entitlements (the `AgencyMac` target).
   App/                  What is the iPhone's alone: the app entry and delegate, the tab bar, the window the
                         sign-in sheet opens over, asking for a push token, the app icon, Info.plist.
   Config/Shared.xcconfig  Defaults; includes Local.xcconfig when it exists.
@@ -65,6 +68,15 @@ The evaluation page of 成果 mirrors the web client's (`web/src/evaluation`): f
 ## The native org chart
 
 The org chart page of 組織 mirrors the web client's (`web/src/org`, the chart of every org of agency#145): with several orgs and none chosen, every org under the account, each with its departments (nested by parent), its teams and its members; with one org (or one chosen), that org's own chart, and a department opens its own chart ("back to the whole organization" returns). On a phone it is the indented list the web draws on a small screen. Each team's box carries the overview's signals, worked out by `TeamSummary` so the two screens cannot disagree: the requests that are the viewer's (the node's `mine`, rolled up into each department and org), stuck, idle, how many participants work, its participants as faces (six, then "+N"), and "old data" when its data is a copy that could not be renewed; a team that could not be read says so in its box, one still being read is grey bars. An org whose definition cannot be read is shown as such and the others are still drawn. A tap on a team opens the desk when it has requests waiting, else the overview. It reads `GET /api/me`, `GET /api/orgs/<org>` for every org (`OrgDefinition`) and the team views the overview reads (`TeamReader`, with the retry rule of the page above); a node route that combined them would save the phone those reads but would be a protocol addition. `AgencyModel/OrgChart` holds what it decides, ported with the web's test cases (`OrgTreeBuilder`, `OrgChartRow`, `TeamBoxText`, `OrgChartStore`).
+
+## The Mac app
+
+The `AgencyMac` target (macOS 14.4 or later, the same reason as iOS 17.4: the https callback of the sign-in session) is the same app on a Mac: the same session, screens, news, and push kinds from `Shared/` and the package, a sidebar instead of a tab bar (`Mac/HomeShell.swift`), and the sandbox of the Mac App Store, because it is distributed through TestFlight for Mac and not outside Apple (no Developer ID, no notarization). It has the iPhone's name and bundle ID, so it is one record in App Store Connect with the Mac added, and the node's association file (`access.appId`) and push topic need no change.
+
+- **The key.** Each Mac makes its own P-256 key in the Secure Enclave, one for each home node, and is added as another device through the same pairing (approve it from a device that is already added). The rule differs from the iPhone's on purpose: the iPhone's key needs Face ID alone (`.biometryCurrentSet`); the Mac's key needs Touch ID **or the Mac's password** (`.userPresence`), because a Mac may have no Touch ID, or be used closed with an external keyboard, where a Touch-ID-only key could never sign. It is still a Secure Enclave key that cannot be read, and each signature still asks for the person. `.biometryCurrentSet` is not used there: Apple documents it as needing Touch ID to be available and enrolled, which is the case the rule exists for, and with the password as an alternative, tying the key to the current set of fingers would protect nothing. The settings and the confirmation lines say "Touch ID か Mac のパスワード" there.
+- **Keychain.** The Mac uses the data protection keychain (`kSecUseDataProtectionKeychain`), which the sandboxed app reaches through its `keychain-access-groups` entitlement; the login keychain would ignore the accessibility class and ask the person for access.
+- **Push and the Dock.** The same coordinator asks for permission and registers for remote notifications (`com.apple.developer.aps-environment` in the entitlements); the push label is `Mac`, never the computer's name. The badge on the Dock icon is the number of requests waiting.
+- **Not on the Mac yet:** a menu-bar item, the Settings window on ⌘, (the settings are the sheet behind the gear, as on the iPhone), the widgets.
 
 ## A read that is not ready yet
 
@@ -122,15 +134,19 @@ export ASC_KEY_ID=XXXXXXXXXX                           # its 10 character key ID
 export ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000
 ```
 
-**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications and Associated Domains capabilities on it. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
+**`apple/scripts/register-bundle-id.sh`** registers the bundle ID from `Local.xcconfig` for iOS if the account does not have it, and enables the Push Notifications, Associated Domains and App Groups capabilities on it; it does the same for the widget extension's bundle ID (the app's with `.widgets`), with App Groups. It signs the API token itself (ES256, valid for ten minutes) with `openssl`, and calls the API with `curl` and `jq`. It creates only what is missing, so it can be run again at any time, and it says what it did:
 
 ```
 Registered bundle ID com.acme.agency.
 Enabled Push Notifications.
 Enabled Associated Domains.
+Enabled App Groups.
+Registered bundle ID com.acme.agency.widgets.
+Enabled App Groups.
+Next: the app group group.com.acme.agency must exist and be ticked for both bundle IDs. The API cannot create it.
 ```
 
-The name of a new bundle ID is `Agency`; set `ASC_APP_NAME` to use another.
+The name of a new bundle ID is `Agency`, and of the widget extension's `Agency Widgets`; set `ASC_APP_NAME` and `ASC_WIDGET_NAME` to use others. The API cannot create the app group (`group.<bundle ID>`): make it once in the developer portal (Identifiers, App Groups), or let Xcode's automatic signing create it during the TestFlight build, which runs with the App Store Connect key.
 
 **`apple/scripts/testflight.sh`** does everything for one build:
 
@@ -203,9 +219,12 @@ A widget shows what waits on the owner: the number of requests that are the view
 
 - **The data.** The app writes one small file, `widget.json`, into the app group's container after each desk read, and removes it when the home node is left. It holds a version, when it was written, the home node's host, the count, and for each of the first three requests its org, team and request ids, its kind, its title (cut to 80 characters) and its team's label: no people, no bodies, no options, no token and no key. The widget never holds the Access token or a device key. The file is readable after the first unlock (the widget reads it while the phone is locked) and written whole or not at all; a file of another version, or one that is not a snapshot or is far too large, is ignored.
 - **Privacy.** Titles are `privacySensitive()`: on the lock screen the system hides them and the count stays.
+- **Titles off.** A home-screen widget shows titles to whoever sees the phone (and in StandBy, while it is locked). The owner can turn "ウィジェットにタイトルを表示" off in the settings (on by default, kept per home node on this device): the file is then written without titles and team labels, so only the count and the kind of each request are on the device at all, and the widget shows those. A node that sets `hideTitles` (see `docs/protocol.md`, Push notifications) is to say so in its answer to `GET /api/me` (`hidesTitles`; the node does not send it yet, agency#272, and the app counts a missing field as `false`); the file is then written without titles whatever the switch says. The switch can only hide more, never show what the node hides, and the settings row says that the node hides them.
+- **When the file is removed.** On leaving the home node, and when the device's key is reset (a reset means this device is no longer trusted with that home node). An ended sign-in keeps it: the three-hour mark on the widget covers that.
 - **`AgencyWidget`** is a package target that depends only on `AgencyKit`: the snapshot, its file store, the link, the words and the SwiftUI views. A widget extension has a small memory limit, so it must not link `AgencyAPI`, `AgencyProtocol` or swift-crypto. `AgencyModel` depends on it and holds the builder that works the snapshot out of the desk (`WidgetSnapshotBuilder`). The views are plain SwiftUI (no WidgetKit names), so they are drawn offscreen at the widgets' real sizes in the tests, and the tests fail when a widget would need more height than it has.
 - **The tap.** The widget's URL is `agency://request?org=..&team=..&request=..` (`WidgetLink`). It only says where to go, and the app accepts it only when all three values look like identifiers (`RequestLink`). No URL scheme is registered in `Info.plist`: Apple's documentation says the system activates the containing app and passes a widget's URL to `onOpenURL`, and says nothing of registering it, so no other app or web page can open the app with it. This could not be tried on a device from here: if a tap only opens the app, the fallback is one `CFBundleURLTypes` entry for `agency`.
 - **Refresh.** The widget shows the file as it is and says how old it is once it is older than three hours; the app asks the system to reload the widgets after it writes. The system budgets reloads, so the widget can be later than the app. A silent push from the node, with the remote-notification background mode, would refresh it while the app is closed; that is not built (agency#207).
+- **The targets.** `project.yml` has the extension `AgencyWidgets` (`apple/Widgets`: the widget bundle, the timeline provider that reads the file, the entitlements and an `Info.plist` that is generated). Its bundle ID is the app's with `.widgets` (`$(inherited).widgets`, so it follows `PRODUCT_BUNDLE_IDENTIFIER` in `Local.xcconfig`), and it is embedded in the app. Both carry the app group `group.<the app's bundle ID>` in their entitlements (the extension's is `group.$(PRODUCT_BUNDLE_IDENTIFIER:base)`, the build setting with its last suffix removed), and the same name in `Info.plist` as `AgencyAppGroup`, which the code reads: the extension links only `AgencyKit` and `AgencyWidget`. The app writes the file (`WidgetPublisher` in `AgencyModel`, with the app group's container and WidgetKit behind a small protocol; `ShellModel` calls it after the desk read and `ShellChrome` on each change of the desk's requests, so it does not depend on which screen is open; a write that would say the same as the last is skipped, because the system budgets reloads) and removes it when the home node is left, after which that publisher writes nothing again (a read that was under way cannot bring the old desk back); a tap's URL goes to `onOpenURL` in `AgencyApp`, which opens the request like a tapped notification.
 - **The Mac.** The same extension can be built for macOS 14 (WidgetKit runs there), reading the same snapshot from the Mac app's group container; `AgencyWidget` has no iOS-only code except the file protection class of the written file.
 
 ## What is new

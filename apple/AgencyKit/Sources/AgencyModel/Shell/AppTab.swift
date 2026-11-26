@@ -1,11 +1,10 @@
-import AgencyModel
 import Foundation
 
 /// The screens of the app, in the order the tab bar (iPhone) and the sidebar (Mac) list them.
-enum AppTab: CaseIterable, Hashable {
+public enum AppTab: CaseIterable, Hashable, Sendable {
     case desk, overview, organization, results, devices
 
-    var title: String {
+    public var title: String {
         switch self {
         case .desk: Ja.Tabs.desk
         case .overview: Ja.Tabs.overview
@@ -15,7 +14,7 @@ enum AppTab: CaseIterable, Hashable {
         }
     }
 
-    var symbol: String {
+    public var symbol: String {
         switch self {
         case .desk: "tray.full"
         case .overview: "square.grid.2x2"

@@ -410,7 +410,6 @@ fn opened_with(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
-        delivery: vec![],
         access: None,
         push: None,
         web_push,
@@ -453,5 +452,36 @@ fn a_node_makes_its_vapid_key_once_and_has_no_web_push_with_a_list_that_is_not_n
     assert!(
         agency_core::web_push::vapid_key(&invalid).is_none(),
         "the node does not send with a list that has an address in it"
+    );
+}
+
+#[test]
+fn the_node_warns_when_push_services_would_be_given_a_contact_they_refuse() {
+    use agency_core::config::WebPushConfig;
+    let dir = tempfile::tempdir().unwrap();
+    let warning = |web_push: WebPushConfig, url: &str| {
+        let node = opened_with(dir.path(), Some(web_push));
+        node.update_config(|config| config.url = url.to_owned())
+            .unwrap();
+        agency_node::web_push_subject_warning(&node.config())
+    };
+    let default = || WebPushConfig::default();
+    let text =
+        warning(default(), "http://127.0.0.1:4400").expect("an http origin is not a contact");
+    assert!(
+        text.contains("webPush.subject") && text.contains("mailto:"),
+        "{text}"
+    );
+    assert!(
+        warning(default(), "https://node.acme.example").is_none(),
+        "an https origin is one"
+    );
+    let mailto = WebPushConfig {
+        subject: Some("mailto:ops@acme.example".into()),
+        extra_hosts: vec![],
+    };
+    assert!(
+        warning(mailto, "http://127.0.0.1:4400").is_none(),
+        "a subject that is set is the operator's"
     );
 }

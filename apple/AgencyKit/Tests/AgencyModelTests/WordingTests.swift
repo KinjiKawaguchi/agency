@@ -58,7 +58,7 @@ struct WordingTests {
     }
 
     @Test("the words never explain a keyboard", arguments: [
-        Ja.Paper.commentExplain(.proposal), Ja.Paper.commentExplain(.question), Ja.Paper.notePlaceholderWithOptions, Ja.Paper.faceIDNote, Ja.Desk.empty,
+        Ja.Paper.commentExplain(.proposal), Ja.Paper.commentExplain(.question), Ja.Paper.notePlaceholderWithOptions, Ja.Key.confirmSend(.faceID), Ja.Key.confirmSend(.touchIDOrPassword), Ja.Desk.empty,
     ])
     func noKeyboardHints(text: String) {
         for word in ["キー", "ショートカット", "Enter", "Cmd", "Ctrl", "⌘"] {

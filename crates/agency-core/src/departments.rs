@@ -122,8 +122,9 @@ pub fn place_team(node: &Node, org: &Id, team: &Id, department: Option<Id>) -> R
     })
 }
 
-/// Sets what the org intends for a team (its plan), or with `None` clears it. The allocation must add
-/// up to 100.
+/// Sets what the org intends for a team (its plan), or with `None` clears it (the aims with it). The
+/// allocation must add up to 100. Setting a plan keeps the aims the team's plan already has: they are
+/// changed with `kpis::aim` and `kpis::unaim`, not here.
 pub fn plan_team(node: &Node, org: &Id, team: &Id, plan: Option<TeamPlan>) -> Result<SignedOrg> {
     if let Some(plan) = &plan {
         let total = plan.allocation.total();
@@ -139,6 +140,11 @@ pub fn plan_team(node: &Node, org: &Id, team: &Id, plan: Option<TeamPlan>) -> Re
             .iter_mut()
             .find(|one| &one.id == team)
             .ok_or_else(|| not_found("team", team, org))?;
+        let aims = place.plan.as_ref().map(|one| one.aims.clone());
+        let plan = match (plan, aims) {
+            (Some(plan), Some(aims)) => Some(plan.with_aims(aims)),
+            (plan, _) => plan,
+        };
         if place.plan == plan {
             return Err(Error::new(
                 ErrorKind::Conflict,

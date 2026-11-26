@@ -21,6 +21,7 @@ This repository is public. Never write names or details that point at a specific
 - `agency-adapters` implements the ports. `agency-node` wires adapters together and provides the CLI.
 - Clients (web, iOS, desktop) talk to their home node's Client API. Clients sign decisions with device keys they hold (non-extractable where the platform allows); nodes never sign envelopes, and team nodes accept only device-signed ones. The account key stays on the node for signed reads, join requests, and adding a person's first device.
 - Types shared with TypeScript are generated from the Rust types, never copied by hand.
+- Config and definition structs (HostedTeam, TeamPlace, ...) are built through their constructor and its `with_` methods, never as struct literals outside their crate; a test in `agency-core` (`tests/built_through_constructors.rs`) fails if a source does.
 
 ## Workflow
 
