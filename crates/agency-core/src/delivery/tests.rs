@@ -34,6 +34,7 @@ fn pull_request(
 
 fn run(commit: &str, finished: &str, verdict: Verdict) -> MainRun {
     MainRun {
+        repo: "acme/app".into(),
         commit: commit.into(),
         finished_at: at(finished),
         verdict,
