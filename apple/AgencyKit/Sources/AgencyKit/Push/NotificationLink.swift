@@ -19,6 +19,7 @@ public enum NotificationLink: Equatable, Sendable {
         switch self {
         case .request(let link): link.org
         case .decision(let org, _, _): org
+        case .recovery(let org): org
         case .devices: nil
         }
     }

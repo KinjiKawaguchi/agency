@@ -25,6 +25,7 @@ extension Ja {
         public static let forgetAnyway = "それでも忘れる"
         public static let leaveAnyway = "それでも出る"
         public static let cancel = "やめる"
+        public static let notificationNotOpened = "通知を開けません"
         /// A tapped notification of a home node this device does not have; the org it is about, when it names one.
         public static func notificationOfAnotherNode(org: String?) -> String {
             org.map { "この通知（組織: \($0)）は、この端末にないホームノードのものです。" } ?? "この通知は、この端末にないホームノードのものです。"

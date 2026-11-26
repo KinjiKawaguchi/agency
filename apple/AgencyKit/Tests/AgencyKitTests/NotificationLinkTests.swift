@@ -102,5 +102,6 @@ struct NotificationTapAgeTests {
         #expect(NotificationTap(userInfo: payload)?.org == "acme")
         #expect(NotificationTap(userInfo: ["agency": ["type": "decision", "org": "lab", "team": "app", "id": "d-1"]])?.org == "lab")
         #expect(NotificationTap(userInfo: ["agency": ["type": "device"]])?.org == nil)
+        #expect(NotificationTap(userInfo: ["agency": ["type": "recovery", "org": "acme"]])?.org == "acme")
     }
 }
