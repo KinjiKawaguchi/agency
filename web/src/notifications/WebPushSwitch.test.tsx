@@ -209,4 +209,60 @@ describe('a subscription the browser holds, wherever the viewer is', () => {
     await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
     expect([push.askedPermission(), push.subscribed()]).toEqual([0, []])
   })
+
+  describe('when the push service of the browser does not take the notices', () => {
+    async function openedAgainAfter(delivery: Parameters<ReturnType<typeof createTestNode>['recordPushDelivery']>[1] | undefined) {
+      const push = fakePushBrowser({ permission: 'granted' })
+      push.holds()
+      const node = createTestNode({ webPush: true })
+      const first = renderApp({ path: '/devices', node, enrolled: true, webPushBrowser: push.browser })
+      await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
+      await screen.findByRole('button', { name: TURN_OFF })
+      first.unmount()
+      if (delivery !== undefined) node.recordPushDelivery(node.pushSubscriptions()[0]!.id, delivery)
+      renderApp({ path: '/devices', node, enrolled: true, webPushBrowser: push.browser })
+      await screen.findByRole('button', { name: TURN_OFF })
+    }
+
+    it('says plainly that the last notice was not taken, when, and why, and when one last was', async () => {
+      await openedAgainAfter({ lastSucceededAt: '2026-11-24T09:00:00Z', lastFailure: { at: '2026-11-24T11:00:00Z', reason: 'push.example answered 503' } })
+      const status = await screen.findByText(/did not take the last notice/)
+      expect(status).toHaveTextContent('did not take the last notice')
+      expect(status).toHaveTextContent('push.example answered 503')
+      expect(status).toHaveTextContent('The last notice it took was at')
+    })
+
+    it('says it has taken none when it has taken none, and not that it took one at a zero time', async () => {
+      await openedAgainAfter({ lastFailure: { at: '2026-11-24T11:00:00Z', reason: 'push.example could not be reached' } })
+      const status = await screen.findByText(/did not take the last notice/)
+      expect(status).toHaveTextContent('It has taken none yet.')
+      expect(status).not.toHaveTextContent('The last notice it took')
+    })
+
+    it('says nothing of it when the last failure is older than a notice it took, or when nothing is known', async () => {
+      await openedAgainAfter({ lastSucceededAt: '2026-11-24T12:00:00Z', lastFailure: { at: '2026-11-24T11:00:00Z', reason: 'push.example answered 503' } })
+      expect(screen.queryByText(/did not take/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/The last notice it took|It has taken none/)).not.toBeInTheDocument()
+    })
+
+    it('says nothing of it for a browser the node has sent nothing to', async () => {
+      await openedAgainAfter(undefined)
+      expect(screen.queryByText(/did not take|It has taken none/)).not.toBeInTheDocument()
+    })
+
+    it('reads in Japanese', async () => {
+      const push = fakePushBrowser({ permission: 'granted' })
+      push.holds()
+      const node = createTestNode({ webPush: true })
+      const first = renderApp({ path: '/devices', node, enrolled: true, webPushBrowser: push.browser, locale: 'ja' })
+      await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(1))
+      await screen.findByRole('button', { name: /閉じているときの通知をやめる/ })
+      first.unmount()
+      node.recordPushDelivery(node.pushSubscriptions()[0]!.id, { lastFailure: { at: '2026-11-24T11:00:00Z', reason: 'push.example answered 503' } })
+      renderApp({ path: '/devices', node, enrolled: true, webPushBrowser: push.browser, locale: 'ja' })
+      const status = await screen.findByText(/最後の通知を受け付けませんでした/)
+      expect(status).toHaveTextContent('最後の通知を受け付けませんでした')
+      expect(status).toHaveTextContent('まだ 1 件も受け付けていません')
+    })
+  })
 })
