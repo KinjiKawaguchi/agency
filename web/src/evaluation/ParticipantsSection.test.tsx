@@ -79,8 +79,8 @@ describe('the participants of a team', () => {
   it('reads in Japanese', () => {
     draw([person()], 2, 'ja')
     expect(screen.getByText('参加者')).toBeInTheDocument()
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '作業中 8.5時間、判断待ち 40分 以上、待機中 1.3時間')
-    expect(screen.getByText(/2 件は、参加者に結び付けられていません/)).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '作業 8.5時間、判断待ち 40分 以上、待機 1.3時間')
+    expect(screen.getByText(/参加者が分からないマージ: 2 件/)).toBeInTheDocument()
   })
 })
 
