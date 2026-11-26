@@ -22,6 +22,7 @@ const SCREENS = [
   { name: 'org-all', path: '/org', ready: '.orgchart.all .oc-node.team' },
   { name: 'costs', path: '/costs', ready: '.columns .column' },
   { name: 'evaluation', path: '/evaluation', ready: '.ev-cols .ev-col' },
+  { name: 'live', path: '/live', ready: '.lv-node' },
   { name: 'devices', path: '/devices', ready: '.pairing-code' },
 ] as const
 
@@ -32,7 +33,7 @@ for (const viewport of VIEWPORTS) {
     for (const screen of SCREENS) {
       test(`${screen.name} in ${theme} at ${viewport.name} width`, async ({ page, request }) => {
         // The overview shows several orgs, with a stuck team, a stale copy, and one that cannot be read.
-        await resetNode(request, { usage: true, evaluation: true, moreOrgs: screen.name === 'overview' || screen.name === 'org-all' })
+        await resetNode(request, { usage: true, evaluation: true, activity: true, moreOrgs: screen.name === 'overview' || screen.name === 'org-all' })
         await page.setViewportSize({ width: viewport.width, height: viewport.height })
         await page.goto(`${screen.path}?theme=${theme}`)
         await expect(page.locator(screen.ready).first()).toBeVisible()
