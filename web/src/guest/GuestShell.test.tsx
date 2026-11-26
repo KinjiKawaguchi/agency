@@ -90,6 +90,13 @@ describe('what a member hosted by the node has', () => {
     expect(paths.filter((one) => OWNERS.test(one))).toEqual([])
   })
 
+  it.each(['/desk', '/devices'])('draws no area of funding on %s: the node says none for a guest, and none is shown', async (path) => {
+    renderApp({ node: guestNode(), path, enrolled: true })
+    await screen.findByRole('navigation', { name: 'Main menu' })
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Loading…' })).not.toBeInTheDocument())
+    expect(screen.queryByText(/Usage limits|Subscriptions/)).not.toBeInTheDocument()
+  })
+
   it('keeps them on their devices, and leaves out what is the owner’s there: the other nodes of the owner', async () => {
     const { history } = renderApp({ node: guestNode(), path: '/devices', enrolled: true })
     await screen.findByRole('heading', { level: 1, name: 'Devices' })
@@ -117,7 +124,7 @@ describe('what a member hosted by the node has', () => {
     const node = guestNode()
     const api = createApiClient((request) => node.handle(request))
     const me = await api.me()
-    expect(me).toMatchObject({ account: { id: 'carol' }, funding: [] })
+    expect(me).toMatchObject({ account: { id: 'carol' }, funding: [], guest: { member: 'carol', org: 'acme' } })
     expect(me.orgs.flatMap((org) => org.teams.map((team) => team.id))).toEqual(['app'])
     expect((await api.devices()).node).toBeUndefined()
   })
@@ -218,8 +225,10 @@ describe('how the node says a viewer is a guest', () => {
     const me = await (await base).json()
     expect(guestOf(me)).toBeUndefined()
     expect(guestOf({ ...me, guest: null })).toBeUndefined()
+    expect(guestOf({ ...me, guest: { member: 'carol', org: 'acme' } })).toEqual({ member: 'carol', org: 'acme' })
     expect(guestOf({ ...me, guest: { member: 'carol' } })).toEqual({ member: 'carol' })
-    for (const guest of ['carol', 7, true, {}, { member: '' }, { member: 3 }, { member: null }, [], { id: 'carol' }]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toEqual({})
+    expect(guestOf({ ...me, guest: { member: 'carol', org: 7 } }), 'an org that is not text is not read').toEqual({ member: 'carol' })
+    for (const guest of ['carol', 7, true, {}, { member: '' }, { member: 3 }, { member: null }, [], { id: 'carol' }, { org: '' }]) expect(guestOf({ ...me, guest }), JSON.stringify(guest)).toEqual({})
   })
 
   it('opens a guest’s pages, not the owner’s, when the node says the guest in another shape', async () => {
