@@ -4,7 +4,8 @@
 // body?, detail? }`. A request has `title` (the team's label) and `body` (its title); a device or a refused decision has a
 // `detail` (the device's label, the decision's title). Text is there only when the node allows it (`hideTitles` leaves it
 // out); without it the notification says only what kind it is, and nothing is added to it. A recovery of an org that was
-// started has the node's own `title` and `body` and names the org by its id, so `hideTitles` leaves it whole.
+// started (`type: "recovery"`, `org`, and `startedAt`, `finishesAt` when the node gives them) and a held root change (`type:
+// "root"`, `org`, `id`, `waiting`) are worded here, in the viewer's language, and lead to the desk.
 ;(function (scope) {
   /** A plain identifier: letters, digits, `.`, `_`, `-`. Anything else is never used to make an address or a tag. */
   const PLAIN = /^[A-Za-z0-9._-]{1,200}$/
@@ -21,20 +22,33 @@
       request: 'A request is waiting for you',
       device: (label) => (label === undefined ? 'A device is waiting to be added' : 'Device \u201c' + label + '\u201d is waiting to be added'),
       decision: (title) => (title === undefined ? 'A decision was refused' : 'The decision on \u201c' + title + '\u201d was refused'),
-      recovery: (org) => (org === undefined ? 'A recovery of an org was started' : 'A recovery of ' + org + ' was started'),
-      root: (org) => (org === undefined ? 'A change waits for the root key' : 'A change to ' + org + ' waits for the root key'),
+      recovery: (org, at) =>
+        (org === undefined ? 'A recovery of an org was started' : 'A recovery of ' + org + ' was started') + (at.started ? ' at ' + at.started : '') + '. ' + (at.finishes ? 'It takes effect at ' + at.finishes + '. ' : '') + 'Open the desk to see it.',
+      root: (org, n) => (n > 1 ? n + ' changes' : 'A change') + (org === undefined ? '' : ' to ' + org) + (n > 1 ? ' wait' : ' waits') + ' for the root key\u2019s signature. Open the desk to see ' + (n > 1 ? 'them' : 'it') + '.',
     },
     ja: {
       app: 'Agency',
       request: 'あなたを待っている依頼があります',
       device: (label) => (label === undefined ? '端末が追加を待っています' : '端末\u300c' + label + '\u300d\u304c追加を待っています'),
       decision: (title) => (title === undefined ? '決定が断られました' : '\u300c' + title + '\u300d\u306e決定は断られました'),
-      recovery: (org) => (org === undefined ? '組織のルート鍵の回復が始まりました' : org + ' のルート鍵の回復が始まりました'),
-      root: (org) => (org === undefined ? 'ルート鍵の署名を待っている変更があります' : org + ' に、ルート鍵の署名を待っている変更があります'),
+      recovery: (org, at) =>
+        (org === undefined ? '組織のルート鍵の回復が始まりました' : org + ' のルート鍵の回復が始まりました') + (at.started ? '（' + at.started + '）' : '') + '。' + (at.finishes ? at.finishes + ' に有効になります。' : '') + '机で確認してください。',
+      root: (org, n) => (org === undefined ? '' : org + ' の') + '変更' + (n > 1 ? ' ' + n + ' 件が' : 'が') + '、ルート鍵の署名を待っています。机で確認してください。',
     },
   }
 
   const cut = (value, length) => (typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, length) : undefined)
+
+  /** A time as the viewer reads one (their locale and zone), or nothing when it is not a time. */
+  function timeOf(value, language) {
+    const ms = typeof value === 'string' ? Date.parse(value) : NaN
+    if (Number.isNaN(ms)) return undefined
+    try {
+      return new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(ms))
+    } catch {
+      return undefined
+    }
+  }
 
   /** The payload as an object, or nothing when it is not one. */
   function parse(data) {
@@ -113,12 +127,14 @@
       const body = cut(payload.body, BODY_CHARS)
       return title !== undefined && body !== undefined ? { title, body, tag, url } : { title: words.app, body: words.request, tag, url }
     }
-    if (kind === 'recovery' || kind === 'root') {
-      const title = cut(payload.title, TITLE_CHARS)
-      const body = cut(payload.body, BODY_CHARS)
-      if (title !== undefined && body !== undefined) return { title, body, tag, url }
-      return { title: words.app, body: words[kind](isPlain(payload.agency.org) ? payload.agency.org : undefined), tag, url }
+    // A recovery and a held root change are worded here, in the viewer's language: the node's English names a time in its own way
+    // and a label, and the desk (where a tap leads) says the rest. A recovery says its times in the viewer's locale and zone.
+    const org = isPlain(payload.agency.org) ? payload.agency.org : undefined
+    if (kind === 'recovery') {
+      const at = { started: timeOf(payload.agency.startedAt, language), finishes: timeOf(payload.agency.finishesAt, language) }
+      return { title: words.app, body: words.recovery(org, at), tag, url }
     }
+    if (kind === 'root') return { title: words.app, body: words.root(org, Number.isInteger(payload.agency.waiting) ? payload.agency.waiting : 1), tag, url }
     return { title: words.app, body: words[kind](cut(payload.detail, BODY_CHARS)), tag, url }
   }
 
