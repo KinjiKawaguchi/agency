@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-/// The alert strings of `apple/App/<language>.lproj/Localizable.strings`: the node names them
+/// The alert strings of `apple/Shared/<language>.lproj/Localizable.strings`: the node names them
 /// (`docs/protocol.md`, "Push") and the app ships them, in every language the app has.
 @Suite("Push alert strings")
 struct PushStringsTests {
@@ -15,7 +15,7 @@ struct PushStringsTests {
     private func entries(_ language: String) throws -> [String: String] {
         var url = URL(fileURLWithPath: #filePath)
         for _ in 0..<4 { url.deleteLastPathComponent() }
-        url = url.appendingPathComponent("App/\(language).lproj/Localizable.strings")
+        url = url.appendingPathComponent("Shared/\(language).lproj/Localizable.strings")
         let text = try String(contentsOf: url, encoding: .utf8)
         var result: [String: String] = [:]
         for line in text.split(separator: "\n") where line.hasPrefix("\"") {

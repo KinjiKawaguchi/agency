@@ -1,6 +1,6 @@
 import AgencyKit
 import AuthenticationServices
-import UIKit
+import Foundation
 
 /// Signs the owner in to Cloudflare Access in the system's web authentication session, which runs
 /// in Safari's context, where passkeys and password managers work, and keeps the resulting Access
@@ -74,17 +74,6 @@ final class AccessSignInFlow: NSObject {
                 self.session = nil
                 continuation.resume(throwing: AccessHandoffError.notTheCallback)
             }
-        }
-    }
-}
-
-extension AccessSignInFlow: ASWebAuthenticationPresentationContextProviding {
-    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first(where: \.isKeyWindow) ?? ASPresentationAnchor()
         }
     }
 }

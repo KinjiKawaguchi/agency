@@ -9,7 +9,7 @@ struct KeychainError: Error, CustomStringConvertible {
     }
 }
 
-/// Generic passwords in the Keychain under one service. Nothing here syncs to iCloud or leaves this phone.
+/// Generic passwords in the Keychain under one service. Nothing here syncs to iCloud or leaves this device.
 struct KeychainStore: Sendable {
     let service: String
 
@@ -39,6 +39,14 @@ struct KeychainStore: Sendable {
     }
 
     private func query(_ account: String) -> [CFString: Any] {
-        [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account, kSecAttrSynchronizable: false]
+        var query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account, kSecAttrSynchronizable: false,
+        ]
+        #if os(macOS)
+        // The Mac's default Keychain is the login keychain, which ignores `kSecAttrAccessible` and asks the person to
+        // allow access; the data protection keychain behaves as the iPhone's does.
+        query[kSecUseDataProtectionKeychain] = true
+        #endif
+        return query
     }
 }

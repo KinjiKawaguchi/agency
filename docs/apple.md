@@ -7,8 +7,11 @@ apple/
   AgencyKit/            Swift package: the protocol code, the Client API client, the screens' models and
                         wording, and the SwiftUI screens (AgencyUI). Everything but AgencyUI builds and
                         tests on macOS and Linux.
-  App/                  SwiftUI app: first-launch setup, the shell with its tabs, the sign-in, the Keychain,
-                        the Secure Enclave key, push.
+  Shared/               The app code every platform uses: first-launch setup, the session, the shell's
+                        model and screens (`Shell/`), the sign-in, the Keychain, the Secure Enclave key, push,
+                        the alert strings. Nothing here imports UIKit or AppKit.
+  App/                  What is the iPhone's alone: the app entry and delegate, the tab bar, the window the
+                        sign-in sheet opens over, asking for a push token, the app icon, Info.plist.
   Config/Shared.xcconfig  Defaults; includes Local.xcconfig when it exists.
   Local.xcconfig.example  Template for the signing values. Copy it to Local.xcconfig (not committed).
   ExportOptions.plist   Export settings for App Store Connect.
@@ -23,7 +26,6 @@ apple/
 
 - On the first launch it asks for the home node address and keeps it in `UserDefaults`. Only the origin is kept: a pasted path is dropped. Plain `http` is accepted only for `localhost`, `127.0.0.1`, and `.local` names, so a node on the owner's machine can be tried.
 - Every screen is native and reads from the node's Client API (the next section). The app shows no web page. Earlier versions showed the web client in a web view; that web view, its cookie copy of the Access token and the bridge for the page were removed, and the data they left in the app (the cookie and the web client's own storage) is removed once at the first launch after the update (`LegacyWebData`).
-- Only the org chart opens in the browser (from the settings), until a native chart exists. The browser holds the Access session too.
 
 ## The native desk
 
@@ -184,7 +186,7 @@ The node sends a notification when a request starts waiting for the owner, when 
 2. **Token.** When permission is granted, the app registers for remote notifications on every launch, because the token can change.
 3. **Registration.** The app registers the token with the node itself (`POST /api/push/tokens`, with the write token and the Access token) once the desk has loaded. `token` is the APNs device token in lowercase hex, `environment` is `sandbox` or `production`, `label` is the device model (`iPhone`), never the device's name, and `events` is the kinds the owner chose in the settings (`request`, `device`, `decision`; every kind starts on). A change in the settings registers again, which the node takes as an update. A node that predates kinds answers 400 to `events` (it refuses a field it does not know) and sends requests only: the app registers again without `events`, and the settings say that this home node sends requests only.
 4. **Tap.** A request's notification carries `agency: { org, team, request }`: tapping it opens that request on the desk (`<org>:<team>:<request>` is the id of a desk item). A device's carries `agency: { type: "device" }` and opens the devices tab; a refused decision's carries `agency: { type: "decision", org, team, id }` and opens the desk. Values that are not plain identifiers (letters, digits, `.`, `_`, `-`), a type the app does not know, and a payload without `agency` give no link, and the app just opens.
-5. **Wording.** The alert of a device or a refused decision is worded by the app, from `loc-key` and `loc-args`: `App/ja.lproj/Localizable.strings` and `App/en.lproj/Localizable.strings` hold the five strings the node names (`PUSH_DEVICE_WAITING`, `PUSH_DEVICE_WAITING_NO_LABEL`, `PUSH_DECISION_REFUSED`, `PUSH_DECISION_REFUSED_NO_TITLE`, `PUSH_REQUEST_WAITING_HIDDEN`), and a test checks that both languages have exactly those and the number of arguments the node sends. The development language is Japanese.
+5. **Wording.** The alert of a device or a refused decision is worded by the app, from `loc-key` and `loc-args`: `Shared/ja.lproj/Localizable.strings` and `Shared/en.lproj/Localizable.strings` hold the five strings the node names (`PUSH_DEVICE_WAITING`, `PUSH_DEVICE_WAITING_NO_LABEL`, `PUSH_DECISION_REFUSED`, `PUSH_DECISION_REFUSED_NO_TITLE`, `PUSH_REQUEST_WAITING_HIDDEN`), and a test checks that both languages have exactly those and the number of arguments the node sends. The development language is Japanese.
 
 6. **Badge.** The app icon shows how many requests wait for the owner. The node puts the count in `aps.badge` of each push (an integer: the requests addressed to the owner across all orgs and teams, counting the one the push is about), and a push that arrives while the app is open sets the badge too. While the app is open, the desk keeps the number current (the sum of `mine` over the teams it could read), so deciding a request lowers the badge without another push. Changing the home node sets the badge to 0. While the app is closed, the badge can be out of date if a request is decided somewhere else, until the next push or until the app is opened.
 

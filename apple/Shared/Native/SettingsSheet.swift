@@ -27,7 +27,9 @@ struct SettingsSheet: View {
                 }
             }
             .navigationTitle(Ja.Desk.settings)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(Ja.Desk.close) { dismiss() } }
             }
