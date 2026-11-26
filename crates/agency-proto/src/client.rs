@@ -35,6 +35,12 @@ pub struct Me {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, type = "boolean")]
     pub hides_titles: bool,
+    /// This node's id as it names itself in a push (`agency.node`, `node_id` of its `url`), so that an app
+    /// maps a push to the node it talks to without working the id out from the address it signed in with,
+    /// which may not be the node's own `url`. Left out when the node's `url` is not a home node's origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub node_id: Option<String>,
     /// The other home nodes of the same human, for their other accounts, as the node's owner
     /// configured them. Given only to the owner, and absent when there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
