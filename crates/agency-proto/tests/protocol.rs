@@ -331,6 +331,32 @@ fn comment_envelope() -> Envelope {
 /// P-256 device key signs the same comment and two device changes. Another implementation
 /// must produce the same values.
 /// The next version of `org`, with a plan for its team: how a plan is signed.
+/// An org moved to a new root key (seed `0d…`): version 2 names it and is signed by the old root, and
+/// version 3 is signed by the new one.
+fn root_rotation(old: &AccountKey, org: &SignedOrg) -> serde_json::Value {
+    let new = AccountKey::from_seed([0x0d; 32]);
+    let mut naming = OrgDefinition::successor_of(org, AT.into());
+    naming.root.public_key = new.public();
+    let naming = Signed::sign(Kind::Org, naming, id("alice"), old).unwrap();
+    assert!(verify_successor(org, &naming).is_ok());
+    let mut after = OrgDefinition::successor_of(&naming, AT.into());
+    after.label = "Acme Inc".into();
+    let after = Signed::sign(Kind::Org, after, id("alice"), &new).unwrap();
+    assert!(verify_successor(&naming, &after).is_ok());
+    let by_old = Signed::sign(Kind::Org, after.body.clone(), id("alice"), old).unwrap();
+    assert!(
+        verify_successor(&naming, &by_old).is_err(),
+        "the old root signs no later version"
+    );
+    let signed = |doc: &SignedOrg| serde_json::json!({ "canonical": canonical_of(&doc.body).unwrap(), "signature": doc.signature, "digest": doc.digest() });
+    serde_json::json!({
+        "newSeed": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "newPublicKey": new.public().encoded(),
+        "namingTheNewRoot": signed(&naming),
+        "signedByTheNewRoot": signed(&after),
+    })
+}
+
 fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
     body.teams[0].plan = Some(TeamPlan {
@@ -631,6 +657,7 @@ fn vectors_match_testdata() {
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),
+        "rootRotation": root_rotation(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),
         "deviceChangeP256": device_change_p256(),
     });

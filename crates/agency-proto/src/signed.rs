@@ -52,6 +52,22 @@ impl<T: Serialize + DeserializeOwned> Signed<T> {
         })
     }
 
+    /// Signs with a key held elsewhere: `sign` gets the signed text and answers the signature (base64),
+    /// or why it could not sign.
+    pub fn sign_with<E>(
+        kind: Kind,
+        body: T,
+        signer: Id,
+        sign: impl FnOnce(&[u8]) -> Result<String, E>,
+    ) -> Result<Result<Self, E>, serde_json::Error> {
+        let text = kind.message(&canonical_of(&body)?);
+        Ok(sign(&text).map(|signature| Self {
+            body,
+            signer,
+            signature,
+        }))
+    }
+
     /// Whether the signature over the body's canonical JSON matches this public key.
     pub fn verify(&self, kind: Kind, key: &PublicKey) -> bool {
         canonical_of(&self.body)

@@ -2,7 +2,8 @@
 use crate::config::{HostedTeam, NodeConfig};
 use crate::error::Result;
 use crate::ports::{
-    Clock, DeliverySource, FundingSource, Notifier, Peers, Random, Store, TeamRuntime, WriteLock,
+    Clock, DeliverySource, FundingSource, Notifier, Peers, Random, RootKeys, Store, TeamRuntime,
+    WriteLock,
 };
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
@@ -19,6 +20,7 @@ pub struct Ports {
     pub funding: Arc<dyn FundingSource>,
     pub delivery: Arc<dyn DeliverySource>,
     pub notifier: Arc<dyn Notifier>,
+    pub root_keys: Arc<dyn RootKeys>,
 }
 
 pub struct Node {
@@ -98,6 +100,10 @@ impl Node {
 
     pub(crate) fn notifier(&self) -> &dyn Notifier {
         self.ports.notifier.as_ref()
+    }
+
+    pub(crate) fn root_keys(&self) -> &dyn RootKeys {
+        self.ports.root_keys.as_ref()
     }
 
     pub(crate) fn write_lock(&self) -> &dyn WriteLock {

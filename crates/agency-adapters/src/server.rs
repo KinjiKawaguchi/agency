@@ -3,6 +3,7 @@
 //! "not found" to the caller is logged here with its real reason (see `agency_core::unseen`).
 use crate::peers::{ACCOUNT, DATE, SIGNATURE};
 use crate::refusal_log::RefusalLog;
+use agency_core::about::read_about;
 use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::devices::accept_device_change;
 use agency_core::evaluation::hosted_evaluation;
@@ -116,6 +117,22 @@ async fn get_definition(
             &read_auth(&headers),
             uri.path(),
         )
+    });
+    respond(&fed, &method, &uri, result)
+}
+
+/// What this node says about itself, for a member's signed read of the org: a stranger learns nothing, not
+/// even the node's version.
+async fn get_about(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path(org): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let result = parse_id(&org).and_then(|org| {
+        let path = routes::about(&org);
+        read_about(&fed.node, &org, &read_auth(&headers), &path)
     });
     respond(&fed, &method, &uri, result)
 }
@@ -279,6 +296,7 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
             "/fed/v1/orgs/{org}/definition",
             get(get_definition).post(post_definition),
         )
+        .route("/fed/v1/orgs/{org}/about", get(get_about))
         .route("/fed/v1/orgs/{org}/versions", get(get_versions))
         .route("/fed/v1/orgs/{org}/join", post(post_join))
         .route("/fed/v1/orgs/{org}/devices", post(post_device_change))
