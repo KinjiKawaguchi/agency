@@ -1,0 +1,307 @@
+//! The node's own measurements (docs/protocol.md, "Metrics"): each request the node answers and each call it
+//! makes is added to a histogram, by hour, and the hours are appended to files in `<data dir>/metrics`, so
+//! that they outlive the process and only the owner can read them. A name is a route template or a fixed
+//! phrase, never a path with ids in it, and nothing holds a body, a token, an address, or a query string.
+//! The cost of a measurement is one addition to a small map.
+
+mod store;
+
+use agency_core::ports::Clock;
+use agency_proto::metrics::{
+    bucket_of, percentile_ms, HourSeries, Metrics, Series, SeriesKind, BUCKETS,
+};
+use agency_proto::{clock, Timestamp};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+/// How many days of measurements are kept.
+pub const KEPT_DAYS: u32 = 30;
+/// The most distinct series an hour may hold. A name is a template or a fixed phrase, so there are far
+/// fewer; this bounds the memory if one is ever not.
+pub const MOST_SERIES_IN_AN_HOUR: usize = 2000;
+
+/// Which series a measurement belongs to.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SeriesKey {
+    pub kind: SeriesKind,
+    pub name: String,
+    pub status: String,
+    pub peer: Option<String>,
+    pub client: Option<String>,
+}
+
+impl SeriesKey {
+    pub fn new(kind: SeriesKind, name: impl Into<String>, status: impl Into<String>) -> Self {
+        Self {
+            kind,
+            name: name.into(),
+            status: status.into(),
+            peer: None,
+            client: None,
+        }
+    }
+
+    /// The same series for a call to a peer (the host of its origin).
+    pub fn with_peer(self, peer: impl Into<String>) -> Self {
+        Self {
+            peer: Some(peer.into()),
+            ..self
+        }
+    }
+
+    /// The same series for what a client (`web` or `ios`) reported.
+    pub fn with_client(self, client: impl Into<String>) -> Self {
+        Self {
+            client: Some(client.into()),
+            ..self
+        }
+    }
+}
+
+/// The numbers of one series in one hour.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Counts {
+    pub count: u64,
+    pub errors: u64,
+    pub sum_ms: u64,
+    pub buckets: [u64; BUCKETS],
+}
+
+impl Default for Counts {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            errors: 0,
+            sum_ms: 0,
+            buckets: [0; BUCKETS],
+        }
+    }
+}
+
+impl Counts {
+    fn add(&mut self, millis: u64, is_error: bool) {
+        self.count += 1;
+        self.errors += u64::from(is_error);
+        self.sum_ms = self.sum_ms.saturating_add(millis);
+        self.buckets[bucket_of(millis)] += 1;
+    }
+
+    pub(crate) fn merge(&mut self, other: &Counts) {
+        self.count += other.count;
+        self.errors += other.errors;
+        self.sum_ms = self.sum_ms.saturating_add(other.sum_ms);
+        for (mine, theirs) in self.buckets.iter_mut().zip(other.buckets) {
+            *mine += theirs;
+        }
+    }
+}
+
+/// The start of an hour, in Unix seconds.
+type Hour = i64;
+
+#[derive(Default)]
+struct State {
+    /// What was recorded since the last flush, by hour.
+    pending: BTreeMap<(Hour, SeriesKey), Counts>,
+    /// How many series each hour of `pending` has, so that a new one can be refused past the limit.
+    series_in_hour: BTreeMap<Hour, usize>,
+    /// Everything since the node started, for the cumulative read.
+    totals: BTreeMap<SeriesKey, Counts>,
+}
+
+/// Records measurements and reads them back. Cloning shares the state.
+#[derive(Clone)]
+pub struct Recorder {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    dir: PathBuf,
+    clock: Arc<dyn Clock>,
+    state: Mutex<State>,
+}
+
+fn hour_of(unix_seconds: i64) -> Hour {
+    unix_seconds - unix_seconds.rem_euclid(3600)
+}
+
+impl Recorder {
+    /// A recorder that keeps its files in `dir`, which is created when the first hour is flushed.
+    pub fn new(dir: PathBuf, clock: Arc<dyn Clock>) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                dir,
+                clock,
+                state: Mutex::new(State::default()),
+            }),
+        }
+    }
+
+    /// Adds one measurement: a duration, and whether it was an error.
+    pub fn record(&self, key: SeriesKey, elapsed: Duration, is_error: bool) {
+        let millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+        let hour = hour_of(self.inner.clock.now().unix_timestamp());
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state
+            .totals
+            .entry(key.clone())
+            .or_default()
+            .add(millis, is_error);
+        let is_new = !state.pending.contains_key(&(hour, key.clone()));
+        if is_new {
+            let in_this_hour = state.series_in_hour.entry(hour).or_default();
+            if *in_this_hour >= MOST_SERIES_IN_AN_HOUR {
+                return;
+            }
+            *in_this_hour += 1;
+        }
+        state
+            .pending
+            .entry((hour, key))
+            .or_default()
+            .add(millis, is_error);
+    }
+
+    /// Writes what was recorded since the last flush to the files, and deletes the files that are past
+    /// the days kept. What cannot be written is kept for the next flush.
+    pub fn flush(&self) {
+        let pending = {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            state.series_in_hour.clear();
+            std::mem::take(&mut state.pending)
+        };
+        if !pending.is_empty() {
+            if let Err(unwritten) = store::append(&self.inner.dir, pending) {
+                let mut state = self
+                    .inner
+                    .state
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                for (key, counts) in unwritten {
+                    if !state.pending.contains_key(&key) {
+                        *state.series_in_hour.entry(key.0).or_default() += 1;
+                    }
+                    state.pending.entry(key).or_default().merge(&counts);
+                }
+            }
+        }
+        store::prune(
+            &self.inner.dir,
+            self.inner.clock.now().unix_timestamp(),
+            KEPT_DAYS,
+        );
+    }
+
+    /// Everything recorded since the node started, by series: what a cumulative reader (a Prometheus
+    /// scrape) wants.
+    pub fn totals(&self) -> Vec<(SeriesKey, Counts)> {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        state
+            .totals
+            .iter()
+            .map(|(key, counts)| (key.clone(), counts.clone()))
+            .collect()
+    }
+
+    /// The measurements of the last `days` days (the hours of them, up to this one), from the files and
+    /// from what is not flushed yet, optionally of one kind and one name.
+    pub fn read(&self, days: u32, kind: Option<SeriesKind>, name: Option<&str>) -> Metrics {
+        let now = self.inner.clock.now();
+        let this_hour = hour_of(now.unix_timestamp());
+        let first = this_hour - (i64::from(days) * 24 - 1) * 3600;
+        let mut hours: BTreeMap<(Hour, SeriesKey), Counts> = store::read(&self.inner.dir, first);
+        let pending = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pending
+            .clone();
+        for (key, counts) in pending.iter().filter(|((hour, _), _)| *hour >= first) {
+            hours.entry(key.clone()).or_default().merge(counts);
+        }
+        let wanted = |key: &SeriesKey| {
+            kind.is_none_or(|k| key.kind == k) && name.is_none_or(|n| key.name == n)
+        };
+        Metrics {
+            from: timestamp(first),
+            until: timestamp(this_hour + 3600),
+            generated_at: timestamp(now.unix_timestamp()),
+            series: series_of(hours, wanted),
+        }
+    }
+}
+
+fn timestamp(unix_seconds: i64) -> Timestamp {
+    let at = clock::OffsetDateTime::from_unix_timestamp(unix_seconds)
+        .unwrap_or(clock::OffsetDateTime::UNIX_EPOCH);
+    Timestamp::parse(&clock::format(at)).expect("a time in RFC 3339")
+}
+
+/// The series of `hours`, ordered by kind, name, and status, each with its hours.
+fn series_of(
+    hours: BTreeMap<(Hour, SeriesKey), Counts>,
+    wanted: impl Fn(&SeriesKey) -> bool,
+) -> Vec<Series> {
+    let mut by_series: BTreeMap<SeriesKey, Vec<(Hour, Counts)>> = BTreeMap::new();
+    for ((hour, key), counts) in hours {
+        if wanted(&key) {
+            by_series.entry(key).or_default().push((hour, counts));
+        }
+    }
+    let mut series: Vec<Series> = by_series
+        .into_iter()
+        .map(|(key, hours)| {
+            let mut total = Counts::default();
+            for (_, counts) in &hours {
+                total.merge(counts);
+            }
+            let percentile = |buckets: &[u64], percent| percentile_ms(buckets, percent);
+            Series {
+                kind: key.kind,
+                name: key.name.clone(),
+                status: key.status.clone(),
+                peer: key.peer.clone(),
+                client: key.client.clone(),
+                count: total.count,
+                errors: total.errors,
+                sum_ms: total.sum_ms,
+                buckets: total.buckets.to_vec(),
+                p50_ms: percentile(&total.buckets, 50),
+                p95_ms: percentile(&total.buckets, 95),
+                p99_ms: percentile(&total.buckets, 99),
+                by_hour: hours
+                    .iter()
+                    .map(|(hour, counts)| HourSeries {
+                        hour: timestamp(*hour),
+                        count: counts.count,
+                        errors: counts.errors,
+                        p95_ms: percentile(&counts.buckets, 95),
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+    series.sort_by(|a, b| {
+        (a.kind, &a.name, &a.status, &a.peer, &a.client)
+            .cmp(&(b.kind, &b.name, &b.status, &b.peer, &b.client))
+    });
+    series
+}
+
+#[cfg(test)]
+mod tests;
