@@ -8,6 +8,7 @@ mod outcome_cli;
 mod peer_cli;
 mod recovery_cli;
 mod root_sign_cli;
+mod seat_cli;
 mod seen_cli;
 mod team_cli;
 
@@ -94,6 +95,12 @@ enum Command {
     DeptAdd(dept_cli::DeptAdd),
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
+    SeatAdd(seat_cli::SeatAdd),
+    SeatSet(seat_cli::SeatSet),
+    SeatRemove(seat_cli::SeatRemove),
+    ExternalAdd(seat_cli::ExternalAdd),
+    ExternalSet(seat_cli::ExternalSet),
+    ExternalRemove(seat_cli::ExternalRemove),
     TeamDept(dept_cli::TeamDept),
     TeamPlan(dept_cli::TeamPlanArgs),
     OutcomeAdd(outcome_cli::OutcomeAdd),
@@ -303,6 +310,7 @@ fn status(node: &Node) {
             .into_iter()
             .chain(plans)
             .chain(kpi_cli::kpi_lines(&doc.body))
+            .chain(seat_cli::seat_lines(&doc.body))
             .chain(peer_cli::peer_lines(node, &doc.body.org))
         {
             println!("{line}");
@@ -536,6 +544,12 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptAdd(args) => dept_cli::dept_add(&node, args)?,
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
+        Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
+        Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
+        Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
+        Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
+        Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
         Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamPlan(args) => dept_cli::team_plan(&node, args)?,
         Command::OutcomeAdd(args) => outcome_cli::outcome_add(&node, args).await?,
