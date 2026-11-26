@@ -15,6 +15,9 @@ extension Ja {
             return "\(count)"
         }
 
+        /// What a screen reader says of the item.
+        public static func accessibility(_ count: Int?) -> String { "Agency: \(status(count))" }
+
         /// The menu's first line.
         public static func status(_ count: Int?) -> String {
             guard let count else { return notRead }

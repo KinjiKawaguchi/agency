@@ -6,10 +6,17 @@ import UserNotifications
 @MainActor
 final class MacAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let push = PushCoordinator(platform: AppKitPushPlatform())
+    let model: MacAppModel
+
+    override init() {
+        model = MacAppModel(push: push)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         push.start()
+        model.begin()
     }
 
     /// Closing the window leaves the app running in the menu bar, where its item shows what waits.

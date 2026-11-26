@@ -16,11 +16,6 @@ struct RootView: View {
         #if os(iOS)
         .task { await LegacyWebData.removeOnce() }
         #endif
-        .alert("Get notified?", isPresented: $push.isShowingPrompt) {
-            Button("Turn on") { push.acceptPrompt() }
-            Button("Not now", role: .cancel) { push.deferPrompt() }
-        } message: {
-            Text("Agency can notify you when a request is waiting for your decision.")
-        }
+        .pushPrompt(push)
     }
 }

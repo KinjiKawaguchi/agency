@@ -16,4 +16,11 @@ struct MenuBarWordingTests {
         #expect(Ja.MenuBar.status(0) == "あなたを待っている依頼はありません")
         #expect(Ja.MenuBar.status(2) == "2 件があなたを待っています")
     }
+
+    @Test("a screen reader hears the app's name and the first line")
+    func accessibility() {
+        #expect(Ja.MenuBar.accessibility(nil) == "Agency: まだ読み込んでいません")
+        #expect(Ja.MenuBar.accessibility(0) == "Agency: あなたを待っている依頼はありません")
+        #expect(Ja.MenuBar.accessibility(4) == "Agency: 4 件があなたを待っています")
+    }
 }
