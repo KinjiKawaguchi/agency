@@ -2,13 +2,14 @@ import type { Team } from '../api/teams'
 import { sampleTeamView, type TeamRequest, type TeamView } from '../api/teamview'
 
 /** A local team whose viewer goes by `viewer` (the owner, unless said otherwise). `mine` is what the node lists as the viewer's, by default the requests addressed to them or to no one. */
-export const teamOf = (view: TeamView, viewer = 'owner', mine?: readonly string[]): Team => ({
+export const teamOf = (view: TeamView, viewer = 'owner', mine?: readonly string[], relayedFor: Readonly<Record<string, string>> = {}): Team => ({
   view,
   viewer,
   source: { kind: 'local' },
   // The people whose `waitingOn` names the viewer, which is what the node lists.
   waitingOnViewer: new Set(view.people.filter((person) => person.waitingOn?.kind === 'person' && person.waitingOn.person === viewer).map((person) => person.id)),
   mine: new Set(mine ?? view.requests.filter((request) => (request.to ?? viewer) === viewer).map((request) => request.id)),
+  relayedFor: new Map(Object.entries(relayedFor)),
 })
 
 /** The shared sample with one more request, addressed to the person named `to`. */
