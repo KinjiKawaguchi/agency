@@ -215,3 +215,63 @@ async fn the_root_node_cancels_by_signing_anything() {
     assert_eq!(after.body.root.pending, None, "signing anything cancels");
     assert!(after.verify(Kind::Org, &root_key));
 }
+
+#[tokio::test]
+async fn a_start_delivered_again_neither_restarts_the_wait_nor_lets_another_take_its_number() {
+    let keys = keys();
+    let carol = carol_with_a_recovery_key(&keys).await;
+    let before = current(&carol);
+    let started = start(&before, &keys);
+    orgs::receive(&carol.node, started.clone()).await.unwrap();
+    carol.clock.advance(Duration::hours(60));
+    orgs::receive(&carol.node, started.clone()).await.unwrap();
+
+    let mut body = OrgDefinition::successor_of(&before, before.body.at.clone());
+    body.label = "Other".into();
+    let other = orgs::receive(&carol.node, sign(body, &keys.root))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        other.kind,
+        ErrorKind::Conflict,
+        "the start holds its number"
+    );
+
+    carol.clock.advance(Duration::hours(12));
+    orgs::receive(&carol.node, finish(&started, &keys))
+        .await
+        .unwrap();
+    assert_eq!(
+        current(&carol).body.root.public_key,
+        keys.new_root.public(),
+        "72 hours from the first time it took the start"
+    );
+}
+
+#[tokio::test]
+async fn a_node_reopened_between_start_and_finish_still_counts_from_the_start() {
+    let keys = keys();
+    let carol = carol_with_a_recovery_key(&keys).await;
+    let started = start(&current(&carol), &keys);
+    orgs::receive(&carol.node, started.clone()).await.unwrap();
+    carol.clock.advance(Duration::hours(71));
+
+    let reopened = agency_node::open(
+        agency_adapters::files::DataDir::new(carol.data_dir()),
+        agency_node::Overrides {
+            runtime: Some(memory_runtime().0),
+            clock: Some(std::sync::Arc::new(carol.clock.clone())),
+            root_keys: Some(carol.root_keys.clone()),
+            ..agency_node::Overrides::default()
+        },
+    )
+    .unwrap();
+    let early = orgs::receive(&reopened.node, finish(&started, &keys))
+        .await
+        .unwrap_err();
+    assert_eq!(early.kind, ErrorKind::Conflict, "{early:?}");
+    carol.clock.advance(Duration::hours(1));
+    orgs::receive(&reopened.node, finish(&started, &keys))
+        .await
+        .unwrap();
+}

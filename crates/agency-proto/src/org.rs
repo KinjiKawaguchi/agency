@@ -308,6 +308,29 @@ impl OrgDefinition {
         accounts.chain(roots).collect()
     }
 
+    /// A recovery key that is also the root key or an account key would be kept on a node, which defeats it; a
+    /// new root key a started recovery names is no account key either.
+    fn are_recovery_keys_apart(&self) -> bool {
+        let root = &self.root;
+        let pending = root.pending.as_ref();
+        let new_root = pending.and_then(|one| one.public_key.as_ref());
+        let accounts: HashSet<&PublicKey> = self.people.iter().map(|p| &p.public_key).collect();
+        let held: HashSet<&PublicKey> = accounts
+            .iter()
+            .copied()
+            .chain([Some(&root.public_key), new_root].into_iter().flatten())
+            .collect();
+        let recovery_keys = [
+            root.recovery.as_ref(),
+            pending.and_then(|one| one.recovery.as_ref()),
+        ];
+        let is_recovery_apart = recovery_keys
+            .into_iter()
+            .flatten()
+            .all(|key| !held.contains(key));
+        is_recovery_apart && new_root.is_none_or(|key| !accounts.contains(key))
+    }
+
     /// Device ids are unique per person; device keys are unique in the org, are not account or root
     /// keys, and are not revoked.
     fn validate_devices(&self) -> Result<(), String> {
@@ -348,6 +371,12 @@ impl OrgDefinition {
             return Err("a department, person, team, or account appears twice".into());
         }
         let are_node_keys_ed25519 = self.node_keys().into_iter().all(PublicKey::is_ed25519);
+        if !self.are_recovery_keys_apart() {
+            return Err(
+                "a recovery key, or a key a started recovery names, is the root key or an account key"
+                    .into(),
+            );
+        }
         if !are_node_keys_ed25519 {
             return Err("account and root keys must be Ed25519".into());
         }

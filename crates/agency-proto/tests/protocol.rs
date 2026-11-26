@@ -406,6 +406,32 @@ fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
         recovery: None,
     });
     let empty_start = sign(body, &recovery);
+    for kept_on_a_node in [root.public(), org.body.people[0].public_key.clone()] {
+        let mut body = next(org);
+        body.root.recovery = Some(kept_on_a_node);
+        assert!(
+            body.validate().unwrap_err().contains("recovery key"),
+            "a recovery key a node keeps"
+        );
+    }
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: None,
+        recovery: Some(root.public()),
+    });
+    assert!(
+        body.validate().is_err(),
+        "a new recovery key that is the root key"
+    );
+    let mut body = next(&with_recovery);
+    body.root.pending = Some(PendingRoot {
+        public_key: Some(org.body.people[0].public_key.clone()),
+        recovery: None,
+    });
+    assert!(
+        body.validate().is_err(),
+        "a new root key that is an account key"
+    );
     assert!(verify_successor(&with_recovery, &empty_start)
         .unwrap_err()
         .contains("names no change"));
