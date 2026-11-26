@@ -73,6 +73,25 @@ struct WorkTests {
         #expect(Work.sorted(epics).map(\.ref) == ["c", "b", "a", "d"])
     }
 
+    @Test("a finished epic is sorted after every open epic, and an epic with a doneAt is finished however its counts read")
+    func finishedEpics() throws {
+        func epic(_ ref: String, total: Int, done: Int, doing: Int = 0, doneAt: String? = nil) throws -> EpicForecast {
+            let stamp = doneAt.map { #","doneAt":"\#($0)""# } ?? ""
+            let json = #"{"ref":"\#(ref)","title":"E","total":\#(total),"done":\#(done),"doing":\#(doing),"remainingPoints":0,"blocked":[],"basis":""\#(stamp)}"#
+            return try JSONDecoder().decode(EpicForecast.self, from: Data(json.utf8))
+        }
+        let finished = try epic("old", total: 4, done: 4, doneAt: "2026-11-20T10:00:00Z")
+        let open = try epic("open", total: 4, done: 1)
+        let busy = try epic("busy", total: 4, done: 0, doing: 2)
+        #expect(finished.isFinished)
+        #expect(!open.isFinished)
+        #expect(try epic("x", total: 4, done: 4).isFinished)
+        #expect(try epic("x", total: 4, done: 1, doneAt: "2026-11-20T10:00:00Z").isFinished)
+        #expect(try epic("x", total: 0, done: 0).isFinished == false)
+        #expect(Work.sorted([finished, open, busy]).map(\.ref) == ["busy", "open", "old"])
+        #expect(Work.sorted([finished, busy]).map(\.ref) == ["busy", "old"])
+    }
+
     @Test("blocked work that is already in progress or finished is not listed as stuck")
     func blockedButStarted() throws {
         func item(_ ref: String, _ status: String, blocked: Bool) throws -> WorkItem {
