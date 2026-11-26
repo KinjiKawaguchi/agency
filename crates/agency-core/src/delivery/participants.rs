@@ -66,19 +66,23 @@ pub fn attribute(
             tokens.cache_write = tokens.cache_write.saturating_add(day.cache_write);
         }
     }
-    let authors: HashMap<(&str, u64), &str> = report
-        .pull_requests
-        .iter()
-        .map(|author| ((author.repo.as_str(), author.number), author.by.as_str()))
-        .collect();
+    // A pull request the report names two authors for (a report the node's check refuses, so only a caller
+    // that skipped it gets here) has no author: it is counted once, as unattributed, never twice.
+    let mut authors: HashMap<(&str, u64), Option<&str>> = HashMap::new();
+    for author in &report.pull_requests {
+        authors
+            .entry((author.repo.as_str(), author.number))
+            .and_modify(|known| *known = None)
+            .or_insert(Some(author.by.as_str()));
+    }
     let mut unattributed = 0;
     for pull_request in pull_requests
         .iter()
         .filter(|pull_request| period.contains(pull_request.merged_at))
     {
         match authors.get(&(pull_request.repo.as_str(), pull_request.number)) {
-            Some(name) => totals.entry(name).or_default().merged += 1,
-            None => unattributed += 1,
+            Some(Some(name)) => totals.entry(name).or_default().merged += 1,
+            _ => unattributed += 1,
         }
     }
     let participants = totals
@@ -206,6 +210,55 @@ mod tests {
             (0, None)
         );
         assert_eq!(unattributed, 2, "103, and 101 of another repository");
+    }
+
+    #[test]
+    fn a_pull_request_with_two_authors_is_counted_once_as_unattributed_never_twice() {
+        let mut report = report();
+        report.pull_requests = vec![
+            agency_proto::participant_metrics::PullRequestAuthor {
+                repo: "acme/app".into(),
+                number: 101,
+                by: "backend".into(),
+            },
+            agency_proto::participant_metrics::PullRequestAuthor {
+                repo: "acme/app".into(),
+                number: 101,
+                by: "lead".into(),
+            },
+            agency_proto::participant_metrics::PullRequestAuthor {
+                repo: "acme/app".into(),
+                number: 102,
+                by: "lead".into(),
+            },
+        ];
+        let pull_requests = [
+            merged("acme/app", 101, "2026-11-23T10:00:00Z"),
+            merged("acme/app", 102, "2026-11-23T11:00:00Z"),
+        ];
+        let (participants, unattributed) = attribute(&report, &pull_requests, &period());
+        let counted: u32 = participants.iter().map(|p| p.merged).sum();
+        assert_eq!(
+            (counted, unattributed),
+            (1, 1),
+            "the sum is the two pull requests, once each"
+        );
+        assert_eq!(
+            participants
+                .iter()
+                .find(|p| p.name == "lead")
+                .unwrap()
+                .merged,
+            1
+        );
+        assert_eq!(
+            participants
+                .iter()
+                .find(|p| p.name == "backend")
+                .unwrap()
+                .merged,
+            0
+        );
     }
 
     #[test]

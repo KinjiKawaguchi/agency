@@ -289,9 +289,10 @@ fn merged_total(summary: &EvaluationSummary) -> u64 {
     .sum()
 }
 
-/// Checks a team's participants: each named and listed once, costs that are numbers not negative, and
-/// their merged pull requests, with the unattributed ones, adding up to the summary's.
-fn check_participants(team: &TeamEvaluation) -> Result<(), String> {
+/// Checks a team's participants: each named and listed once, no more time than the period holds (the three
+/// times of a participant add up to at most `days` times 86 400 seconds), costs that are numbers not
+/// negative, and their merged pull requests, with the unattributed ones, adding up to the summary's.
+fn check_participants(team: &TeamEvaluation, team_days: u32) -> Result<(), String> {
     if team.participants.is_empty() && team.unattributed_merged == 0 {
         return Ok(());
     }
@@ -304,6 +305,18 @@ fn check_participants(team: &TeamEvaluation) -> Result<(), String> {
         let name = &participant.name;
         if name.is_empty() || name.len() > MAX_NAME_BYTES || !names.insert(name.as_str()) {
             return Err("reported a participant without a usable name, or twice".into());
+        }
+        let seconds = [
+            participant.busy_seconds,
+            participant.waiting_seconds,
+            participant.idle_seconds,
+        ]
+        .iter()
+        .fold(0u64, |sum, part| sum.saturating_add(*part));
+        if seconds > u64::from(team_days) * 86_400 {
+            return Err(format!(
+                "reported more time than the period holds for {name}"
+            ));
         }
         let costs = [
             Some(participant.cost_usd),
@@ -337,7 +350,7 @@ impl Evaluation {
             let mut costs: Vec<f64> = team.by_day.iter().map(|day| day.cost_usd).collect();
             costs.extend(team.summary.cost_per_merged_pr_usd);
             check_days(&dates, &team.from, &team.until, &costs, days)?;
-            check_participants(team)?;
+            check_participants(team, days)?;
         }
         Ok(())
     }
@@ -443,6 +456,25 @@ mod tests {
         assert!(refused(&|t| t.participants[0].name = String::new()).contains("usable name"));
         assert!(refused(&|t| t.participants[0].name = "x".repeat(201)).contains("usable name"));
         assert!(refused(&|t| t.participants[0].cost_usd = -0.01).contains("malformed cost"));
+        let whole = 14 * 86_400;
+        assert!(refused(&|t| {
+            let p = &mut t.participants[0];
+            (p.busy_seconds, p.waiting_seconds, p.idle_seconds) = (whole, 1, 0);
+        })
+        .contains("more time than the period"));
+        assert!(
+            refused(&|t| t.participants[0].idle_seconds = 1_000_000_000_000)
+                .contains("more time than the period")
+        );
+        assert!(refused(&|t| t.participants[0].busy_seconds = u64::MAX).contains("more time"));
+        let mut full = sample();
+        let p = &mut full.teams[0].participants[0];
+        (p.busy_seconds, p.waiting_seconds, p.idle_seconds) = (whole, 0, 0);
+        assert_eq!(
+            full.check(&acme(), 14),
+            Ok(()),
+            "alive the whole period is the most"
+        );
         assert!(refused(&|t| t.participants[0].cost_usd = f64::NAN).contains("malformed cost"));
         assert!(
             refused(&|t| t.participants[0].cost_per_merged_pr_usd = Some(f64::INFINITY))

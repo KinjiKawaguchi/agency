@@ -87,8 +87,15 @@ fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
 
 /// The evaluation of a team on this node over the last `days` days, as the answer of one team: the team
 /// in `teams`, or in `unavailable` with the reason it has no numbers. It does not fail: a team that cannot
-/// be evaluated is a result that a screen shows, not an error that blanks it.
-pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Evaluation {
+/// be evaluated is a result that a screen shows, not an error that blanks it. What each participant did
+/// is the team owner's to read: it is worked out, and runs the team's runtime, only when `reader` (an org
+/// member id) is the team's owner.
+pub async fn evaluate_hosted(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+    reader: &Id,
+) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
     let Some(repos) = repositories(hosted) else {
@@ -101,7 +108,10 @@ pub async fn evaluate_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Eva
     };
     let costs = daily_costs(node, hosted, days).await;
     let offset_minutes = i32::from(node.utc_offset().whole_minutes());
-    let participants = participants_of(node, hosted, days, offset_minutes).await;
+    let participants = match reader == &hosted.owner {
+        true => participants_of(node, hosted, days, offset_minutes).await,
+        false => None,
+    };
     let input = Input {
         now,
         offset: node.utc_offset(),
@@ -187,7 +197,7 @@ pub async fn org_evaluation(node: &Node, org: &Id, days: Option<u32>) -> Result<
     };
     for place in &doc.body.teams {
         let one = match node.hosted(org, &place.id) {
-            Some(hosted) => Ok(evaluate_hosted(node, &hosted, days).await),
+            Some(hosted) => Ok(evaluate_hosted(node, &hosted, days, &person.id).await),
             None => remote_evaluation(node, org, place, days).await,
         };
         match one {
@@ -231,5 +241,5 @@ pub async fn hosted_evaluation(
             "an answerer does not read the team's evaluation",
         ));
     }
-    Ok(evaluate_hosted(node, &hosted, check_days(days)?).await)
+    Ok(evaluate_hosted(node, &hosted, check_days(days)?, &reader.id).await)
 }

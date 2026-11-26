@@ -148,8 +148,8 @@ async fn evaluation_cut_at(
             ..report
         }
     });
-    let bob = joined_bob(&alice).await;
-    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    // alice owns the team and reads it through her own Client API.
+    let (status, answer) = client_evaluation(&alice, "?days=14").await;
     assert_eq!(status, 200, "{answer}");
     let evaluation: Evaluation = serde_json::from_value(answer).unwrap();
     assert_eq!(evaluation.check(&id("acme"), 14), Ok(()));
@@ -184,6 +184,67 @@ async fn the_participants_of_a_runtime_that_reports_them_are_in_the_evaluation_a
     assert_eq!(
         team.summary.merged.feat, 1,
         "the delivery numbers are the same as without participants"
+    );
+}
+
+#[tokio::test]
+async fn what_each_participant_did_is_the_team_owners_and_no_other_members() {
+    let (alice, memory) = alice().await;
+    configure(&alice);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    memory.lock().unwrap().participants = Some(serde_json::from_str(PARTICIPANTS).unwrap());
+    memory
+        .lock()
+        .unwrap()
+        .participants
+        .as_mut()
+        .unwrap()
+        .utc_offset_minutes = 0;
+    let bob = joined_bob(&alice).await;
+
+    // bob, a member of the org who does not own the team, reads it from his own node's route (which
+    // asks alice's node over the signed read) and directly.
+    let (status, answer) = client_evaluation(&bob, "?days=7").await;
+    assert_eq!(status, 200, "{answer}");
+    let through_bob: Evaluation = serde_json::from_value(answer).unwrap();
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let direct: Evaluation = serde_json::from_value(answer).unwrap();
+    // (Two reads of the same days would be the same signed read, which a node answers once.)
+    for (read, days) in [(&through_bob, 7), (&direct, 14)] {
+        let team = &read.teams[0];
+        assert!(
+            team.participants.is_empty() && team.unattributed_merged == 0,
+            "{team:?}"
+        );
+        assert_eq!(team.summary.merged.feat, 1, "the team's numbers are there");
+        assert_eq!(read.check(&id("acme"), days), Ok(()));
+    }
+    assert!(
+        memory.lock().unwrap().participant_asks.is_empty(),
+        "the runtime is not even asked for a reader who may not see the answer"
+    );
+
+    let (status, answer) = client_evaluation(&alice, "?days=14").await;
+    assert_eq!(status, 200, "{answer}");
+    let mine: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!(mine.teams[0].participants.len(), 3, "the owner reads it");
+    assert_eq!(memory.lock().unwrap().participant_asks.len(), 1);
+
+    // A node that hosts a team another member owns does not show its owner's team's participants to the
+    // account of the node either: the owner of the team is the one who reads them.
+    alice
+        .node
+        .update_config(|config| config.teams[0].owner = id("bob"))
+        .unwrap();
+    let (status, answer) = client_evaluation(&alice, "?days=30").await;
+    assert_eq!(status, 200, "{answer}");
+    let hosted_for_bob: Evaluation = serde_json::from_value(answer).unwrap();
+    assert!(hosted_for_bob.teams[0].participants.is_empty());
+    assert_eq!(
+        memory.lock().unwrap().participant_asks.len(),
+        1,
+        "and it is not asked"
     );
 }
 
