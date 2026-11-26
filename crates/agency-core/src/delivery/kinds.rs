@@ -43,10 +43,36 @@ fn reverts_by_title(title: &str) -> bool {
     })
 }
 
-/// What the pull request is. A revert is a title that starts with `Revert` or a body that says
-/// "This reverts commit".
+/// A body line that `git revert` or GitHub's Revert button writes: `This reverts commit <sha>` or
+/// `Reverts <owner/name>#<number>`. A sentence that only mentions them does not start a line like that.
+fn reverts_by_body(body: &str) -> bool {
+    let is_sha = |word: &str| {
+        let sha = word.trim_end_matches('.');
+        (7..=40).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit())
+    };
+    let is_reference = |word: &str| {
+        let Some((repo, number)) = word.split_once('#') else {
+            return false;
+        };
+        let number = number.trim_end_matches('.');
+        let named = repo
+            .split_once('/')
+            .is_some_and(|(owner, name)| !owner.is_empty() && !name.is_empty());
+        named && !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+    };
+    body.lines().map(str::trim).any(|line| {
+        if let Some(rest) = line.strip_prefix("This reverts commit ") {
+            return rest.split_whitespace().next().is_some_and(is_sha);
+        }
+        line.strip_prefix("Reverts ")
+            .is_some_and(|rest| rest.split_whitespace().next().is_some_and(is_reference))
+    })
+}
+
+/// What the pull request is. A revert is a title that starts with `Revert`, or a body with a line that
+/// says which commit or pull request it reverts.
 pub fn classify(title: &str, body: &str) -> Kind {
-    if reverts_by_title(title) || body.contains("This reverts commit") {
+    if reverts_by_title(title) || reverts_by_body(body) {
         return Kind::Revert;
     }
     match conventional_type(title).as_deref() {
@@ -133,6 +159,23 @@ mod tests {
             Kind::Revert
         );
         assert_eq!(
+            classify(
+                "fix: undo it",
+                "Why\n\nThis reverts commit 1234abcdef0123456789."
+            ),
+            Kind::Revert,
+            "a line of its own"
+        );
+        assert_eq!(
+            classify("fix: undo it", "  Reverts acme/app#123"),
+            Kind::Revert,
+            "what GitHub's Revert button writes"
+        );
+        assert_eq!(
+            classify("fix: undo it", "Reverts acme/app#123."),
+            Kind::Revert
+        );
+        assert_eq!(
             classify("reverted: not one", ""),
             Kind::Other,
             "revert must be a word of its own"
@@ -143,6 +186,20 @@ mod tests {
             "only a title that starts with it"
         );
         assert_eq!(classify("feat: x", "it never reverts commit"), Kind::Feat);
+        for prose in [
+            "A body that says \"This reverts commit\" in a sentence about the rule.",
+            "- A revert is a PR whose body says \"This reverts commit\"",
+            "This reverts commit",
+            "This reverts commit not-a-sha.",
+            "This reverts commit abc",
+            "Reverts the thing",
+            "Reverts acme/app",
+            "Reverts acme/app#",
+            "Reverts #12",
+            "Reverts acme/app#12x",
+        ] {
+            assert_eq!(classify("feat: x", prose), Kind::Feat, "{prose:?}");
+        }
     }
 
     #[test]

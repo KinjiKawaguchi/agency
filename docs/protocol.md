@@ -188,11 +188,11 @@ ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* item reference */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean },
-                workType?: WorkType }
+                workType?: WorkType, doneAt?: Timestamp }
 WorkType      "newFeature" | "improvement" | "maintenance" | "debt" | "incident"
 BlockedReason "needsDecision" | "external" | "waitingOnPrevious" | "timeOrEquipment"
 EpicForecast  { ref, title, total, done, doing, remainingPoints, blocked: { reason: BlockedReason, count }[],
-                forecast?: { days, at: Timestamp }, basis }
+                forecast?: { days, at: Timestamp }, doneAt?: Timestamp, basis }
 ```
 
 Item references:
@@ -210,6 +210,7 @@ Participants (`people`, humans and agents):
 Work items:
 
 - `workType` is the board's "Work type" field of the item (see "Work type" in the glossary), as the team's runtime reads it. It is left out when the board has none; a runtime never guesses it, and whoever needs a type for an item without one (the node, when it splits effort by work type) works it out from the item's pull request itself. A value outside the five names fails the view's parse, like any other malformed field.
+- `doneAt` is when the item first reached `done`: the board's own time when the tracker has one, otherwise when the runtime first saw it (up to one refresh late). It is left out while the item is not done and when it is not known; an item that goes back and is done again keeps the first time. `EpicForecast.doneAt` is when the epic's last child reached `done`, present only once `done` equals `total`. A runtime may keep a finished epic in `epics` for a while so that this time can be read (the scrum harness keeps it 30 days): it has `done` equal to `total`, nothing `doing`, nothing remaining, and no `forecast`, and a client shows it as finished, after the open epics, and does not count it in what remains. `work` lists open items only, so `WorkItem.doneAt` appears only on an item still in the view. The node passes both on unchanged.
 
 Requests:
 
@@ -289,7 +290,7 @@ TypeUsage        { costUsd: number, tokens: { input, output, cacheRead, cacheWri
 - The period is the last `days` calendar days (1 to 90), today included. `from` and `until` are its first and last day, written like `byDay[].date`, in the time zone of the node that computed them: each team has its own (the time zone of the team's node), and every day of its `byDay` lies inside them, so a client draws a team against its own period. The answer's own `from` and `until` are the answering node's. `byDay` is oldest first, and days with nothing in them may be left out.
 - Counts and seconds are integers. Costs are estimates at API prices, as in "Token usage". An optional field is left out, never null.
 - A pull request counts on the day it merged. Its type is the Conventional Commits type of its title (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`); anything else, including `ci`, `build`, `perf`, `style`, is `other`.
-- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body says "This reverts commit". It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
+- A **revert** is a merged pull request whose title starts with `Revert` or `revert`, or whose body has a line that starts with `This reverts commit <sha>` (what `git revert` writes) or `Reverts <owner/name>#<number>` (what GitHub's Revert button writes); a sentence that only mentions those words does not count. It is counted in `reverts` and not in `merged`, so the pull requests merged are `merged` and `reverts` together.
 - **PR lead time** is opened to merged. **Issue lead time** is the issue's first move to In Progress on the board (else the pull request's first commit) to merged; a pull request with no closing issue has none.
 - **Main red**: for each push to the default branch, the commit's workflow runs decide (all workflows). A commit is red when a run failed or timed out and green when all passed or were skipped; a run cancelled by a newer push counts for nothing. Red lasts from the completion of the first red commit to the completion of the next green one, or to `generatedAt` while it is red. A span across midnight is split between the days. `longestRedSeconds` is the longest single span.
 - The summary's p90 is the nearest rank (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples, rounded down. A median or p90 is left out with no samples.

@@ -161,6 +161,7 @@ async fn node_from(
         teams: vec![],
         trusted: vec![],
         funding: vec![],
+        delivery: vec![],
         access: None,
         push: None,
     })

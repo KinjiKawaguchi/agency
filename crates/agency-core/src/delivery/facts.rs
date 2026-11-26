@@ -3,6 +3,13 @@
 //! live (GitHub); nothing here reaches outside.
 use agency_proto::clock::OffsetDateTime;
 
+/// What a team's delivery numbers are worked out from.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeliveryFacts {
+    pub pull_requests: Vec<MergedPullRequest>,
+    pub runs: Vec<MainRun>,
+}
+
 /// A pull request that was merged.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MergedPullRequest {
@@ -29,9 +36,11 @@ pub enum Verdict {
     Cancelled,
 }
 
-/// A workflow run on the default branch.
+/// A workflow run on the default branch of one repository.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MainRun {
+    /// The repository (`owner/name`): each repository's branch is red or green by itself.
+    pub repo: String,
     pub commit: String,
     pub finished_at: OffsetDateTime,
     pub verdict: Verdict,

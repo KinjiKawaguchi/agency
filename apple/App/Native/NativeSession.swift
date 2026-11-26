@@ -32,6 +32,8 @@ final class NativeSession {
     let evaluation: EvaluationStore
     /// The org chart: every org under the account, with the overview's signals on each team.
     let orgChart: OrgChartStore
+    /// What is new since the last read, as banners.
+    let news: NewsStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -50,11 +52,12 @@ final class NativeSession {
         devices = signer.map { DevicesStore(source: client, adder: DeviceChangeSender(poster: client, signer: $0), ownKey: $0.publicKey) }
         // The screens read the account and every team through one shared cache, so the app asks the node once
         // for what several screens want, and a decision drops what was read before it.
+        let sent = SentDecisions()
         let cache = SnapshotCache(source: client)
         let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
             source: cached,
-            sender: signer.map { DeviceDecisionSender(poster: client, signer: $0) as any DeskSender } ?? NoKeySender(),
+            sender: signer.map { DeviceDecisionSender(poster: client, signer: $0, sent: sent) as any DeskSender } ?? NoKeySender(),
             storage: DraftDefaultsStorage(host: homeNode.host),
             afterSend: { await cache.invalidate() }
         )
@@ -63,6 +66,11 @@ final class NativeSession {
         costs = CostsStore(source: cached)
         evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
         orgChart = OrgChartStore(source: CachedOrgChartSource(cache: cache, client: client))
+        let pairing = pairing
+        let ownKey = signer?.publicKey.string ?? ""
+        news = NewsStore(source: CachedNewsSource(cache: cache, client: client)) {
+            NotificationOwn(deviceKey: ownKey, canApprove: pairing?.isReady ?? false, sentDecisionIds: sent.ids)
+        }
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.

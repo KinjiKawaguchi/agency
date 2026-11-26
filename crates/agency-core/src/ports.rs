@@ -1,6 +1,7 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::config::{FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
+use crate::delivery::DeliveryFacts;
 use crate::devices::DeviceRequestRecord;
 use crate::error::Result;
 use crate::invites::InviteRecord;
@@ -232,6 +233,23 @@ pub trait TeamRuntime: Send + Sync {
         since: &Timestamp,
         limit: u32,
     ) -> Result<Activity, RuntimeError>;
+}
+
+/// Why a team's delivery facts could not be read. The text is plain, and holds no secret and no address:
+/// it goes to clients.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeliveryError(pub String);
+
+/// Reads the facts a team's delivery numbers are worked out from (GitHub, through the machine's `gh`).
+#[async_trait]
+pub trait DeliverySource: Send + Sync {
+    /// The pull requests of `repos` merged since `since`, and the runs of CI on their default branches
+    /// from about then on, enough to tell what state each branch was in at `since`.
+    async fn facts(
+        &self,
+        repos: &[String],
+        since: OffsetDateTime,
+    ) -> Result<DeliveryFacts, DeliveryError>;
 }
 
 /// Reads how much of a funding source has been used.

@@ -38,6 +38,7 @@ struct HomeShell: View {
     @State private var flow: AccessSignInFlow?
     @State private var tab: Tab = .desk
     @State private var openItemID: String?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showsSettings = false
     @State private var triedSignIn = false
 
@@ -50,6 +51,20 @@ struct HomeShell: View {
                             .tabItem { Label(tab.title, systemImage: tab.symbol) }
                             .tag(tab)
                     }
+                }
+                .overlay(alignment: .top) {
+                    NewsBannerStack(
+                        banners: session.news.banners,
+                        onOpen: { open($0, session: session) },
+                        onClose: { session.news.dismiss() }
+                    )
+                    .animation(.default, value: session.news.banners)
+                }
+                .task(id: scenePhase) { await watchNews(session) }
+                .task(id: session.news.banners) { await dismissBannersSoon(session) }
+                .onChange(of: tab) { _, tab in
+                    // The devices screen shows a device that asks to be added by itself.
+                    session.news.suppressedKinds = tab == .devices ? [.device] : []
                 }
                 .sheet(isPresented: $showsSettings) {
                     SettingsSheet(
@@ -121,6 +136,36 @@ struct HomeShell: View {
         let session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow)
         self.session = session
         takeLink()
+    }
+
+    /// Reads the news while the app is in front: now, and every 30 seconds.
+    private func watchNews(_ session: NativeSession) async {
+        guard scenePhase == .active else { return }
+        while !Task.isCancelled {
+            await session.news.poll()
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
+    private func dismissBannersSoon(_ session: NativeSession) async {
+        guard !session.news.banners.isEmpty else { return }
+        try? await Task.sleep(for: .seconds(7))
+        if !Task.isCancelled { session.news.dismiss() }
+    }
+
+    /// A banner was tapped: go where it leads.
+    private func open(_ banner: NewsBanner, session: NativeSession) {
+        session.news.dismiss()
+        switch banner.destination {
+        case .desk(let itemID):
+            tab = .desk
+            openItemID = itemID
+        case .people:
+            tab = .organization
+        case .devices:
+            tab = .devices
+        }
     }
 
     /// A notification was tapped: open the request on the desk.

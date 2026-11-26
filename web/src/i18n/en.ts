@@ -118,6 +118,8 @@ export const en = {
     noEpics: 'No epics yet.',
     epicBar: (total: number, done: number, doing: number, blocked: number) => `${done} of ${total} done, ${doing} in progress, ${blocked} blocked`,
     legend: { done: 'Done', doing: 'In progress', blocked: 'Blocked', rest: 'Not started' },
+    epicDone: 'Done',
+    epicDoneOn: (when: string) => `Done ${when}`,
     epicFinish: (when: string) => `Expected to finish around ${when}`,
     epicBlockedBy: (list: string) => `Blocked: ${list}`,
     noTeams: 'You have no teams yet.',
