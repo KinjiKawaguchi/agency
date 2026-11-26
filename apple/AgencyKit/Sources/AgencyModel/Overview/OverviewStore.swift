@@ -2,13 +2,6 @@ import AgencyAPI
 import Foundation
 import Observation
 
-/// Where the overview reads from: the home node's Client API. `NodeClient` is the real one.
-public protocol OverviewSource: TeamSnapshotSource {
-    func usage(org: String, team: String, days: Int) async throws -> TokenUsage
-}
-
-extension NodeClient: OverviewSource {}
-
 /// What is known of a team's cost over the last week.
 public enum WeekCost: Equatable, Sendable {
     case loading

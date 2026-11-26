@@ -27,6 +27,8 @@ final class NativeSession {
     let overview: OverviewStore
     /// The participants and work of every team, read from the same client.
     let people: PeopleStore
+    /// The funding sources and each team's token use, read from the same client.
+    let costs: CostsStore
 
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow) {
         self.signIn = signIn
@@ -52,6 +54,7 @@ final class NativeSession {
         )
         overview = OverviewStore(source: client)
         people = PeopleStore(source: client)
+        costs = CostsStore(source: client)
     }
 
     /// The node's Access team host, from where the node sends a browser that is not signed in. It is the
@@ -69,6 +72,7 @@ final class NativeSession {
             await pairing?.refresh()
             await overview.refresh()
             await people.refresh()
+            await costs.refresh()
         case .canceled:
             break
         case .unavailable:

@@ -5,6 +5,15 @@ public enum JaFormat {
     /// `62%` from 62.
     public static func percent(_ value: Double) -> String { "\(Int(value.rounded()))%" }
 
+    /// `1.2K`, `3.4M`, `5.67B`; a plain number below a thousand.
+    public static func compact(_ value: Int) -> String {
+        let number = Double(value)
+        if number >= 1e9 { return String(format: "%.2fB", number / 1e9) }
+        if number >= 1e6 { return String(format: "%.1fM", number / 1e6) }
+        if number >= 1e3 { return String(format: "%.1fK", number / 1e3) }
+        return String(value)
+    }
+
     /// US dollars: cents under 10, whole dollars up to 1000, then grouped thousands.
     public static func money(_ usd: Double) -> String {
         if usd >= 1000 { return "$" + (grouped(Int(usd.rounded()))) }
