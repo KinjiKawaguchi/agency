@@ -63,6 +63,15 @@ struct OutcomesWireTests {
         #expect(reading.overlapping.isEmpty)
     }
 
+    @Test("the windows the words name are the ones the node's reading module has")
+    func windowsMatchTheNode() throws {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { url.deleteLastPathComponent() }
+        let rust = try String(contentsOf: url.appendingPathComponent("crates/agency-proto/src/reading.rs"), encoding: .utf8)
+        #expect(rust.contains("pub const SETTLE_DAYS: i64 = \(AimReading.settleDays);"))
+        #expect(rust.contains("pub const WINDOW_DAYS: i64 = \(AimReading.windowDays);"))
+    }
+
     @Test("a money KPI without its currency is refused: a number in no currency is not one to show")
     func moneyNeedsCurrency() {
         #expect(throws: DecodingError.self) {

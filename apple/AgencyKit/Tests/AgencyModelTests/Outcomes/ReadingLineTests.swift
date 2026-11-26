@@ -47,10 +47,25 @@ struct ReadingLineTests {
         }
         #expect(sentences[0].headline == "まだ完了していないため、比べるものがありません。")
         #expect(sentences[1].headline == "完了した日が分からないため、比べられません。")
-        #expect(sentences[2].headline.hasPrefix("完了の前の 90 日に数値がありません。") && sentences[2].headline.contains("以前の日付の数値を入れてください。"))
-        #expect(sentences[3].headline == "完了のあとの 90 日に数値がなく、比べられません。これから入れても読めません。")
+        #expect(sentences[2].headline.hasPrefix("完了の前の 90 日に数値がありません。") && sentences[2].headline.hasSuffix("以前の日付の数値があれば読めます。"))
+        #expect(sentences[3].headline == "完了のあとの 90 日に数値がなく、比べられません。あとから数値が入っても読めません。")
         #expect(sentences[4].headline.hasPrefix("まだ早すぎます。変化が出るまで 14 日かかります。") && sentences[4].headline.hasSuffix("から読めます。"))
         #expect(sentences[5].headline.hasPrefix("完了の前後の数値が足りません: "))
+    }
+
+    @Test("the windows in the words are the node's constants, not numbers written into the words")
+    func windows() {
+        #expect(Ja.Outcomes.noFollowUp(windowDays: 60).contains("60 日") && !Ja.Outcomes.noFollowUp(windowDays: 60).contains("90"))
+        #expect(Ja.Outcomes.noBaseline(day: "x", windowDays: 60).contains("60 日"))
+        #expect(Ja.Outcomes.tooEarly(readableFrom: "x", settleDays: 7).contains("7 日") && !Ja.Outcomes.tooEarly(readableFrom: "x", settleDays: 7).contains("14"))
+        #expect(AimReading.windowDays == 90 && AimReading.settleDays == 14)
+    }
+
+    @Test("a reading tells nothing to do: this app cannot enter numbers")
+    func tellsNothingToDo() {
+        for index in 2..<readings.count {
+            #expect(!line(index).headline.contains("入れてください"), Comment(rawValue: line(index).headline))
+        }
     }
 
     @Test("the days a reading names are read in Japanese")

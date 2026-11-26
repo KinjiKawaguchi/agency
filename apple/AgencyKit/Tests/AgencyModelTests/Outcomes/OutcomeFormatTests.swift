@@ -45,6 +45,12 @@ struct OutcomeFormatTests {
         #expect(OutcomeFormat.change(0, unit: .percent) == "0%")
     }
 
+    @Test("a written number is nothing when it has no digit but 0")
+    func nothing() {
+        for text in ["+0", "0%", "0分", "-0.00", "+0ポイント", "+¥0"] { #expect(OutcomeFormat.isNothing(text), Comment(rawValue: text)) }
+        for text in ["+0.5", "10", "-1%", "+1日"] { #expect(!OutcomeFormat.isNothing(text), Comment(rawValue: text)) }
+    }
+
     @Test("a day is read in Japanese, and anything that is not a day is left as it came")
     func day() {
         #expect(OutcomeFormat.day("2026-11-20") == "2026年11月20日")

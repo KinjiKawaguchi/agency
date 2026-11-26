@@ -47,9 +47,9 @@ public struct ReadingLine: Equatable, Identifiable, Sendable {
         case .ready: ready(reading, kpi: kpi, today: today)
         case .notShipped: Said(Ja.Outcomes.notShipped)
         case .shipDateUnknown: Said(Ja.Outcomes.shipDateUnknown)
-        case .noFollowUp: Said(Ja.Outcomes.noFollowUp)
-        case .noBaseline: Said(reading.shippedOn.map { Ja.Outcomes.noBaseline(day: OutcomeFormat.day($0, relativeTo: today)) } ?? Ja.Outcomes.unreadable)
-        case .tooEarly: Said(reading.readableFrom.map { Ja.Outcomes.tooEarly(readableFrom: OutcomeFormat.day($0, relativeTo: today)) } ?? Ja.Outcomes.unreadable)
+        case .noFollowUp: Said(Ja.Outcomes.noFollowUp(windowDays: AimReading.windowDays))
+        case .noBaseline: Said(reading.shippedOn.map { Ja.Outcomes.noBaseline(day: OutcomeFormat.day($0, relativeTo: today), windowDays: AimReading.windowDays) } ?? Ja.Outcomes.unreadable)
+        case .tooEarly: Said(reading.readableFrom.map { Ja.Outcomes.tooEarly(readableFrom: OutcomeFormat.day($0, relativeTo: today), settleDays: AimReading.settleDays) } ?? Ja.Outcomes.unreadable)
         case .tooFew:
             if let points = reading.points, let needs = reading.needs { Said(Ja.Outcomes.tooFew(points: points, needs: needs)) } else { Said(Ja.Outcomes.unreadable) }
         case .unknown: Said(Ja.Outcomes.unreadable)
