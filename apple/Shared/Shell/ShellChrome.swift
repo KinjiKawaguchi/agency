@@ -1,3 +1,4 @@
+import AgencyModel
 import AgencyUI
 import SwiftUI
 
@@ -36,12 +37,12 @@ private struct ShellChrome: ViewModifier {
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
             // These follow the desk whichever screen is open: the Mac's sidebar keeps only the open screen alive.
-            .onChange(of: model.session?.desk.waitingCount) { _, count in if let count { model.push.setBadge(count) } }
+            .onChange(of: model.session?.desk.waitingCount) { _, count in if let count { model.nodes.recordWaiting(count, for: model.homeNode) } }
             .onChange(of: model.session?.desk.loading) { _, loading in if let loading { model.deskLoaded(loading) } }
             .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
-            .onChange(of: model.push.pendingLink) { model.takeLink() }
+            .onChange(of: model.push.pendingTap) { model.takeLink() }
             .sheet(isPresented: $model.showsSettings) {
                 if let session = model.session {
                     SettingsSheet(
@@ -57,6 +58,22 @@ private struct ShellChrome: ViewModifier {
                     )
                 }
             }
+            .linkNoticeAlert(model)
+    }
+}
+
+private extension View {
+    /// Said once when a tapped notification belongs to a home node this device does not have.
+    func linkNoticeAlert(_ model: ShellModel) -> some View {
+        alert(
+            Ja.HomeNodes.notificationNotOpened,
+            isPresented: Binding(get: { model.linkNotice != nil }, set: { if !$0 { model.linkNotice = nil } }),
+            presenting: model.linkNotice
+        ) { _ in
+            Button(Ja.Desk.close) {}
+        } message: { text in
+            Text(text)
+        }
     }
 }
 

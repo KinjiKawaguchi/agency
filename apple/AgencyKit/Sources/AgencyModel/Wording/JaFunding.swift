@@ -10,6 +10,7 @@ extension Ja {
             switch kind {
             case .subscription: "サブスクリプション"
             case .apiKey: "API キー"
+            case .unknown: "ほかの資金源"
             }
         }
 
@@ -17,6 +18,7 @@ extension Ja {
             switch name {
             case .sevenDay: "週の枠"
             case .fiveHour: "5 時間の枠"
+            case .unknown: "ほかの枠"
             }
         }
 

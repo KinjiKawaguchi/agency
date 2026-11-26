@@ -1,3 +1,4 @@
+import AgencyProtocol
 import Foundation
 
 /// `GET /api/me`: the node's account and everything it can reach.
@@ -12,8 +13,14 @@ public struct Me: Decodable, Equatable, Sendable {
     /// The owner's other home nodes, as this node's configuration names them. Only the node's owner is told; for anyone
     /// else, and for a node that names none, the list is empty.
     public let homeNodes: [HomeNodeRef]
+    /// The id this node puts in its pushes (`agency.node`), as the node works it out from its own address; absent from a node
+    /// that has none or does not say. An app maps a push to a node by it.
+    public let nodeId: String?
+    /// The changes others asked an org's root key to sign, which wait for the owner (`agency root-sign`), oldest first. Only the
+    /// owner is told; for anyone else, and when none waits, the node leaves it out and the list is empty.
+    public let rootChanges: [RootChangeRef]
 
-    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes }
+    enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes, nodeId, rootChanges }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
@@ -22,6 +29,8 @@ public struct Me: Decodable, Equatable, Sendable {
         funding = try container.decode([Funding].self, forKey: .funding)
         hidesTitles = try container.decodeIfPresent(Bool.self, forKey: .hidesTitles) ?? false
         homeNodes = try container.decodeIfPresent([HomeNodeRef].self, forKey: .homeNodes) ?? []
+        nodeId = try container.decodeIfPresent(String.self, forKey: .nodeId)
+        rootChanges = Self.rootChanges(in: container)
     }
 }
 
@@ -47,10 +56,34 @@ public struct OrgRef: Decodable, Equatable, Sendable {
     public let label: String
     public let isRoot: Bool
     public let teams: [TeamRef]
+    /// A recovery of the org that was started and waits; left out when none does.
+    public let recovery: StartedRecovery?
+}
+
+/// A recovery of an org, started with its recovery key, that waits for its 72 hours: until it takes effect, the root cancels
+/// it by signing any version of the org. The node tells the owner of it, and the app shows it for as long as the node does.
+public struct StartedRecovery: Decodable, Equatable, Sendable {
+    /// When it takes effect on this node (an RFC 3339 time, kept as the node wrote it); absent when the node kept no record
+    /// of when it took the start, so it does not take the finish either.
+    public let takesEffectAt: String?
+    /// The fingerprint of the root key the org moves to; absent when the root key stays.
+    public let newRootKey: String?
+    /// Whether it replaces the recovery key.
+    public let replacesRecoveryKey: Bool
+
+    private enum Keys: String, CodingKey { case takesEffectAt, newRootKey, replacesRecoveryKey }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        takesEffectAt = try container.decodeIfPresent(String.self, forKey: .takesEffectAt)
+        newRootKey = try container.decodeIfPresent(String.self, forKey: .newRootKey)
+        // The node leaves the flag out when it is false.
+        replacesRecoveryKey = try container.decodeIfPresent(Bool.self, forKey: .replacesRecoveryKey) ?? false
+    }
 }
 
 public struct TeamRef: Decodable, Equatable, Sendable {
-    public enum Location: String, Decodable, Sendable { case local, remote }
+    public enum Location: String, OpenWireEnum { case local, remote, unknown }
 
     public let id: String
     public let label: String
@@ -61,7 +94,7 @@ public struct TeamRef: Decodable, Equatable, Sendable {
 
 /// A source that pays for the account's agents, such as a subscription, with the usage windows that could be read.
 public struct Funding: Decodable, Equatable, Sendable {
-    public enum Kind: String, Decodable, Sendable { case subscription, apiKey }
+    public enum Kind: String, OpenWireEnum { case subscription, apiKey, unknown }
 
     public let id: String
     public let label: String
@@ -71,7 +104,7 @@ public struct Funding: Decodable, Equatable, Sendable {
 }
 
 public struct UsageWindow: Decodable, Equatable, Sendable {
-    public enum Name: String, Decodable, Sendable { case fiveHour, sevenDay }
+    public enum Name: String, OpenWireEnum { case fiveHour, sevenDay, unknown }
 
     public let name: Name
     public let lengthHours: Int

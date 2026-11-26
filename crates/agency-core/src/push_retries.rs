@@ -7,8 +7,8 @@
 use crate::error::Result;
 use crate::node::Node;
 use crate::notice::{Notice, NoticeKind};
-use crate::push::{remove_tokens, Candidate, Pass, PushError};
-use crate::web_push::{remove_subscriptions, wanting};
+use crate::push::{remove_tokens, sent_of, Candidate, Pass, PushError};
+use crate::web_push::{record_sends, remove_subscriptions, wanting};
 use agency_proto::clock;
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +48,7 @@ async fn send_again(
                 .store()
                 .push_tokens()
                 .into_iter()
-                .find(|one| &one.token == token && one.events.contains(&notice.event()))
+                .find(|one| &one.token == token && notice.is_wanted_by(&one.events))
             else {
                 return Ok(None);
             };
@@ -63,6 +63,9 @@ async fn send_again(
                 return Ok(None);
             };
             let answer = node.notifier().send_web(&found, notice).await;
+            if let Some(sent) = sent_of(&answer) {
+                record_sends(node, &[(id.as_str(), sent)])?;
+            }
             if answer == Err(PushError::Gone) {
                 remove_subscriptions(node, std::slice::from_ref(id))?;
             }

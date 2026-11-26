@@ -1,8 +1,9 @@
 //! Apple Push Notification service with token-based authentication: each request carries a provider
 //! JWT (ES256, signed with the `.p8` key, reused for 50 minutes) and goes over HTTP/2 to the production
 //! or sandbox host that matches the device token.
+use crate::push_facts::recovery_facts;
 use agency_core::config::PushConfig;
-use agency_core::notice::recovery_text;
+use agency_core::notice::{recovery_text, root_change_text};
 use agency_core::ports::{Clock, Notifier};
 use agency_core::push::{Notice, NoticeKind, PushError};
 use agency_proto::client::{PushEnvironment, PushToken};
@@ -40,6 +41,8 @@ pub struct Apns {
     key: EncodingKey,
     hosts: ApnsHosts,
     clock: Arc<dyn Clock>,
+    /// This node's id in every payload (`agency.node`), when its origin is known.
+    node: Option<String>,
     /// The provider token and when it was made.
     provider: Mutex<Option<(String, OffsetDateTime)>>,
 }
@@ -88,8 +91,17 @@ impl Apns {
             key,
             hosts,
             clock,
+            node: None,
             provider: Mutex::new(None),
         })
+    }
+
+    /// Names this node in every push (`agency.node`, from `agency_proto::client::node_id`), so that an app with several home
+    /// nodes opens the notification on the right one. `None` leaves the field out.
+    #[must_use]
+    pub fn with_node_id(mut self, node: Option<String>) -> Self {
+        self.node = node;
+        self
     }
 
     /// The provider token, made again once it is 50 minutes old or after APNs refused it.
@@ -144,8 +156,10 @@ fn localized(key: &str, no_text_key: &str, text: Option<&String>) -> Value {
 /// The notification. A request keeps its alert as written (the team's label as the title and the request's
 /// title as the body) and the `agency` keys the app opens it with, and has no `type`; a device or a
 /// refused decision is an alert the app words from its own strings, with `agency.type` telling the app
-/// which screen to open. Every kind carries the badge and is grouped by its thread.
-pub fn payload(notice: &Notice) -> Value {
+/// which screen to open. Every kind carries the badge, is grouped by its thread, names the node that sent it (`agency.node`, when
+/// it has an id), and can be changed by the app's notification service extension (`mutable-content`), which sets the badge to
+/// the sum over the nodes.
+pub fn payload(notice: &Notice, node: Option<&str>) -> Value {
     let (alert, agency) = match &notice.kind {
         NoticeKind::Request {
             org,
@@ -186,12 +200,25 @@ pub fn payload(notice: &Notice) -> Value {
         ),
         NoticeKind::Recovery {
             org,
+            started_at,
             takes_effect_at,
         } => {
             let (title, body) = recovery_text(org, takes_effect_at.as_deref());
             (
                 json!({ "title": title, "body": body }),
-                json!({ "type": "recovery", "org": org }),
+                recovery_facts(org, started_at.as_ref(), takes_effect_at.as_ref()),
+            )
+        }
+        NoticeKind::RootChange {
+            org,
+            id,
+            what,
+            waiting,
+        } => {
+            let (title, body) = root_change_text(org, what.as_deref());
+            (
+                json!({ "title": title, "body": body }),
+                json!({ "type": "root", "org": org, "id": id, "waiting": waiting }),
             )
         }
     };
@@ -200,19 +227,28 @@ pub fn payload(notice: &Notice) -> Value {
         "sound": "default",
         "thread-id": notice.thread(),
         "badge": notice.badge,
+        "mutable-content": 1,
     });
     if matches!(notice.kind, NoticeKind::Request { .. }) {
         // A request starting to wait changes the desk the widgets show: this wakes the app to read it, when
         // the system allows, so that no push of its own is needed for the same change.
         aps["content-available"] = json!(1);
     }
-    json!({ "aps": aps, "agency": agency })
+    json!({ "aps": aps, "agency": named(agency, node) })
+}
+
+/// `agency` with the node's id in it, when it has one.
+fn named(mut agency: Value, node: Option<&str>) -> Value {
+    if let (Some(node), Some(keys)) = (node, agency.as_object_mut()) {
+        keys.insert("node".to_owned(), json!(node));
+    }
+    agency
 }
 
 /// The push that only wakes the app to read the desk: no alert, no sound, no badge, and nothing of the
-/// desk, not a title, a label or a count.
-pub fn desk_payload() -> Value {
-    json!({ "aps": { "content-available": 1 }, "agency": { "type": "desk" } })
+/// desk, not a title, a label or a count, but the node's id, so that the app reads the desk of the node that asked.
+pub fn desk_payload(node: Option<&str>) -> Value {
+    json!({ "aps": { "content-available": 1 }, "agency": named(json!({ "type": "desk" }), node) })
 }
 
 /// A background push that no one has seen is worth nothing an hour later.
@@ -287,7 +323,8 @@ impl Notifier for Apns {
             collapse: notice.collapse_id().chars().take(64).collect(),
             expiration: None,
         };
-        self.deliver(token, delivery, &payload(notice)).await
+        self.deliver(token, delivery, &payload(notice, self.node.as_deref()))
+            .await
     }
 
     /// Apple requires priority 5 for a push that only has `content-available`: 10 is refused.
@@ -299,6 +336,7 @@ impl Notifier for Apns {
             collapse: DESK_COLLAPSE_ID.to_owned(),
             expiration: Some(expires.unix_timestamp()),
         };
-        self.deliver(token, delivery, &desk_payload()).await
+        self.deliver(token, delivery, &desk_payload(self.node.as_deref()))
+            .await
     }
 }

@@ -14,6 +14,10 @@ final class ShellModel {
     /// Which screen is open, and where a banner or a notification leads.
     let router = ShellRouter()
     var showsSettings = false
+    /// Said once when a tapped notification belongs to a home node this device does not have.
+    var linkNotice: String?
+    /// Whether the account has been read once (with an answer or without), after which a node's id is as settled as it will be.
+    private var hasReadAccount = false
 
     let homeNode: HomeNodeURL
     @ObservationIgnored let push: PushCoordinator
@@ -87,10 +91,34 @@ final class ShellModel {
         router.open(banner)
     }
 
-    /// A notification was tapped: go where it leads.
-    func takeLink() {
-        guard session != nil, let link = push.takePendingLink() else { return }
-        router.open(link)
+    /// A notification was tapped: go where it leads, on the node that sent it. A tap that names another node of this device goes
+    /// to that node first (clearing the icon number and the widgets of this one, as a switch by hand does) and stays pending until
+    /// its shell is up, which opens it; one that names a node this device does not have opens nothing of it and says so. While the
+    /// open node has not yet said its own id, a tap that is none of the others' waits for the account read, and a tap that has
+    /// waited longer than a minute is dropped.
+    func takeLink(now: Date = Date()) {
+        guard session != nil, let tap = push.pendingTap else { return }
+        guard !tap.isStale(now: now) else {
+            push.takePendingTap()
+            return
+        }
+        let others = nodes.others.map(\.url)
+        let action = NotificationRouting.action(
+            forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:),
+            hasCurrentSaid: nodes.hasSaidID(of: homeNode), isAccountRead: hasReadAccount
+        )
+        switch action {
+        case .openHere:
+            push.takePendingTap()
+            router.open(tap.link)
+        case .switchTo(let node):
+            switchHomeNode(to: node)
+        case .waitForAccount:
+            break
+        case .unknownNode:
+            push.takePendingTap()
+            linkNotice = Ja.HomeNodes.notificationOfAnotherNode(org: tap.org)
+        }
     }
 
     // MARK: News
@@ -134,10 +162,9 @@ final class ShellModel {
         await PushUnregistration.stop(token: push.registration?.token, at: node)
     }
 
-    /// The number on the icon and the sign-in belong to the node that is being left.
+    /// The sign-in, the widgets and this node's count on the icon belong to the node that is being left.
     func leave() {
         showsSettings = false
-        push.setBadge(0)
         session?.widgets.clear()
         flow?.forget()
         nodes.leave()
@@ -145,11 +172,10 @@ final class ShellModel {
 
     // MARK: The owner's other home nodes
 
-    /// Goes to another home node. Its sign-in, key and choices are as they were; what this node showed on the icon and on a
-    /// widget is not the other node's.
+    /// Goes to another home node. Its sign-in, key and choices are as they were; what this node showed on a widget is not the
+    /// other node's. The icon keeps the sum over the nodes: this node's count stays in it until the node says another.
     func switchHomeNode(to node: HomeNodeURL) {
         showsSettings = false
-        push.setBadge(0)
         session?.widgets.clear()
         nodes.switchTo(node)
     }
@@ -159,6 +185,16 @@ final class ShellModel {
     private func noteHomeNodes() {
         guard let session else { return }
         let nodes = nodes
-        Task { if let me = await session.readAccount() { nodes.note(configured: me.homeNodes) } }
+        let homeNode = homeNode
+        Task {
+            let me = await session.readAccount()
+            if let me {
+                nodes.note(configured: me.homeNodes)
+                nodes.note(nodeID: me.nodeId, of: homeNode)
+            }
+            // Finished, with an answer or without: a tap that waited for it is placed now, or said not to be of this device.
+            hasReadAccount = true
+            takeLink()
+        }
     }
 }

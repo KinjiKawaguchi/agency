@@ -3,11 +3,14 @@
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
+use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
+use crate::read_auth::sign_read;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
 use agency_proto::org::{verify_root_successor, SignedOrg};
+use agency_proto::root_change::RootAnswer;
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +68,7 @@ pub fn open_invite(node: &Node, org: &Id, code: &str) -> Option<InviteRecord> {
 
 /// On the root key's node: checks the join request's signature, the invite, and duplicates, then signs
 /// the next version with the new person added and returns it.
-pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> Result<SignedOrg> {
+pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> Result<RootAnswer> {
     let _guard = node.write_lock().lock().await;
     let request = &signed.body;
     if &request.org != org
@@ -76,7 +79,7 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             "the join request's signature does not match",
         ));
     }
-    let is_label_valid = (1..=80).contains(&request.label.chars().count());
+    let is_label_valid = agency_proto::org::label_ok_to_write(&request.label);
     let is_fresh = clock::parse(&request.at)
         .is_some_and(|at| (node.now() - at).whole_seconds().abs() <= JOIN_SKEW_SECONDS);
     if !is_label_valid || !is_fresh {
@@ -100,6 +103,41 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             "that account is already in the org",
         ));
     }
+    // The invite is used from here on, whether the root signs now or holds the join for the owner.
+    node.store().save_invite(
+        &code_digest(&request.code),
+        &InviteRecord {
+            used_by: Some(request.account.clone()),
+            ..record.clone()
+        },
+    )?;
+    if must_hold(node, &current) {
+        let request = Box::new(signed.clone());
+        return hold(node, org, RootChange::Join { request });
+    }
+    let doc = sign(node, joined_body(node, &current, request, &record)?)?;
+    publish(node, &doc)?;
+    Ok(RootAnswer::Signed(Box::new(doc)))
+}
+
+/// The next version with the joiner added, as the invite says; refused when the account is a member by now.
+pub(crate) fn joined_body(
+    node: &Node,
+    current: &SignedOrg,
+    request: &JoinRequest,
+    record: &InviteRecord,
+) -> Result<OrgDefinition> {
+    let is_in = current
+        .body
+        .people
+        .iter()
+        .any(|one| one.account == request.account || one.id == request.account);
+    if is_in {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "that account is already in the org",
+        ));
+    }
     let person = Person {
         id: request.account.clone(),
         label: request.label.clone(),
@@ -109,18 +147,32 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
         role: record.role,
         devices: vec![],
     };
-    let mut body = OrgDefinition::successor_of(&current, node.now_text());
+    let mut body = OrgDefinition::successor_of(current, node.now_text());
     body.people.push(person);
-    let doc = sign(node, body)?;
-    publish(node, &doc)?;
+    Ok(body)
+}
+
+/// The invite a held join used, for signing it later: its record, still marked used by that joiner.
+pub(crate) fn held_invite(node: &Node, request: &JoinRequest) -> Option<InviteRecord> {
+    let record = node.store().load_invite(&code_digest(&request.code))?;
+    (record.used_by.as_ref() == Some(&request.account)).then_some(record)
+}
+
+/// A held join that was refused or expired gives its invite back, unless it expired too.
+pub(crate) fn release_held_invite(node: &Node, held: &PendingRootChange) -> Result<()> {
+    let RootChange::Join { request } = &held.change else {
+        return Ok(());
+    };
+    let Some(record) = held_invite(node, &request.body) else {
+        return Ok(());
+    };
     node.store().save_invite(
-        &code_digest(&request.code),
+        &code_digest(&request.body.code),
         &InviteRecord {
-            used_by: Some(request.account.clone()),
+            used_by: None,
             ..record
         },
-    )?;
-    Ok(doc)
+    )
 }
 
 /// An org id names one org on a node. A link to an org whose id this node already has, under another
@@ -149,7 +201,7 @@ pub async fn join(
     node: &Node,
     link: &str,
     confirm: impl FnOnce(&OrgDefinition) -> bool,
-) -> Result<SignedOrg> {
+) -> Result<Joined> {
     let invite = Invite::parse(link).map_err(Error::bad_request)?;
     refuse_another_org(node, &invite)?;
     let access = DefinitionAccess::InviteCode(invite.code.clone());
@@ -185,7 +237,7 @@ pub async fn join(
     };
     let signed = Signed::sign(Kind::Join, request, config.account.id.clone(), node.key())
         .map_err(|error| Error::internal(error.to_string()))?;
-    let joined = node
+    let answer = node
         .peers()
         .post_join(&invite.node, &routes::join(&invite.org), &signed)
         .await
@@ -195,20 +247,138 @@ pub async fn join(
                 format!("the join was refused: {error}"),
             )
         })?;
-    verify_root_successor(&current, &joined).map_err(Error::bad_request)?;
+    let joined = match answer {
+        RootAnswer::Signed(doc) => *doc,
+        RootAnswer::Pending(pending) => {
+            return wait_for_join(node, &invite, current, pending.pending, pending.message)
+        }
+    };
+    keep_joined(node, &invite, &current, joined).await
+}
+
+/// The joiner's side of a join the root's node holds for its owner: the trust and the handle are kept, and
+/// `finish_joins` asks for the signed version later.
+fn wait_for_join(
+    node: &Node,
+    invite: &Invite,
+    current: SignedOrg,
+    pending: String,
+    message: String,
+) -> Result<Joined> {
+    node.store().put_waiting_join(&WaitingJoin {
+        org: invite.org.clone(),
+        node: invite.node.clone(),
+        pending,
+        current,
+    })?;
+    node.update_config(|config| {
+        config.trust_with_root_node(invite.org.clone(), invite.fp.clone(), invite.node.clone())
+    })?;
+    Ok(Joined::Waiting(message))
+}
+
+/// Takes the version that added this account, checked against the definition the invite was checked with.
+async fn keep_joined(
+    node: &Node,
+    invite: &Invite,
+    current: &SignedOrg,
+    joined: SignedOrg,
+) -> Result<Joined> {
+    let config = node.config();
+    let chain = chain_to(node, &invite.node, current, &joined).await?;
     if joined.body.member(&config.account.id).is_none() {
         return Err(Error::bad_request(
             "the returned org definition does not include this account",
         ));
     }
     let _guard = node.write_lock().lock().await;
-    refuse_another_org(node, &invite)?;
+    refuse_another_org(node, invite)?;
     let stored = node.store().load_org(&invite.org);
     if stored.is_none_or(|stored| stored.body.version < joined.body.version) {
-        node.store().save_org(&joined)?;
+        for version in &chain {
+            node.store().save_org(version)?;
+        }
     }
     node.update_config(|config| {
         config.trust_with_root_node(invite.org.clone(), invite.fp.clone(), invite.node.clone())
     })?;
-    Ok(joined)
+    node.store().remove_waiting_join(&invite.org)?;
+    Ok(Joined::Member(Box::new(joined)))
+}
+
+/// The versions from the one after `current` (the definition the invite was checked with) up to `joined`,
+/// each checked as the root-signed successor of the one before. Versions signed in between (other joins
+/// signed in the same run, or anything else) are read from the root's node, which this node may read now
+/// that `joined` names it a member.
+async fn chain_to(
+    node: &Node,
+    origin: &str,
+    current: &SignedOrg,
+    joined: &SignedOrg,
+) -> Result<Vec<SignedOrg>> {
+    let mut chain: Vec<SignedOrg> = vec![];
+    let mut last = current.clone();
+    while last.body.version + 1 < joined.body.version {
+        let path = routes::versions(&current.body.org, last.body.version);
+        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let fetched = node
+            .peers()
+            .get_versions(origin, &path, &auth)
+            .await
+            .map_err(|error| Error::new(ErrorKind::Unavailable, error.to_string()))?;
+        let before = last.body.version;
+        for version in fetched.versions {
+            if version.body.version >= joined.body.version {
+                break;
+            }
+            verify_root_successor(&last, &version).map_err(Error::bad_request)?;
+            last = version.clone();
+            chain.push(version);
+        }
+        if last.body.version == before {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} sent no version after {before}"),
+            ));
+        }
+    }
+    verify_root_successor(&last, joined).map_err(Error::bad_request)?;
+    chain.push(joined.clone());
+    Ok(chain)
+}
+
+/// What a join came to.
+#[derive(Debug)]
+pub enum Joined {
+    /// The root's node signed the version with this account in it.
+    Member(Box<SignedOrg>),
+    /// The root's node holds the join for its owner; the message says what to wait for.
+    Waiting(String),
+}
+
+/// Asks the root's node of each join that waits whether its owner signed it, and takes the version when
+/// they did. A join the root's node no longer knows (refused, or expired) is forgotten.
+pub async fn finish_joins(node: &Node) -> Result<Vec<Joined>> {
+    let mut done = vec![];
+    for waiting in node.store().waiting_joins() {
+        let path = routes::held_join(&waiting.org, &waiting.pending);
+        let answer = node.peers().get_join(&waiting.node, &path).await;
+        let invite = Invite {
+            node: waiting.node.clone(),
+            org: waiting.org.clone(),
+            fp: waiting.current.body.root.public_key.fingerprint(),
+            code: String::new(),
+        };
+        match answer {
+            Ok(RootAnswer::Signed(doc)) => {
+                done.push(keep_joined(node, &invite, &waiting.current, *doc).await?);
+            }
+            Ok(RootAnswer::Pending(_)) => {}
+            Err(crate::ports::PeerError::Status { status: 404, .. }) => {
+                node.store().remove_waiting_join(&waiting.org)?;
+            }
+            Err(_) => {}
+        }
+    }
+    Ok(done)
 }

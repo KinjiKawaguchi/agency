@@ -49,6 +49,10 @@ fn describe(label: &str, outcome: DeviceChangeOutcome, message: Option<String>) 
     match outcome {
         DeviceChangeOutcome::Applied => format!("{label} added (this node holds the root key)"),
         DeviceChangeOutcome::Delivered => format!("{label} added by the root's node"),
+        DeviceChangeOutcome::Pending => format!(
+            "{label} waits for the owner of the root key ({})",
+            message.unwrap_or_default()
+        ),
         DeviceChangeOutcome::Queued => format!(
             "{label} waits in the outbox for the root's node ({})",
             message.unwrap_or_default()
@@ -124,7 +128,8 @@ async fn add_requested_device(node: &Node, data: &DataDir) -> Result<()> {
     for request in requests.iter().rev() {
         let question = format!(
             "Add \"{}\" with pairing code {}? Check that the device shows the same code.",
-            request.label, request.pairing_code
+            agency_proto::org::printable(&request.label),
+            request.pairing_code
         );
         if ask(&question) {
             add_and_report(node, &request.label, &request.public_key, signer.as_ref()).await;

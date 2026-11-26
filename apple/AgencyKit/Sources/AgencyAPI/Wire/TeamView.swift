@@ -14,9 +14,9 @@ public struct TeamView: Decodable, Equatable, Sendable {
 }
 
 public struct PersonStatus: Decodable, Equatable, Sendable {
-    public enum Kind: String, Decodable, Sendable { case agent, human }
-    public enum Role: String, Decodable, Sendable { case lead, member }
-    public enum State: String, Decodable, Sendable { case working, idle, away, unknown }
+    public enum Kind: String, OpenWireEnum { case agent, human, unknown }
+    public enum Role: String, OpenWireEnum { case lead, member, unknown }
+    public enum State: String, OpenWireEnum { case working, idle, away, unknown }
 
     /// The team runtime's own name for them.
     public let id: String
@@ -34,6 +34,8 @@ public struct PersonStatus: Decodable, Equatable, Sendable {
 public enum WaitingOn: Decodable, Equatable, Sendable {
     case person(String)
     case lead
+    /// Someone else a newer runtime names: read, so that the person's other facts still read.
+    case unknown(String)
 
     private enum Keys: String, CodingKey { case kind, person }
 
@@ -42,15 +44,14 @@ public enum WaitingOn: Decodable, Equatable, Sendable {
         switch try container.decode(String.self, forKey: .kind) {
         case "person": self = .person(try container.decode(String.self, forKey: .person))
         case "lead": self = .lead
-        case let other:
-            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown waitingOn kind \(other)")
+        case let other: self = .unknown(other)
         }
     }
 }
 
 /// Something the team asks a person to decide or answer.
 public struct Request: Decodable, Equatable, Sendable {
-    public enum Kind: String, Decodable, Sendable { case question, proposal, pendingDecision }
+    public enum Kind: String, OpenWireEnum { case question, proposal, pendingDecision, unknown }
 
     public let id: String
     public let kind: Kind
@@ -97,7 +98,7 @@ public struct AnswerWith: Decodable, Equatable, Sendable {
 }
 
 public struct WorkItem: Decodable, Equatable, Sendable {
-    public enum Status: String, Decodable, Sendable { case backlog, next, inProgress, release, done }
+    public enum Status: String, OpenWireEnum { case backlog, next, inProgress, release, done, unknown }
 
     /// The work item's item reference: an opaque string the team's harness chooses.
     public let ref: String
@@ -112,8 +113,8 @@ public struct WorkItem: Decodable, Equatable, Sendable {
     public let doneAt: Instant?
 }
 
-public enum BlockedReason: String, Decodable, Sendable {
-    case needsDecision, external, waitingOnPrevious, timeOrEquipment
+public enum BlockedReason: String, OpenWireEnum {
+    case needsDecision, external, waitingOnPrevious, timeOrEquipment, unknown
 }
 
 public struct Blocked: Decodable, Equatable, Sendable {

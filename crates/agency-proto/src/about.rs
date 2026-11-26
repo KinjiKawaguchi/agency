@@ -133,6 +133,10 @@ pub enum Capability {
     OrgKpis,
     /// `root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.
     OrgRecovery,
+    /// `seats` in the org definition: places in the org that no one has taken yet.
+    OrgSeats,
+    /// `externals` in the org definition: people the org works with who never take a seat.
+    OrgExternals,
     /// A browser's Web Push subscriptions and the notices sent to them.
     WebPush,
     /// A team's activity feed.
@@ -142,11 +146,13 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 7] = [
+    pub const ALL: [Capability; 9] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
         Capability::OrgRecovery,
+        Capability::OrgSeats,
+        Capability::OrgExternals,
         Capability::WebPush,
         Capability::Activity,
         Capability::Outcomes,
@@ -158,6 +164,8 @@ impl Capability {
             Capability::OrgAims => "orgAims",
             Capability::OrgKpis => "orgKpis",
             Capability::OrgRecovery => "orgRecovery",
+            Capability::OrgSeats => "orgSeats",
+            Capability::OrgExternals => "orgExternals",
             Capability::WebPush => "webPush",
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
@@ -189,6 +197,12 @@ impl Capability {
         let root = &definition.root;
         if root.recovery.is_some() || root.pending.is_some() {
             used.insert(Capability::OrgRecovery);
+        }
+        if !definition.seats.is_empty() {
+            used.insert(Capability::OrgSeats);
+        }
+        if !definition.externals.is_empty() {
+            used.insert(Capability::OrgExternals);
         }
         used
     }
@@ -246,6 +260,17 @@ mod tests {
         ("root.pending", Capability::OrgRecovery),
         ("root.pending.publicKey", Capability::OrgRecovery),
         ("root.pending.recovery", Capability::OrgRecovery),
+        ("externals", Capability::OrgExternals),
+        ("externals[].askAbout", Capability::OrgExternals),
+        ("externals[].id", Capability::OrgExternals),
+        ("externals[].label", Capability::OrgExternals),
+        ("externals[].relays", Capability::OrgExternals),
+        ("seats", Capability::OrgSeats),
+        ("seats[].askAbout", Capability::OrgSeats),
+        ("seats[].department", Capability::OrgSeats),
+        ("seats[].id", Capability::OrgSeats),
+        ("seats[].label", Capability::OrgSeats),
+        ("seats[].relays", Capability::OrgSeats),
         ("kpis", Capability::OrgKpis),
         ("kpis[].currency", Capability::OrgKpis),
         ("kpis[].goodWhen", Capability::OrgKpis),

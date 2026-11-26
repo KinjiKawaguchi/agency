@@ -58,7 +58,7 @@ fn token_notifier(
         return Arc::new(NoNotifier);
     };
     match Apns::new(push, ApnsHosts::default(), clock) {
-        Ok(apns) => Arc::new(apns),
+        Ok(apns) => Arc::new(apns.with_node_id(agency_proto::client::node_id(&config.url))),
         Err(error) => {
             logger.warn("push", &format!("push notifications are off: {error}"));
             Arc::new(NoNotifier)

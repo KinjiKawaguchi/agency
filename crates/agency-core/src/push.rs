@@ -5,9 +5,12 @@
 use crate::error::{Error, Result};
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
-use crate::push_events::{decision_candidates, device_candidates, recovery_candidates};
+use crate::push_events::{
+    decision_candidates, device_candidates, recovery_candidates, root_change_candidates,
+};
 use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader};
+use crate::web_push::{record_sends, Sent};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
@@ -169,6 +172,7 @@ async fn waiting_in(
         let reader = Reader::Hosted {
             hosted: &hosted,
             person: &person.id,
+            definition,
         };
         let mine = mine(&view, &reader);
         (view, mine)
@@ -258,11 +262,26 @@ async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Resu
         ..Outcome::default()
     };
     let answers = node.notifier().send_web_many(&wanting, notice).await;
+    let results: Vec<(&str, Sent<'_>)> = wanting
+        .iter()
+        .zip(&answers)
+        .filter_map(|(subscription, answer)| Some((subscription.id.as_str(), sent_of(answer)?)))
+        .collect();
+    record_sends(node, &results)?;
     for (subscription, answer) in wanting.iter().zip(answers) {
         outcome.record(&subscription.id, answer, pass);
     }
     crate::web_push::remove_subscriptions(node, &outcome.gone)?;
     Ok(outcome)
+}
+
+/// How an answer of a push service is kept in the subscription's record; a subscription that is gone is removed, not recorded.
+pub(crate) fn sent_of(answer: &std::result::Result<(), PushError>) -> Option<Sent<'_>> {
+    match answer {
+        Ok(()) => Some(Sent::Taken),
+        Err(PushError::Failed(why)) => Some(Sent::NotTaken(why)),
+        Err(PushError::Gone) => None,
+    }
 }
 
 /// Sends one notice to every token and browser subscription that wants its kind. It counts as delivered
@@ -426,6 +445,7 @@ async fn send_fresh(
         if let NoticeKind::Recovery {
             org,
             takes_effect_at,
+            ..
         } = &notice.kind
         {
             let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
@@ -459,6 +479,7 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
     let mut waiting: Vec<String> = requests.iter().map(|one| one.key.clone()).collect();
     waiting.sort();
     let mut others = device_candidates(node, is_hidden);
+    others.extend(root_change_candidates(node, is_hidden));
     others.extend(decision_candidates(node, is_hidden));
     let Some(mut notified) = node.store().notified() else {
         let mut keys: Vec<String> = requests.into_iter().map(|one| one.key).collect();

@@ -6,6 +6,7 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
+use crate::ports::RootSigner;
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
@@ -32,23 +33,90 @@ pub(crate) fn sign(node: &Node, body: OrgDefinition) -> Result<SignedOrg> {
 /// account key for an org made before root keys were kept apart. A rotation signs the version that
 /// names the new root with the current one.
 fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOrg> {
+    if key == &node.key().public() {
+        return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
+    }
+    let purpose = format!(
+        "Sign version {} of {}",
+        body.version,
+        agency_proto::org::printable(&body.label)
+    );
+    let org = body.org.clone();
+    sign_by(node, body, &|text: &[u8]| {
+        node.root_keys().sign(&org, key, text, &purpose)
+    })
+}
+
+/// Every label of `body`, with what it names.
+fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
+    let mut all = vec![("the org".to_owned(), body.label.as_str())];
+    let departments = body.departments.iter();
+    all.extend(departments.map(|one| (format!("department {}", one.id), one.label.as_str())));
+    all.extend(
+        body.people
+            .iter()
+            .map(|one| (format!("member {}", one.id), one.label.as_str())),
+    );
+    for person in &body.people {
+        let devices = person.devices.iter();
+        all.extend(devices.map(|one| {
+            (
+                format!("device {} of {}", one.id, person.id),
+                one.label.as_str(),
+            )
+        }));
+    }
+    all.extend(
+        body.teams
+            .iter()
+            .map(|one| (format!("team {}", one.id), one.label.as_str())),
+    );
+    all.extend(
+        body.seats
+            .iter()
+            .map(|one| (format!("seat {}", one.id), one.label.as_str())),
+    );
+    let externals = body.externals.iter();
+    all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.as_str())));
+    let kpis = body.kpis.iter();
+    all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.as_str())));
+    all
+}
+
+/// A label this node writes now must not hold a character that could reorder or hide how a line reads
+/// (`label_ok_to_write`). Labels the version before already had stay, so an old org can still be changed.
+fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
+    let before = node.store().load_org(&body.org);
+    let kept: std::collections::HashSet<&str> = before
+        .as_ref()
+        .map(|doc| {
+            labels(&doc.body)
+                .into_iter()
+                .map(|(_, label)| label)
+                .collect()
+        })
+        .unwrap_or_default();
+    for (what, label) in labels(body) {
+        if !kept.contains(label) && !agency_proto::org::label_ok_to_write(label) {
+            return Err(Error::bad_request(format!(
+                "the label of {what} has a character that could reorder or hide how it reads"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
+/// presence prompt: `RootKeys::with_signer`).
+pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
     // A version the root signs never carries a waiting recovery, so signing any version cancels it.
     let mut body = body;
     body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
-    let signer = node.account();
-    if key == &node.key().public() {
-        return Signed::sign(Kind::Org, body, signer, node.key())
-            .map_err(|error| Error::internal(error.to_string()));
-    }
-    let (org, purpose) = (
-        body.org.clone(),
-        format!("Sign version {} of {}", body.version, body.label),
-    );
-    let signed = Signed::sign_with(Kind::Org, body, signer, |text| {
-        node.root_keys().sign(&org, key, text, &purpose)
-    })
-    .map_err(|error| Error::internal(error.to_string()))?;
+    refuse_new_hidden_labels(node, &body)?;
+    let org = body.org.clone();
+    let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
+        .map_err(|error| Error::internal(error.to_string()))?;
     signed.map_err(|why| {
         Error::new(
             ErrorKind::Forbidden,
@@ -312,6 +380,46 @@ pub fn misplaced_teams(node: &Node) -> Vec<Misplaced> {
         })
     });
     misplaced.collect()
+}
+
+/// An entry of a hosted team's `people` map that names an id the org has no member, seat, or external party
+/// for: a request addressed to that name is answered by no one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnknownAddressee {
+    pub org: Id,
+    pub team: Id,
+    /// The runtime name, the entry's key.
+    pub name: String,
+    /// The id the name maps to.
+    pub id: Id,
+}
+
+/// The entries of the hosted teams' `people` maps that name no member, seat, or external party of the org
+/// as this node has it. A team of an org this node has no definition of is left out: what it names cannot
+/// be judged yet.
+pub fn unknown_addressees(node: &Node) -> Vec<UnknownAddressee> {
+    let config = node.config();
+    let mut found = vec![];
+    for hosted in &config.teams {
+        let Some(doc) = node.store().load_org(&hosted.org) else {
+            continue;
+        };
+        let body = &doc.body;
+        for (name, id) in &hosted.people {
+            let is_known = body.people.iter().any(|one| &one.id == id)
+                || body.seats.iter().any(|one| &one.id == id)
+                || body.externals.iter().any(|one| &one.id == id);
+            if !is_known {
+                found.push(UnknownAddressee {
+                    org: hosted.org.clone(),
+                    team: hosted.team.clone(),
+                    name: name.clone(),
+                    id: id.clone(),
+                });
+            }
+        }
+    }
+    found
 }
 
 /// The org definition for a member's signed read, or for anyone with an open invite code.

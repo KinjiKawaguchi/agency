@@ -2,11 +2,12 @@
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
+import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
-import type { OrgWithRecovery, StartedRecovery } from '../recovery/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { answererView, isRefusedToGuest, type MockGuest } from './guest.ts'
@@ -33,6 +34,8 @@ export interface MockNode {
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
+  /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
+  recordPushDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => void
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
   /** Starts the node again: its write token changes, as it does each time the real node starts, and a page that holds the old one is refused. */
@@ -43,9 +46,18 @@ export interface MockNode {
   decisions: () => readonly DecisionAnswer[]
   /** What `agency root-cancel-recovery` does on the root key's node: the org has no recovery that waits any more. */
   cancelRecovery: (orgId: string) => void
+  /** What `agency root-sign` does on the root key's node: no change waits for the signature any more. */
+  signRootChanges: () => void
 }
 
+/** What the root's node says to the person who approved here, when it holds the change for its owner's `agency root-sign`. */
+export const PENDING_ROOT_MESSAGE = 'Approved here; it takes effect once the root key\'s node signs it: run `agency root-sign` there.'
+
 interface MockNodeOptions {
+  /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
+  pendingRoot?: boolean
+  /** Changes that wait for the root key's signature, as `GET /api/me` tells the owner. */
+  rootChanges?: readonly HeldChange[]
   /** Orgs (by id) whose recovery was started and waits, as `GET /api/me` says it. */
   recoveries?: Readonly<Record<string, StartedRecovery>>
   /** The moment the sample is shifted to, so times read as "an hour ago" whenever the node starts. */
@@ -62,6 +74,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** The evaluation answer carries each team's participants, as it does for the team's owner (left out for anyone else). */
+  participants?: boolean
   /** Serves the evaluation numbers. Off by default, as the real node does not serve them yet and answers 404. */
   evaluation?: boolean
   /** Makes only the evaluation calls fail with this status. */
@@ -82,6 +96,8 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
+  /** With `webPush`: every browser's push service has refused the last notice it was sent. */
+  webPushFailing?: boolean
   /** The other home nodes the node's configuration names, as `GET /api/me` gives them to its owner; left out when not given. */
   homeNodes?: ReadonlyArray<{ label: string; url: string }>
   /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
@@ -92,6 +108,10 @@ interface MockNodeOptions {
   outcomes?: boolean
   /** Makes the outcomes routes answer this status, as a node that fails (503). */
   outcomesFailWith?: number
+  /** The owner reads the node's own measurements (`/api/metrics`), as the variant says; without it the route answers 403, as to anyone but the owner. `'absent'` is a node that does not measure (404). */
+  metrics?: MetricsVariant | 'absent'
+  /** Makes the measurements route answer this status, as a node that fails (503). */
+  metricsFailWith?: number
   /** A claim link the node has made for one seat (agency#201): the code, and how a redeem of it ends. Without it the claim routes answer 404. */
   claim?: MockClaimOptions
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -156,6 +176,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
 
   let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
+  let rootChanges: readonly HeldChange[] = options.rootChanges ?? []
 
   const ownerMe: Me = {
     account: { id: 'alice', label: 'Alice', fingerprint: 'a1b2c3d4e5f6' },
@@ -182,7 +203,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
           account: { id: options.guest.member, label: options.guest.label, fingerprint: 'c0ffee123456' },
           orgs: [{ id: app.org, label: ORG_DEFINITION.label, isRoot: false, teams: [{ id: app.team, label: app.label, location: 'local', viewer: options.guest.member }] }],
           funding: [],
-          guest: { member: options.guest.member },
+          guest: { member: options.guest.member, org: app.org },
         }
   const viewerName = options.guest?.member ?? 'owner'
 
@@ -206,7 +227,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
-  const webPush = createMockWebPush(() => now.toISOString())
+  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
   const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
@@ -281,10 +302,19 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const all = known.teams.map((team) => team.id)
     const left = options.evaluationUnavailableTeam
     const teams = all.filter((team) => team !== left)
-    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now)
+    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now, options.participants === true)
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
+  /** The owner's measurements of the node itself: 1 to 30 days, and nothing for anyone else. */
+  const handleMetrics = (url: URL): Response => {
+    if (options.metrics === 'absent') return failure(404, 'No such route.')
+    if (options.metricsFailWith !== undefined) return failure(options.metricsFailWith, 'The measurements could not be read.')
+    if (options.metrics === undefined) return failure(403, 'Only the owner reads these numbers.')
+    const days = Number(url.searchParams.get('days') ?? '1')
+    if (!Number.isInteger(days) || days < 1 || days > 30) return failure(400, 'days is 1 to 30.')
+    return json(metricsAnswer(now, days, options.metrics))
+  }
   /** The owner's numbers: the shared samples and what was entered, over the days asked; anyone else is refused, as the node refuses them, even to read. */
   const handleOutcomes = async (request: Request, url: URL, org: string, part: string | undefined): Promise<Response> => {
     if (options.outcomesFailWith !== undefined) return failure(options.outcomesFailWith, 'The numbers could not be read.')
@@ -332,6 +362,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       return isRefusal(asked) ? failure(asked.status, asked.message) : json(asked)
     }
     if (url.pathname === `${DEVICES_PATH}/changes`) {
+      if (options.pendingRoot === true) return json({ outcome: 'pending', message: PENDING_ROOT_MESSAGE })
       const refusal = await devices.change(write.body)
       return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
     }
@@ -345,7 +376,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
-    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgWithRecovery => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })) })
+    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgRef => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
@@ -366,6 +397,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (extra !== undefined) return json(moreOrgDefinition(extra))
       return orgMatch[1] === ORG_DEFINITION.org ? json({ ...ORG_DEFINITION, teams: withPlans(ORG_DEFINITION.teams) }) : failure(404, 'No such organization.')
     }
+    if (request.method === 'GET' && url.pathname === '/api/metrics') return handleMetrics(url)
     const outcomesMatch = OUTCOMES_PATH.exec(url.pathname)
     if (outcomesMatch !== null && (request.method === 'GET' || (request.method === 'POST' && outcomesMatch[2] === '/observations'))) return handleOutcomes(request, url, outcomesMatch[1] ?? '', outcomesMatch[2])
     const evaluationMatch = EVALUATION_PATH.exec(url.pathname)
@@ -386,7 +418,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     envelopes: () => accepted,
     pushTokens: () => pushTokens,
     pushSubscriptions: () => webPush.subscriptions(),
+    recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
+    signRootChanges: () => {
+      rootChanges = []
+    },
     cancelRecovery: (orgId) => {
       recoveries = Object.fromEntries(Object.entries(recoveries).filter(([id]) => id !== orgId))
     },

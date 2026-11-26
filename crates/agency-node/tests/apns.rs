@@ -137,7 +137,7 @@ async fn sends_a_signed_alert_to_the_tokens_environment() {
     assert_eq!(
         body,
         &json!({
-            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app", "badge": 3, "content-available": 1 },
+            "aps": { "alert": { "title": "app", "body": "Ship it?" }, "sound": "default", "thread-id": "acme/app", "badge": 3, "mutable-content": 1, "content-available": 1 },
             "agency": { "org": "acme", "team": "app", "request": "r-20261124-110000-a1b2" },
         })
     );
@@ -201,7 +201,7 @@ async fn unregistered_and_bad_tokens_are_gone_and_other_errors_fail() {
 
 fn alert_of(kind: NoticeKind) -> (Value, Value, String, String) {
     let notice = Notice { kind, badge: 2 };
-    let body = payload(&notice);
+    let body = payload(&notice, None);
     (
         body["aps"]["alert"].clone(),
         body["agency"].clone(),
@@ -312,7 +312,7 @@ async fn the_desk_push_is_a_background_push_with_nothing_of_the_desk_in_it() {
         &json!({ "aps": { "content-available": 1 }, "agency": { "type": "desk" } }),
         "no alert, sound, badge, title, label or count"
     );
-    assert_eq!(body, &desk_payload());
+    assert_eq!(body, &desk_payload(None));
     assert!(headers["authorization"]
         .to_str()
         .unwrap()
@@ -339,7 +339,7 @@ async fn the_desk_push_has_the_same_answers_as_an_alert() {
 
 #[test]
 fn only_a_requests_alert_asks_to_wake_the_app() {
-    let aps_of = |notice: &Notice| payload(notice)["aps"].clone();
+    let aps_of = |notice: &Notice| payload(notice, None)["aps"].clone();
     assert_eq!(aps_of(&notice())["content-available"], 1);
     let hidden = Notice {
         kind: NoticeKind::Request {
@@ -378,4 +378,108 @@ fn only_a_requests_alert_asks_to_wake_the_app() {
             "{other:?}"
         );
     }
+}
+
+const NODE: &str = "02ae509c6b20999646d3c600687ee1bf";
+
+fn every_kind() -> Vec<Notice> {
+    let org = || Id::parse("acme").unwrap();
+    let team = || Id::parse("app").unwrap();
+    vec![
+        notice(),
+        Notice {
+            kind: NoticeKind::Request {
+                org: org(),
+                team: team(),
+                request: "r-1".into(),
+                team_label: None,
+                title: None,
+            },
+            badge: 1,
+        },
+        Notice {
+            kind: NoticeKind::Device {
+                device: Id::parse("d-a652124afda7").unwrap(),
+                label: Some("Pixel".into()),
+            },
+            badge: 0,
+        },
+        Notice {
+            kind: NoticeKind::Recovery {
+                org: org(),
+                started_at: Some("2026-11-26T09:30:00Z".into()),
+                takes_effect_at: Some("2026-11-29T09:30:00Z".into()),
+            },
+            badge: 0,
+        },
+        Notice {
+            kind: NoticeKind::Decision {
+                org: org(),
+                team: team(),
+                id: "r-1".into(),
+                title: None,
+            },
+            badge: 0,
+        },
+    ]
+}
+
+#[test]
+fn every_kind_of_alert_names_the_node_that_sent_it_and_leaves_the_field_out_without_one() {
+    for notice in every_kind() {
+        let named = payload(&notice, Some(NODE));
+        assert_eq!(named["agency"]["node"], NODE, "{:?}", notice.kind);
+        let anonymous = payload(&notice, None);
+        assert!(
+            anonymous["agency"].get("node").is_none(),
+            "{:?}",
+            notice.kind
+        );
+        let mut without = named.clone();
+        without["agency"].as_object_mut().unwrap().remove("node");
+        assert_eq!(without, anonymous, "nothing else changes");
+    }
+}
+
+#[test]
+fn an_alert_can_be_changed_by_the_extension_and_the_desk_wake_cannot() {
+    for notice in every_kind() {
+        assert_eq!(payload(&notice, None)["aps"]["mutable-content"], 1);
+    }
+    let wake = desk_payload(Some(NODE));
+    assert!(wake["aps"].get("mutable-content").is_none());
+    assert_eq!(
+        wake,
+        json!({ "aps": { "content-available": 1 }, "agency": { "type": "desk", "node": NODE } }),
+        "a wake names its node and carries nothing of the desk"
+    );
+}
+
+#[tokio::test]
+async fn a_node_with_an_origin_names_itself_in_what_it_sends() {
+    let (hosts, seen) = stand_in().await;
+    let clock = ManualClock::at(T0);
+    let apns = apns(hosts, &clock).with_node_id(agency_proto::client::node_id(
+        "https://Work.Example.com:443/",
+    ));
+    apns.send(&token("aa", PushEnvironment::Production), &notice())
+        .await
+        .unwrap();
+    apns.send_desk_changed(&token("aa", PushEnvironment::Production))
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen[0].3["agency"]["node"], NODE);
+    assert_eq!(seen[1].3["agency"]["node"], NODE);
+}
+
+#[tokio::test]
+async fn a_node_that_does_not_know_its_origin_sends_no_node_field() {
+    let (hosts, seen) = stand_in().await;
+    let clock = ManualClock::at(T0);
+    let apns = apns(hosts, &clock).with_node_id(agency_proto::client::node_id("not an origin"));
+    apns.send(&token("aa", PushEnvironment::Production), &notice())
+        .await
+        .unwrap();
+    assert!(seen.lock().unwrap()[0].3["agency"].get("node").is_none());
 }

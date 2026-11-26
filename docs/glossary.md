@@ -44,11 +44,11 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 ## Seats and claiming
 
-- **Seat** (席 *(proposed)*). A place in an org that has been given a name and a department but that no one has taken yet. A seat has no account, no key, and no devices, so it is **not a member**: it is addressed, but it never decides. In the protocol it is `seats[]` of the org definition. Say *seat* for it and keep *member* for one who has taken a seat, because a member has an account (or is hosted, below). A seat taken by someone keeps its id, so its requests and history stay attached.
+- **Seat** (席). A place in an org that has been given a name and a department but that no one has taken yet. A seat has no account, no key, and no devices, so it is **not a member**: it is addressed, but it never decides. In the protocol it is `seats[]` of the org definition, with `askAbout` (what to ask it about) and `relays` (who answers for it). Say *seat* for it and keep *member* for one who has taken a seat, because a member has an account (or is hosted, below). A seat taken by someone keeps its id, so its requests and history stay attached.
 - **Claim link** (席の受け取りリンク *(proposed)*). A link, for one seat, for one person, that works once and expires, which the org's root node makes. Opening it, signing in with the address it was made for, and confirming a pairing code makes the person a member in place of the seat. The code in the link is secret: a page reads it from the address and removes it at once, and sends it only to the node, in the request that claims the seat.
 - **Hosted member** (ノードを持たないメンバー *(proposed)*). A member who has no node of their own: their client talks to the org root's node, which holds no key of theirs. Their devices hold their keys and sign their decisions, as for every member. They read only the requests addressed to them.
-- **Answer for** (代理で答える *(proposed)*). To record an answer on behalf of a seat or an external party who does not answer themselves. The protocol field `relays` names who may. Do not use *relay* for this: a node relays a change or an envelope to another node, and a screen that says "relayed for" will be read as that.
-- **External party** (外部の相談先 *(proposed)*). Someone the org asks through a member and who never takes a seat.
+- **Answer for** (代理で答える). To record an answer on behalf of a seat or an external party who does not answer themselves. The protocol field `relays` names who may. Do not use *relay* for this: a node relays a change or an envelope to another node, and a screen that says "relayed for" will be read as that.
+- **External party** (外部の相談先). Someone the org asks through a member and who never takes a seat. In the protocol it is `externals[]` of the org definition, with `askAbout` and a required `relays`.
 
 ## Requests and decisions
 
@@ -97,6 +97,17 @@ What the org's work achieves, as numbers about the business or the product, not 
 - **Reading state** (読み取りの状態). Why a reading has numbers, or why it has none. The values of `state` on the wire are `ready`, `notShipped`, `shipDateUnknown`, `noBaseline`, `tooEarly`, `noFollowUp`, and `tooFew` (they are identifiers, not screen text); only `ready` has numbers. Each of the others is said on screen by a sentence of the client that tells what is missing, in `outcomes.readings.states` of the web's catalogs and in the Apple apps' wording of the same, and `ready` has no state sentence: it shows its two numbers, the change, and the correlation line. A screen draws no trend and no 0 for a state that refuses.
 - **Movement** (動き). The change of a KPI's number, worded by direction (rose 上がった, fell 下がった, unchanged 変わらず) and, from the KPI's `goodWhen`, as better (良い方) or worse (悪い方); a KPI with a `goodWhen` a client does not know is not coloured, and a change that is written as 0 in the KPI's unit is unchanged. A reading's movement is never worded as caused by the work: the screens say 「完了のあとで数値が動きました。この仕事が動かしたとは言えません。」 (English: "The figure moved after the work shipped. That does not say the work moved it.").
 - **Outcomes page** (成果の指標; English "Outcomes"). The owner's screen of the KPIs' numbers and the readings. Its Japanese name is not 成果 alone, because the Results group of the menu it sits in (English "Results", 成果) has that name.
+
+## The node's own measurements
+
+What a node measures of itself, kept on the node and read only by its owner (`/api/metrics`, "Metrics" in `docs/protocol.md`).
+
+- **Response time** (応答時間). How long a node takes to answer a request, or how long a call it makes takes to be answered. The screens say response time, not *latency*.
+- **Route group** (ルートの区分). The area of the Client API a route belongs to (`desk`, `teams`, `usage`, `evaluation`, ...), as the node says it in `group`; a call the node makes has the group of its first word (`runtime`, `peer`, `push`, `github`). The screens give each its own name.
+- **In-node read** (ノード内の読み取り). A read the node answers from its own state, without asking the team's runtime, a peer, or GitHub (`isInNodeRead`). Only these have a response-time budget.
+- **Budget** (応答時間の予算), in this section only: the response time an in-node read must keep, 100 ms at the 95th percentile in the reference environment (`budget.inNodeReadP95Ms`). Not the cost budget of a team's plan (`weeklyBudgetUsd`): a screen that shows both says which.
+- **Objective** (目標). A response time the node's operator sets for a route group (`metrics.objectives` in `config.json`: a group and a `p95Ms`); the node says whether it was `met` or `notMet` over the days asked, or `unknown` when it cannot tell, with what it measured.
+- **p50, p95, p99**. The response time that 50, 95, or 99 of every 100 requests were within, as the node gives it: **the upper bound of the bucket** the request fell in, so a screen says "at most", never an exact time; one beyond the last bucket (30 000 ms) has no bound and is shown as slower than 30 seconds.
 
 ## Do not use
 

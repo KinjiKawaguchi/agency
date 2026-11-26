@@ -4,6 +4,8 @@ import Foundation
 /// The groups of the pile, in display order.
 public enum DeskGroup: Int, CaseIterable, Comparable, Sendable {
     case proposal, question, pendingDecision
+    /// The viewer's requests of a kind this app does not know. The node says how to answer them (`answerWith`), so they can be.
+    case unrecognized
     /// Requests addressed to someone else.
     case others
 
@@ -14,6 +16,7 @@ public enum DeskGroup: Int, CaseIterable, Comparable, Sendable {
         case .proposal: self = .proposal
         case .question: self = .question
         case .pendingDecision: self = .pendingDecision
+        case .unknown: self = .unrecognized
         }
     }
 }
@@ -36,6 +39,10 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
     public let isMine: Bool
     /// The people (not work refs) that are stopped until the request is decided.
     public let blockedPeople: [PersonStatus]
+
+    /// Whether this app can make the envelope that answers it: the node names the kind of envelope (`answerWith`), and a kind
+    /// this app does not know is one it cannot make. Such a request is shown and counted, and answered elsewhere.
+    public var isAnswerableHere: Bool { request.answerWith.kind != .unknown }
 
     public static func key(org: String, team: String, request: String) -> String {
         "\(org):\(team):\(request)"

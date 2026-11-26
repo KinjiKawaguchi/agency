@@ -105,7 +105,8 @@ public enum OrgTreeBuilder {
         guard let found = teams.first(where: { $0.view.org == orgID && $0.view.team == place.id }) else {
             return TeamNode(place: place, team: nil, isLoading: loading.contains(TeamReader.key(org: orgID, team: place.id)), agents: [], working: 0, signals: nil)
         }
-        let agents = found.view.people.filter { $0.kind == .agent }.map {
+        // Everyone on the team who is not a human is listed here, a participant of a kind the app does not know included.
+        let agents = found.view.people.filter { $0.kind != .human }.map {
             AgentNode(person: $0, presence: Presence(of: $0, waitingOnViewer: found.waitingOnViewer), isLead: $0.role == .lead)
         }
         return TeamNode(
