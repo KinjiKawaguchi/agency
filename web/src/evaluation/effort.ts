@@ -1,9 +1,6 @@
-import type { DayEffort, EffortType, TeamEffort, TeamPlan, WorkType } from '../api/evaluationApi'
+import { EFFORT_TYPES, WORK_TYPES, type DayEffort, type EffortType, type TeamEffort, type TeamPlan } from '../api/evaluationApi'
 
-export const WORK_TYPES: readonly WorkType[] = ['newFeature', 'improvement', 'maintenance', 'debt', 'incident']
-
-/** The types in the order they stack, with the work no one could classify last. */
-export const EFFORT_TYPES: readonly EffortType[] = [...WORK_TYPES, 'unclassified']
+export { EFFORT_TYPES, WORK_TYPES }
 
 /** Each type keeps its color. New feature has the first color, as `feat` has in the speed charts. */
 export const EFFORT_COLORS: Record<EffortType, string> = {
@@ -48,5 +45,8 @@ export function weekSpend(byDay: readonly DayEffort[], last: string): number {
   return byDay.filter((day) => Date.parse(`${day.date}T00:00:00Z`) >= first).reduce((sum, day) => sum + EFFORT_TYPES.reduce((daySum, type) => daySum + day.costUsd[type], 0), 0)
 }
 
-/** Percentage points above (+) or below (-) the plan, whole numbers. */
-export const pointsFromPlan = (share: number, intended: number): number => Math.round(share) - intended
+/** A share as the screen writes it, in whole percent. The bar's figure and the gap to the plan both come from this one rounding. */
+export const shownShare = (share: number): number => Math.round(share)
+
+/** Percentage points above (+) or below (-) the plan, from the share as shown. */
+export const pointsFromPlan = (share: number, intended: number): number => shownShare(share) - intended

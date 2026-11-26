@@ -302,6 +302,7 @@ export const en = {
     unavailable: 'This node does not report evaluation numbers yet.',
     couldNotAnswer: (reason: string) => `A team could not report its numbers right now: ${reason}`,
     noData: 'None in this period',
+    teamUnavailable: (reason: string) => `This team could not report its numbers: ${reason}`,
     units: { minute: 'm', hour: 'h', day: 'd' },
     types: { feat: 'New feature', fix: 'Fix', refactor: 'Refactor', docs: 'Docs', test: 'Test', chore: 'Chore', other: 'Other' },
     tiles: {
@@ -345,7 +346,7 @@ export const en = {
     effort: {
       title: 'Where effort goes',
       lead: 'What each team spent, by kind of work, against what the org intends. Cost is an estimate at API prices.',
-      types: { newFeature: 'New feature', improvement: 'Improvement', maintenance: 'Maintenance', debt: 'Debt', incident: 'Incident', unclassified: 'Unclassified' },
+      types: { newFeature: 'New feature', improvement: 'Improvement', maintenance: 'Maintenance', debt: 'Tech debt', incident: 'Incident', unclassified: 'Unclassified' },
       unavailable: 'This node does not report effort by work type yet.',
       couldNotAnswer: (reason: string) => `A team could not report its effort right now: ${reason}`,
       noPlan: 'The org has stated no plan for this team, so there is nothing to compare with.',

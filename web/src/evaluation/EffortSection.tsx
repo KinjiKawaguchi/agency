@@ -42,6 +42,12 @@ export function EffortSection({ org, days, teamLabels }: Props) {
           {effort.data.teams.map((team) => (
             <TeamEffortView key={team.team} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} generatedAt={effort.data.generatedAt} until={effort.data.until} />
           ))}
+          {(effort.data.unavailable ?? []).map((one) => (
+            <section key={one.team} className="ev-team">
+              <h3 className="sub-head">{t.evaluation.team(teamLabels.get(one.team) ?? one.team)}</h3>
+              <p className="empty">{t.evaluation.teamUnavailable(one.reason)}</p>
+            </section>
+          ))}
           <p className="muted ev-source">{t.evaluation.effort.source(`/api/orgs/${encodeURIComponent(org)}/effort?days=${days}`)}</p>
         </>
       )}

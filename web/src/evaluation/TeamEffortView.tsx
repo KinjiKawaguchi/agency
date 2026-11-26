@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { AllocationRows } from './AllocationRows'
 import { BudgetMeter } from './BudgetMeter'
 import { Columns } from './Columns'
-import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, totalCost, weekSpend } from './effort'
+import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, shownShare, totalCost, weekSpend } from './effort'
 import { daysEnding, lastDayOf, niceMax } from './series'
 
 export type PlanState = { kind: 'stated'; plan: TeamPlan } | { kind: 'none' } | { kind: 'unreadable' }
@@ -76,7 +76,7 @@ export function TeamEffortView({ label, effort, plan, days, generatedAt, until }
                   <tr key={type}>
                     <th scope="row">{text.types[type]}</th>
                     <td className="num">{money(effort.byType[type].costUsd)}</td>
-                    <td className="num">{fmt.percent(shares[type])}</td>
+                    <td className="num">{fmt.percent(shownShare(shares[type]))}</td>
                     <td className="num">{intended === undefined ? '—' : `${fmt.percent(intended)} (${pointsFromPlan(shares[type], intended) > 0 ? '+' : ''}${pointsFromPlan(shares[type], intended)})`}</td>
                   </tr>
                 )

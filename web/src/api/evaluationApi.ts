@@ -5,6 +5,9 @@
 /** The Conventional Commits type of a pull request's title; anything else is `other`. */
 export type PullRequestType = 'feat' | 'fix' | 'refactor' | 'docs' | 'test' | 'chore' | 'other'
 
+/** The types in the order they are listed and stacked. */
+export const PULL_REQUEST_TYPES: readonly PullRequestType[] = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'other']
+
 /** Merged pull requests, counted by type. */
 export type MergedCounts = Record<PullRequestType, number>
 
@@ -45,6 +48,12 @@ export interface TeamEvaluation {
   byDay: DayEvaluation[]
 }
 
+/** A team the node could not get numbers for. The reason is plain text, with no secret and no address in it. */
+export interface TeamUnavailable {
+  team: string
+  reason: string
+}
+
 /** `GET /api/orgs/<org>/evaluation?days=<1 to 90>` */
 export interface Evaluation {
   org: string
@@ -57,6 +66,8 @@ export interface Evaluation {
   from?: string
   until?: string
   teams: TeamEvaluation[]
+  /** Teams that could not answer, so that one of them does not blank the others. */
+  unavailable?: TeamUnavailable[]
 }
 
 // ── Where effort goes ──
@@ -66,6 +77,11 @@ export type WorkType = 'newFeature' | 'improvement' | 'maintenance' | 'debt' | '
 
 /** The work types, and the work nothing could classify, which the screen shows as it is. */
 export type EffortType = WorkType | 'unclassified'
+
+export const WORK_TYPES: readonly WorkType[] = ['newFeature', 'improvement', 'maintenance', 'debt', 'incident']
+
+/** The work types in the order they stack, with the work no one could classify last. */
+export const EFFORT_TYPES: readonly EffortType[] = [...WORK_TYPES, 'unclassified']
 
 export interface EffortTokens {
   input: number
@@ -102,6 +118,7 @@ export interface Effort {
   from?: string
   until?: string
   teams: TeamEffort[]
+  unavailable?: TeamUnavailable[]
 }
 
 /**

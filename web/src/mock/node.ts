@@ -44,6 +44,8 @@ interface MockNodeOptions {
   evaluation?: boolean
   /** Makes only the evaluation calls fail with this status. */
   evaluationFailsWith?: number
+  /** A team the evaluation routes leave out, naming it in `unavailable` with a reason, as the node does for a team that cannot answer. */
+  evaluationUnavailableTeam?: string
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
@@ -201,8 +203,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (known === undefined) return failure(404, 'No such organization.')
     const days = Number(url.searchParams.get('days') ?? 14)
     if (!Number.isInteger(days) || days < 1 || days > 90) return failure(400, 'days must be between 1 and 90.')
-    const teams = known.teams.map((team) => team.id)
-    return json(route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now))
+    const all = known.teams.map((team) => team.id)
+    const left = options.evaluationUnavailableTeam
+    const teams = all.filter((team) => team !== left)
+    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now)
+    return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
   /** The owner's write: the page's token and JSON, a lowercase-hex token, its environment, and a label. Idempotent per token. */

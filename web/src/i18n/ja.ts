@@ -297,6 +297,7 @@ export const ja: Messages = {
     unavailable: 'このノードはまだ評価の数字を返しません。',
     couldNotAnswer: (reason) => `チームが今は数字を返せませんでした: ${reason}`,
     noData: 'この期間はありません',
+    teamUnavailable: (reason) => `このチームは数字を返せませんでした: ${reason}`,
     units: { minute: '分', hour: '時間', day: '日' },
     types: { feat: '新機能', fix: '修正', refactor: 'リファクタリング', docs: 'ドキュメント', test: 'テスト', chore: '雑務', other: 'その他' },
     tiles: {
@@ -340,7 +341,7 @@ export const ja: Messages = {
     effort: {
       title: '労力の行き先',
       lead: '各チームが使った費用を、仕事の種類別に、組織の意図と並べて見ます。費用は API 価格での概算です。',
-      types: { newFeature: '新機能', improvement: '改善', maintenance: '保守', debt: '負債', incident: '障害対応', unclassified: '未分類' },
+      types: { newFeature: '新機能', improvement: '改善', maintenance: '保守', debt: '技術的負債', incident: '障害対応', unclassified: '未分類' },
       unavailable: 'このノードはまだ作業種別ごとの労力を返しません。',
       couldNotAnswer: (reason) => `チームが今は労力を返せませんでした: ${reason}`,
       noPlan: 'このチームには組織の計画がまだ示されていないので、比べるものがありません。',

@@ -1,8 +1,9 @@
-import type { DayEvaluation, MergedCounts, PullRequestType } from '../api/evaluationApi.ts'
+import { PULL_REQUEST_TYPES, type DayEvaluation, type MergedCounts, type PullRequestType } from '../api/evaluationApi.ts'
 import { DAY_SECONDS } from './time'
 
-/** The types in the order they stack, and the colors they keep: a filter never repaints another type. */
-export const PULL_REQUEST_TYPES: readonly PullRequestType[] = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'other']
+export { PULL_REQUEST_TYPES }
+
+/** The colors the types keep: a filter never repaints another type. */
 
 export const TYPE_COLORS: Record<PullRequestType, string> = {
   feat: 'var(--series-1)',

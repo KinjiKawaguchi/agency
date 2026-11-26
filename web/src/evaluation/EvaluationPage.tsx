@@ -77,9 +77,15 @@ function OrgEvaluation({ org, days, teamLabels }: { org: string; days: number; t
   const report = evaluation.data
   return (
     <>
-      {report.teams.length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
+      {report.teams.length === 0 && (report.unavailable ?? []).length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
       {report.teams.map((numbers) => (
         <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} generatedAt={report.generatedAt} until={report.until} />
+      ))}
+      {(report.unavailable ?? []).map((one) => (
+        <section key={one.team} className="ev-team">
+          <h2 className="sub-head">{t.evaluation.team(teamLabels.get(one.team) ?? one.team)}</h2>
+          <p className="empty">{t.evaluation.teamUnavailable(one.reason)}</p>
+        </section>
       ))}
       <p className="muted ev-source">{t.evaluation.source(`/api/orgs/${encodeURIComponent(org)}/evaluation?days=${days}`)}</p>
     </>
