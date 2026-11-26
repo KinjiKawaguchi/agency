@@ -93,6 +93,7 @@ pub fn me(node: &Node) -> Me {
         funding: funding(node),
         hides_titles: is_hiding_titles(node),
         home_nodes: None,
+        root_changes: None,
     }
 }
 

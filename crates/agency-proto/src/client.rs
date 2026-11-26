@@ -40,6 +40,11 @@ pub struct Me {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub home_nodes: Option<Vec<HomeNode>>,
+    /// The changes others asked the root to sign that wait for the owner (`agency root-sign`), oldest
+    /// first. Given only to the owner, and absent when none wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root_changes: Option<Vec<crate::root_change::RootChangeRef>>,
 }
 
 /// Another home node of the same human: the home node of another of their accounts (for example a work
@@ -434,6 +439,8 @@ pub enum DeviceChangeOutcome {
     Applied,
     /// The root's node wrote the next version; this node has it.
     Delivered,
+    /// The root's node holds it until the owner signs it there (`agency root-sign`); `message` says so.
+    Pending,
     /// The root's node could not be reached; the change waits in the outbox.
     Queued,
 }

@@ -3,6 +3,7 @@ import type { AccountRef } from "./AccountRef.js";
 import type { Funding } from "./Funding.js";
 import type { HomeNode } from "./HomeNode.js";
 import type { OrgRef } from "./OrgRef.js";
+import type { RootChangeRef } from "./RootChangeRef.js";
 
 /**
  * The node's account and everything it can reach.
@@ -17,4 +18,9 @@ hidesTitles?: boolean,
  * The other home nodes of the same human, for their other accounts, as the node's owner
  * configured them. Given only to the owner, and absent when there are none.
  */
-homeNodes?: Array<HomeNode>, };
+homeNodes?: Array<HomeNode>, 
+/**
+ * The changes others asked the root to sign that wait for the owner (`agency root-sign`), oldest
+ * first. Given only to the owner, and absent when none wait.
+ */
+rootChanges?: Array<RootChangeRef>, };

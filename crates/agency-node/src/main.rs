@@ -7,13 +7,14 @@ mod logs_cli;
 mod outcome_cli;
 mod peer_cli;
 mod recovery_cli;
+mod root_sign_cli;
 mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::Decided;
-use agency_core::invites::join;
+use agency_core::invites::{finish_joins, join, Joined};
 use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
@@ -104,6 +105,7 @@ enum Command {
     PlanUnaim(kpi_cli::PlanUnaim),
     TeamSet(team_cli::TeamSet),
     TeamRemove(team_cli::TeamRemove),
+    RootSign(root_sign_cli::RootSign),
     RootRecovery(recovery_cli::RootRecovery),
     RootRecover(recovery_cli::RootRecover),
     RootCancelRecovery(recovery_cli::RootCancelRecovery),
@@ -270,6 +272,17 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        let held = agency_core::pending_root::waiting(node)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|one| one.org == doc.body.org)
+            .count();
+        if held > 0 {
+            println!(
+                "  {held} change(s) wait for the root key: run `agency root-sign --org {}`.",
+                doc.body.org
+            );
+        }
         if let Some(pending) = &doc.body.root.pending {
             let at = orgs::recovery_takes_effect(node, &doc)
                 .map(agency_proto::clock::format)
@@ -390,6 +403,9 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         let mut tick = 0u64;
         loop {
             if tick.is_multiple_of(2) {
+                if let Err(error) = finish_joins(&background).await {
+                    logger.warn("joins", &format!("asking for held joins failed: {error}"));
+                }
                 if let Err(error) = refresh(&background).await {
                     logger.warn(
                         "replicas",
@@ -527,6 +543,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::PlanUnaim(args) => kpi_cli::plan_unaim(&node, args)?,
         Command::TeamSet(args) => team_cli::team_set(&node, args)?,
         Command::TeamRemove(args) => team_cli::team_remove(&node, args)?,
+        Command::RootSign(args) => root_sign_cli::root_sign(&node, args).await?,
         Command::RootRecovery(args) => recovery_cli::root_recovery(&node, args).await?,
         Command::RootRecover(args) => recovery_cli::root_recover(&node, args).await?,
         Command::RootCancelRecovery(args) => recovery_cli::root_cancel_recovery(&node, args)?,
@@ -566,11 +583,15 @@ async fn run(cli: Cli) -> Result<()> {
             println!("{}", invites::invite(&node, &id(&org)?, department, role)?);
         }
         Command::Join { link, yes } => {
-            let doc = join(&node, &link, |definition| yes || confirm_join(definition)).await?;
-            println!(
-                "Joined org {} ({}) (version {})",
-                doc.body.org, doc.body.label, doc.body.version
-            );
+            match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
+                Joined::Member(doc) => println!(
+                    "Joined org {} ({}) (version {})",
+                    doc.body.org, doc.body.label, doc.body.version
+                ),
+                Joined::Waiting(message) => println!(
+                    "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."
+                ),
+            }
         }
         Command::Decide {
             org,
@@ -606,6 +627,11 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
             refresh(&node).await?;
+            for joined in finish_joins(&node).await? {
+                if let Joined::Member(doc) = joined {
+                    println!("Joined org {} (version {})", doc.body.org, doc.body.version);
+                }
+            }
             let outcomes = deliver_due(&node).await?;
             println!(
                 "Re-read the replicas and tried {} outbox deliveries",

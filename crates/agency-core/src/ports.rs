@@ -20,6 +20,7 @@ use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::participant_metrics::ParticipantMetrics;
+use agency_proto::root_change::RootAnswer;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -78,6 +79,37 @@ pub trait RootKeys: Send + Sync {
     ) -> std::result::Result<String, String>;
     /// Forgets a root key of `org` that no version will be signed with again.
     fn forget(&self, org: &Id, key: &PublicKey) -> std::result::Result<(), String>;
+    /// Whether signing asks for the owner's presence (a keychain). A root's node then never signs because
+    /// someone else asked: it holds the change for `agency root-sign`.
+    fn needs_presence(&self) -> bool {
+        false
+    }
+    /// Asks for presence once, saying `purpose`, then hands `work` a signer for that one run: several
+    /// versions in a row, one press. The secret is held in memory for the run only.
+    fn with_signer(
+        &self,
+        org: &Id,
+        key: &PublicKey,
+        purpose: &str,
+        work: &mut dyn FnMut(&RootSigner) -> std::result::Result<(), String>,
+    ) -> std::result::Result<(), String> {
+        let signer = |message: &[u8]| self.sign(org, key, message, purpose);
+        work(&signer)
+    }
+}
+
+/// Signs one message with a root key, within `RootKeys::with_signer`.
+pub type RootSigner<'a> = dyn Fn(&[u8]) -> std::result::Result<String, String> + 'a;
+
+/// Root changes held for the owner, by their handle, and the joins this node asked for that wait for
+/// another org's owner (`pending_root`).
+pub trait PendingRootStore {
+    fn put_pending_root(&self, change: &crate::pending_root::PendingRootChange) -> Result<()>;
+    fn pending_roots(&self) -> Vec<crate::pending_root::PendingRootChange>;
+    fn remove_pending_root(&self, id: &str) -> Result<()>;
+    fn put_waiting_join(&self, join: &crate::pending_root::WaitingJoin) -> Result<()>;
+    fn waiting_joins(&self) -> Vec<crate::pending_root::WaitingJoin>;
+    fn remove_waiting_join(&self, org: &Id) -> Result<()>;
 }
 
 pub trait OrgStore {
@@ -196,6 +228,7 @@ pub trait ReplicaStore {
 pub trait Store:
     ConfigStore
     + OrgStore
+    + PendingRootStore
     + InviteStore
     + AppliedLog
     + OutboxStore
@@ -215,6 +248,7 @@ pub trait Store:
 impl<
         T: ConfigStore
             + OrgStore
+            + PendingRootStore
             + InviteStore
             + AppliedLog
             + OutboxStore
@@ -306,19 +340,21 @@ pub trait Peers: Send + Sync {
         path: &str,
         doc: &SignedOrg,
     ) -> Result<(), PeerError>;
-    /// Sends a device change to the root's node, which answers with the version it wrote.
+    /// Sends a device change to the root's node, which answers with the version it wrote, or holds it.
     async fn post_device_change(
         &self,
         node: &str,
         path: &str,
         change: &Signed<DeviceChange>,
-    ) -> Result<SignedOrg, PeerError>;
+    ) -> Result<RootAnswer, PeerError>;
     async fn post_join(
         &self,
         node: &str,
         path: &str,
         request: &Signed<JoinRequest>,
-    ) -> Result<SignedOrg, PeerError>;
+    ) -> Result<RootAnswer, PeerError>;
+    /// Asks the root's node for a join it holds, by its handle: still pending, or the version that signed it.
+    async fn get_join(&self, node: &str, path: &str) -> Result<RootAnswer, PeerError>;
 }
 
 /// The runtimes of the teams this node hosts (agency-runtime/1).
