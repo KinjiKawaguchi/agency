@@ -34,6 +34,8 @@ testdata/vectors.json  Language-independent test vectors (a key from a fixed see
 
 To install a node on a Mac, run it as a service, and reach it from outside behind Cloudflare Access, see [docs/install.md](docs/install.md) (in Japanese: [docs/install.ja.md](docs/install.ja.md)).
 
+What each part may change without breaking the others, and how versions move, is in [docs/compatibility.md](docs/compatibility.md).
+
 ## Build and test
 
 ```sh
@@ -121,7 +123,9 @@ To notify the owner's iPhone of new requests, devices waiting to be added, and r
 "push": { "keyPath": "/path/to/AuthKey_ABC123DEFG.p8", "keyId": "ABC123DEFG", "teamId": "TEAM123456", "bundleId": "com.example.agency" }
 ```
 
-For a node whose data must stay where it is, add `"hideTitles": true` to `push`: no title or label (a team's, a request's, a device's) is sent to Apple, and the notification says only what kind it is.
+For a node whose data must stay where it is, add `"hideTitles": true` at the top of the configuration (it is also read from `push`, where it was first written): no title or label (a team's, a request's, a device's) is sent to Apple or to a browser's push service, and the notification says only what kind it is.
+
+To notify the owner's browsers as well (Chrome, Edge, Firefox, Safari on a Mac, and the installed web app; the iPhone keeps its app), add `"webPush": {}`. The node makes its own VAPID key in its data directory. `subject` (the contact a push service may reach: a `mailto:` or `https://` address, default the node's public host name; set it to a `mailto:` address on a node without `access`, since Apple refuses an `http` one) and `extraHosts` (push services to allow besides Google's, Mozilla's, Apple's, and Microsoft's) are optional; the node sends only to those hosts, over `https`, to public addresses, and follows no redirect (docs/protocol.md, "Web Push").
 
 See "Client API" in docs/protocol.md for what is checked.
 

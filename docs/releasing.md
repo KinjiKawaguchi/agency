@@ -12,7 +12,7 @@ Versions are `0.MINOR.PATCH` until the first 1.0. How the number moves, from the
 | only `fix` and `perf` | the patch number goes up (0.2.0 to 0.2.1) |
 | only `docs`, `test`, `chore`, `ci`, `build`, `style`, `refactor` | no release is proposed |
 
-A `refactor` is listed in the changelog, but it does not call for a release by itself. Before 1.0, a breaking change raises the minor number, as a new feature does, so read the changelog before updating across a minor number. What counts as breaking at each boundary (nodes, the Client API, the team runtime, the apps) is the compatibility policy's subject, and the release numbering follows it.
+A `refactor` is listed in the changelog, but it does not call for a release by itself. Before 1.0, a breaking change raises the minor number, as a new feature does, so read the changelog before updating across a minor number. What counts as breaking at each boundary (nodes, the Client API, the team runtime, the apps) is the subject of the compatibility policy ([compatibility.md](compatibility.md)), and the release numbering follows it.
 
 ## How a release is made
 

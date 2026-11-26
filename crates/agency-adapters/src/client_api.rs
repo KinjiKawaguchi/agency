@@ -17,11 +17,14 @@ use agency_core::client::{
     decision_log, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::devices::{device_list, request_device, submit_device_change};
+use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
+use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
 use agency_core::{Error, Node};
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushTokenInput, Session, SignedDecisionInput,
+    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
+    SignedDecisionInput,
 };
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
@@ -37,6 +40,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+mod outcomes;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -270,6 +275,21 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// The delivery evaluation of every team of an org over the last `days` days (default 14, at most 90).
+async fn get_evaluation(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_evaluation(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
 /// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
 /// (default 200, at most 500), oldest first.
 async fn get_activity(
@@ -381,6 +401,29 @@ async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Res
     }
 }
 
+/// The node's VAPID public key, which a browser subscribes with. 404 when the node has no Web Push.
+async fn get_vapid_key(State(api): Shared) -> Response {
+    respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
+}
+
+async fn get_push_subscriptions(State(api): Shared) -> Response {
+    respond(subscriptions(&api.node))
+}
+
+/// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
+async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
+    let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
+        .and_then(|input| register_subscription(&api.node, input));
+    respond(result)
+}
+
+async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
+    match remove_subscription(&api.node, &id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
+}
+
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html; charset=utf-8",
@@ -426,6 +469,35 @@ fn index_page(api: &ClientApi) -> Response {
 }
 
 /// A built file, or the page itself for any other path (the web client's own routes).
+/// The extensions of the built client's own files.
+const FILE_EXTENSIONS: [&str; 12] = [
+    "html",
+    "js",
+    "mjs",
+    "css",
+    "json",
+    "map",
+    "webmanifest",
+    "svg",
+    "png",
+    "ico",
+    "woff2",
+    "txt",
+];
+
+/// Whether a path names one of the built client's files rather than one of its routes: anything under
+/// `assets/` or `icons/`, or a last part with a file's extension (`sw.js`, `manifest.webmanifest`).
+fn is_file_path(path: &str) -> bool {
+    let last = path.rsplit('/').next().unwrap_or(path);
+    let has_file_extension = last
+        .rsplit_once('.')
+        .is_some_and(|(_, extension)| FILE_EXTENSIONS.contains(&extension));
+    path.starts_with("assets/") || path.starts_with("icons/") || has_file_extension
+}
+
+/// A file of the built client, the page for one of its routes, or 404. A missing file is 404 and never
+/// the page: the page carries the write token, and a cache that keeps answers by path (a service worker
+/// asking for a file of an older build) must not keep it under a file's name.
 async fn page(State(api): Shared, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     let is_file =
@@ -434,6 +506,11 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
         Some(bytes) => page_response(content_type(path), Body::from(bytes.into_owned())),
         None if path.starts_with("api/") || path == "api" => {
             refuse(StatusCode::NOT_FOUND, "no such route")
+        }
+        None if is_file && is_file_path(path) => {
+            let mut response = page_response("text/plain; charset=utf-8", Body::from("not found"));
+            *response.status_mut() = StatusCode::NOT_FOUND;
+            response
         }
         None => index_page(&api),
     }
@@ -446,16 +523,27 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
+        .merge(outcomes::routes(api.clone()))
         .route(
             "/api/push/tokens",
             get(get_push_tokens).post(post_push_token),
         )
         .route("/api/push/tokens/{token}", delete(delete_push_token))
+        .route("/api/push/vapid", get(get_vapid_key))
+        .route(
+            "/api/push/subscriptions",
+            get(get_push_subscriptions).post(post_push_subscription),
+        )
+        .route(
+            "/api/push/subscriptions/{id}",
+            delete(delete_push_subscription),
+        )
         .route("/api/devices/requests", post(post_device_request))
         .route("/api/devices/changes", post(post_device_change))
         .route("/api/orgs/{org}", get(get_org))
         .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
         .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
+        .route("/api/orgs/{org}/evaluation", get(get_evaluation))
         .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
         .route(
             "/api/orgs/{org}/teams/{team}/envelopes",

@@ -1,0 +1,24 @@
+{
+  "account": {
+    "fingerprint": "34750f98bd59fcfc946da45aaabe933b",
+    "id": "alice",
+    "label": "ALICE"
+  },
+  "funding": [],
+  "hidesTitles": true,
+  "orgs": [
+    {
+      "id": "acme",
+      "isRoot": true,
+      "label": "Acme",
+      "teams": [
+        {
+          "id": "app",
+          "label": "app",
+          "location": "local",
+          "viewer": "owner"
+        }
+      ]
+    }
+  ]
+}
