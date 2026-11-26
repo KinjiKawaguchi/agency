@@ -1,7 +1,7 @@
 name: release
 
-# Release builds of the node for Linux. Each build is a workflow artifact: a tarball with the binary, the
-# systemd unit script, the install guides, and the licenses, and its SHA-256. Run it by hand from the
+# Release builds of the node for Linux. Each build is a workflow artifact: a tarball and a Debian package
+# with the binary and documentation, each with a SHA-256. Run it by hand from the
 # Actions tab; a pull request that changes this file or the unit script runs it too, so the file is tested
 # before it is merged. For a tagged release it is called by release-please.yml with the tag, and then
 # attaches the builds to that release. The macOS builds are made on a Mac, by scripts/release-macos.sh.
@@ -18,6 +18,10 @@ on:
       - .github/workflows/release.yml
       - scripts/systemd-unit.sh
       - scripts/release/**
+      - docs/install.md
+      - docs/install.ja.md
+      - LICENSE-MIT
+      - LICENSE-APACHE
 
 permissions:
   contents: read
@@ -62,8 +66,22 @@ jobs:
         id: package
         env:
           RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
-        # RELEASE_FLAG is empty for a build that is not of a release, and the script wants no argument then.
-        run: scripts/release/package.sh target/release/agency linux "${{ matrix.arch }}" dist $RELEASE_FLAG
+        run: |
+          args=()
+          [ -z "$RELEASE_FLAG" ] || args+=(--release)
+          scripts/release/package.sh target/release/agency linux "${{ matrix.arch }}" dist "${args[@]}"
+      - name: Package for Debian
+        env:
+          RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
+        run: |
+          args=()
+          [ -z "$RELEASE_FLAG" ] || args+=(--release)
+          scripts/release/debian-package.sh target/release/agency "${{ matrix.arch }}" dist "${args[@]}"
+      - name: Check the Debian package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lintian
+          scripts/release/debian-check.sh dist/*.deb
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.package.outputs.name }}

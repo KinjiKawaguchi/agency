@@ -8,6 +8,8 @@ public enum EnvelopeError: Error, Equatable, Sendable {
     case textTooLong
     /// Neither a choice nor an answer text.
     case empty
+    /// A kind of envelope this app does not know how to make.
+    case unknownKind
 }
 
 /// A decision envelope: one answer to a request, or one decision on a board item. A device key
@@ -15,11 +17,14 @@ public enum EnvelopeError: Error, Equatable, Sendable {
 ///
 /// A comment is an answer with text and no choice: the team gets the message and nothing is decided.
 public struct DecisionEnvelope: Equatable, Sendable {
-    public enum Kind: String, Sendable, Decodable {
+    public enum Kind: String, OpenWireEnum {
         /// Answers a request (`target` is the request id).
         case answer
         /// Decides a board item that waits for a decision (`target` is the item's reference).
         case judge
+        /// A kind a node names that this app does not know. It is read, so that the list around it still reads, and it is never
+        /// signed: `validate()` refuses it.
+        case unknown
     }
 
     public static let maxTextLength = 4000
@@ -65,6 +70,7 @@ public struct DecisionEnvelope: Equatable, Sendable {
     /// The shape the node requires, checked before the owner is asked for Face ID. The node checks it
     /// again, and also the signature, membership and time.
     public func validate() throws {
+        guard kind != .unknown else { throw EnvelopeError.unknownKind }
         guard Self.isEnvelopeID(id) else { throw EnvelopeError.malformedID(field: "id") }
         for (field, value) in [("org", org), ("team", team), ("account", account)] where !Self.isID(value) {
             throw EnvelopeError.malformedID(field: field)

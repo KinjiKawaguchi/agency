@@ -1,6 +1,7 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
 mod dept_cli;
 mod device_cli;
+mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
@@ -38,6 +39,7 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "agency",
+    version,
     about = "Agency's node: runs organizations of AI agents and people across many machines"
 )]
 struct Cli {
@@ -95,6 +97,7 @@ enum Command {
     DeptAdd(dept_cli::DeptAdd),
     DeptSet(dept_cli::DeptSet),
     DeptRemove(dept_cli::DeptRemove),
+    Directory(directory_cli::DirectoryArgs),
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
@@ -546,6 +549,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::DeptAdd(args) => dept_cli::dept_add(&node, args)?,
         Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
         Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
+        Command::Directory(args) => directory_cli::run(&node, args)?,
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
