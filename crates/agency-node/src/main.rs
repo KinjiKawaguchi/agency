@@ -1,4 +1,5 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod dept_cli;
 mod device_cli;
 
 use agency_adapters::files::DataDir;
@@ -74,7 +75,14 @@ enum Command {
         owner: Option<String>,
         #[arg(long)]
         node: Option<String>,
+        /// The department the team is in
+        #[arg(long)]
+        department: Option<String>,
     },
+    DeptAdd(dept_cli::DeptAdd),
+    DeptSet(dept_cli::DeptSet),
+    DeptRemove(dept_cli::DeptRemove),
+    TeamDept(dept_cli::TeamDept),
     /// Moves a team's place in the org to another node origin (on the root key's node), for example after
     /// this node's URL changed
     TeamMove {
@@ -234,6 +242,9 @@ fn status(node: &Node) {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        for line in dept_cli::department_lines(&doc.body) {
+            println!("{line}");
+        }
     }
     for doc in node.store().orgs() {
         let devices = doc
@@ -372,6 +383,7 @@ async fn run(cli: Cli) -> Result<()> {
             state_dir,
             owner,
             node: place,
+            department,
         } => {
             let (org, team) = (id(&org)?, id(&team)?);
             let place_url = place.unwrap_or_else(|| node.url());
@@ -388,7 +400,7 @@ async fn run(cli: Cli) -> Result<()> {
                 TeamPlace {
                     id: team.clone(),
                     label,
-                    department: None,
+                    department: department.as_deref().map(id).transpose()?,
                     node: place_url,
                 },
             )?;
@@ -414,6 +426,10 @@ async fn run(cli: Cli) -> Result<()> {
                 doc.body.version
             );
         }
+        Command::DeptAdd(args) => dept_cli::dept_add(&node, args)?,
+        Command::DeptSet(args) => dept_cli::dept_set(&node, args)?,
+        Command::DeptRemove(args) => dept_cli::dept_remove(&node, args)?,
+        Command::TeamDept(args) => dept_cli::team_dept(&node, args)?,
         Command::TeamMove {
             org,
             team,

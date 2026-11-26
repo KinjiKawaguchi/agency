@@ -117,6 +117,13 @@ pub fn amend(
 
 pub fn add_team(node: &Node, org: &Id, team: TeamPlace) -> Result<SignedOrg> {
     amend(node, org, |body| {
+        if let Some(department) = &team.department {
+            if !body.departments.iter().any(|one| &one.id == department) {
+                return Err(Error::not_found(format!(
+                    "no department {department} in org {org}"
+                )));
+            }
+        }
         if body.team(&team.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Conflict,
