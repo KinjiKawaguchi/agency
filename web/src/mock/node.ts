@@ -167,12 +167,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel]] as const) {
       if (text !== undefined && [...text.trim()].length > MAX_NOTE) return failure(400, `${field} is at most ${MAX_NOTE} characters`)
     }
-    const reply = await accept(view, { kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
+    const reply = await accept(view, { id: signed.body.id, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
     if (reply.ok) accepted = [...accepted, signed]
     return reply
   }
 
-  const accept = async (view: TeamView, body: AnswerWith & { text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
+  const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
     received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) }]
@@ -181,7 +181,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const state: DecisionEntry['state'] =
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
-      { id: `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
+      // The log names a decision by its envelope's id, as the real node does.
+      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
