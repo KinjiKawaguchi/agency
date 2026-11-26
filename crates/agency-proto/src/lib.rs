@@ -9,6 +9,7 @@ pub mod client_version;
 pub mod clock;
 pub mod device;
 pub mod digest;
+pub mod directory;
 pub mod effort;
 pub mod envelope;
 pub mod evaluation;
