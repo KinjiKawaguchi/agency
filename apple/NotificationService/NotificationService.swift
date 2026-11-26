@@ -1,7 +1,8 @@
 import AgencyKit
 import UserNotifications
 
-/// Sets the icon's number to the sum over the home nodes when an alert arrives.
+/// Sets the icon's number to the sum over the home nodes when an alert arrives, and words a recovery's and a held root change's
+/// alert in the viewer's language.
 ///
 /// A push's badge is its own node's count (`aps.badge`). The extension records it for the node the push names (`agency.node`)
 /// and shows the sum of what each node of this device last said (`BadgeLedger`, in the app group's container, which the app
@@ -18,6 +19,14 @@ final class NotificationService: UNNotificationServiceExtension {
         guard let content else {
             contentHandler(request.content)
             return
+        }
+        // A recovery that was started and a change held for the root key's signature are worded here, in the viewer's language and
+        // zone, from the facts the node puts in the payload; the node's own English is for a client that does not know the kind.
+        if let body = PushNotice.body(
+            userInfo: request.content.userInfo, language: Locale.preferredLanguages.first ?? "en", timeZone: TimeZone.current
+        ) {
+            content.title = PushNotice.title
+            content.body = body
         }
         if let file = Self.ledgerFile,
            let badge = BadgeFromPush.badge(userInfo: request.content.userInfo, pushBadge: request.content.badge?.intValue, file: file) {
