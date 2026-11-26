@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
-import { evaluationQuery, useTeams } from '../api/queries'
+import { evaluationQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { TeamEvaluation } from './TeamEvaluation'
 import './evaluation.css'
@@ -20,7 +20,8 @@ interface PageProps {
 /** How fast each team of an org ships, from the node's evaluation route. */
 export function EvaluationPage({ org, days, onChange }: PageProps) {
   const { t } = useI18n()
-  const { me, error } = useTeams()
+  const api = useApi()
+  const { data: me, error } = useQuery(meQuery(api))
   if (me === undefined) {
     return <p className={error === null ? 'muted' : 'empty'} role={error === null ? undefined : 'alert'}>{error === null ? t.app.loading : failureText(t, error)}</p>
   }
@@ -75,7 +76,7 @@ function OrgEvaluation({ org, days, teamLabels }: { org: string; days: number; t
     <>
       {report.teams.length === 0 ? <p className="empty">{t.evaluation.noTeams}</p> : null}
       {report.teams.map((numbers) => (
-        <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} generatedAt={report.generatedAt} />
+        <TeamEvaluation key={numbers.team} label={teamLabels.get(numbers.team) ?? numbers.team} numbers={numbers} days={report.days} generatedAt={report.generatedAt} until={report.until} />
       ))}
       <p className="muted ev-source">{t.evaluation.source(`/api/orgs/${encodeURIComponent(org)}/evaluation?days=${days}`)}</p>
     </>

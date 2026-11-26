@@ -1,4 +1,5 @@
 import type { DayEvaluation, MergedCounts, PullRequestType } from '../api/evaluationApi.ts'
+import { DAY_SECONDS } from './time'
 
 /** The types in the order they stack, and the colors they keep: a filter never repaints another type. */
 export const PULL_REQUEST_TYPES: readonly PullRequestType[] = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'other']
@@ -13,21 +14,27 @@ export const TYPE_COLORS: Record<PullRequestType, string> = {
   other: 'var(--series-other)',
 }
 
-const SECOND = 1
-export const HOUR_SECONDS = 3600 * SECOND
-export const DAY_SECONDS = 24 * HOUR_SECONDS
 const DAY_MS = DAY_SECONDS * 1000
 
 export const emptyCounts = (): MergedCounts => ({ feat: 0, fix: 0, refactor: 0, docs: 0, test: 0, chore: 0, other: 0 })
 
 export const totalMerged = (counts: MergedCounts): number => PULL_REQUEST_TYPES.reduce((sum, type) => sum + counts[type], 0)
 
+/**
+ * The last day of the period, in the node's time zone: the `until` the node names; failing that, the newest
+ * day it reports (its date is in the node's time zone, where a timestamp's UTC date may be a day behind);
+ * and only for a period with no day at all, the UTC date of when the report was made.
+ */
+export function lastDayOf(byDay: readonly DayEvaluation[], until: string | undefined, generatedAt: string): string {
+  return until ?? byDay.map((day) => day.date).toSorted().at(-1) ?? generatedAt.slice(0, 10)
+}
+
 /** The days of the period, oldest first and none missing: the node may leave out a day with nothing in it. */
-export function fillDays(byDay: readonly DayEvaluation[], days: number, generatedAt: string): DayEvaluation[] {
-  const last = Date.parse(`${generatedAt.slice(0, 10)}T00:00:00Z`)
+export function fillDays(byDay: readonly DayEvaluation[], days: number, last: string): DayEvaluation[] {
+  const end = Date.parse(`${last}T00:00:00Z`)
   const known = new Map(byDay.map((day) => [day.date, day]))
   return Array.from({ length: days }, (_, index) => {
-    const date = new Date(last - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10)
+    const date = new Date(end - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10)
     return known.get(date) ?? { date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [] }
   })
 }
@@ -64,7 +71,6 @@ export function niceMax(value: number): number {
   const step = [1, 2, 5, 10].find((candidate) => candidate * magnitude >= value) ?? 10
   return step * magnitude
 }
-
 
 /** An axis maximum for counts: whole numbers all the way, so that the middle tick is whole as well. */
 export const countMax = (value: number): number => Math.max(2, 2 * Math.ceil(niceMax(value) / 2))

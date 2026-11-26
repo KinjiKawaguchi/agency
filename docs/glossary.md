@@ -61,6 +61,16 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Harness**. The program that runs a team's agents and keeps its work (for example the scrum harness). One team is one harness.
 - **Runtime**. The command a node runs for a hosted team to read its view and to pass a decision to it, speaking `agency-runtime/1`. The node never reads a harness's files; it talks to the runtime.
 
+## Evaluation
+
+The numbers are worked out by the node and served at `/api/orgs/<org>/evaluation`; a screen only draws them, and an agent reads the same route to cite them in a proposal.
+
+- **Evaluation** (評価). How the development organization performs: first how fast new features ship (merged pull requests by type, lead times, red main, reverts, cost per merged pull request), then where effort goes.
+- **Lead time** (リードタイム). The time from a start to the merge of a pull request, in two kinds: the *pull request's lead time* (the pull request opened to merged) and the *issue's lead time* (the issue started to merged; the node decides what counts as started). The screen shows the median (中央値) and the p90: the smallest lead time that at least 9 in 10 of the period's pull requests do not exceed (nearest rank).
+- **Main red** (main が赤). The CI of the `main` branch is failing, from the first failed run to the next one that passes. The screen shows the time it was red in the period and the longest spell.
+- **Revert** (リバート). A merged pull request that reverts another.
+- **Cost per merged pull request**. The period's token cost, API-priced as in a token usage report, divided by the pull requests merged in it.
+
 ## Do not use
 
 | Do not say | Say | Why |

@@ -2,7 +2,18 @@
 // couple of red spells on main, and a revert now and then. The shape is the one the real node will
 // serve; the numbers are invented. Summaries are worked out from the days, as the node does.
 import type { DayEvaluation, Evaluation, EvaluationSummary, MergedCounts, TeamEvaluation } from '../api/evaluationApi.ts'
-import { emptyCounts, median, PULL_REQUEST_TYPES, totalMerged } from '../evaluation/series.ts'
+
+const TYPES = ['feat', 'fix', 'refactor', 'docs', 'test', 'chore', 'other'] as const
+
+const emptyCounts = (): MergedCounts => ({ feat: 0, fix: 0, refactor: 0, docs: 0, test: 0, chore: 0, other: 0 })
+const totalMerged = (counts: MergedCounts): number => TYPES.reduce((sum, type) => sum + counts[type], 0)
+
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = values.toSorted((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? (sorted[middle] ?? null) : (((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2)
+}
 
 const DAY_MS = 86_400_000
 const HOUR = 3600
@@ -30,7 +41,7 @@ function dayFor(team: string, date: string): DayEvaluation {
   const weekday = new Date(`${date}T00:00:00Z`).getUTCDay()
   const isWeekend = weekday === 0 || weekday === 6
   const rates = RATES[team] ?? RATES.site ?? emptyCounts()
-  const merged = Object.fromEntries(PULL_REQUEST_TYPES.map((type) => [type, isWeekend ? (noise(`${team}:${date}:${type}:w`) < 0.12 ? 1 : 0) : countFor(rates[type], `${team}:${date}:${type}`)])) as MergedCounts
+  const merged = Object.fromEntries(TYPES.map((type) => [type, isWeekend ? (noise(`${team}:${date}:${type}:w`) < 0.12 ? 1 : 0) : countFor(rates[type], `${team}:${date}:${type}`)])) as MergedCounts
   const count = totalMerged(merged)
   const prLeadSeconds = Array.from({ length: count }, (_, index) => leadSeconds(`${team}:${date}:pr:${index}`, 2.2))
   // A pull request opened from an issue that was started earlier; most have one.
@@ -47,6 +58,7 @@ function dayFor(team: string, date: string): DayEvaluation {
   }
 }
 
+/** Nearest rank: the smallest value that at least `share` of the samples do not exceed. */
 const percentile = (values: readonly number[], share: number): number | null => {
   if (values.length === 0) return null
   const sorted = values.toSorted((a, b) => a - b)
@@ -55,7 +67,7 @@ const percentile = (values: readonly number[], share: number): number | null => 
 
 export function summaryOf(days: readonly DayEvaluation[]): EvaluationSummary {
   const merged = emptyCounts()
-  for (const day of days) for (const type of PULL_REQUEST_TYPES) merged[type] += day.merged[type]
+  for (const day of days) for (const type of TYPES) merged[type] += day.merged[type]
   const prLead = days.flatMap((day) => day.prLeadSeconds)
   const issueLead = days.flatMap((day) => day.issueLeadSeconds)
   const cost = days.reduce((sum, day) => sum + day.costUsd, 0)
@@ -81,5 +93,6 @@ export function teamEvaluation(team: string, days: number, now: Date): TeamEvalu
 }
 
 export function evaluationReport(org: string, teams: readonly string[], days: number, now: Date): Evaluation {
-  return { org, days, generatedAt: now.toISOString(), teams: teams.map((team) => teamEvaluation(team, days, now)) }
+  const date = (daysAgo: number): string => new Date(now.getTime() - daysAgo * DAY_MS).toISOString().slice(0, 10)
+  return { org, days, generatedAt: now.toISOString(), from: date(days - 1), until: date(0), teams: teams.map((team) => teamEvaluation(team, days, now)) }
 }

@@ -28,6 +28,7 @@ export interface DayEvaluation {
 export interface EvaluationSummary {
   merged: MergedCounts
   prLeadMedianSeconds: number | null
+  /** The p90 is the nearest rank: the smallest value that at least 9 in 10 of the samples do not exceed. */
   prLeadP90Seconds: number | null
   issueLeadMedianSeconds: number | null
   issueLeadP90Seconds: number | null
@@ -49,5 +50,11 @@ export interface Evaluation {
   org: string
   days: number
   generatedAt: string
+  /**
+   * The period's first and last calendar day, in the node's time zone, as `byDay[].date` writes them. The
+   * node is asked to send them; until it does, the client takes the newest day of `byDay`.
+   */
+  from?: string
+  until?: string
   teams: TeamEvaluation[]
 }

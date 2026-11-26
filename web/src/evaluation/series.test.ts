@@ -1,17 +1,39 @@
 import type { DayEvaluation } from '../api/evaluationApi'
-import { countMax, emptyCounts, fillDays, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
+import { countMax, emptyCounts, fillDays, lastDayOf, median, niceMax, rollingCostPerPullRequest, rollingMedian, totalMerged } from './series'
 
 const day = (date: string, overrides: Partial<DayEvaluation> = {}): DayEvaluation => ({ date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [], ...overrides })
 
 describe('fillDays', () => {
   it('lists every day of the period, oldest first, with the days the node left out empty', () => {
-    const rows = fillDays([day('2026-11-23', { reverts: 1 }), day('2026-11-26', { reverts: 2 })], 5, '2026-11-26T09:30:00Z')
+    const rows = fillDays([day('2026-11-23', { reverts: 1 }), day('2026-11-26', { reverts: 2 })], 5, '2026-11-26')
     expect(rows.map((row) => row.date)).toEqual(['2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26'])
     expect(rows.map((row) => row.reverts)).toEqual([0, 1, 0, 0, 2])
   })
 
   it('crosses a month and a year end', () => {
-    expect(fillDays([], 3, '2027-01-01T00:00:00Z').map((row) => row.date)).toEqual(['2026-12-30', '2026-12-31', '2027-01-01'])
+    expect(fillDays([], 3, '2027-01-01').map((row) => row.date)).toEqual(['2026-12-30', '2026-12-31', '2027-01-01'])
+  })
+})
+
+describe('lastDayOf', () => {
+  it('takes the day the node names', () => {
+    expect(lastDayOf([day('2026-11-24')], '2026-11-26', '2026-11-26T00:00:00Z')).toBe('2026-11-26')
+  })
+
+  it('takes the newest day the node reports when it does not name one, not the UTC date of the report', () => {
+    // 05:00 in Tokyo on the 26th is still the 25th in UTC.
+    expect(lastDayOf([day('2026-11-26'), day('2026-11-24')], undefined, '2026-11-25T20:00:00Z')).toBe('2026-11-26')
+  })
+
+  it('falls back to the UTC date of the report only when the period has no day at all', () => {
+    expect(lastDayOf([], undefined, '2026-11-25T20:00:00Z')).toBe('2026-11-25')
+  })
+
+  it('keeps the newest day, and all its numbers, in the days a chart draws, as the node’s summary counts them', () => {
+    const byDay = [day('2026-11-25', { reverts: 1 }), day('2026-11-26', { reverts: 2 })]
+    const rows = fillDays(byDay, 3, lastDayOf(byDay, undefined, '2026-11-25T20:00:00Z'))
+    expect(rows.map((row) => row.date)).toEqual(['2026-11-24', '2026-11-25', '2026-11-26'])
+    expect(rows.reduce((sum, row) => sum + row.reverts, 0)).toBe(byDay.reduce((sum, row) => sum + row.reverts, 0))
   })
 })
 

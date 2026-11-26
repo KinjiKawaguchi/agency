@@ -1,12 +1,11 @@
-import { DAY_SECONDS, HOUR_SECONDS, niceMax } from './series'
+import { niceMax } from './series'
+import { DAY_SECONDS, HOUR_SECONDS, MINUTE_SECONDS } from './time'
 
 export interface DurationUnits {
   minute: string
   hour: string
   day: string
 }
-
-const MINUTE_SECONDS = 60
 
 /** One decimal under ten, none above, and no trailing ".0": 0.5, 1.2, 12. */
 const tidy = (value: number): string => (value >= 10 ? String(Math.round(value)) : String(Math.round(value * 10) / 10))
