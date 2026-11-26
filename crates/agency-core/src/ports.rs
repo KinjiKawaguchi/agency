@@ -18,6 +18,7 @@ use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
+use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -319,6 +320,21 @@ pub trait TeamRuntime: Send + Sync {
     /// The team's token usage over the last `days` days. A runtime that does not report usage
     /// answers 404.
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError>;
+    /// The team's participants over the last `days` days, with the days cut at `utc_offset_minutes` (minutes
+    /// east of UTC). A runtime that does not report them answers 404, which is what a runtime that does not
+    /// implement this answers.
+    async fn participant_metrics(
+        &self,
+        _team: &HostedTeam,
+        _days: u32,
+        _utc_offset_minutes: i32,
+    ) -> Result<ParticipantMetrics, RuntimeError> {
+        Err(RuntimeError {
+            status: 404,
+            message: "the team runtime does not report participant metrics".into(),
+        })
+    }
+
     /// At most `limit` events of the team's activity after `since`, oldest first. A runtime that does not
     /// report activity answers 404.
     async fn activity(
