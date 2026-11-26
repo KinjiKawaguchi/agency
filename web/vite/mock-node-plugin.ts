@@ -42,6 +42,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
+    // A recovery of the org that was started and waits, as the node says it on `GET /api/me`.
+    ...(query?.get('recovery') === '1' ? { recoveries: { acme: { takesEffectAt: new Date(Date.now() + 71 * 3_600_000).toISOString(), newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true } } } : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
