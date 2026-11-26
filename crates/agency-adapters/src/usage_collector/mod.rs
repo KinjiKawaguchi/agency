@@ -7,6 +7,7 @@
 mod claude;
 mod claude_login;
 mod codex;
+mod renew;
 mod schedule;
 mod usage_file;
 
@@ -154,13 +155,52 @@ fn file_age(path: &Path) -> Duration {
         .unwrap_or(Duration::MAX)
 }
 
+/// What renews the expired login of a Claude source, if the source has it on: `claude` (or `command`)
+/// run with the login's `CLAUDE_CONFIG_DIR`.
+fn renewer(
+    is_on: bool,
+    command: Option<&Path>,
+    config_dir: Option<&Path>,
+    data_dir: &Path,
+    log: &Log,
+) -> Option<renew::Renewer> {
+    is_on.then(|| {
+        let program = renew::ClaudeProgram::new(
+            command.map_or_else(|| PathBuf::from("claude"), Path::to_path_buf),
+            config_dir.map(Path::to_path_buf),
+            data_dir.join("renewals").join("work"),
+        );
+        let record = renew::record_path(data_dir, config_dir);
+        renew::Renewer::new(Arc::new(program), record, log.clone())
+    })
+}
+
 /// The sources a node reads for real.
-fn connect(clock: Arc<dyn Clock>, home: PathBuf, user: String) -> Connect {
+fn connect(
+    clock: Arc<dyn Clock>,
+    home: PathBuf,
+    user: String,
+    data_dir: PathBuf,
+    log: Log,
+) -> Connect {
     Box::new(move |spec| match spec {
-        UsageCollector::Claude { config_dir } => {
+        UsageCollector::Claude {
+            config_dir,
+            renew,
+            command,
+        } => {
             let store = ClaudeConfigDir::new(config_dir.clone(), home.clone(), user.clone());
-            let usage = ClaudeUsage::new(Arc::new(store), clock.clone(), USAGE_URL.to_owned())
+            let mut usage = ClaudeUsage::new(Arc::new(store), clock.clone(), USAGE_URL.to_owned())
                 .map_err(|error| error.without_url().to_string())?;
+            if let Some(renewer) = renewer(
+                *renew,
+                command.as_deref(),
+                config_dir.as_deref(),
+                &data_dir,
+                &log,
+            ) {
+                usage = usage.with_renewer(renewer);
+            }
             Ok(Arc::new(usage) as Arc<dyn UsageSource>)
         }
         UsageCollector::Codex {
@@ -178,7 +218,8 @@ fn connect(clock: Arc<dyn Clock>, home: PathBuf, user: String) -> Connect {
 pub async fn run(node: Arc<Node>, data_dir: PathBuf, clock: Arc<dyn Clock>, log: Log) {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     let user = std::env::var("USER").unwrap_or_default();
-    let mut collector = Collector::new(data_dir, connect(clock, home, user), log);
+    let connected = connect(clock, home, user, data_dir.clone(), log.clone());
+    let mut collector = Collector::new(data_dir, connected, log);
     loop {
         collector
             .read_due(&node.config().funding, Instant::now())

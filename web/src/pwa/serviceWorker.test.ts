@@ -1,53 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import vm from 'node:vm'
+import { startWorker } from '../test/fakeWorker'
 
-// The worker is the file the node serves, run here in a fake worker scope: what it keeps and what it never touches.
-const source = readFileSync(join(process.cwd(), 'public', 'sw.js'), 'utf8')
-
-type Listener = (event: Record<string, unknown>) => void
-
-function startWorker(network: (request: Request) => Promise<Response>) {
-  const stores = new Map<string, Map<string, Response>>()
-  const listeners = new Map<string, Listener>()
-  const keyOf = (request: Request | string): string => (typeof request === 'string' ? new URL(request, 'https://agency.example').href : request.url)
-  const cacheOf = (name: string) => {
-    const store = stores.get(name) ?? new Map<string, Response>()
-    stores.set(name, store)
-    return {
-      match: (request: Request | string) => Promise.resolve(store.get(keyOf(request))?.clone()),
-      put: (request: Request, response: Response) => (store.set(keyOf(request), response), Promise.resolve()),
-      addAll: async (paths: string[]) => void paths.forEach((path) => store.set(keyOf(path), new Response(`kept ${path}`))),
-      keys: () => Promise.resolve([...store.keys()].map((url) => new Request(url))),
-      delete: (request: Request) => Promise.resolve(store.delete(keyOf(request))),
-    }
-  }
-  const caches = {
-    open: (name: string) => Promise.resolve(cacheOf(name)),
-    match: async (request: Request | string) => {
-      for (const store of stores.values()) if (store.has(keyOf(request))) return store.get(keyOf(request))?.clone()
-      return undefined
-    },
-    keys: () => Promise.resolve([...stores.keys()]),
-    delete: (name: string) => Promise.resolve(stores.delete(name)),
-  }
-  const self = { location: { origin: 'https://agency.example' }, addEventListener: (type: string, listener: Listener) => void listeners.set(type, listener), skipWaiting: () => Promise.resolve(), clients: { claim: () => Promise.resolve() } }
-  vm.runInNewContext(source, { self, caches, fetch: network, URL, Promise, Math })
-
-  /** Fires a fetch event; answers what the worker answered, or `undefined` when it left the request to the browser. */
-  const fetchEvent = async (request: Request): Promise<Response | undefined> => {
-    let answer: Promise<Response> | undefined
-    listeners.get('fetch')?.({ request, respondWith: (response: Promise<Response>) => void (answer = response) })
-    return answer
-  }
-  const run = async (type: string, data?: unknown): Promise<void> => {
-    const waits: Promise<unknown>[] = []
-    listeners.get(type)?.({ data, waitUntil: (promise: Promise<unknown>) => void waits.push(promise) })
-    await Promise.all(waits)
-  }
-  return { stores, fetchEvent, run }
-}
-
+// The worker is the file the node serves, run in a fake worker scope: what it keeps and what it never touches.
 /** An answer as the network gives for this origin: its type is `basic`, which a hand-made Response does not have. */
 const basic = (body: string, init: ResponseInit = {}): Response => Object.defineProperty(new Response(body, init), 'type', { value: 'basic' })
 const get = (path: string, init: RequestInit = {}): Request => new Request(`https://agency.example${path}`, init)
@@ -84,6 +37,29 @@ describe('the service worker', () => {
     expect((await (await worker.fetchEvent(get('/assets/gone.js')))?.text()) ?? '').toBe('no')
     await worker.fetchEvent(get('/assets/moved.js')).catch(() => undefined)
     for (const store of worker.stores.values()) expect([...store.keys()].some((url) => url.includes('/assets/'))).toBe(false)
+  })
+
+  it('never serves the shell for a claim link, and never keeps its answers: the claim call, the landing page and its files are left to the browser, the pages go to the network', async () => {
+    const asks: string[] = []
+    const worker = startWorker((request) => {
+      asks.push(new URL(request.url).pathname)
+      return Promise.resolve(basic(`from the network ${new URL(request.url).pathname}`))
+    })
+    await worker.run('install')
+    // The claim call, whatever it carries, and the files of the public landing page, are not the worker's: no answer from it, none kept.
+    for (const request of [get('/api/claim'), get('/api/claim', { method: 'POST', body: '{}' }), asked('/landing/claim.js', 'script'), asked('/landing/claim.css', 'style'), asked('/claim.html', 'document')]) {
+      expect(await worker.fetchEvent(request), request.url).toBeUndefined()
+    }
+    // The pages of the claim go to the network every time, so that the shell of the app is never answered from a cache.
+    for (const path of ['/claim', '/claim/continue']) {
+      const first = await worker.fetchEvent(navigation(path))
+      const second = await worker.fetchEvent(navigation(path))
+      expect(await first?.text(), path).toBe(`from the network ${path}`)
+      expect(await second?.text(), path).toBe(`from the network ${path}`)
+    }
+    expect(asks.filter((path) => path.startsWith('/claim'))).toEqual(['/claim', '/claim', '/claim/continue', '/claim/continue'])
+    const kept = [...worker.stores.values()].flatMap((store) => [...store.keys()])
+    expect(kept.filter((url) => /claim|landing|\/api\//.test(url))).toEqual([])
   })
 
   it('sends a page to the network, and shows the offline page only when the network fails', async () => {

@@ -16,6 +16,9 @@ pub enum Failure {
     /// The login's access token has run out. Only the program the login belongs to refreshes it:
     /// a refresh by the node would replace the refresh token that program holds.
     Expired,
+    /// The token has expired for long enough that the node ran `claude` to renew the login, and that
+    /// failed; the text says why.
+    NotRenewed(String),
     /// The service refused the token.
     Rejected,
     /// The service asked to be called less often, and perhaps said for how long.
@@ -35,6 +38,10 @@ impl fmt::Display for Failure {
             Self::Expired => write!(
                 f,
                 "the login's access token has expired; it renews when Claude Code next runs with it"
+            ),
+            Self::NotRenewed(why) => write!(
+                f,
+                "the login's access token has expired and could not be renewed: {why}"
             ),
             Self::Rejected => write!(f, "the service refused the login's token"),
             Self::RateLimited(_) => write!(f, "the service asked to be called less often"),

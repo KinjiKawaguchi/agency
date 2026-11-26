@@ -11,6 +11,9 @@ import type { Locale } from '../i18n/locale'
 import { NativeBadge } from '../native/NativeBadge'
 import { NativePushRegistration } from '../native/NativePushRegistration'
 import { SignInExpiredProvider } from '../shared/SignInExpired'
+import { WebPushBrowserProvider } from '../pwa/WebPushBrowserContext'
+import { WebPushRegistration } from '../pwa/WebPushRegistration'
+import type { WebPushBrowser } from '../pwa/useWebPush'
 import { ToastProvider } from '../shared/Toasts'
 import { createQueryClient } from './queryClient'
 import { createAppRouter } from './router'
@@ -23,9 +26,11 @@ interface AppProps {
   keyStore?: KeyStore
   /** The client every read goes through; one with the app's retry rule when absent. */
   queryClient?: QueryClient
+  /** What Web Push uses of the browser; the real one when absent. */
+  webPushBrowser?: WebPushBrowser
 }
 
-export function App({ client, history, locale, keyStore, queryClient: given }: AppProps) {
+export function App({ client, history, locale, keyStore, queryClient: given, webPushBrowser }: AppProps) {
   const [api] = useState(() => client ?? createApiClient())
   const [queryClient] = useState(() => given ?? createQueryClient())
   const [router] = useState(() => createAppRouter(history))
@@ -37,9 +42,12 @@ export function App({ client, history, locale, keyStore, queryClient: given }: A
             <KeyStoreProvider {...(keyStore === undefined ? {} : { store: keyStore })}>
               <DeviceKeyProvider>
                 <ToastProvider>
-                  <NativePushRegistration />
-                  <NativeBadge />
-                  <RouterProvider router={router} />
+                  <WebPushBrowserProvider browser={webPushBrowser}>
+                    <NativePushRegistration />
+                    <WebPushRegistration />
+                    <NativeBadge />
+                    <RouterProvider router={router} />
+                  </WebPushBrowserProvider>
                 </ToastProvider>
               </DeviceKeyProvider>
             </KeyStoreProvider>

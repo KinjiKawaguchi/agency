@@ -1,6 +1,9 @@
 // An in-memory stand-in for a home node's Client API. The same implementation serves the dev server
 // (through `vite/mock-node-plugin.ts`) and the component tests (through an injected `fetch`).
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import { createMockWebPush } from './webPush'
+import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { ClaimState } from '../claim/provisional'
+import { createMockClaim, type MockClaimOptions } from './claim'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
@@ -19,8 +22,12 @@ export interface MockNode {
   handle: (request: Request) => Promise<Response>
   /** What `agency device-add` does on the node's terminal: adds the device that asked with this pairing code. */
   addDeviceFromTerminal: (pairingCode: string) => boolean
+  /** The claim of a seat by link: what the owner does at the node (confirming the pairing code), and where it stands. */
+  claim: { confirm: () => void; state: () => ClaimState | undefined; holdOtherKey: (pairingCode: string) => void }
   /** Push tokens registered so far, one entry per token, as the node keeps them. */
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
+  /** The browsers subscribed through Web Push so far. */
+  pushSubscriptions: () => readonly PushSubscription[]
   /** Envelopes that were accepted, oldest first. */
   envelopes: () => readonly Signed<Envelope>[]
   /** Starts the node again: its write token changes, as it does each time the real node starts, and a page that holds the old one is refused. */
@@ -64,10 +71,14 @@ interface MockNodeOptions {
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
+  webPush?: boolean
   /** The other home nodes the node's configuration names, as `GET /api/me` gives them to its owner; left out when not given. */
   homeNodes?: ReadonlyArray<{ label: string; url: string }>
   /** Says in `GET /api/me` whether the node hides titles (`hidesTitles`); left out when not given, as a node that does not say. */
   hidesTitles?: boolean
+  /** A claim link the node has made for one seat (agency#201): the code, and how a redeem of it ends. Without it the claim routes answer 404. */
+  claim?: MockClaimOptions
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
   pushTokensFailWith?: number
   /** Makes only the decision log calls fail with this status. */
@@ -161,9 +172,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   /** A write must carry the page's token and say it is JSON; answers the refusal, or the parsed body. */
   const readWrite = async (request: Request): Promise<Response | { body: unknown }> => {
     if (request.headers.get('x-agency-token') !== writeToken) return failure(403, 'missing or wrong write token')
-    if (request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
-    return { body: await request.json().catch(() => null) }
+    if (request.method !== 'DELETE' && request.headers.get('content-type') !== 'application/json') return failure(415, 'Send the body as application/json.')
+    return { body: request.method === 'DELETE' ? null : await request.json().catch(() => null) }
   }
+
+  const webPush = createMockWebPush(() => now.toISOString())
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
   const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
@@ -272,6 +285,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return failure(404, 'No such route.')
   }
 
+  const claim = createMockClaim(options.claim)
+
   const handle = async (request: Request): Promise<Response> => {
     if (isSignInExpired) return new Response(null, { status: 302, headers: { location: SIGN_IN_URL } })
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
@@ -283,7 +298,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
       return json({ entries: log.slice(0, Math.min(MAX_LIMIT, Math.max(1, limit))) } satisfies DecisionLog)
     }
+    const claimed = claim.handle(request, url, () => readWrite(request))
+    if (claimed !== undefined) return claimed
     if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
+    if (options.webPush === true) {
+      const answered = webPush.handle(request, url, () => readWrite(request))
+      if (answered !== undefined) return answered
+    }
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) {
@@ -308,6 +329,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     decisions: () => received,
     envelopes: () => accepted,
     pushTokens: () => pushTokens,
+    pushSubscriptions: () => webPush.subscriptions(),
     addDeviceFromTerminal: devices.addFromTerminal,
+    claim: { confirm: claim.confirm, state: claim.state, holdOtherKey: claim.holdOtherKey },
   }
 }

@@ -42,6 +42,14 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Client** (クライアント). A program with device keys that talks to a home node: the web client, the iPhone app, the CLI on the node's terminal. A client is not a node.
 - **Push token**. An APNs token for the iPhone app to be notified at. Apple calls it a device token; the protocol does not, since a *device* here is a signing key.
 
+## Seats and claiming
+
+- **Seat** (席 *(proposed)*). A place in an org that has been given a name and a department but that no one has taken yet. A seat has no account, no key, and no devices, so it is **not a member**: it is addressed, but it never decides. In the protocol it is `seats[]` of the org definition. Say *seat* for it and keep *member* for one who has taken a seat, because a member has an account (or is hosted, below). A seat taken by someone keeps its id, so its requests and history stay attached.
+- **Claim link** (席の受け取りリンク *(proposed)*). A link, for one seat, for one person, that works once and expires, which the org's root node makes. Opening it, signing in with the address it was made for, and confirming a pairing code makes the person a member in place of the seat. The code in the link is secret: a page reads it from the address and removes it at once, and sends it only to the node, in the request that claims the seat.
+- **Hosted member** (ノードを持たないメンバー *(proposed)*). A member who has no node of their own: their client talks to the org root's node, which holds no key of theirs. Their devices hold their keys and sign their decisions, as for every member. They read only the requests addressed to them.
+- **Answer for** (代理で答える *(proposed)*). To record an answer on behalf of a seat or an external party who does not answer themselves. The protocol field `relays` names who may. Do not use *relay* for this: a node relays a change or an envelope to another node, and a screen that says "relayed for" will be read as that.
+- **External party** (外部の相談先 *(proposed)*). Someone the org asks through a member and who never takes a seat.
+
 ## Requests and decisions
 
 - **Request** (依頼). What a team asks of a member. Its kinds (`Request.kind`):
@@ -82,7 +90,7 @@ The numbers are worked out by the node and served at `/api/orgs/<org>/evaluation
 What the org's work achieves, as numbers about the business or the product, not about delivery (that is the evaluation). What the org measures is stated in its signed definition, with no number in it; the numbers are business data and stay on the owner's node.
 
 - **Outcome** (成果). What an org's work achieves, told by numbers about its business (revenue, margin, churn) or its product (activation, retention, lead time of a feature, a latency budget). Not the delivery numbers of the evaluation.
-- **KPI** (KPI). A measure the org states in `kpis[]` of its definition: an `id`, a `label`, its `kind` (`business` or `product`), its `unit`, and whether a `higher` or a `lower` value is better. It holds no number and no target figure. A `money` KPI names its currency by an ISO 4217 code (`JPY`), and there is no conversion: the org measures in the currency it reports in. The other units are `percent`, `count`, `ratio`, and `seconds` (a duration).
+- **KPI** (KPI). A measure the org states in `kpis[]` of its definition: an `id`, a `label`, its `kind` (`business` or `product`), its `unit`, and whether a `higher` or a `lower` value is better. It holds no number and no target figure. A `money` KPI names its currency by an ISO 4217 code (`JPY`), and there is no conversion: the org measures in the currency it reports in. The other units are `percent` (a number of percent: 41.5 means 41.5%), `count`, `ratio` (a plain number: 1.5 means 1.5 times), and `seconds` (a duration in seconds).
 - **Observation** (実績値). One number for a KPI on one day, with where it came from (entered by hand, or from a connector), who entered it, and when. It is kept on the owner's node only, never in the definition, and only the owner reads it.
 - **Reading** (読み取り). How a KPI's numbers stand around the day the epic an aim names shipped: the last number on or before that day, the first at least 14 days after it, and their change. It is a *correlation*, never a cause, and it refuses (with a state that says why) when there is too little to read. Read at `/api/orgs/<org>/outcomes/readings`, owner only.
 - **Aim** (狙い). What a team's plan says an epic is meant to move: `plan.aims[]` pairs an epic (by its item reference) with a KPI of the org.
@@ -99,6 +107,8 @@ What the org's work achieves, as numbers about the business or the product, not 
 | デバイス | 端末 | The Japanese name of a device is 端末. |
 | 判断のお願い | 判断待ち | The kind `pendingDecision` has one name. A sentence may say 「…さんの判断待ち」. |
 | person, for a member | member (メンバー) | "Person" stays for the human. |
+| unclaimed member; 未参加のメンバー | seat (席) | A seat is not a member: it has no account, key, or device. |
+| relay, for answering on someone's behalf | answer for (代理で答える) | A node relays changes to another node; a person answers for someone. |
 | person, for a participant; 人 for a participant or a count of them | participant (参加者) | A participant may be an agent. |
 | device, for a push token | push token | A device is a signing key. |
 
