@@ -109,6 +109,9 @@ export interface ClientOptions {
   confirmAfterMs?: number
 }
 
+/** A redirect that was not followed: what a browser answers for one with `redirect: 'manual'`, or, from a stand-in for the browser, a 3xx. */
+const isRedirected = (answer: Response): boolean => answer.type === 'opaqueredirect' || (answer.status >= 300 && answer.status < 400)
+
 /** A call the page cancelled itself (a screen closed, a read replaced by another): it says nothing about the sign-in. */
 const wasCancelled = (cause: unknown, request: Request): boolean => request.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')
 
@@ -120,18 +123,17 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
 
   /**
    * Whether the sign-in is really gone: asked a moment after a call failed without an answer, with one call to
-   * the node that takes no part in anything else. A node that answers it (any answer) has a sign-in that holds,
-   * and the call that failed was the connection. Calls that failed at the same moment share the one asking.
+   * the node that takes no part in anything else, and that does not follow a redirect. Access's redirect to its
+   * login then comes back as what it is (an `opaqueredirect`), which is the one sign of an expired sign-in; a
+   * failure of the connection stays a network error, and any other answer means the sign-in holds. Calls that
+   * failed at the same moment share the one asking.
    */
   let confirming: Promise<boolean> | undefined
   const isSignInGone = (): Promise<boolean> => {
     confirming ??= (async () => {
       await new Promise((resolve) => setTimeout(resolve, confirmAfterMs))
       if (!looksLikeExpiredSignIn({ hostname: page.hostname() }, page.isOnline())) return false
-      return send(new Request(url('/api/session'), { headers: { accept: 'application/json' } })).then(
-        () => false,
-        () => true,
-      )
+      return send(new Request(url('/api/session'), { headers: { accept: 'application/json' }, redirect: 'manual' })).then(isRedirected, () => false)
     })().finally(() => {
       confirming = undefined
     })

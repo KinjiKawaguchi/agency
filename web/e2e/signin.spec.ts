@@ -64,6 +64,30 @@ test('does not show the sign-in notice, not even for a moment, when the session 
   await expect(paper.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
 })
 
+test('does not show the sign-in notice when the connection is out for longer than the wait and comes back, while the browser says it is online', async ({ page, request }) => {
+  await enrolBrowser(page, request, PAGE)
+  await page.goto(`${PAGE}/desk`)
+  const paper = page.getByRole('article')
+  await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()
+  await paper.getByRole('textbox', { name: /^Notes/ }).fill('Start next week.')
+  await page.evaluate(() => {
+    ;(window as unknown as { __noticeSeen: boolean }).__noticeSeen = false
+    new MutationObserver(() => {
+      if (document.querySelector('.signin-notice') !== null) (window as unknown as { __noticeSeen: boolean }).__noticeSeen = true
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  // Every call to the node fails as a lost connection does (a network error, no answer, no redirect), for three seconds:
+  // longer than the page waits before it asks whether the sign-in holds, and that call fails too.
+  await page.route('**/api/**', (route) => route.abort('connectionrefused'))
+  await paper.getByRole('button', { name: 'Approve with “Approve”' }).click()
+  await page.waitForTimeout(3000)
+  await page.unroute('**/api/**')
+  await page.waitForTimeout(1500)
+  expect(await page.evaluate(() => (window as unknown as { __noticeSeen: boolean }).__noticeSeen)).toBe(false)
+  await expect(page.locator('.signin-notice')).toHaveCount(0)
+  await expect(paper.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
+})
+
 test('does not call a node that is simply down on this machine an expired sign-in', async ({ page, request }) => {
   await page.goto('http://127.0.0.1:4173/desk')
   await expect(page.getByRole('article')).toBeVisible()

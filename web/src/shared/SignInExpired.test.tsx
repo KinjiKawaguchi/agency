@@ -10,7 +10,15 @@ const AWAY = { hostname: () => 'agency.example.test', isOnline: () => true }
 function clientWithSignIn(page = AWAY) {
   const node = createTestNode()
   const state = { isExpired: false }
-  const client = createApiClient((request) => (state.isExpired ? Promise.reject(new TypeError('Failed to fetch')) : node.handle(request)), page)
+  // A call that follows the redirect to another origin fails as a network error; the one that asks without following it gets the redirect.
+  const client = createApiClient(
+    (request) => {
+      if (!state.isExpired) return node.handle(request)
+      return request.redirect === 'manual' ? Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://login.example.test/' } })) : Promise.reject(new TypeError('Failed to fetch'))
+    },
+    page,
+    { confirmAfterMs: 0 },
+  )
   return { client, state, node }
 }
 
