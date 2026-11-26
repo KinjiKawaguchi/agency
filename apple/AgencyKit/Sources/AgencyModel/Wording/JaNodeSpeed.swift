@@ -72,6 +72,7 @@ extension Ja {
             public static func measured(_ value: String) -> String { "計測値: \(value)。" }
             public static let met = "達成"
             public static let notMet = "未達"
+            public static let undetermined = "この目標に対して判断できません"
             public static let unknown = "まだ判断できません"
         }
     }

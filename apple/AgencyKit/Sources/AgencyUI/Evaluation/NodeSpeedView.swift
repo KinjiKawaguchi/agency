@@ -163,7 +163,7 @@ private struct ObjectivesCard: View {
         switch state {
         case .met: "checkmark.circle.fill"
         case .notMet: "xmark.circle.fill"
-        case .unknown: "questionmark.circle"
+        case .undetermined, .unknown: "questionmark.circle"
         }
     }
 
@@ -171,7 +171,7 @@ private struct ObjectivesCard: View {
         switch state {
         case .met: .green
         case .notMet: Theme.danger
-        case .unknown: .secondary
+        case .undetermined, .unknown: .secondary
         }
     }
 }
