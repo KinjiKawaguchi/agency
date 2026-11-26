@@ -10,6 +10,7 @@ struct EvaluationContent: View {
     let org: OrgRef?
     let days: Int
     let state: EvaluationState
+    var effort: EffortState = .loading
     var onChooseOrg: ((String) -> Void)?
     var onChooseDays: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
@@ -23,6 +24,7 @@ struct EvaluationContent: View {
             } else {
                 controls
                 stateView
+                EffortSection(state: effort, onTryAgain: onTryAgain, selectedDay: selectedDay).padding(.top, 20)
             }
         }
     }

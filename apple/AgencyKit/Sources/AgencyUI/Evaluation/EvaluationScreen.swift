@@ -32,7 +32,7 @@ struct EvaluationPage: View {
                 banner
                 if store.loading == .loaded || !store.orgs.isEmpty {
                     EvaluationContent(
-                        orgs: store.orgs, org: store.org, days: store.days, state: store.state,
+                        orgs: store.orgs, org: store.org, days: store.days, state: store.state, effort: store.effort,
                         onChooseOrg: { id in Task { await store.choose(org: id) } },
                         onChooseDays: { days in Task { await store.choose(days: days) } },
                         onTryAgain: { Task { await store.refresh() } }

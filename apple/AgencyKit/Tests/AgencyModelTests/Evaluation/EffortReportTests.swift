@@ -4,6 +4,15 @@ import Foundation
 import Testing
 
 /// Ported from `web/src/evaluation/effort.test.ts`, and the shared sample (`testdata/effort.sample.json`) drawn as the screen draws it.
+extension TeamEffort {
+    /// A team that spent `spent` dollars on new features on its last day, for a test.
+    static func with(spent: Double, last: String, from: String = "2026-11-11", of team: TeamEffort) -> TeamEffort {
+        let types = EffortType.allCases.map { #""\#($0.rawValue)":{"costUsd":\#($0 == .newFeature ? spent : 0)}"# }.joined(separator: ",")
+        let json = #"{"team":"\#(team.team)","from":"\#(from)","until":"\#(last)","byType":{\#(types)},"byDay":[{"date":"\#(last)","costUsd":{"newFeature":\#(spent)}}]}"#
+        return try! JSONDecoder().decode(TeamEffort.self, from: Data(json.utf8))
+    }
+}
+
 @Suite("Effort")
 struct EffortReportTests {
     static func sample(from file: String = #filePath) throws -> Effort {
@@ -111,6 +120,26 @@ struct EffortReportTests {
         #expect(try #require(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(none)).budget).fraction == 1)
     }
 
+    @Test("spending exactly the budget is not over it")
+    func exactBudget() throws {
+        let sample = try Self.sample()
+        let exact = TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 13)
+        let day = TeamEffort.with(spent: 13, last: "2026-11-24", of: sample.teams[0])
+        let budget = try #require(TeamEffortReport(effort: day, label: "App", days: 14, plan: .stated(exact)).budget)
+        #expect(!budget.isOver)
+        #expect(budget.note == "残り $0")
+        #expect(budget.fraction == 1)
+    }
+
+    @Test("a team is drawn against its own period, not the one asked for")
+    func ownPeriod() throws {
+        let sample = try Self.sample()
+        let short = TeamEffort.with(spent: 1, last: "2026-11-24", from: "2026-11-18", of: sample.teams[0])
+        let chart = TeamEffortReport(effort: short, label: "App", days: 14, plan: .none).byDay
+        #expect(chart.days.count == 7)
+        #expect(chart.days.first?.date == "2026-11-18")
+    }
+
     @Test("the cost by day is stacked by type over every day of the period, with the total on the day")
     func byDay() throws {
         let sample = try Self.sample()
@@ -142,5 +171,9 @@ struct EffortReportTests {
         #expect(report.rows.allSatisfy { $0.share == 0 })
         #expect(report.byDay.max == 1)
         #expect(report.budget?.line == "直近 7 日で $140 のうち $0")
+        #expect(report.budget?.fraction == 0)
+        // A budget of nothing is full, even before a dollar is spent.
+        let zero = TeamEffortReport(effort: effort(), label: "Quiet", days: 14, plan: .stated(TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 0)))
+        #expect(zero.budget?.fraction == 1)
     }
 }

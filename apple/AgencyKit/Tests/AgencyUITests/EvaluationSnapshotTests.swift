@@ -72,6 +72,43 @@ struct EvaluationSnapshotTests {
         expectFits(Snapshot.capture("evaluation-outcomes", view), "the other outcomes")
     }
 
+    // MARK: Effort
+
+    private func effortReport(plan: PlanState, label: String = "App", over: Bool = false) -> TeamEffortReport {
+        let types = EffortType.allCases.enumerated().map { index, type in
+            #""\#(type.rawValue)":{"costUsd":\#(index == 5 ? 3.5 : Double(10 - index) * 12.25),"tokens":{"input":1,"output":2,"cacheRead":3,"cacheWrite":4}}"#
+        }.joined(separator: ",")
+        let days = (1...30).map { day -> String in
+            let costs = EffortType.allCases.enumerated().map { #""\#($1.rawValue)":\#(Double((day * 3 + $0 * 5) % 17) + (over ? 40 : 1))"# }.joined(separator: ",")
+            return #"{"date":"\#(String(format: "2026-11-%02d", day))","costUsd":{\#(costs)}}"#
+        }.joined(separator: ",")
+        let json = #"{"team":"app","from":"2026-11-01","until":"2026-11-30","byType":{\#(types)},"byDay":[\#(days)]}"#
+        return TeamEffortReport(effort: try! JSONDecoder().decode(TeamEffort.self, from: Data(json.utf8)), label: label, days: 30, plan: plan)
+    }
+
+    private var plan: TeamPlan {
+        TeamPlan(allocation: [.newFeature: 50, .improvement: 20, .maintenance: 20, .debt: 10, .incident: 0], weeklyBudgetUsd: 900)
+    }
+
+    @Test("the effort of a team against a plan, over its budget, and of teams with no plan fit the screen in light and dark")
+    func effort() {
+        let state = EffortState.ready(
+            [effortReport(plan: .stated(plan), label: UIFixtures.longJapaneseTitle, over: true), effortReport(plan: .none, label: "Free"), effortReport(plan: .unreadable, label: "Broken")],
+            unavailable: [TeamUnavailableNote(team: "ops", label: "ops", reason: "the team's node could not be reached")]
+        )
+        let view = EffortSection(state: state, selectedDay: "2026-11-12")
+        for scheme in [ColorScheme.light, .dark] {
+            expectFits(Snapshot.capture("effort", view, scheme: scheme), "the effort (\(scheme))")
+        }
+    }
+
+    @Test("the other outcomes of the effort fit the screen")
+    func effortOutcomes() {
+        let states: [EffortState] = [.loading, .unavailable, .couldNotAnswer("runtime busy"), .failed("connection refused")]
+        let view = VStack(alignment: .leading, spacing: 24) { ForEach(Array(states.enumerated()), id: \.offset) { EffortSection(state: $1) } }
+        expectFits(Snapshot.capture("effort-outcomes", view), "the other outcomes of the effort")
+    }
+
     @Test("a team with no pull request merged has empty charts and says so")
     func empty() {
         let json = #"{"team":"app","from":"2026-11-11","until":"2026-11-24","summary":{"merged":{},"mainRedSeconds":0,"longestRedSeconds":0,"reverts":0},"byDay":[]}"#
