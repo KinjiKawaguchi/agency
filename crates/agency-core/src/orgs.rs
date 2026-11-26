@@ -36,11 +36,8 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
     if key == &node.key().public() {
         return sign_by(node, body, &|text: &[u8]| Ok(node.key().sign(text)));
     }
-    let purpose = format!(
-        "Sign version {} of {}",
-        body.version,
-        agency_proto::org::printable(&body.label)
-    );
+    let before = node.store().load_org(&body.org);
+    let purpose = crate::change_words::describe(before.as_ref().map(|doc| &doc.body), &body);
     let org = body.org.clone();
     sign_by(node, body, &|text: &[u8]| {
         node.root_keys().sign(&org, key, text, &purpose)

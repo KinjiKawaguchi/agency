@@ -5,6 +5,7 @@
 pub mod about;
 pub mod activity;
 pub mod capabilities;
+pub mod change_words;
 pub mod client;
 pub mod clients_seen;
 pub mod config;

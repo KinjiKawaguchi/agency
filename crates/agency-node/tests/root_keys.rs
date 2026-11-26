@@ -273,3 +273,27 @@ async fn a_node_takes_one_rotation_signed_by_the_old_root_and_nothing_else() {
     orgs::receive(&carol.node, by_new_root).await.unwrap();
     assert_eq!(current(&carol).body.label, "Acme Inc");
 }
+
+#[tokio::test]
+async fn the_presence_prompt_names_what_the_version_changes() {
+    let (alice, _) = alice().await;
+    alice.root_keys.ask_presence(true);
+    departments::add(&alice.node, &id("acme"), department("ops")).unwrap();
+    agency_core::recovery::add(
+        &alice.node,
+        &id("acme"),
+        agency_proto::AccountKey::from_seed([0x51; 32]).public(),
+    )
+    .unwrap();
+    orgs::rotate_root(&alice.node, &id("acme")).unwrap();
+    let prompts = alice.root_keys.prompts();
+    assert_eq!(
+        prompts,
+        [
+            "acme: add department ops (ops)",
+            "acme: add a recovery key",
+            "acme: move the root to a new key",
+        ],
+        "{prompts:?}"
+    );
+}
