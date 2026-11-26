@@ -55,6 +55,7 @@ To change something, send a signed envelope to its writer.
 - Only the root key (`root`) can sign it. `signer` is `root.account`.
 - Versions start at 1 and grow by 1. `prev` is the hex SHA-256 (64 characters) of the canonical JSON of the previous signed version. Version 1 has no `prev`.
 - A node accepts only the next version of the one it has: the version is one higher, `prev` is the current version's fingerprint, and it is signed by the current root key. A new root is also signed by the previous root key.
+- A node that is more than one version behind (it was offline, or reads rarely) takes the versions in between first, in order, from the node it reads the definition from (`GET /fed/v1/orgs/<org>/versions?after=<n>`), checking each as above. It does so when a read of the definition shows a newer version, and when the root's node answers a device change with one. Every node keeps the versions it accepted, so the root's node can serve all of them.
 - Membership: an account listed in `people` whose `publicKey` is not in `revoked`.
 - `devices` is left out when it is empty, so versions signed before devices existed keep their canonical JSON and signatures. Device ids are unique per member. A device key appears once in the whole definition, is never an account key or the root key (nodes hold those), and is never in `revoked`.
 - Departments form a tree: a department's `parent` is another department of the org (or absent at the top), following parents never leads back to the department, and `head` is a member's `id`. A member's and a team's `department` is one of the org's departments. The root's node changes them with `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept` (and `team-add --department`), each a new version.
@@ -125,6 +126,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 |---|---|---|
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
+| GET | `/fed/v1/orgs/<org>/versions?after=<n>` | A member's signed read of the path with its query. Answers `{ "versions": [<signed definition>, ...] }`: the versions after `n`, oldest first, at most 20 (a node further behind asks again); 404 when this node does not have them all |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
 | GET | `/fed/v1/teams/<org>/<team>/view` | A signed read and membership (answers `{ "view": TeamView, "viewer"?: <name> }`) |

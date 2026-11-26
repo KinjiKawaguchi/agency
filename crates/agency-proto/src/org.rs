@@ -103,6 +103,13 @@ pub struct OrgDefinition {
 
 pub type SignedOrg = Signed<OrgDefinition>;
 
+/// The answer of the versions route: an org definition's versions after a given one, oldest first.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Versions {
+    pub versions: Vec<SignedOrg>,
+}
+
 /// Whether this is a node origin: http or https with a host and port only.
 pub fn is_node_origin(raw: &str) -> bool {
     let rest = raw

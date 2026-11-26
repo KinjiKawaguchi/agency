@@ -209,6 +209,9 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
         .get_definition(&place.node, &path, &access)
         .await
     {
+        if newer.body.version > doc.body.version + 1 {
+            let _ = orgs::catch_up(node, &place.node, org, newer.body.version).await;
+        }
         let _ = orgs::receive(node, newer).await;
     }
 }

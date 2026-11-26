@@ -5,9 +5,10 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
-use crate::read_auth::{verify_read_once, ReadAuth};
+use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::routes;
 use crate::unseen;
-use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace};
+use agency_proto::org::{verify_genesis, verify_successor, Root, SignedOrg, TeamPlace, Versions};
 use agency_proto::{Id, Kind, OrgDefinition, Person, Role, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
@@ -294,4 +295,72 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
     }
     doc.body.validate().map_err(Error::bad_request)?;
     node.store().save_org(&doc)
+}
+
+/// At most this many versions go in one answer of the versions route; a node further behind asks again.
+pub const VERSIONS_PER_ANSWER: u64 = 20;
+
+/// The versions of an org's definition after `after`, oldest first and at most `VERSIONS_PER_ANSWER`,
+/// for a member's signed read of `path` (`routes::versions`). They come from this node's history, so a
+/// node that joined later than `after` does not have them all and says so.
+pub fn read_versions(
+    node: &Node,
+    org: &Id,
+    after: u64,
+    auth: &ReadAuth,
+    path: &str,
+) -> Result<Versions> {
+    let doc = node.store().load_org(org);
+    let definition = doc.as_ref().map(|doc| &doc.body);
+    verify_read_once(node, definition, doc.is_some(), auth, "GET", path)?;
+    let current = doc
+        .ok_or_else(|| unseen::refused("a read of the versions of an org this node does not have"))?
+        .body
+        .version;
+    let last = current.min(after.saturating_add(VERSIONS_PER_ANSWER));
+    let versions = (after.saturating_add(1)..=last)
+        .map(|version| node.store().load_org_version(org, version))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            Error::not_found(format!(
+                "this node does not have every version of {org} after {after}"
+            ))
+        })?;
+    Ok(Versions { versions })
+}
+
+/// Brings this node's copy of an org up to `target` from the node at `origin`, one version at a time:
+/// each must be the next one, linked to the one before and signed by its root (`receive`). A node that
+/// missed versions (it was offline, or it reads rarely) otherwise could never take a newer one, since
+/// it accepts only the next version of the one it has.
+pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Result<()> {
+    loop {
+        let current = load(node, org)?.body.version;
+        if current + 1 >= target {
+            return Ok(());
+        }
+        let path = routes::versions(org, current);
+        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let fetched = node
+            .peers()
+            .get_versions(origin, &path, &auth)
+            .await
+            .map_err(|error| Error::new(ErrorKind::Unavailable, error.to_string()))?;
+        if fetched.versions.is_empty() {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} has no versions of {org} after {current}"),
+            ));
+        }
+        for version in fetched.versions {
+            receive(node, version).await?;
+        }
+        // An answer that moves nothing on (versions this node already has) would ask again forever.
+        if load(node, org)?.body.version <= current {
+            return Err(Error::new(
+                ErrorKind::Unavailable,
+                format!("{origin} sent no version of {org} after {current}"),
+            ));
+        }
+    }
 }

@@ -6,6 +6,11 @@ pub fn definition(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/definition")
 }
 
+/// The versions of an org's definition after `after`. The query is part of the signed path.
+pub fn versions(org: &Id, after: u64) -> String {
+    format!("/fed/v1/orgs/{org}/versions?after={after}")
+}
+
 pub fn devices(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/devices")
 }

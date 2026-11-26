@@ -10,7 +10,7 @@ use crate::read_auth::ReadAuth;
 use crate::views::Replica;
 use agency_proto::client::{PushToken, UsageWindow};
 use agency_proto::clock::OffsetDateTime;
-use agency_proto::org::SignedOrg;
+use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::FederatedView;
 use agency_proto::{
@@ -45,6 +45,8 @@ pub trait OrgStore {
     /// Replaces the current definition and keeps the previous versions as history.
     fn save_org(&self, doc: &SignedOrg) -> Result<()>;
     fn orgs(&self) -> Vec<SignedOrg>;
+    /// One version of an org's definition, from the history this node kept.
+    fn load_org_version(&self, org: &Id, version: u64) -> Option<SignedOrg>;
 }
 
 /// Invites, keyed by the SHA-256 of their code. The code itself is never stored.
@@ -175,6 +177,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         access: &DefinitionAccess,
     ) -> Result<SignedOrg, PeerError>;
+    /// The versions of an org's definition after one, by a signed read of `path` (`routes::versions`).
+    async fn get_versions(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Versions, PeerError>;
     async fn post_envelope(
         &self,
         node: &str,

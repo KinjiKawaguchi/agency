@@ -1,7 +1,7 @@
 //! Other nodes over HTTP (`/fed/v1`). Signed reads travel in the `x-agency-*` headers.
 use agency_core::ports::{DefinitionAccess, PeerError, Peers};
 use agency_core::read_auth::ReadAuth;
-use agency_proto::org::SignedOrg;
+use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::view::FederatedView;
 use agency_proto::{DeviceChange, Envelope, JoinRequest, Signed, TokenUsage};
 use async_trait::async_trait;
@@ -161,6 +161,15 @@ impl Peers for HttpPeers {
                 .await
             }
         }
+    }
+
+    async fn get_versions(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Versions, PeerError> {
+        self.get_signed(node, path, auth).await
     }
 
     async fn post_envelope(
