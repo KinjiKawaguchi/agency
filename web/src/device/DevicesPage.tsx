@@ -224,7 +224,7 @@ export function DevicesPage() {
       {key.status === 'unsupported' ? <Unsupported /> : null}
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
-      {standing.status === 'guest' ? null : <HomeNodesCard />}
+      {standing.status === 'member' ? <HomeNodesCard /> : null}
       <OsNoticesCard />
       <InstallCard />
     </>
