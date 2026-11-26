@@ -21,6 +21,8 @@ protocol HomeNodeSwitching: AnyObject {
     func note(nodeID: String?, of node: HomeNodeURL)
     /// The id a push from `node` carries.
     func nodeID(of node: HomeNodeURL) -> String
+    /// Whether `node` has said its id.
+    func hasSaidID(of node: HomeNodeURL) -> Bool
 }
 
 extension HomeNodeStore: HomeNodeSwitching {

@@ -25,7 +25,10 @@ extension Ja {
         public static let forgetAnyway = "それでも忘れる"
         public static let leaveAnyway = "それでも出る"
         public static let cancel = "やめる"
-        public static let notificationOfAnotherNode = "この通知は、この端末にないホームノードのものです。"
+        /// A tapped notification of a home node this device does not have; the org it is about, when it names one.
+        public static func notificationOfAnotherNode(org: String?) -> String {
+            org.map { "この通知（組織: \($0)）は、この端末にないホームノードのものです。" } ?? "この通知は、この端末にないホームノードのものです。"
+        }
         public static let working = "ホームノードに伝えています"
         public static let switchHint = "切り替えると、このホームノードのサインインと鍵はそのまま残ります。"
         public static let signInTitle = "サインインが必要です"

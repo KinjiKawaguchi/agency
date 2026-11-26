@@ -144,9 +144,13 @@ struct HomeNodeBookTests {
         let a = try node("https://a.example.com")
         var book = HomeNodeBook(current: a)
         #expect(book.nodeID(of: a) == NodeID.of(a), "worked out from the address until it has said")
+        #expect(!book.hasSaidID(of: a))
         let said = "02ae509c6b20999646d3c600687ee1bf"
         book.note(nodeID: said, of: a)
         #expect(book.nodeID(of: a) == said)
+        #expect(book.hasSaidID(of: a))
+        #expect(book.hasSaidID(of: try node("https://A.example.com:443/")))
+        #expect(!book.hasSaidID(of: try node("https://b.example.com")))
         #expect(book.nodeID(of: try node("https://A.example.com:443/")) == said, "however the address is written")
         #expect(HomeNodeBook(decoding: book.encoded(), legacyAddress: nil).nodeID(of: a) == said, "kept with the book")
         book.note(nodeID: "not an id", of: a)

@@ -11,6 +11,15 @@ public enum NotificationLink: Equatable, Sendable {
     /// A decision was refused: the desk, where its team's requests are.
     case decision(org: String, team: String, id: String)
 
+    /// The org the notification is about, when it names one.
+    public var org: String? {
+        switch self {
+        case .request(let link): link.org
+        case .decision(let org, _, _): org
+        case .devices: nil
+        }
+    }
+
     /// Returns `nil` for a payload that is not ours, a type this app does not know, or an identifier that
     /// is missing or odd, so that nothing in a payload can change which screen is opened.
     public init?(userInfo: [AnyHashable: Any]) {

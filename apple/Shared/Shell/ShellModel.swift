@@ -90,20 +90,31 @@ final class ShellModel {
     }
 
     /// A notification was tapped: go where it leads, on the node that sent it. A tap that names another node of this device goes
-    /// to that node first and stays pending until its shell is up, which opens it; one that names a node this device does not
-    /// have opens nothing of it and says so.
-    func takeLink() {
+    /// to that node first (clearing the icon number and the widgets of this one, as a switch by hand does) and stays pending until
+    /// its shell is up, which opens it; one that names a node this device does not have opens nothing of it and says so. While the
+    /// open node has not yet said its own id, a tap that is none of the others' waits for the account read, and a tap that has
+    /// waited longer than a minute is dropped.
+    func takeLink(now: Date = Date()) {
         guard session != nil, let tap = push.pendingTap else { return }
+        guard !tap.isStale(now: now) else {
+            push.takePendingTap()
+            return
+        }
         let others = nodes.others.map(\.url)
-        switch NotificationRouting.action(forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:)) {
+        let action = NotificationRouting.action(
+            forNode: tap.node, current: homeNode, others: others, idOf: nodes.nodeID(of:), hasCurrentSaid: nodes.hasSaidID(of: homeNode)
+        )
+        switch action {
         case .openHere:
             push.takePendingTap()
             router.open(tap.link)
         case .switchTo(let node):
             switchHomeNode(to: node)
+        case .waitForAccount:
+            break
         case .unknownNode:
             push.takePendingTap()
-            linkNotice = Ja.HomeNodes.notificationOfAnotherNode
+            linkNotice = Ja.HomeNodes.notificationOfAnotherNode(org: tap.org)
         }
     }
 
@@ -178,6 +189,7 @@ final class ShellModel {
             guard let me = await session.readAccount() else { return }
             nodes.note(configured: me.homeNodes)
             nodes.note(nodeID: me.nodeId, of: homeNode)
+            takeLink()
         }
     }
 }

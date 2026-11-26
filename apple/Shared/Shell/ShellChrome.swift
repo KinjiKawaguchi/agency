@@ -66,7 +66,7 @@ private extension View {
     /// Said once when a tapped notification belongs to a home node this device does not have.
     func linkNoticeAlert(_ model: ShellModel) -> some View {
         alert(
-            Ja.HomeNodes.notificationOfAnotherNode,
+            model.linkNotice ?? "",
             isPresented: Binding(get: { model.linkNotice != nil }, set: { if !$0 { model.linkNotice = nil } })
         ) {
             Button(Ja.Desk.close) {}

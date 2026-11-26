@@ -76,3 +76,24 @@ struct NotificationTapTests {
         #expect(NotificationTap(userInfo: ["aps": ["alert": "x"]]) == nil)
     }
 }
+
+@Suite("NotificationTap age and org")
+struct NotificationTapAgeTests {
+    private let payload: [AnyHashable: Any] = ["agency": ["org": "acme", "team": "app", "request": "r-1"]]
+
+    @Test("a tap is stale after a minute, and not before")
+    func stale() throws {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let tap = try #require(NotificationTap(userInfo: payload, receivedAt: start))
+        #expect(!tap.isStale(now: start))
+        #expect(!tap.isStale(now: start.addingTimeInterval(60)))
+        #expect(tap.isStale(now: start.addingTimeInterval(60.5)))
+    }
+
+    @Test("the org of a tap is the org of its link, and a device request has none")
+    func org() throws {
+        #expect(NotificationTap(userInfo: payload)?.org == "acme")
+        #expect(NotificationTap(userInfo: ["agency": ["type": "decision", "org": "lab", "team": "app", "id": "d-1"]])?.org == "lab")
+        #expect(NotificationTap(userInfo: ["agency": ["type": "device"]])?.org == nil)
+    }
+}

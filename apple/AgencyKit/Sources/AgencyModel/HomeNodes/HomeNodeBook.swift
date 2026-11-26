@@ -90,6 +90,9 @@ public struct HomeNodeBook: Equatable, Sendable {
         if let nodeID, NotificationTap.isNodeID(nodeID) { nodeIDs[node.origin] = nodeID } else { nodeIDs[node.origin] = nil }
     }
 
+    /// Whether `node` has said its id, so that `nodeID(of:)` is its word and not worked out from its address.
+    public func hasSaidID(of node: HomeNodeURL) -> Bool { nodeIDs[node.origin] != nil }
+
     /// The id a push from `node` carries: what the node said of it, else the one worked out from its address.
     public func nodeID(of node: HomeNodeURL) -> String {
         nodeIDs[node.origin] ?? NodeID.of(node)

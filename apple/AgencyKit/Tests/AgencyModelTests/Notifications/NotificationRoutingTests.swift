@@ -15,11 +15,17 @@ struct NotificationRoutingTests {
 
     @Test("the id of a node is the node's own: every case of the shared file, however the address is written")
     func vectors() throws {
-        let cases = try Self.file()["cases"] as! [[String: String]]
+        let file = try Self.file()
+        let cases = file["cases"] as! [[String: String]]
         #expect(cases.count >= 5)
         for item in cases {
             #expect(NodeID.of(try node(item["url"]!)) == item["id"], Comment(rawValue: item["url"]!))
             #expect(NodeID.of(try node(item["origin"]!)) == item["id"], Comment(rawValue: item["origin"]!))
+        }
+        // The node refuses more than the app does (it drops a path or a user name the owner typed, the node does not accept them in
+        // its configuration), but what neither can open as a home node has no id in either.
+        for text in (file["none"] as! [String]).filter({ ["ftp://work.example.com", "http://work.example.com", ""].contains($0) }) {
+            #expect(throws: (any Error).self, Comment(rawValue: text)) { try HomeNodeURL(validating: text) }
         }
     }
 
@@ -63,6 +69,19 @@ struct NotificationRoutingTests {
         #expect(NotificationRouting.action(forNode: said, current: current, others: [loopback], idOf: book.nodeID(of:)) == .switchTo(loopback))
         #expect(NotificationRouting.action(forNode: NodeID.of(loopback), current: current, others: [loopback], idOf: book.nodeID(of:)) == .unknownNode,
                 "the address it is reached at no longer names it once it has said its own")
+    }
+
+    @Test("until the open node has said its own id, a push that is none of the others' waits for the account read")
+    func waits() throws {
+        let current = try node("a.example.com")
+        let other = try node("b.example.com")
+        let stranger = NodeID.of(try node("gone.example.com"))
+        #expect(NotificationRouting.action(forNode: stranger, current: current, others: [other], hasCurrentSaid: false) == .waitForAccount)
+        #expect(NotificationRouting.action(forNode: stranger, current: current, others: [other], hasCurrentSaid: true) == .unknownNode)
+        #expect(NotificationRouting.action(forNode: NodeID.of(other), current: current, others: [other], hasCurrentSaid: false) == .switchTo(other),
+                "a node on this device is placed at once")
+        #expect(NotificationRouting.action(forNode: NodeID.of(current), current: current, others: [other], hasCurrentSaid: false) == .openHere)
+        #expect(NotificationRouting.action(forNode: nil, current: current, others: [other], hasCurrentSaid: false) == .openHere)
     }
 
     @Test("the same host on another port is another node")
