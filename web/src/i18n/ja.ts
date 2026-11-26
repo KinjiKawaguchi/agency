@@ -10,6 +10,12 @@ export const ja: Messages = {
     },
     unreachable: (reason) => `ノードに接続できません: ${reason}`,
     signInExpired: { message: 'サインインの有効期限が切れました。再読み込みして、もう一度サインインしてください。', reload: '再読み込み', nothingToShow: 'サインインし直すまで、表示できるものがありません。' },
+    pageLoad: {
+      failed: 'このページを読み込めませんでした。',
+      tryAgain: 'もう一度試す',
+      newVersion: 'このページを読み込めませんでした。新しい版の Agency が入った可能性があり、このタブが持っている画面は古くなっています。',
+      reload: '再読み込み',
+    },
   },
   nav: {
     label: 'メインメニュー',
@@ -566,6 +572,19 @@ export const ja: Messages = {
       routes: (group: string) => `${group}のルート`,
       inNodeRead: 'ノード内の読み取り',
       names: { desk: 'デスク', teams: 'チーム', usage: '使用量', evaluation: '評価', outcomes: '成果の指標', devices: '端末', push: 'プッシュ通知', federation: '連合', metrics: '計測', unmatched: 'このノードのルートではないもの', other: 'その他', runtime: 'チームのランタイム', peer: '別のノード', github: 'GitHub' } as Record<string, string>,
+    },
+    trend: {
+      title: '時間ごとの推移',
+      lead: 'ルートの区分ごとに、各時間でいちばん遅いルートの p95 です。その区分自身の p95 は、その時間についてこれ以下です（別々のルートの p95 は足し合わせられません）。目盛りは 1 つで、単位はミリ秒、対数目盛りです。呼び出しがなかった時間は 0 ではなく、線の切れ目になります。',
+      onlyShort: 'ノードが時間ごとの数字を返すのは、7 日までの期間です。もっと短い期間を選ぶと見られます。',
+      inNodeReads: 'ノード内の読み取り',
+      callGroup: (group: string) => `呼び出し: ${group}`,
+      budget: (value: string) => `予算 ${value}`,
+      summary: (title: string, hours: string, latest: string) => `${title}: 各時間でいちばん遅いルートの p95。呼び出しのあった時間は ${hours} 時間で、直近は ${latest}。`,
+      show: '時間ごとの数字を見る',
+      caption: (title: string) => `${title}: 呼び出しのあった時間（新しい順）`,
+      hour: '時間',
+      calls: '呼び出し',
     },
     objectives: {
       title: '目標',

@@ -15,6 +15,8 @@ interface Load {
   firstContentfulPaintMs: number
   /** Milliseconds from the navigation to the first request of the pile in the document. */
   firstDeskMs: number
+  /** Whether the page was served through the worker, as a person who comes back is. */
+  isControlled: boolean
 }
 
 declare global {
@@ -34,6 +36,7 @@ async function load(page: Page): Promise<Load> {
   return page.evaluate(() => ({
     firstContentfulPaintMs: performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? -1,
     firstDeskMs: window.__firstDeskMs ?? -1,
+    isControlled: navigator.serviceWorker.controller !== null,
   }))
 }
 
@@ -51,6 +54,7 @@ async function watchTheDesk(page: Page): Promise<void> {
 }
 
 const median = (values: readonly number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? -1
+const spread = (values: readonly number[]): string => `${Math.min(...values).toFixed(0)}/${median(values).toFixed(0)}/${Math.max(...values).toFixed(0)}`
 
 async function cold(browser: Browser): Promise<Load[]> {
   const loads: Load[] = []
@@ -71,11 +75,15 @@ async function warm(browser: Browser): Promise<Load[]> {
   await watchTheDesk(page)
   await slowDown(page)
   await load(page)
-  // Let the worker settle, so that the second load is the one of a person who comes back.
-  await page.waitForTimeout(1_000)
+  // Warm is the load of a person who comes back: the worker is installed and serves the page. Not a wait of a guessed length: the
+  // worker says when it is ready, and a load after that is the first one it controls.
+  const ready = await page.evaluate(() => Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 15_000))]))
+  expect(ready, 'the worker is installed').toBe(true)
+  await load(page)
   const loads: Load[] = []
   for (let run = 0; run < RUNS; run++) loads.push(await load(page))
   await context.close()
+  expect(loads.every((one) => one.isControlled), 'every warm load is served through the worker').toBe(true)
   return loads
 }
 
@@ -88,7 +96,7 @@ test('draws the first request of the desk within the budget, cold and warm', asy
     cold: { firstContentfulPaintMs: median(coldLoads.map((one) => one.firstContentfulPaintMs)), firstDeskMs: median(coldLoads.map((one) => one.firstDeskMs)) },
     warm: { firstContentfulPaintMs: median(warmLoads.map((one) => one.firstContentfulPaintMs)), firstDeskMs: median(warmLoads.map((one) => one.firstDeskMs)) },
   }
-  const line = `load (processor ${SLOWDOWN}x slower, median of ${RUNS}): cold first paint ${numbers.cold.firstContentfulPaintMs.toFixed(0)} ms, first desk ${numbers.cold.firstDeskMs.toFixed(0)} ms; warm first paint ${numbers.warm.firstContentfulPaintMs.toFixed(0)} ms, first desk ${numbers.warm.firstDeskMs.toFixed(0)} ms (all runs: cold ${coldLoads.map((one) => one.firstDeskMs.toFixed(0)).join(', ')}; warm ${warmLoads.map((one) => one.firstDeskMs.toFixed(0)).join(', ')})`
+  const line = `load (processor ${SLOWDOWN}x slower, median of ${RUNS}): cold first paint ${numbers.cold.firstContentfulPaintMs.toFixed(0)} ms, first desk ${numbers.cold.firstDeskMs.toFixed(0)} ms; warm first paint ${numbers.warm.firstContentfulPaintMs.toFixed(0)} ms, first desk ${numbers.warm.firstDeskMs.toFixed(0)} ms (first desk, min/median/max of ${RUNS}: cold ${spread(coldLoads.map((one) => one.firstDeskMs))}; warm ${spread(warmLoads.map((one) => one.firstDeskMs))}; first paint: cold ${spread(coldLoads.map((one) => one.firstContentfulPaintMs))}; warm ${spread(warmLoads.map((one) => one.firstContentfulPaintMs))})`
   console.log(line)
   if (process.env.GITHUB_STEP_SUMMARY !== undefined) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n**Web client load**: ${line}\n`)
   const budget = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'budget.json'), 'utf8')) as { firstDeskMs: { cold: number; warm: number } }

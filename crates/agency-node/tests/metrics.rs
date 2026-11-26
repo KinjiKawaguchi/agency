@@ -1,7 +1,10 @@
 //! The node's own measurements: every route is timed by its template, and only the owner reads them.
 mod common;
 
-use agency_proto::metrics::{Metrics, Series};
+use agency_core::config::NodeConfig;
+use agency_core::metrics_config::Objective;
+use agency_core::ports::ConfigStore as _;
+use agency_proto::metrics::{Metrics, ObjectiveState, Series};
 use common::access::{access_token, behind_access, PUBLIC_HOST};
 use common::{alice, Running};
 use reqwest::{Client, RequestBuilder, Response, StatusCode};
@@ -213,5 +216,99 @@ async fn no_other_node_reads_them_the_federation_has_no_such_route() {
                 .is_none_or(|kind| !kind.starts_with("text/plain")),
             "{path}: {kind:?}"
         );
+    }
+}
+
+#[tokio::test]
+async fn the_objectives_the_operator_set_are_judged_against_the_measurements_of_the_whole_group() {
+    let (alice, _) = alice().await;
+    alice
+        .node
+        .update_config(|config| {
+            config.metrics.objectives = vec![
+                Objective {
+                    group: "desk".into(),
+                    p95_ms: 30_000,
+                },
+                Objective {
+                    group: "evaluation".into(),
+                    p95_ms: 100,
+                },
+            ];
+        })
+        .unwrap();
+    for _ in 0..3 {
+        get(&alice, "/api/me").send().await.unwrap();
+    }
+    let metrics = metrics_of(get(&alice, "/api/metrics").send().await.unwrap()).await;
+    let states: Vec<(&str, u32, ObjectiveState)> = metrics
+        .objectives
+        .iter()
+        .map(|o| (o.group.as_str(), o.p95_ms, o.state))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("desk", 30_000, ObjectiveState::Met),
+            ("evaluation", 100, ObjectiveState::Unknown)
+        ]
+    );
+    assert!(
+        metrics.objectives[0].measured_p95_ms.is_some()
+            && metrics.objectives[1].measured_p95_ms.is_none()
+    );
+    // Over a long range the hours are left out and the objectives are still said.
+    let month = metrics_of(get(&alice, "/api/metrics?days=30").send().await.unwrap()).await;
+    assert_eq!(month.objectives.len(), 2);
+    // An answer narrowed to a kind or a name is not the whole of a group: it says no objectives.
+    for narrowed in ["/api/metrics?kind=serve", "/api/metrics?name=GET%20/api/me"] {
+        assert!(
+            metrics_of(get(&alice, narrowed).send().await.unwrap())
+                .await
+                .objectives
+                .is_empty(),
+            "{narrowed}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_objective_that_is_not_one_stops_the_node_and_names_the_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = agency_adapters::files::DataDir::new(dir.path().join("node"));
+    data.create_key().unwrap();
+    let account = agency_core::config::Account {
+        id: common::id("alice"),
+        label: "ALICE".into(),
+    };
+    for (objective, wanted) in [
+        (
+            Objective {
+                group: "nothing".into(),
+                p95_ms: 100,
+            },
+            "metrics.objectives[0].group: \"nothing\" is not a group of routes",
+        ),
+        (
+            Objective {
+                group: "desk".into(),
+                p95_ms: 0,
+            },
+            "metrics.objectives[0].p95Ms: 0 must be 1 to 30000",
+        ),
+    ] {
+        let mut config = NodeConfig::new(
+            "http://127.0.0.1:1",
+            "127.0.0.1:1",
+            account.clone(),
+            "scrum",
+        );
+        config.metrics.objectives = vec![objective];
+        data.save_config(&config).unwrap();
+        let error = match agency_node::open(data.clone(), agency_node::Overrides::default()) {
+            Ok(_) => panic!("the node started"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains(wanted), "{error}");
     }
 }

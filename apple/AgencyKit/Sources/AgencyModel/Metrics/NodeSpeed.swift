@@ -44,6 +44,7 @@ public struct NodeSpeed: Equatable, Sendable {
             switch state {
             case .met: Ja.NodeSpeed.Objectives.met
             case .notMet: Ja.NodeSpeed.Objectives.notMet
+            case .undetermined: Ja.NodeSpeed.Objectives.undetermined
             case .unknown: Ja.NodeSpeed.Objectives.unknown
             }
         }
