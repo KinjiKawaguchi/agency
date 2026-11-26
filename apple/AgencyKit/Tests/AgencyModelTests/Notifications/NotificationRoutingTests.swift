@@ -84,6 +84,17 @@ struct NotificationRoutingTests {
         #expect(NotificationRouting.action(forNode: nil, current: current, others: [other], hasCurrentSaid: false) == .openHere)
     }
 
+    @Test("once the account read has finished, a node that has not said its id is no longer waited for: a stranger's push is said not to be ours")
+    func accountReadFinished() throws {
+        let current = try node("a.example.com")
+        let other = try node("b.example.com")
+        let stranger = NodeID.of(try node("gone.example.com"))
+        #expect(NotificationRouting.action(forNode: stranger, current: current, others: [other], hasCurrentSaid: false, isAccountRead: false) == .waitForAccount)
+        #expect(NotificationRouting.action(forNode: stranger, current: current, others: [other], hasCurrentSaid: false, isAccountRead: true) == .unknownNode)
+        #expect(NotificationRouting.action(forNode: NodeID.of(other), current: current, others: [other], hasCurrentSaid: false, isAccountRead: true) == .switchTo(other))
+        #expect(NotificationRouting.action(forNode: NodeID.of(current), current: current, others: [other], hasCurrentSaid: false, isAccountRead: true) == .openHere)
+    }
+
     @Test("the same host on another port is another node")
     func port() throws {
         let current = try node("a.example.com")

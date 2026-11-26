@@ -9,6 +9,8 @@ Mac/Info.plist
 Mac/Agency.entitlements
 Widgets/Info.plist
 Widgets/AgencyWidgets.entitlements
+NotificationService/Info.plist
+NotificationService/AgencyNotificationService.entitlements
 
 # Build output.
 build/
