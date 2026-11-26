@@ -14,7 +14,7 @@ async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 # RS256 (Access) and ES256 (APNs), through ring (already used by rustls); no PEM parsing.
-jsonwebtoken = { version = "9", default-features = false }
+jsonwebtoken = { version = "10", default-features = false }
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 # P-256 device keys (ECDSA with SHA-256): the only curve some phones keep keys in hardware for.
