@@ -113,6 +113,12 @@ The owner's numbers for what each org measures (`GET /api/orgs/<org>/outcomes?da
 - **The period** is 90 days by default (a monthly number is rarely in 14), or 30, the same on the web.
 - **The screen.** A third page, 成果の指標, in the 成果 tab beside the costs and the evaluation (`ResultsScreen`, the same on the iPhone and the Mac), offered only while `isAvailable`: with the node refusing the owner nothing in the tab changes and nothing says why. Each KPI is a card (label, the latest number, the day it is as of, the movement as a symbol, words and colour, and its numbers as dots on their days joined by a line, with nothing for a day without a number); then the readings. Until the node has answered, the page is grey bars, not an empty page; a failure is said over what was read. The numbers are shown on a plain cover whenever the iPhone app is not in front, so that the picture the system keeps for the app switcher holds none of them (not verified on a device).
 
+## A started recovery of an org (agency#360)
+
+When `/api/me` gives an org a `recovery` (`OrgRef.recovery`: `takesEffectAt`, `newRootKey`, `replacesRecoveryKey`), the desk shows it at the top, one item for each such org, on the iPhone and the Mac: "<org> のルート鍵の回復が始まりました。<time> に有効になります。心当たりがないときは、ルート鍵のノードで取り消してください:" and the command `agency root-cancel-recovery --org <id>` (selectable), with the new root key and the replaced recovery key when the node says them. It has no way to dismiss it: the owner can cancel only while it waits, so it stays for as long as the node says it waits and goes when the node stops (cancelled or taken). A failed read leaves it. The words are the web's and the glossary's (ルート鍵の回復, 回復用の鍵).
+
+The node's push of the kind `recovery` (`agency: { type: "recovery", org }`, its title and body written by the node) reaches every token whatever kinds the app registered with, and the app asks the system to show every notification it gets, so the notification settings do not hide it; tapping it opens the desk.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).

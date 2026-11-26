@@ -47,6 +47,30 @@ public struct OrgRef: Decodable, Equatable, Sendable {
     public let label: String
     public let isRoot: Bool
     public let teams: [TeamRef]
+    /// A recovery of the org that was started and waits; left out when none does.
+    public let recovery: StartedRecovery?
+}
+
+/// A recovery of an org, started with its recovery key, that waits for its 72 hours: until it takes effect, the root cancels
+/// it by signing any version of the org. The node tells the owner of it, and the app shows it for as long as the node does.
+public struct StartedRecovery: Decodable, Equatable, Sendable {
+    /// When it takes effect on this node (an RFC 3339 time, kept as the node wrote it); absent when the node kept no record
+    /// of when it took the start, so it does not take the finish either.
+    public let takesEffectAt: String?
+    /// The fingerprint of the root key the org moves to; absent when the root key stays.
+    public let newRootKey: String?
+    /// Whether it replaces the recovery key.
+    public let replacesRecoveryKey: Bool
+
+    private enum Keys: String, CodingKey { case takesEffectAt, newRootKey, replacesRecoveryKey }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        takesEffectAt = try container.decodeIfPresent(String.self, forKey: .takesEffectAt)
+        newRootKey = try container.decodeIfPresent(String.self, forKey: .newRootKey)
+        // The node leaves the flag out when it is false.
+        replacesRecoveryKey = try container.decodeIfPresent(Bool.self, forKey: .replacesRecoveryKey) ?? false
+    }
 }
 
 public struct TeamRef: Decodable, Equatable, Sendable {

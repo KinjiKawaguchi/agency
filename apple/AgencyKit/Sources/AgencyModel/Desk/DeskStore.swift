@@ -49,6 +49,9 @@ public final class DeskStore {
     public private(set) var items: [DeskItem] = []
     public private(set) var teams: [Team] = []
     public private(set) var recent: [DecisionEntry] = []
+    /// The recoveries the node says wait, one for each org: shown above the desk until the node stops saying it. What was
+    /// said last stays when a later read fails.
+    public private(set) var recoveries: [RecoveryNotice] = []
     public private(set) var recentFailure: String?
     public private(set) var loading: Loading = .idle
     /// Teams whose view could not be read, by `org/team`, with the reason.
@@ -117,6 +120,7 @@ public final class DeskStore {
         loading = .loading
         do {
             let me = try await source.me()
+            recoveries = RecoveryNotice.all(in: me.orgs)
             let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
             var snapshots: [(key: String, result: Result<TeamSnapshot, Error>)] = []
             // Each team is shown as soon as it answers, so one that is not ready does not hold back the others.
