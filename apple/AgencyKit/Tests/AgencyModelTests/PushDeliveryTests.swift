@@ -63,6 +63,15 @@ struct PushDeliveryTests {
         #expect(PushDelivery(token: try token(taken: "now", failed: nil)) == .taken(at("now")))
     }
 
+    @Test("the node's reason and the text of a time that cannot be read are shown without hidden characters")
+    func shown() throws {
+        let delivery = PushDelivery(token: try token(taken: "2026-11-26T09:00:00Z", failed: "now\u{202E}", reason: "APNs answered\u{202E} 503\u{200B}"))
+        guard case .failing(let at, let reason, _) = delivery else { Issue.record("should be failing"); return }
+        #expect(reason == "APNs answered? 503?" && at.text == "now?")
+        #expect(delivery.lines(in: tokyo)?.first?.contains("（now?）: APNs answered? 503?。") == true)
+        #expect(!(delivery.lines(in: tokyo) ?? []).joined().unicodeScalars.contains { NodeLabel.isHidden($0) })
+    }
+
     @Test("this phone's token is found among the listed ones by its last 8 characters, in either case, and a token not listed is nothing")
     func own() throws {
         let listed = [try token("11112222"), try token("ab12cd34", failed: "2026-11-26T09:00:00Z")]

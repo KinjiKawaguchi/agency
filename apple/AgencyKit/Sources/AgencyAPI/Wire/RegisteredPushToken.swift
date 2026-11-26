@@ -22,24 +22,26 @@ public struct RegisteredPushToken: Decodable, Equatable, Sendable {
 /// A notice APNs did not take: when, and the reason the node can give without APNs' own words.
 public struct PushFailure: Decodable, Equatable, Sendable {
     public let at: ReportedTime
-    public let reason: String
+    /// The node's own text, shown with its hidden characters as `?` like any text the node gives that a person did not write for the screen.
+    @Shown public private(set) var reason: String
 }
 
 /// A time the node reports, kept as it wrote it. One that cannot be read is not an error: the whole list must still read, so that a
 /// refusal is not hidden by a taking whose time cannot be compared (it is then "not later", and the refusal stands).
 public struct ReportedTime: Decodable, Equatable, Sendable {
+    /// What the node wrote, with its hidden characters as `?` (it is shown where the time cannot be formatted).
     public let text: String
     /// `nil` when the text is not an RFC 3339 time.
     public let date: Date?
 
     public init(from decoder: any Decoder) throws {
-        text = try decoder.singleValueContainer().decode(String.self)
-        date = Timestamp.date(from: text)
+        self.init(text: try decoder.singleValueContainer().decode(String.self))
     }
 
     public init(text: String) {
-        self.text = text
+        // A time is read from what was written; only what is shown is changed.
         date = Timestamp.date(from: text)
+        self.text = NodeLabel.shown(text)
     }
 }
 
