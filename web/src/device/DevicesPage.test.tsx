@@ -110,6 +110,25 @@ describe('devices screen', () => {
     await waitFor(() => expect(screen.queryByLabelText('Pairing code of Phone')).not.toBeInTheDocument())
   })
 
+  it('does not offer to approve a device until the account is known, since the change is signed for it', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const slowMe = createApiClient(async (request) => {
+      if (new URL(request.url, 'http://mock.local').pathname === '/api/me') await gate
+      return node.handle(request)
+    })
+    renderApp({ path: '/devices', node, enrolled: true, client: slowMe })
+    await otherDeviceAsks(node, 'Tablet')
+    window.dispatchEvent(new Event('visibilitychange'))
+    expect(await screen.findByRole('button', { name: 'The codes match: approve it' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'The codes match: approve it' }))
+    expect((await createApiClient((request) => node.handle(request)).devices()).requests).toHaveLength(1)
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeEnabled())
+  })
+
   it('says why when the node refuses to add the device', async () => {
     const user = userEvent.setup()
     const node = createTestNode()

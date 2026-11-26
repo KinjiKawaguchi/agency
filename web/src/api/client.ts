@@ -1,5 +1,5 @@
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushTokenInput, Session, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
@@ -84,6 +84,9 @@ export function forLog(text: string): string {
   return `${characters.slice(0, MAX_LOGGED_TEXT - 1).join('').trimEnd()}…`
 }
 
+/** What the node says when a write's token is not the one it holds. */
+const STALE_TOKEN = 'write token'
+
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
   return document.querySelector('meta[name="agency-token"]')?.getAttribute('content') ?? ''
@@ -119,9 +122,26 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
   }
   const get = <T>(path: string, signal?: AbortSignal): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' }, ...(signal === undefined ? {} : { signal }) })).then(readJson<T>)
 
-  /** A write: JSON with the page's token, which the node demands of every write. */
-  const post = <T>(path: string, body: unknown): Promise<T> =>
-    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': readToken() }, body: JSON.stringify(body) })).then(readJson<T>)
+  /** The page's token goes stale when the node starts again: a token read from `/api/session` after that is kept for the writes that follow. */
+  let renewedToken: string | undefined
+
+  const write = <T>(path: string, body: unknown, token: string): Promise<T> =>
+    dispatch(new Request(url(path), { method: 'POST', headers: { 'content-type': 'application/json', 'x-agency-token': token }, body: JSON.stringify(body) })).then(readJson<T>)
+
+  /**
+   * A write: JSON with the page's token, which the node demands of every write. The token changes each time the node
+   * starts, so a page that was open across a start gets 403 "missing or wrong write token": it asks the node for the
+   * token once, and sends the write again once (docs/protocol.md, `/api/session`). A second refusal, or any other, is the answer.
+   */
+  const post = async <T>(path: string, body: unknown): Promise<T> => {
+    try {
+      return await write<T>(path, body, renewedToken ?? readToken())
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403 || !error.message.includes(STALE_TOKEN)) throw error
+      renewedToken = (await get<Session>('/api/session')).writeToken
+      return write<T>(path, body, renewedToken)
+    }
+  }
 
   return {
     onSession: (listener) => {
