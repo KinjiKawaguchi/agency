@@ -26,6 +26,7 @@ function PileRow({ item, isSelected, orgLabel, onSelect }: { item: DeskItem; isS
         <span className="pile-meta">
           <span>{drafterLabel}</span>
           {orgLabel === null ? null : <span>{orgLabel}</span>}
+          {item.relayedFor === undefined ? null : <span className="pile-for">{t.desk.pile.answerFor(item.relayedFor)}</span>}
           <span>{fmt.relative(item.request.createdAt, t.time.justNow)}</span>
           {blockedPeople(item).length > 0 ? <span className="pile-blocks">{t.desk.pile.blocking(blockedPeople(item).length)}</span> : null}
         </span>

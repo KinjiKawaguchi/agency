@@ -79,7 +79,7 @@ final class NativeSession {
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
-        evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client))
+        evaluation = EvaluationStore(source: CachedEvaluationSource(cache: cache, client: client), nodeSpeed: NodeSpeedStore(source: client))
         orgChart = OrgChartStore(source: CachedOrgChartSource(cache: cache, client: client))
         outcomes = OutcomesStore(source: CachedOutcomesSource(cache: cache, client: client))
         let pairing = pairing
