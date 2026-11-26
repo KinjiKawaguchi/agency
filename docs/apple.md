@@ -123,6 +123,12 @@ The node's push of the kind `recovery` (`agency: { type: "recovery", org }`, its
 
 The cancel command is built from the org's id, which the node gave, and is made to be pasted into a terminal, so it is shown only when the id is one the node itself would have made (its `Id` rule: lower-case letters, digits and hyphens, not starting with a hyphen, at most 40, the web's rule too); otherwise the item says in words where to run `agency root-cancel-recovery` (the web's sentence).
 
+## The participants of a team's evaluation (agency#364)
+
+A team's `evaluation` has, for the team's owner reading on their own node and when the team's runtime reports them, `participants` and `unattributedMerged` (`TeamEvaluation`): for each participant the seconds in the period at least one of their sessions was working, was waiting for a human's decision (a lower bound: a runtime sees only some of the waits) or was alive and neither (overlapping sessions count once), their cost, tokens, merged pull requests, and the cost per merged pull request. For anyone else the fields are absent, which is not the same as none, so they are optional and nothing is drawn without them (an empty list draws nothing either, as on the web).
+
+Each team's evaluation shows them after its charts (`ParticipantsView`, the web's order): for each participant a bar of three parts (working, waiting, idle) by their share of the three, the three durations in words, the cost with the four kinds of token added up, the merged pull requests, and the cost per merged pull request (or 「マージなし」, never a $0); a participant with no session alive has no bar and says so; the pull requests no participant is named the author of are said when there are some. The words are the web's (`evaluation.participants`). The participants' `merged` and `unattributedMerged` add up to the summary's merged and reverts, which a test checks on the shared samples.
+
 ## Build
 
 You need Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
