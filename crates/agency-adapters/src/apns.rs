@@ -1,8 +1,9 @@
 //! Apple Push Notification service with token-based authentication: each request carries a provider
 //! JWT (ES256, signed with the `.p8` key, reused for 50 minutes) and goes over HTTP/2 to the production
 //! or sandbox host that matches the device token.
+use crate::push_facts::recovery_facts;
 use agency_core::config::PushConfig;
-use agency_core::notice::recovery_text;
+use agency_core::notice::{recovery_text, root_change_text};
 use agency_core::ports::{Clock, Notifier};
 use agency_core::push::{Notice, NoticeKind, PushError};
 use agency_proto::client::{PushEnvironment, PushToken};
@@ -199,12 +200,25 @@ pub fn payload(notice: &Notice, node: Option<&str>) -> Value {
         ),
         NoticeKind::Recovery {
             org,
+            started_at,
             takes_effect_at,
         } => {
             let (title, body) = recovery_text(org, takes_effect_at.as_deref());
             (
                 json!({ "title": title, "body": body }),
-                json!({ "type": "recovery", "org": org }),
+                recovery_facts(org, started_at.as_ref(), takes_effect_at.as_ref()),
+            )
+        }
+        NoticeKind::RootChange {
+            org,
+            id,
+            what,
+            waiting,
+        } => {
+            let (title, body) = root_change_text(org, what.as_deref());
+            (
+                json!({ "title": title, "body": body }),
+                json!({ "type": "root", "org": org, "id": id, "waiting": waiting }),
             )
         }
     };

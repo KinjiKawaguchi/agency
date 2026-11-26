@@ -67,7 +67,40 @@ pub(crate) fn recovery_candidates(node: &Node) -> Vec<Candidate> {
             notice: Notice {
                 kind: NoticeKind::Recovery {
                     org: doc.body.org.clone(),
+                    started_at: node
+                        .store()
+                        .recovery_started(&doc.body.org, doc.body.version),
                     takes_effect_at: recovery_takes_effect(node, &doc).map(clock::format),
+                },
+                badge: 0,
+            },
+        })
+        .collect()
+}
+
+/// The changes held for the owner's `agency root-sign`, by handle. Each is told once, like a device request.
+pub(crate) fn root_change_candidates(node: &Node, is_hidden: bool) -> Vec<Candidate> {
+    let Ok(held) = crate::pending_root::waiting(node) else {
+        return vec![];
+    };
+    let count = |org: &agency_proto::Id| {
+        let in_org = held.iter().filter(|one| &one.org == org).count();
+        u32::try_from(in_org).unwrap_or(u32::MAX)
+    };
+    let counted: Vec<(u32, crate::pending_root::PendingRootChange)> = held
+        .iter()
+        .map(|one| (count(&one.org), one.clone()))
+        .collect();
+    counted
+        .into_iter()
+        .map(|(waiting, one)| Candidate {
+            key: format!("root/{}", one.notice_id()),
+            notice: Notice {
+                kind: NoticeKind::RootChange {
+                    what: (!is_hidden).then(|| one.what()),
+                    id: one.notice_id(),
+                    org: one.org,
+                    waiting,
                 },
                 badge: 0,
             },

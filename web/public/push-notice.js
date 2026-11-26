@@ -22,6 +22,7 @@
       device: (label) => (label === undefined ? 'A device is waiting to be added' : 'Device \u201c' + label + '\u201d is waiting to be added'),
       decision: (title) => (title === undefined ? 'A decision was refused' : 'The decision on \u201c' + title + '\u201d was refused'),
       recovery: (org) => (org === undefined ? 'A recovery of an org was started' : 'A recovery of ' + org + ' was started'),
+      root: (org) => (org === undefined ? 'A change waits for the root key' : 'A change to ' + org + ' waits for the root key'),
     },
     ja: {
       app: 'Agency',
@@ -29,6 +30,7 @@
       device: (label) => (label === undefined ? '端末が追加を待っています' : '端末\u300c' + label + '\u300d\u304c追加を待っています'),
       decision: (title) => (title === undefined ? '決定が断られました' : '\u300c' + title + '\u300d\u306e決定は断られました'),
       recovery: (org) => (org === undefined ? '組織のルート鍵の回復が始まりました' : org + ' のルート鍵の回復が始まりました'),
+      root: (org) => (org === undefined ? 'ルート鍵の署名を待っている変更があります' : org + ' に、ルート鍵の署名を待っている変更があります'),
     },
   }
 
@@ -47,12 +49,13 @@
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined
   }
 
-  /** `request` unless the payload says `device`, `decision` or `recovery`; a type it does not know gives nothing. */
+  /** `request` unless the payload says `device`, `decision`, `recovery` or `root`; a type it does not know gives nothing. */
   function kindOf(payload) {
     const agency = payload.agency
     if (typeof agency !== 'object' || agency === null) return undefined
     if (agency.type === undefined) return 'request'
-    return agency.type === 'device' || agency.type === 'decision' || agency.type === 'recovery' ? agency.type : undefined
+    const known = ['device', 'decision', 'recovery', 'root']
+    return known.includes(agency.type) ? agency.type : undefined
   }
 
   /**
@@ -69,6 +72,8 @@
         return isPlain(agency.id) ? 'decision/' + agency.id : undefined
       case 'recovery':
         return isPlain(agency.org) ? 'recovery/' + agency.org : undefined
+      case 'root':
+        return isPlain(agency.id) ? 'root/' + agency.id : undefined
       case 'request':
         return isPlain(agency.org) && isPlain(agency.team) && isPlain(agency.request) ? 'request/' + agency.org + '/' + agency.team + '/' + agency.request : undefined
       default:
@@ -108,11 +113,11 @@
       const body = cut(payload.body, BODY_CHARS)
       return title !== undefined && body !== undefined ? { title, body, tag, url } : { title: words.app, body: words.request, tag, url }
     }
-    if (kind === 'recovery') {
+    if (kind === 'recovery' || kind === 'root') {
       const title = cut(payload.title, TITLE_CHARS)
       const body = cut(payload.body, BODY_CHARS)
       if (title !== undefined && body !== undefined) return { title, body, tag, url }
-      return { title: words.app, body: words.recovery(isPlain(payload.agency.org) ? payload.agency.org : undefined), tag, url }
+      return { title: words.app, body: words[kind](isPlain(payload.agency.org) ? payload.agency.org : undefined), tag, url }
     }
     return { title: words.app, body: words[kind](cut(payload.detail, BODY_CHARS)), tag, url }
   }

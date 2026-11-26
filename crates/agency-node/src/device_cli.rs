@@ -128,7 +128,8 @@ async fn add_requested_device(node: &Node, data: &DataDir) -> Result<()> {
     for request in requests.iter().rev() {
         let question = format!(
             "Add \"{}\" with pairing code {}? Check that the device shows the same code.",
-            request.label, request.pairing_code
+            agency_proto::org::printable(&request.label),
+            request.pairing_code
         );
         if ask(&question) {
             add_and_report(node, &request.label, &request.public_key, signer.as_ref()).await;

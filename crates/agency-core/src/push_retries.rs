@@ -48,7 +48,7 @@ async fn send_again(
                 .store()
                 .push_tokens()
                 .into_iter()
-                .find(|one| &one.token == token && one.events.contains(&notice.event()))
+                .find(|one| &one.token == token && notice.is_wanted_by(&one.events))
             else {
                 return Ok(None);
             };
