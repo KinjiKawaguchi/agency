@@ -11,12 +11,13 @@ export const navigationOf = (target: NoticeTarget): { to: '/desk'; search: { ite
 export const shouldTellOs = (): boolean => isOsNoticeOn() && document.visibilityState === 'hidden'
 
 /**
- * Shows a notice as a notification of the operating system, in the words the page's own notice has. A click brings
+ * Shows a notice as a notification of the operating system, in the words the page's own notice has, or, when titles
+ * may not leave the page, in the words with none (`plain`). A click brings
  * the tab to the front and opens what the notice leads to. Nothing about it leaves this browser.
  */
-export function showOsNotice(notice: Notice, title: string, open: (target: NoticeTarget) => void): void {
+export function showOsNotice(notice: Notice, title: string, open: (target: NoticeTarget) => void, { isTitleShown }: { isTitleShown: boolean }): void {
   try {
-    const shown = new Notification(title, { body: notice.message, icon: ICON, ...(notice.tag === undefined ? {} : { tag: notice.tag }) })
+    const shown = new Notification(title, { body: isTitleShown ? notice.message : notice.plain, icon: ICON, ...(notice.tag === undefined ? {} : { tag: notice.tag }) })
     shown.onclick = () => {
       window.focus()
       shown.close()

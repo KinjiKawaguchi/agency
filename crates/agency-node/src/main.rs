@@ -13,6 +13,7 @@ use agency_core::invites::join;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::ports::ConfigStore;
 use agency_core::push::notify_waiting;
+use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -336,6 +337,9 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
     warn_misplaced(&node, |line| eprintln!("agency: {line}"));
+    for line in agency_core::client::home_nodes(&node.config()).1 {
+        eprintln!("agency: {line}");
+    }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
     let background = node.clone();
@@ -345,6 +349,9 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
             if tick.is_multiple_of(2) {
                 if let Err(error) = refresh(&background).await {
                     eprintln!("agency: re-reading the replicas failed: {error}");
+                }
+                if let Err(error) = record_all(&background).await {
+                    eprintln!("agency: remembering the days epics shipped failed: {error}");
                 }
                 match notify_waiting(&background).await {
                     Ok(pass) => {
