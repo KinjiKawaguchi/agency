@@ -113,6 +113,8 @@ export const ja: Messages = {
     noEpics: 'エピックはまだありません。',
     epicBar: (total, done, doing, blocked) => `${total} 件のうち、完了 ${done}、進行中 ${doing}、停止 ${blocked}`,
     legend: { done: '完了', doing: '進行中', blocked: '停止', rest: '未着手' },
+    epicDone: '完了',
+    epicDoneOn: (when) => `${when} に完了`,
     epicFinish: (when) => `${when} ごろに終わる見込み`,
     epicBlockedBy: (list) => `停止: ${list}`,
     noTeams: 'まだチームがありません。',

@@ -22,10 +22,21 @@ export function epicSegments(epic: EpicForecast): Segment[] {
   return segments.filter((segment) => segment.count > 0)
 }
 
-/** Epics with work going on first, then the ones furthest along. */
-export function sortEpics(epics: readonly EpicForecast[]): EpicForecast[] {
+/**
+ * An epic as the team's view lists it. A finished epic stays in the list for thirty days after its last child
+ * was done (`doneAt`), with `total == done` and nothing left; it carries no forecast. `doneAt` is added here until the
+ * generated type has it.
+ */
+export type Epic = EpicForecast & { doneAt?: string }
+
+/** Whether the epic is finished: every child is done. A finished epic is not work left to do, so it is left out of every total of what remains. */
+export const isDone = (epic: EpicForecast): boolean => epic.total > 0 && epic.done === epic.total && epic.doing === 0
+
+/** The epics still open first (work going on first, then the furthest along), then the finished ones, the latest finished first. */
+export function sortEpics<T extends Epic>(epics: readonly T[]): T[] {
   const progress = (epic: EpicForecast): number => (epic.total === 0 ? 0 : epic.done / epic.total)
-  return epics.toSorted((a, b) => b.doing - a.doing || progress(b) - progress(a))
+  const finishedAt = (epic: Epic): number => (epic.doneAt === undefined ? 0 : Date.parse(epic.doneAt))
+  return epics.toSorted((a, b) => Number(isDone(a)) - Number(isDone(b)) || (isDone(a) ? finishedAt(b) - finishedAt(a) : b.doing - a.doing || progress(b) - progress(a)))
 }
 
 export const inProgress = (work: readonly WorkItem[]): WorkItem[] => work.filter((item) => item.status === 'inProgress')
