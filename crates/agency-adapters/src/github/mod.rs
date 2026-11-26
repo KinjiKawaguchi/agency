@@ -1,4 +1,5 @@
 //! GitHub as the source of a team's delivery facts, read through the machine's `gh` (read-only).
+mod cache;
 mod gh;
 mod pulls;
 mod runs;
@@ -9,6 +10,7 @@ use agency_proto::clock::OffsetDateTime;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+pub use cache::CachedDelivery;
 pub use gh::{Gh, GhCli, GhError};
 
 pub struct GithubDelivery {

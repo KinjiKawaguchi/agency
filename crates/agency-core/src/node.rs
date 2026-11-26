@@ -1,7 +1,9 @@
 //! A node's shared state: its configuration, its account key, and the ports its use cases use.
 use crate::config::{HostedTeam, NodeConfig};
 use crate::error::Result;
-use crate::ports::{Clock, FundingSource, Notifier, Peers, Random, Store, TeamRuntime, WriteLock};
+use crate::ports::{
+    Clock, DeliverySource, FundingSource, Notifier, Peers, Random, Store, TeamRuntime, WriteLock,
+};
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
 use std::collections::HashMap;
@@ -15,6 +17,7 @@ pub struct Ports {
     pub random: Arc<dyn Random>,
     pub lock: Arc<dyn WriteLock>,
     pub funding: Arc<dyn FundingSource>,
+    pub delivery: Arc<dyn DeliverySource>,
     pub notifier: Arc<dyn Notifier>,
 }
 
@@ -89,6 +92,10 @@ impl Node {
         self.ports.funding.as_ref()
     }
 
+    pub(crate) fn delivery(&self) -> &dyn DeliverySource {
+        self.ports.delivery.as_ref()
+    }
+
     pub(crate) fn notifier(&self) -> &dyn Notifier {
         self.ports.notifier.as_ref()
     }
@@ -103,6 +110,11 @@ impl Node {
 
     pub fn now(&self) -> OffsetDateTime {
         self.ports.clock.now()
+    }
+
+    /// The node's time zone, as the offset from UTC now.
+    pub fn utc_offset(&self) -> clock::UtcOffset {
+        self.ports.clock.utc_offset()
     }
 
     /// The current time as RFC 3339 UTC text.

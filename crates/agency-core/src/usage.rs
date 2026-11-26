@@ -12,7 +12,7 @@ use agency_proto::org::TeamPlace;
 use agency_proto::usage::{valid_days, DEFAULT_USAGE_DAYS, MAX_USAGE_DAYS};
 use agency_proto::{Id, Role, TokenUsage};
 
-fn check_days(days: u32) -> Result<u32> {
+pub(crate) fn check_days(days: u32) -> Result<u32> {
     if valid_days(days) {
         Ok(days)
     } else {
