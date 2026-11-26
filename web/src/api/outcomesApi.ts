@@ -42,6 +42,26 @@ export interface Outcomes {
   series: KpiSeries[]
 }
 
+/** One entered number, as the history lists it: with where it came from and when it was entered. */
+export interface NumberEntry {
+  kpi: string
+  date: string
+  value: number
+  /** `manual`, or the name of the connector that entered it. */
+  source: { kind: 'manual' } | { kind: 'connector'; name: string }
+  enteredAt: string
+  enteredBy: string
+  note?: string
+}
+
+/** What the owner enters: one number of a KPI for one day. The node sets who entered it and when. */
+export interface NumberInput {
+  kpi: string
+  date: string
+  value: number
+  note?: string
+}
+
 export const READING_STATES = ['ready', 'notShipped', 'shipDateUnknown', 'noBaseline', 'tooEarly', 'noFollowUp', 'tooFew'] as const
 export type ReadingStateName = (typeof READING_STATES)[number]
 

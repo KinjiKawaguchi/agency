@@ -5,8 +5,8 @@ import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
-import type { Outcomes, Readings } from './outcomesApi'
-import { readOutcomes, readReadings } from './outcomesAnswers'
+import type { NumberEntry, NumberInput, Outcomes, Readings } from './outcomesApi'
+import { readNumberEntry, readNumberHistory, readOutcomes, readReadings } from './outcomesAnswers'
 
 export type FetchLike = (input: Request) => Promise<Response>
 
@@ -73,6 +73,10 @@ export interface ApiClient {
   outcomes: (org: string, days: number) => Promise<Outcomes>
   /** How each aim's KPI stands around the day its epic shipped: owner only, as `outcomes`. */
   readings: (org: string) => Promise<Readings>
+  /** A KPI's history, newest first, the entries a later one superseded included: owner only. */
+  numberHistory: (org: string, kpi: string, limit: number) => Promise<NumberEntry[]>
+  /** Enters a number of a KPI for a day (the node sets who and when); a second one for the same day wins and the first stays in the history. Owner only. */
+  enterNumber: (org: string, input: NumberInput) => Promise<NumberEntry>
   /** What happened in a team after `since` (an RFC 3339 time): board events and messages between its agents, oldest first. */
   activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
@@ -215,6 +219,8 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
     outcomes: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/outcomes?days=${days}`).then(checked(readOutcomes)),
     readings: (org) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/readings`).then(checked(readReadings)),
+    numberHistory: (org, kpi, limit) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/observations?kpi=${segment(kpi)}&limit=${limit}`).then(checked(readNumberHistory)),
+    enterNumber: (org, input) => post<unknown>(`/api/orgs/${segment(org)}/outcomes/observations`, input).then(checked(readNumberEntry)),
     effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
     decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {

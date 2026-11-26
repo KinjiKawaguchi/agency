@@ -1,6 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import { createApiClient } from '../api/client'
+import { ApiProvider } from '../api/context'
 import type { KpiInfo, KpiSeries, Reading, Readings } from '../api/outcomesApi'
 import { I18nProvider } from '../i18n'
+import { ToastProvider } from '../shared/Toasts'
 import { en } from '../i18n/en'
 import { KpiCard } from './KpiCard'
 import { ReadingsSection } from './ReadingsSection'
@@ -10,7 +14,13 @@ const count: KpiInfo = { id: 'k', label: 'Open bugs', kind: 'product', unit: 'co
 const draw = (series: KpiSeries) =>
   render(
     <I18nProvider initial="en">
-      <KpiCard series={series} until="2026-11-24" days={30} />
+      <QueryClientProvider client={new QueryClient()}>
+        <ApiProvider client={createApiClient(() => Promise.reject(new Error('no node here')))}>
+          <ToastProvider>
+            <KpiCard org="acme" series={series} until="2026-11-24" days={30} />
+          </ToastProvider>
+        </ApiProvider>
+      </QueryClientProvider>
     </I18nProvider>,
   )
 
@@ -27,6 +37,12 @@ describe('a KPI card', () => {
     expect(document.querySelector('.ev-line')).toBeNull()
     expect(screen.getByRole('list', { name: 'Numbers' })).toHaveTextContent('-¥1,200')
     expect(screen.getByRole('list', { name: 'Numbers' })).toHaveTextContent('¥300')
+  })
+
+  it('calls a change that is written as 0 no movement: unchanged, and not coloured', () => {
+    draw({ kpi: { ...count, unit: 'percent', goodWhen: 'higher' }, points: [{ date: '2026-11-20', value: 50.004 }], before: { date: '2026-10-31', value: 50 } })
+    expect(screen.getByText('Unchanged since Oct 31 (50%).')).toBeInTheDocument()
+    expect(document.querySelector('.oc-move.is-better, .oc-move.is-worse')).toBeNull()
   })
 
   it('says a KPI with only an older number has none in the period, and gives the older one with its day', () => {
@@ -60,6 +76,13 @@ describe('the readings', () => {
     expect(screen.queryByText(/Cannot be told apart/)).not.toBeInTheDocument()
     expect(document.querySelector('.oc-move.is-better')).not.toBeNull()
     expect(document.querySelector('.oc-move')).toHaveTextContent('Fell −2 (−20%)better')
+  })
+
+  it('calls a reading whose change is written as 0 unchanged, and not coloured', () => {
+    read(readings({ ...ready, before: { date: '2026-10-15', value: 10 }, after: { date: '2026-11-10', value: 10.001 }, change: 0.001, changeRatio: 0.0001 }, ))
+    expect(document.querySelector('.oc-move')).toHaveTextContent(/^Unchanged 0/)
+    expect(document.querySelector('.oc-move.is-better, .oc-move.is-worse')).toBeNull()
+    expect(document.querySelector('.oc-move')).not.toHaveTextContent('+')
   })
 
   it('names the overlapping work by its title where the answer has one', () => {

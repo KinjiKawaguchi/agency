@@ -37,3 +37,28 @@ for (const [theme, width, height] of [['light', 1280, 900], ['dark', 390, 844]] 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
+
+for (const [theme, width, height] of [['light', 1280, 900], ['dark', 390, 844]] as const) {
+  test(`enters a number on a KPI's card and reads its history in ${theme} at ${width}px`, async ({ page, request }) => {
+    mkdirSync(DIRECTORY, { recursive: true })
+    await resetNode(request, { outcomes: true })
+    await page.setViewportSize({ width, height })
+    await page.goto(`/outcomes?theme=${theme}`)
+    const revenue = page.getByRole('article', { name: 'Monthly revenue' })
+    await revenue.getByRole('button', { name: 'Enter a number' }).click()
+    const form = page.getByRole('form', { name: 'Enter a number: Monthly revenue' })
+    await form.getByLabel('Number').fill('abc')
+    await form.getByRole('button', { name: 'Save' }).click()
+    await expect(form.getByRole('alert')).toContainText('The number must be written with digits')
+    await form.getByLabel('Number').fill('1400000')
+    await form.getByLabel('Note (optional)').fill('Month closed')
+    await page.screenshot({ path: `${DIRECTORY}/outcomes-enter-${theme}-${width}.png`, fullPage: true, animations: 'disabled' })
+    await form.getByRole('button', { name: 'Save' }).click()
+    await expect(revenue.locator('.oc-value')).toHaveText('¥1,400,000')
+    await revenue.getByRole('button', { name: 'Show history' }).click()
+    const history = revenue.getByRole('list', { name: 'History: Monthly revenue' })
+    await expect(history.getByRole('listitem')).toHaveCount(3)
+    await expect(history.getByRole('listitem').first()).toContainText('Month closed')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}

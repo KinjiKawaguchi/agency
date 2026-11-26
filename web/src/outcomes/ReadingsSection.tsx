@@ -1,8 +1,14 @@
 import type { KpiInfo, Reading, Readings } from '../api/outcomesApi'
 import { useI18n } from '../i18n'
-import { formatKpiChange, formatKpiValue } from './format'
+import { formatKpiChange, formatKpiValue, isWrittenAsZero } from './format'
 import { movementOf } from './movement'
 import { refusalOf } from './refusal'
+
+/** A change over its baseline as a percent with its sign; a ratio that is written as 0% has none. */
+function signedRatio(ratio: number, percent: (value: number) => string): string {
+  const shown = percent(Math.abs(ratio) * 100)
+  return `${shown === percent(0) ? '' : ratio > 0 ? '+' : '−'}${shown}`
+}
 
 interface RowProps {
   reading: Reading
@@ -18,7 +24,7 @@ function ReadingRow({ reading, kpi, titleOf }: RowProps) {
   const show = (value: number): string => (kpi === undefined ? String(value) : formatKpiValue(value, kpi, locale, t.evaluation.units))
   const { before, after, change } = reading
   const refusal = refusalOf(reading, text.states, fmt.shortDate)
-  const movement = before === undefined || after === undefined ? undefined : movementOf(before.value, after.value, kpi?.goodWhen)
+  const movement = before === undefined || after === undefined ? undefined : movementOf(before.value, after.value, kpi?.goodWhen, kpi !== undefined && isWrittenAsZero(after.value - before.value, kpi, locale, t.evaluation.units))
   return (
     <li className="oc-reading">
       <h4>{reading.epicTitle ?? reading.epic}</h4>
@@ -34,7 +40,7 @@ function ReadingRow({ reading, kpi, titleOf }: RowProps) {
             <p className={`oc-move${movement?.quality === undefined ? '' : ` is-${movement.quality}`}`}>
               {movement === undefined ? null : `${t.outcomes.movement.lead(t.outcomes.movement[movement.direction])} `}
               {formatKpiChange(change, kpi, locale, t.evaluation.units)}
-              {reading.changeRatio === undefined ? '' : ` (${reading.changeRatio > 0 ? '+' : reading.changeRatio < 0 ? '−' : ''}${fmt.percent(Math.abs(reading.changeRatio) * 100)})`}
+              {reading.changeRatio === undefined ? '' : ` (${signedRatio(reading.changeRatio, fmt.percent)})`}
               {movement?.quality === undefined ? null : <b className="oc-quality">{t.outcomes.movement[movement.quality]}</b>}
             </p>
           )}
