@@ -50,17 +50,14 @@ impl Fake {
 
     fn team(&self, team: &str) -> HostedTeam {
         let env = BTreeMap::from([("FAKE_DIR".to_owned(), self.dir.path().display().to_string())]);
-        let runtime = RuntimeCommand {
-            command: vec![self.dir.path().join("runtime.sh").display().to_string()],
-            env,
-        };
-        HostedTeam {
-            org: id("acme"),
-            team: id(team),
-            owner: id("alice"),
-            people: BTreeMap::new(),
-            runtime,
-        }
+        let runtime = RuntimeCommand::of(vec![self
+            .dir
+            .path()
+            .join("runtime.sh")
+            .display()
+            .to_string()])
+        .with_env(env);
+        HostedTeam::new(id("acme"), id(team), id("alice"), runtime)
     }
 
     fn read(&self, name: &str) -> String {
@@ -171,13 +168,11 @@ async fn passes_runtime_errors_through_and_treats_garbage_as_unavailable() {
         503
     );
 
-    let missing = HostedTeam {
-        runtime: RuntimeCommand {
-            command: vec![fake.path().join("missing").display().to_string()],
-            env: BTreeMap::new(),
-        },
-        ..team
-    };
+    let missing = team.with_runtime(RuntimeCommand::of(vec![fake
+        .path()
+        .join("missing")
+        .display()
+        .to_string()]));
     assert_eq!(
         CommandRuntime::default()
             .view(&missing)

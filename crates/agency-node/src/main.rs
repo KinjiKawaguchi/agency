@@ -432,13 +432,9 @@ async fn run(cli: Cli) -> Result<()> {
                     .unwrap_or_else(|| node.account());
                 let runtime = RuntimeCommand::scrum(&node.config().scrum, &absolute(&state_dir)?);
                 node.update_config(|config| {
-                    config.teams.push(HostedTeam {
-                        org: org.clone(),
-                        team: team.clone(),
-                        owner,
-                        people: Default::default(),
-                        runtime,
-                    })
+                    config
+                        .teams
+                        .push(HostedTeam::new(org.clone(), team.clone(), owner, runtime))
                 })?;
             }
             println!(

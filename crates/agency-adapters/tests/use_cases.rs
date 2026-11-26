@@ -54,16 +54,8 @@ fn alice() -> Fixture {
         node: node.url(),
     };
     orgs::add_team(node, &id("acme"), place).unwrap();
-    let hosted = HostedTeam {
-        org: id("acme"),
-        team: id("app"),
-        owner: id("alice"),
-        people: Default::default(),
-        runtime: RuntimeCommand {
-            command: vec!["unused".into()],
-            env: Default::default(),
-        },
-    };
+    let runtime = RuntimeCommand::of(vec!["unused".into()]);
+    let hosted = HostedTeam::new(id("acme"), id("app"), id("alice"), runtime);
     node.update_config(|config| config.teams.push(hosted))
         .unwrap();
     let laptop = Device {

@@ -12,9 +12,12 @@ pub struct Account {
     pub label: String,
 }
 
-/// A team this node hosts, and the command that runs its agency-runtime/1 runtime.
+/// A team this node hosts, and the command that runs its agency-runtime/1 runtime. Made with
+/// `HostedTeam::new`, so a new setting gets its default in one place and not in every place that builds one
+/// (other crates cannot build it by hand; a test keeps this crate from doing it either).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct HostedTeam {
     pub org: Id,
     pub team: Id,
@@ -27,6 +30,27 @@ pub struct HostedTeam {
 }
 
 impl HostedTeam {
+    /// A team of `org` owned by `owner`, run by `runtime`, with no other addressees.
+    pub fn new(org: Id, team: Id, owner: Id, runtime: RuntimeCommand) -> Self {
+        Self {
+            org,
+            team,
+            owner,
+            people: BTreeMap::new(),
+            runtime,
+        }
+    }
+
+    /// The same team with these addressees: runtime names mapped to org person ids.
+    pub fn with_people(self, people: BTreeMap<String, Id>) -> Self {
+        Self { people, ..self }
+    }
+
+    /// The same team run by another command.
+    pub fn with_runtime(self, runtime: RuntimeCommand) -> Self {
+        Self { runtime, ..self }
+    }
+
     /// The org person a request is addressed to: `to` from the `people` map, otherwise the owner.
     pub fn addressee(&self, to: Option<&str>) -> &Id {
         to.and_then(|name| self.people.get(name))
@@ -44,6 +68,19 @@ pub struct RuntimeCommand {
 }
 
 impl RuntimeCommand {
+    /// A command with no environment.
+    pub fn of(command: Vec<String>) -> Self {
+        Self {
+            command,
+            env: BTreeMap::new(),
+        }
+    }
+
+    /// The same command with this environment.
+    pub fn with_env(self, env: BTreeMap<String, String>) -> Self {
+        Self { env, ..self }
+    }
+
     /// The scrum harness's runtime for the team whose state lives in `state_dir`.
     pub fn scrum(scrum: &std::path::Path, state_dir: &std::path::Path) -> Self {
         let env = BTreeMap::from([(
@@ -315,16 +352,9 @@ mod tests {
 
     #[test]
     fn requests_go_to_mapped_people_and_otherwise_to_the_owner() {
-        let team = HostedTeam {
-            org: id("acme"),
-            team: id("app"),
-            owner: id("alice"),
-            people: BTreeMap::from([("reviewer".to_owned(), id("bob"))]),
-            runtime: RuntimeCommand {
-                command: vec!["true".into()],
-                env: BTreeMap::new(),
-            },
-        };
+        let runtime = RuntimeCommand::of(vec!["true".into()]);
+        let team = HostedTeam::new(id("acme"), id("app"), id("alice"), runtime)
+            .with_people(BTreeMap::from([("reviewer".to_owned(), id("bob"))]));
         assert_eq!(team.addressee(None), &id("alice"));
         assert_eq!(team.addressee(Some("reviewer")), &id("bob"));
         assert_eq!(team.addressee(Some("someone-else")), &id("alice"));
