@@ -1,0 +1,46 @@
+{
+  "account": {
+    "fingerprint": "34750f98bd59fcfc946da45aaabe933b",
+    "id": "alice",
+    "label": "ALICE"
+  },
+  "funding": [],
+  "orgs": [
+    {
+      "id": "acme",
+      "isRoot": true,
+      "label": "Acme",
+      "teams": []
+    }
+  ],
+  "rootChanges": [
+    {
+      "id": "c1",
+      "kind": "addMember",
+      "label": "Carol",
+      "member": "carol",
+      "org": "acme",
+      "receivedAt": "2026-11-26T09:00:00Z",
+      "what": "add member carol (Carol)"
+    },
+    {
+      "device": "d-a652124afda7",
+      "id": "c2",
+      "kind": "addDevice",
+      "label": "iPhone",
+      "member": "bob",
+      "org": "acme",
+      "receivedAt": "2026-11-26T09:30:00Z",
+      "what": "add device iPhone for bob"
+    },
+    {
+      "device": "d-dbc298251c51",
+      "id": "c3",
+      "kind": "removeDevice",
+      "member": "bob",
+      "org": "acme",
+      "receivedAt": "2026-11-26T10:00:00Z",
+      "what": "remove device d-dbc298251c51 of bob"
+    }
+  ]
+}
