@@ -4,8 +4,8 @@ import { readEffort, readEvaluation } from './evaluationAnswers'
 
 // The node's own samples (docs/protocol.md, "Evaluation") are what the client has to read, whatever the mock
 // serves: if the node's answer changes shape, the sample changes with it and this fails.
-// The tests run from `web/`, next to `testdata/`.
-const sample = (name: string): unknown => JSON.parse(readFileSync(join(process.cwd(), '..', 'testdata', name), 'utf8'))
+// Found from this file, so it does not matter where the tests are started from.
+const sample = (name: string): unknown => JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', '..', 'testdata', name), 'utf8'))
 
 describe('the node’s samples', () => {
   it('read as evaluation answers, unchanged: a valid answer needs no mending', () => {
