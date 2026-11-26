@@ -49,6 +49,31 @@ function percentile(buckets: readonly number[], percent: number): number | undef
   return undefined
 }
 
+/**
+ * The hours of a series: each hour of the range has its share of the calls, and its p95 is the series' own, or a bound
+ * next to it, so that the line moves; some hours have no call (a gap), and a series whose p95 is beyond the last bucket
+ * has hours of its own that are. A range of more than 7 days has no hours, as the node gives totals only.
+ */
+function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: number | undefined): unknown[] {
+  if (days > 7) return []
+  const hours = days * 24
+  const base = p95 === undefined ? BOUNDS.length - 1 : BOUNDS.indexOf(p95)
+  const wobble = [0, 0, 1, 0, -1, 0, 0, 2, 0, -1]
+  return Array.from({ length: hours }, (_, index) => {
+    const isGap = (index * 7 + spec.name.length) % 11 === 0
+    if (isGap) return undefined
+    const calls = Math.max(1, Math.round(count / hours))
+    const shifted = Math.min(BOUNDS.length - 1, Math.max(0, base + (wobble[index % wobble.length] ?? 0)))
+    const isBeyond = p95 === undefined && index % 5 === 0
+    return {
+      hour: new Date(until.getTime() - (hours - index) * 3_600_000).toISOString(),
+      count: calls,
+      errors: spec.status === '5xx' ? calls : 0,
+      ...(isBeyond ? {} : { p95Ms: BOUNDS[shifted] }),
+    }
+  }).filter((hour) => hour !== undefined)
+}
+
 /** The owner's measurements as the node answers them: the series of a few route groups and calls, from the hour before `now` back `days` days. */
 export function metricsAnswer(now: Date, days: number, variant: MetricsVariant): unknown {
   const until = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000 + 3_600_000)
@@ -73,7 +98,7 @@ export function metricsAnswer(now: Date, days: number, variant: MetricsVariant):
         const found = percentile(buckets, percent)
         return found === undefined ? [] : [[key, found]]
       })),
-      byHour: [],
+      byHour: hoursOf(spec, count, until, days, percentile(buckets, 95)),
     }
   })
   return {

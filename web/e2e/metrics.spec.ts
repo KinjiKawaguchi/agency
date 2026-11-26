@@ -26,3 +26,19 @@ for (const [variant, theme, width, height] of [['usual', 'light', 1280, 900], ['
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
+
+for (const [theme, width, height] of [['light', 1280, 900], ['dark', 375, 812]] as const) {
+  test(`draws the hours of the response time, with the budget line and gaps, in ${theme} at ${width}px, with no sideways scroll`, async ({ page, request }) => {
+    mkdirSync(DIRECTORY, { recursive: true })
+    await resetNode(request, { evaluation: true, metrics: 'usual' })
+    await page.setViewportSize({ width, height })
+    await page.goto(`/evaluation?theme=${theme}`)
+    const heading = page.getByRole('heading', { level: 3, name: 'Hour by hour' })
+    await expect(heading).toBeVisible()
+    await expect(page.locator('.mt-budget').first()).toContainText('Budget 100 ms')
+    await expect(page.getByRole('figure').first()).toBeVisible()
+    await page.locator('.mt-trends').first().screenshot({ path: `${DIRECTORY}/metrics-hours-${theme}-${width}.png`, animations: 'disabled' })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}
+

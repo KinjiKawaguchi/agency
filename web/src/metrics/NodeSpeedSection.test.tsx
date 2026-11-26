@@ -239,4 +239,84 @@ describe('the node’s own response time, on the evaluation page', () => {
     expect(found.getByRole('rowheader', { name: 'デスク' })).toBeInTheDocument()
     expect(found.getAllByText('ルートの区分')).toHaveLength(2)
   })
+
+  describe('hour by hour', () => {
+    const charts = (found: ReturnType<typeof within>): HTMLElement[] => found.getAllByRole('figure')
+    const titleOf = (figure: Element) => figure.querySelector('figcaption')?.textContent
+
+    it('draws one chart for the in-node reads and one for each route group and each group of calls, with the groups of the tables', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(charts(found).map((one) => titleOf(one))).toEqual(['In-node reads', 'Teams', 'Desk', 'Usage', 'Evaluation', 'Devices', 'Calls: Team runtime', 'Calls: Other nodes', 'Calls: Push notices'])
+    })
+
+    it('draws the budget as a line on the in-node reads only, with its number', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      const [reads, ...others] = charts(found)
+      expect(reads?.querySelector('.mt-budget')).toHaveTextContent('Budget 100 ms')
+      for (const one of others) expect(one.querySelector('.mt-budget')).toBeNull()
+    })
+
+    it('says that it is one scale in milliseconds and that the group’s p95 is at most the slowest route’s', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      expect(await found.findByText(/the group’s own p95 in that hour is at most this/)).toBeInTheDocument()
+      expect(found.getByText(/One scale, in milliseconds, drawn on a log scale/)).toBeInTheDocument()
+    })
+
+    it('leaves a gap for an hour with no call: fewer dots than hours, and a line that stops and starts again', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      const desk = charts(found).find((one) => titleOf(one) === 'Desk') as HTMLElement
+      const dots = desk.querySelectorAll('.mt-dot').length
+      expect(dots).toBeGreaterThan(0)
+      expect(dots).toBeLessThan(24)
+      expect(desk.querySelector('path')?.getAttribute('d')?.match(/M/g)?.length).toBeGreaterThan(1)
+      const rows = within(desk).getAllByRole('row').length - 1
+      expect(rows, 'the table lists the hours that had calls, as many as the dots').toBe(dots)
+    })
+
+    it('has a table of the hours for anyone who cannot see the picture: the hours with calls, newest first, p95 as at most', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      const reads = charts(found)[0] as HTMLElement
+      expect(within(reads).getByText('Show the hours')).toBeInTheDocument()
+      const table = within(reads).getByRole('table', { name: 'In-node reads: the hours that had calls, newest first' })
+      const cells = within(table).getAllByRole('row')[1]?.textContent ?? ''
+      expect(cells).toMatch(/≤ \d+(\.\d+)? (ms|s)|slower than 30 s/)
+      expect(within(reads).getByRole('img').getAttribute('aria-label')).toMatch(/^In-node reads: the slowest route’s p95 for each hour, \d+ hours with calls, the latest ≤/)
+    })
+
+    it('shows the 7 days in hours and says only short periods have them for 30', async () => {
+      const user = userEvent.setup()
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      await user.click(found.getByRole('button', { name: 'Last 7 days' }))
+      await waitFor(() => expect(within(charts(found)[0] as HTMLElement).getAllByRole('row').length).toBeGreaterThan(24))
+      await user.click(found.getByRole('button', { name: 'Last 30 days' }))
+      expect(await found.findByText('The node gives the hours for up to 7 days. Choose a shorter period to see them.')).toBeInTheDocument()
+      expect(found.queryAllByRole('figure')).toHaveLength(0)
+    })
+
+    it('draws nothing of it when nothing was measured, and reads in Japanese', async () => {
+      open({ metrics: 'empty' })
+      const none = await section()
+      expect(await none.findByText('Nothing was measured in this period yet.')).toBeInTheDocument()
+      expect(none.queryAllByRole('figure')).toHaveLength(0)
+    })
+
+    it('says it in Japanese', async () => {
+      open({ metrics: 'usual' }, { locale: 'ja' })
+      const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
+      expect(await found.findByText('時間ごとの推移')).toBeInTheDocument()
+      expect(found.getAllByRole('figure')[0]?.querySelector('figcaption')).toHaveTextContent('ノード内の読み取り')
+      expect(found.getAllByText(/予算 100 ミリ秒/)).toHaveLength(1)
+    })
+  })
 })
