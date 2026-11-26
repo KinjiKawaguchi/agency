@@ -27,6 +27,7 @@ pub mod teams;
 pub mod unseen;
 pub mod usage;
 pub mod views;
+pub mod web_push;
 
 pub use error::{Error, ErrorKind, Result};
 pub use node::{Node, Ports};

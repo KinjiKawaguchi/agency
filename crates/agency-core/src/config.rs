@@ -133,6 +133,28 @@ pub struct NodeConfig {
     /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push: Option<PushConfig>,
+    /// Web Push, for the owner's browsers. Without it, the node has no subscriptions and sends nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_push: Option<WebPushConfig>,
+    /// Leave every title and label out of every push notification, whichever service carries it (APNs or a
+    /// browser's push service), for a node whose data must stay where it is. `push.hideTitles` has the
+    /// same meaning and is still read.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_titles: bool,
+}
+
+/// Web Push: the node's own VAPID key lives in its data directory, never here.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebPushConfig {
+    /// The contact a push service may reach the node's operator at: a `mailto:` or `https:` URL. Without
+    /// it, the node's own origin (`url`) is used; a personal address is only ever what the owner writes here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// Push services to allow besides the built-in ones (Google, Mozilla, Apple, Microsoft): a host name,
+    /// or `*.` and a domain. Never an address.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_hosts: Vec<String>,
 }
 
 /// The GitHub repositories (`owner/name`) a hosted team's delivery numbers are worked out from: its
@@ -331,6 +353,8 @@ mod tests {
             delivery: vec![],
             access: None,
             push: None,
+            web_push: None,
+            hide_titles: false,
         };
         let acme = id("acme");
         config.trust_with_root_node(acme.clone(), "a".repeat(32), "https://a.example".into());

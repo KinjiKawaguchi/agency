@@ -213,6 +213,8 @@ fn init(
         delivery: vec![],
         access: None,
         push: None,
+        web_push: None,
+        hide_titles: false,
     })?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",

@@ -27,6 +27,11 @@ const SAMPLE_ACTIVITY: &str = include_str!("../../../testdata/activity.sample.js
 const ALICE_PORT: u16 = 7701;
 const BOB_PORT: u16 = 7702;
 /// A comment with characters a client's JSON must carry unchanged.
+/// The application server key and a browser's key from RFC 8291, appendix A.
+const SAMPLE_VAPID_KEY: &str =
+    "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8";
+const SAMPLE_BROWSER_KEY: &str =
+    "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4";
 const COMMENT: &str = "リリースは来週にしてください 🚀 \"quoted\" \\ /";
 
 type Answers = Vec<(&'static str, Value)>;
@@ -200,10 +205,27 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     let token =
         json!({ "token": "ab12".repeat(16), "environment": "production", "label": "iPhone" });
     let registered = write(alice, "/api/push/tokens", &token).await;
+    alice.notifier.0.lock().unwrap().web_key = Some(agency_proto::client::VapidKey {
+        public_key: SAMPLE_VAPID_KEY.into(),
+        key_id: "a1b2c3d4e5f6".into(),
+    });
+    let subscription = json!({
+        "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABk-example",
+        "p256dh": SAMPLE_BROWSER_KEY,
+        "auth": "BTBZMqHH6r4Tts7J_aSIgg",
+        "label": "Firefox on a laptop",
+    });
+    let subscribed = write(alice, "/api/push/subscriptions", &subscription).await;
     let (status, error) = body(get(alice, "/api/orgs/other").send().await.unwrap()).await;
     assert_eq!(status, 404);
     let mut answers = vec![
         ("me", read(alice, "/api/me").await),
+        ("push-vapid", read(alice, "/api/push/vapid").await),
+        ("push-subscription", subscribed),
+        (
+            "push-subscription-list",
+            read(alice, "/api/push/subscriptions").await,
+        ),
         ("me-funding", me_with_funding(alice).await),
         ("session", read(alice, "/api/session").await),
         ("org", read(alice, "/api/orgs/acme").await),

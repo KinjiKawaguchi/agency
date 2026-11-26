@@ -168,6 +168,8 @@ async fn node_from(
         delivery: vec![],
         access: None,
         push: None,
+        web_push: None,
+        hide_titles: false,
     })
     .unwrap();
     let clock = ManualClock::at(T0);

@@ -10,6 +10,7 @@ use agency_core::ports::{
     OutboxStore, PushStore, ReplicaStore,
 };
 use agency_core::views::Replica;
+use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
 use agency_proto::client::PushToken;
 use agency_proto::org::SignedOrg;
@@ -311,6 +312,14 @@ impl PushStore for DataDir {
 
     fn save_push_tokens(&self, tokens: &[PushToken]) -> Result<()> {
         write_json(&self.0.join("push-tokens.json"), tokens)
+    }
+
+    fn web_subscriptions(&self) -> Vec<WebSubscription> {
+        read_json(&self.0.join("web-push-subscriptions.json")).unwrap_or_default()
+    }
+
+    fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()> {
+        write_json(&self.0.join("web-push-subscriptions.json"), subscriptions)
     }
 
     fn notified(&self) -> Option<Vec<String>> {

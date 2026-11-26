@@ -3,8 +3,9 @@ use agency_core::config::HostedTeam;
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{Clock, DeliveryError, DeliverySource, Notifier, Random, TeamRuntime};
 use agency_core::push::{Notice, PushError};
+use agency_core::web_push::WebSubscription;
 use agency_proto::activity::{Activity, ActivityEvent};
-use agency_proto::client::PushToken;
+use agency_proto::client::{PushToken, VapidKey};
 use agency_proto::clock::{Duration, OffsetDateTime};
 use agency_proto::runtime::RuntimeError;
 use agency_proto::view::{AnswerWith, PersonStatus, Request, RequestKind};
@@ -277,6 +278,10 @@ pub struct MemoryNotifierState {
     pub sent: Vec<(String, Notice)>,
     pub gone: Vec<String>,
     pub failing: bool,
+    /// The VAPID key of a node with Web Push; none for a node without it.
+    pub web_key: Option<VapidKey>,
+    /// What was sent to browser subscriptions: the subscription's id and the notice.
+    pub sent_web: Vec<(String, Notice)>,
 }
 
 #[derive(Clone, Default)]
@@ -296,6 +301,31 @@ impl Notifier for MemoryNotifier {
             return Err(PushError::Gone);
         }
         state.sent.push((token.token.clone(), notice.clone()));
+        Ok(())
+    }
+
+    fn web_push_key(&self) -> Option<VapidKey> {
+        self.0.lock().ok()?.web_key.clone()
+    }
+
+    async fn send_web(
+        &self,
+        subscription: &WebSubscription,
+        notice: &Notice,
+    ) -> Result<(), PushError> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| PushError::Failed("the memory notifier is poisoned".into()))?;
+        if state.failing {
+            return Err(PushError::Failed("a push service did not answer".into()));
+        }
+        if state.gone.contains(&subscription.id) {
+            return Err(PushError::Gone);
+        }
+        state
+            .sent_web
+            .push((subscription.id.clone(), notice.clone()));
         Ok(())
     }
 }

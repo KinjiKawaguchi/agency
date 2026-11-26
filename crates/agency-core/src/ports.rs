@@ -9,8 +9,9 @@ use crate::outbox::Parcel;
 use crate::push::{Notice, PushError};
 use crate::read_auth::ReadAuth;
 use crate::views::Replica;
+use crate::web_push::WebSubscription;
 use agency_proto::activity::Activity;
-use agency_proto::client::{PushToken, UsageWindow};
+use agency_proto::client::{PushToken, UsageWindow, VapidKey};
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
@@ -100,6 +101,9 @@ pub trait PushStore {
     /// Keys (`org/team/request`) of requests already notified, oldest first. `None` until the first pass.
     fn notified(&self) -> Option<Vec<String>>;
     fn save_notified(&self, keys: &[String]) -> Result<()>;
+    /// The owner's registered Web Push subscriptions, oldest first.
+    fn web_subscriptions(&self) -> Vec<WebSubscription>;
+    fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;
 }
 
 pub trait ReplicaStore {
@@ -272,8 +276,23 @@ pub trait FundingSource: Send + Sync {
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
 }
 
-/// Sends a notification to one of the owner's devices (APNs). Without a configured key, it sends nothing.
+/// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push
+/// service. Without a configured key, it sends nothing.
 #[async_trait]
 pub trait Notifier: Send + Sync {
     async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError>;
+
+    /// The node's VAPID key when Web Push is set up; a node without it has no browser subscriptions.
+    fn web_push_key(&self) -> Option<VapidKey> {
+        None
+    }
+
+    /// Sends a notification to a browser's subscription.
+    async fn send_web(
+        &self,
+        _subscription: &WebSubscription,
+        _notice: &Notice,
+    ) -> Result<(), PushError> {
+        Err(PushError::Failed("Web Push is not set up".to_owned()))
+    }
 }

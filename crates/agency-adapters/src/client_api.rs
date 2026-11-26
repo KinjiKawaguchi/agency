@@ -19,9 +19,11 @@ use agency_core::client::{
 use agency_core::devices::{device_list, request_device, submit_device_change};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
+use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
 use agency_core::{Error, Node};
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushTokenInput, Session, SignedDecisionInput,
+    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
+    SignedDecisionInput,
 };
 use agency_proto::{DeviceChange, Id, Signed, Timestamp};
 use axum::body::{Body, Bytes};
@@ -379,6 +381,29 @@ async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Res
     }
 }
 
+/// The node's VAPID public key, which a browser subscribes with. 404 when the node has no Web Push.
+async fn get_vapid_key(State(api): Shared) -> Response {
+    respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
+}
+
+async fn get_push_subscriptions(State(api): Shared) -> Response {
+    respond(subscriptions(&api.node))
+}
+
+/// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
+async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
+    let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
+        .and_then(|input| register_subscription(&api.node, input));
+    respond(result)
+}
+
+async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
+    match remove_subscription(&api.node, &id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
+}
+
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html; charset=utf-8",
@@ -449,6 +474,15 @@ pub fn router(api: Arc<ClientApi>) -> Router {
             get(get_push_tokens).post(post_push_token),
         )
         .route("/api/push/tokens/{token}", delete(delete_push_token))
+        .route("/api/push/vapid", get(get_vapid_key))
+        .route(
+            "/api/push/subscriptions",
+            get(get_push_subscriptions).post(post_push_subscription),
+        )
+        .route(
+            "/api/push/subscriptions/{id}",
+            delete(delete_push_subscription),
+        )
         .route("/api/devices/requests", post(post_device_request))
         .route("/api/devices/changes", post(post_device_change))
         .route("/api/orgs/{org}", get(get_org))
