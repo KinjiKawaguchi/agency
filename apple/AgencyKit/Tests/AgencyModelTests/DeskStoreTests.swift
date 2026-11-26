@@ -106,6 +106,43 @@ struct DeskStoreTests {
         #expect(!store.needsSignIn)
     }
 
+    @Test("before the node has answered there is no answer: nothing waits is not claimed, and the count is unknown")
+    func beforeAnswer() async {
+        let store = makeStore()
+        #expect(!store.hasAnswer)
+        #expect(store.knownWaitingCount == nil)
+        await store.refresh()
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 2)
+    }
+
+    @Test("a read that fails before any answer is no answer, and one that fails after an answer keeps it")
+    func failedRead() async {
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        let store = makeStore()
+        await store.refresh()
+        #expect(!store.hasAnswer)
+        #expect(store.knownWaitingCount == nil)
+        source.set(me: .success(Fixture.decode(Me.self, "me")))
+        await store.refresh()
+        #expect(store.knownWaitingCount == 2)
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.loading != .loaded)
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 2)
+    }
+
+    @Test("a node that answers with nothing to read has answered: the count is 0, not unknown")
+    func answeredWithNothing() async throws {
+        let none = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]}"#
+        source.set(me: .success(try JSONDecoder().decode(Me.self, from: Data(none.utf8))))
+        let store = makeStore()
+        await store.refresh()
+        #expect(store.hasAnswer)
+        #expect(store.knownWaitingCount == 0)
+    }
+
     @Test("a team that cannot be read does not hide the others")
     func teamFailure() async throws {
         let two = """

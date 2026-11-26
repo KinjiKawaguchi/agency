@@ -8,7 +8,7 @@ struct SettingsSheet: View {
     let host: String
     let notifications: NotificationPreferencesStore
     let widgets: WidgetPreferencesStore
-    let nodeSendsPushKinds: Bool
+    let nodeSendsPushKinds: Bool?
     let onChangeHomeNode: () -> Void
     let onResetKey: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -47,9 +47,9 @@ struct SettingsSheet: View {
 
     /// Whether the widgets show titles. A node that keeps titles off devices keeps them off the widgets, and the row says so.
     private var widgetSection: some View {
-        Section(footer: Text(widgets.nodeHidesTitles ? WidgetWording.nodeHidesTitles : WidgetWording.showTitlesFooter)) {
-            Toggle(WidgetWording.showTitles, isOn: Binding(get: { widgets.showsTitles }, set: { widgets.setShowsTitles($0) }))
-                .disabled(widgets.nodeHidesTitles)
+        Section(footer: Text(widgets.nodeHidesTitles == true ? WidgetWording.nodeHidesTitles : WidgetWording.showTitlesFooter)) {
+            Toggle(WidgetWording.showTitles, isOn: Binding(get: { widgets.isSwitchOn }, set: { widgets.setShowsTitles($0) }))
+                .disabled(widgets.nodeHidesTitles == true)
         }
     }
 }

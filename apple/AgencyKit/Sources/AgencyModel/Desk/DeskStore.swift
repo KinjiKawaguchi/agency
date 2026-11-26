@@ -84,8 +84,16 @@ public final class DeskStore {
         drafts = storage.load()
     }
 
-    /// The number for the tab and the app icon.
+    /// Whether the node has answered at least once: a team's view was read, or the read finished. Before that the lists are
+    /// empty because nothing was read, not because nothing is there, and a screen shows that it is loading, not an empty desk.
+    public var hasAnswer: Bool { loading == .loaded || !teams.isEmpty }
+
+    /// The number for the tab and the app icon. `0` also before the node has answered: use `knownWaitingCount` where
+    /// "not read yet" must not look like "nothing waits".
     public var waitingCount: Int { Desk.waitingCount(teams) }
+
+    /// How many requests wait for the owner, or `nil` while the node has not answered.
+    public var knownWaitingCount: Int? { hasAnswer ? waitingCount : nil }
     public var situation: Situation { Situation(teams: teams, items: items) }
 
     public func item(_ id: String) -> DeskItem? { items.first { $0.id == id } }

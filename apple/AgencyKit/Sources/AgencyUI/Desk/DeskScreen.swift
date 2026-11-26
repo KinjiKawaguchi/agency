@@ -36,9 +36,14 @@ public struct DeskScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     banners
-                    DeskPile(items: store.items, situation: store.situation, sent: Set(store.sent.keys), now: Date())
-                    if !store.recent.isEmpty || store.recentFailure != nil {
-                        RecentDecisions(entries: store.recent, failure: store.recentFailure, now: Date()).padding(.top, 16)
+                    if store.hasAnswer {
+                        DeskPile(items: store.items, situation: store.situation, sent: Set(store.sent.keys), now: Date())
+                        if !store.recent.isEmpty || store.recentFailure != nil {
+                            RecentDecisions(entries: store.recent, failure: store.recentFailure, now: Date()).padding(.top, 16)
+                        }
+                    } else if store.loading == .idle || store.loading == .loading {
+                        // Until the node answers there is no pile to say is empty.
+                        ForEach(0..<3, id: \.self) { _ in SkeletonCard() }
                     }
                 }
                 .padding(Theme.gutter)
@@ -49,7 +54,10 @@ public struct DeskScreen: View {
             }
             .navigationTitle(Ja.Desk.title)
             .navigationDestination(for: String.self) { id in
-                RequestDetailScreen(store: store, isDeviceReady: pairing?.isReady ?? false, itemID: id)
+                RequestDetailScreen(
+                    store: store, isDeviceReady: pairing?.isReady ?? false, isDeviceChecked: pairing.map { $0.status != .checking } ?? true,
+                    itemID: id
+                )
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -125,21 +133,25 @@ public struct DeskScreen: View {
 struct RequestDetailScreen: View {
     let store: DeskStore
     let isDeviceReady: Bool
+    let isDeviceChecked: Bool
     let itemID: String
 
     var body: some View {
         ScrollView {
             if let item = store.item(itemID) {
                 RequestDetail(
-                    item: item, draft: store.draft(for: itemID), status: status, now: Date(), isDeviceReady: isDeviceReady,
+                    item: item, draft: store.draft(for: itemID), status: status, now: Date(), isDeviceReady: isDeviceReady, isDeviceChecked: isDeviceChecked,
                     onText: { store.setText($0, for: itemID) },
                     onPick: { store.toggleOption($0, for: itemID) },
                     onDecide: { decide(item) },
                     onComment: { comment() }
                 )
                 .padding(Theme.gutter)
-            } else {
+            } else if store.hasAnswer {
                 Text(Ja.Desk.nothingToDecide).font(.body).foregroundStyle(.secondary).wrapping().padding(Theme.gutter)
+            } else {
+                // Opened from a notification before the desk was read: the request is not missing, it is not read yet.
+                SkeletonCard().padding(Theme.gutter)
             }
         }
         #if os(iOS)
