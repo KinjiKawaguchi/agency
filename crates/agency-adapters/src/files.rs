@@ -7,7 +7,7 @@ use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::ports::{
     AppliedLog, ConfigStore, DecisionLogStore, DeviceRequestStore, InviteStore, OrgStore,
-    OutboxStore, OutcomeStore, PushStore, ReplicaStore,
+    OutboxStore, OutcomeStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
@@ -140,6 +140,32 @@ impl DataDir {
 
     fn outcome_path(&self, org: &Id) -> PathBuf {
         self.dir("outcomes").join(format!("{org}.jsonl"))
+    }
+
+    fn ships_path(&self, org: &Id) -> PathBuf {
+        self.dir("outcomes").join(format!("{org}.ships.jsonl"))
+    }
+
+    /// Appends one line to a file of the `outcomes` directory, which only this account can read: the
+    /// directory is 0700 and the file 0600.
+    fn append_private_line(&self, path: &Path, line: &str) -> Result<()> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let dir = self.dir("outcomes");
+        fs::create_dir_all(&dir)
+            .and_then(|()| fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)))
+            .map_err(|error| io_error(&dir, error))?;
+        fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .mode(0o600)
+            .open(path)
+            .and_then(|mut file| {
+                file.write_all(line.as_bytes())?;
+                file.write_all(b"\n")?;
+                file.sync_all()
+            })
+            .map_err(|error| io_error(path, error))
     }
 
     fn org_version_path(&self, org: &Id, version: u64) -> PathBuf {
@@ -313,25 +339,27 @@ impl OutcomeStore for DataDir {
     }
 
     fn append_observation(&self, org: &Id, observation: &Observation) -> Result<()> {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let dir = self.dir("outcomes");
-        fs::create_dir_all(&dir)
-            .and_then(|()| fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)))
-            .map_err(|error| io_error(&dir, error))?;
         let path = self.outcome_path(org);
         let line = serde_json::to_string(observation).map_err(|error| io_error(&path, error))?;
-        fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .mode(0o600)
-            .open(&path)
-            .and_then(|mut file| {
-                file.write_all(line.as_bytes())?;
-                file.write_all(b"\n")?;
-                file.sync_all()
-            })
-            .map_err(|error| io_error(&path, error))
+        self.append_private_line(&path, &line)
+    }
+}
+
+impl ShipLedger for DataDir {
+    /// The lines of `outcomes/<org>.ships.jsonl`; a line that does not parse is skipped.
+    fn ships(&self, org: &Id) -> Vec<ShipRecord> {
+        let Ok(text) = fs::read_to_string(self.ships_path(org)) else {
+            return vec![];
+        };
+        text.lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
+    }
+
+    fn append_ship(&self, org: &Id, record: &ShipRecord) -> Result<()> {
+        let path = self.ships_path(org);
+        let line = serde_json::to_string(record).map_err(|error| io_error(&path, error))?;
+        self.append_private_line(&path, &line)
     }
 }
 

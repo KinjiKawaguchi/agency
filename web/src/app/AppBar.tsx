@@ -65,7 +65,7 @@ export function AppBar() {
   const { t, locale, setLocale } = useI18n()
   const { theme, setTheme } = useTheme()
   const waiting = useWaiting()
-  const { nodes } = useHomeNodes()
+  const { nodes, listed } = useHomeNodes()
   const api = useApi()
   const me = useQuery(meQuery(api)).data
   const key = useDeviceKey()
@@ -74,7 +74,7 @@ export function AppBar() {
   const isReadingApprovals = key.status === 'ready' && devices.isPending
   const approvals = devices.data === undefined || key.status !== 'ready' || enrollmentOf(key.key.publicKey, devices.data).status !== 'enrolled' ? 0 : devices.data.requests.filter((request) => request.publicKey !== key.key.publicKey).length
   // Once the owner lists another home node, every tab says which one it is, so the work node cannot be taken for the personal one.
-  const nodeName = nodes.others.length === 0 || isNativeApp() ? undefined : (nodes.self ?? window.location.host)
+  const nodeName = listed.length === 0 || isNativeApp() ? undefined : (nodes.self ?? window.location.host)
   const themeLabels = THEME_LABELS(t)
   const path = useRouterState({ select: (state) => state.location.pathname })
   const current = GROUPS.find((group) => group.pages.some((page) => isOn(path, page.to)))

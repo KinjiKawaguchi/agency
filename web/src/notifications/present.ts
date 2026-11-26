@@ -14,6 +14,8 @@ export type NoticeTarget = { to: '/desk'; item?: string } | { to: '/people' } | 
 
 export interface Notice {
   message: string
+  /** The same with no title, label, team, or reason in it (a count is none): what may leave the page when the node hides titles. */
+  plain: string
   tone: 'info' | 'error'
   target: NoticeTarget
   /**
@@ -53,14 +55,14 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     const owner = teamOf(lookups, org, team)
     const title = owner?.view.requests.find((one) => one.id === item)?.title
     const target: NoticeTarget = requests.length === 1 ? { to: '/desk', item: `${org}:${team}:${item}` } : { to: '/desk' }
-    found.push({ tone: 'info', target, ...(requests.length === 1 ? { tag: `request/${org}/${team}/${item}` } : {}), message: text.request(requests.length, title ?? item, owner?.view.label ?? team) })
+    found.push({ tone: 'info', target, ...(requests.length === 1 ? { tag: `request/${org}/${team}/${item}` } : {}), message: text.request(requests.length, title ?? item, owner?.view.label ?? team), plain: requests.length === 1 ? text.hidden.request : text.request(requests.length, '', '') })
   }
 
   const participants = keysOf(events, 'participant', 'participant:')
   if (participants.length > 0) {
     const { org, team, item } = placeOf(participants[0] ?? '' /* stand-in-ok(index): the first of a list that is not empty */)
     const label = teamOf(lookups, org, team)?.view.people.find((one) => one.id === item)?.label
-    found.push({ tone: 'info', target: { to: '/people' }, message: text.participant(participants.length, label ?? item) })
+    found.push({ tone: 'info', target: { to: '/people' }, message: text.participant(participants.length, label ?? item), plain: participants.length === 1 ? text.hidden.participant : text.participant(participants.length, '') })
   }
 
   const blocked = keysOf(events, 'blocked', 'blocked:')
@@ -68,13 +70,13 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     const { org, team, item } = placeOf(blocked[0] ?? '' /* stand-in-ok(index): the first of a list that is not empty */)
     const owner = teamOf(lookups, org, team)
     const work = owner?.view.work.find((one) => one.ref === item)
-    found.push({ tone: 'info', target: { to: '/people' }, message: text.blocked(blocked.length, work?.title ?? item, owner?.view.label ?? team, work?.blocked === undefined ? undefined : t.people.blockedReasons[work.blocked.reason]) })
+    found.push({ tone: 'info', target: { to: '/people' }, message: text.blocked(blocked.length, work?.title ?? item, owner?.view.label ?? team, work?.blocked === undefined ? undefined : t.people.blockedReasons[work.blocked.reason]), plain: blocked.length === 1 ? text.hidden.blocked : text.blocked(blocked.length, '', '', undefined) })
   }
 
   const devices = onDevices ? [] : keysOf(events, 'device', 'device:')
   if (devices.length > 0) {
     const label = lookups.devices?.requests.find((one) => one.publicKey === devices[0])?.label
-    found.push({ tone: 'info', target: { to: '/devices' }, ...(devices.length === 1 ? { tag: 'device' } : {}), message: text.device(devices.length, label ?? text.aDevice) })
+    found.push({ tone: 'info', target: { to: '/devices' }, ...(devices.length === 1 ? { tag: 'device' } : {}), message: text.device(devices.length, label ?? text.aDevice), plain: devices.length === 1 ? text.hidden.device : text.device(devices.length, '') })
   }
 
   const decided = events.filter((event) => event.kind === 'decision').map((event) => ({ id: event.key.slice('decision:'.length, event.key.lastIndexOf(':')), state: event.key.slice(event.key.lastIndexOf(':') + 1) }))
@@ -83,8 +85,8 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     if (some.length === 0) continue
     const entry = lookups.decisions?.entries.find((one) => one.id === some[0]?.id)
     const reason = entry?.state.kind === 'refused' ? entry.state.message : undefined
-    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, ...(some.length === 1 ? { tag: `decision/${some[0]?.id}` } : {}), message: text.decision(state, some.length, entry?.title ?? '' /* stand-in-ok(optional): a decision logged without a title has none to name, in a notice of something that has just happened */, reason) })
+    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, ...(some.length === 1 ? { tag: `decision/${some[0]?.id}` } : {}), message: text.decision(state, some.length, entry?.title ?? '' /* stand-in-ok(optional): a decision logged without a title has none to name, in a notice of something that has just happened */, reason), plain: state === 'refused' && some.length === 1 ? text.hidden.decisionRefused : text.decision(state, some.length, '', undefined) })
   }
 
-  return found.length <= MOST ? found : [...found.slice(0, MOST - 1), { tone: 'info', target: { to: '/desk' }, message: text.more(found.length - (MOST - 1)) }]
+  return found.length <= MOST ? found : [...found.slice(0, MOST - 1), { tone: 'info', target: { to: '/desk' }, message: text.more(found.length - (MOST - 1)), plain: text.more(found.length - (MOST - 1)) }]
 }

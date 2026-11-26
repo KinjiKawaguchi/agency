@@ -2,7 +2,7 @@
 //! a read as well as the write, unlike the rest of the Client API, because someone who may read a team's board
 //! must not read the revenue.
 use super::{is_owner_request, json_body, refuse, respond, Admitted, ClientApi, Shared};
-use agency_core::outcomes;
+use agency_core::{outcome_readings, outcomes};
 use agency_proto::observation::ObservationInput;
 use agency_proto::Id;
 use axum::body::Bytes;
@@ -34,7 +34,7 @@ async fn require_owner(
     next.run(request).await
 }
 
-/// The three routes of the numbers, every one behind `require_owner`.
+/// The routes of the numbers and of the readings of them, every one behind `require_owner`.
 pub(super) fn routes(api: Arc<ClientApi>) -> Router<Arc<ClientApi>> {
     Router::new()
         .route("/api/orgs/{org}/outcomes", get(get_outcomes))
@@ -42,6 +42,7 @@ pub(super) fn routes(api: Arc<ClientApi>) -> Router<Arc<ClientApi>> {
             "/api/orgs/{org}/outcomes/observations",
             get(get_history).post(post_observation),
         )
+        .route("/api/orgs/{org}/outcomes/readings", get(get_readings))
         .route_layer(middleware::from_fn_with_state(api, require_owner))
 }
 
@@ -60,6 +61,14 @@ async fn get_outcomes(
         Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
     };
     respond(org_of(&org).and_then(|org| outcomes::outcomes(&api.node, &org, days)))
+}
+
+async fn get_readings(api: Shared, Path(org): Path<String>) -> Response {
+    let result = async {
+        let org = org_of(&org)?;
+        outcome_readings::readings(&api.node, &org).await
+    };
+    respond(result.await)
 }
 
 async fn get_history(
