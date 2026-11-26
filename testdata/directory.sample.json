@@ -1,0 +1,25 @@
+{
+  "org": "acme",
+  "departments": [
+    { "id": "ops", "label": "Operations" }
+  ],
+  "members": [
+    { "id": "alice", "label": "ALICE", "role": "member", "runtimeNames": [{ "team": "app", "names": ["owner"] }] },
+    { "id": "bob", "label": "BOB", "role": "member", "runtimeNames": [{ "team": "app", "names": ["reviewer"] }] },
+    { "id": "cara", "label": "CARA", "role": "answerer", "runtimeNames": [] }
+  ],
+  "seats": [
+    {
+      "id": "carol", "label": "Carol (finance)", "department": "ops",
+      "askAbout": ["invoices", "budget approval"], "answeredBy": ["bob"],
+      "runtimeNames": [{ "team": "app", "names": ["finance"] }]
+    }
+  ],
+  "externals": [
+    {
+      "id": "erin", "label": "Erin (outside counsel)",
+      "askAbout": ["contract review", "legal checks"], "answeredBy": ["alice", "bob"],
+      "runtimeNames": [{ "team": "app", "names": ["counsel"] }]
+    }
+  ]
+}
