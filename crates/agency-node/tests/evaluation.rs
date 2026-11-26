@@ -313,13 +313,7 @@ async fn a_team_node_that_answers_for_another_team_is_unavailable_and_the_others
     let (alice, _) = alice().await;
     configure(&alice);
     alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
-    let place = agency_proto::org::TeamPlace {
-        id: id("ext"),
-        label: "ext".into(),
-        department: None,
-        node: lying_node().await,
-        plan: None,
-    };
+    let place = agency_proto::org::TeamPlace::new(id("ext"), "ext", lying_node().await);
     agency_core::orgs::add_team(&alice.node, &id("acme"), place).unwrap();
 
     let (status, answer) = client_evaluation(&alice, "?days=14").await;
