@@ -57,13 +57,17 @@ fn client(is_open_for_tests: bool) -> Result<reqwest::Client, String> {
 /// both base64url. Checked when the subscription is registered, so a key that no message can ever be
 /// encrypted to is refused then and not at the first send.
 pub fn check_keys(p256dh: &str, auth: &str) -> Result<(), String> {
+    // RFC 8291's key info is made of the uncompressed points (65 octets, 0x04 first); `from_sec1_bytes` takes a compressed one too.
     let point = B64
         .decode(p256dh)
         .ok()
+        .filter(|bytes| bytes.len() == 65 && bytes.first() == Some(&0x04))
         .and_then(|bytes| p256::PublicKey::from_sec1_bytes(&bytes).ok());
     let is_secret = B64.decode(auth).is_ok_and(|bytes| bytes.len() == 16);
     if point.is_none() || !is_secret {
-        return Err("p256dh is not a point of P-256 or auth is not 16 octets".to_owned());
+        return Err(
+            "p256dh is not an uncompressed point of P-256 or auth is not 16 octets".to_owned(),
+        );
     }
     Ok(())
 }

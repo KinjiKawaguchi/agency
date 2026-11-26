@@ -42,6 +42,10 @@ pub fn encrypt(
     if auth_secret.len() != 16 {
         return Err(EceError::BadSubscriptionKeys);
     }
+    // The key info is made of the uncompressed points; a compressed key would give another, wrong, key.
+    if ua_public.len() != 65 || ua_public.first() != Some(&0x04) {
+        return Err(EceError::BadSubscriptionKeys);
+    }
     let ua_key =
         PublicKey::from_sec1_bytes(ua_public).map_err(|_| EceError::BadSubscriptionKeys)?;
     let as_public = as_secret.public_key().to_sec1_bytes();
@@ -84,6 +88,7 @@ mod tests {
     use super::*;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
     use base64::Engine;
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
 
     fn decode(text: &str) -> Vec<u8> {
         B64.decode(text.split_whitespace().collect::<String>())
@@ -132,6 +137,12 @@ mod tests {
         assert_eq!(
             good(b"x", &[4; 65], &[0; 16]),
             Err(EceError::BadSubscriptionKeys)
+        );
+        let compressed = as_secret.public_key().to_encoded_point(true);
+        assert_eq!(
+            good(b"x", compressed.as_bytes(), &[0; 16]),
+            Err(EceError::BadSubscriptionKeys),
+            "a compressed point is a key, but not the one RFC 8291 mixes in"
         );
         assert!(good(&vec![b'a'; MAX_MESSAGE], &ua_public, &[0; 16]).is_ok());
         assert_eq!(
