@@ -223,8 +223,8 @@ pub struct TeamSnapshot {
     /// The `id`s of the team's people whose `waitingOn` is the viewer (see "People" in docs/protocol.md).
     pub waiting_on_viewer: Vec<String>,
     /// For each of the viewer's `mine` requests that is addressed to a seat or an external party the viewer
-    /// answers for: the request id and the label of whom it is for, so that a client can say "Answer for
-    /// Erin (outside counsel)". Left out when there is none.
+    /// answers for: the request id and the label of whom it is for, exactly as the org
+    /// definition has it, so that a client can say "Answer for <label>". Left out when there is none.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[ts(as = "Option<std::collections::BTreeMap<String, String>>", optional)]
     pub relayed_for: BTreeMap<String, String>,
