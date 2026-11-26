@@ -74,3 +74,23 @@ pub(crate) fn recovery_candidates(node: &Node) -> Vec<Candidate> {
         })
         .collect()
 }
+
+/// The changes held for the owner's `agency root-sign`, by handle. Each is told once, like a device request.
+pub(crate) fn root_change_candidates(node: &Node, is_hidden: bool) -> Vec<Candidate> {
+    let Ok(held) = crate::pending_root::waiting(node) else {
+        return vec![];
+    };
+    held.into_iter()
+        .map(|one| Candidate {
+            key: format!("root/{}", one.id),
+            notice: Notice {
+                kind: NoticeKind::RootChange {
+                    what: (!is_hidden).then(|| one.what()),
+                    org: one.org,
+                    id: one.id,
+                },
+                badge: 0,
+            },
+        })
+        .collect()
+}

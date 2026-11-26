@@ -2,7 +2,7 @@
 //! JWT (ES256, signed with the `.p8` key, reused for 50 minutes) and goes over HTTP/2 to the production
 //! or sandbox host that matches the device token.
 use agency_core::config::PushConfig;
-use agency_core::notice::recovery_text;
+use agency_core::notice::{recovery_text, root_change_text};
 use agency_core::ports::{Clock, Notifier};
 use agency_core::push::{Notice, NoticeKind, PushError};
 use agency_proto::client::{PushEnvironment, PushToken};
@@ -192,6 +192,13 @@ pub fn payload(notice: &Notice) -> Value {
             (
                 json!({ "title": title, "body": body }),
                 json!({ "type": "recovery", "org": org }),
+            )
+        }
+        NoticeKind::RootChange { org, id, what } => {
+            let (title, body) = root_change_text(org, what.as_deref());
+            (
+                json!({ "title": title, "body": body }),
+                json!({ "type": "root", "org": org, "id": id }),
             )
         }
     };

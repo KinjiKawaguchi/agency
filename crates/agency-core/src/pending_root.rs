@@ -54,7 +54,7 @@ pub struct WaitingJoin {
 
 impl PendingRootChange {
     /// What it changes, in words, for the terminal, the desk, and the presence prompt. A label came from
-    /// someone else: a control character in it is shown as `?`, so it can neither move the terminal's cursor
+    /// someone else: a control or format character in it is shown as `?`, so it can neither move the terminal's cursor
     /// nor push a name out of the prompt.
     pub fn what(&self) -> String {
         printable(&self.raw_what())
@@ -123,11 +123,7 @@ impl PendingRootChange {
     }
 }
 
-fn printable(text: &str) -> String {
-    text.chars()
-        .map(|c| if c.is_control() { '?' } else { c })
-        .collect()
-}
+use agency_proto::org::printable;
 
 /// The most changes one presence prompt signs: every one of them is named in its words.
 pub const MOST_PER_PROMPT: usize = 3;

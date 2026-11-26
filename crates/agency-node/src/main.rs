@@ -261,7 +261,7 @@ fn status(node: &Node) {
         println!(
             "Org {} ({}), version {}, {}, people: {}, teams: {}",
             doc.body.org,
-            doc.body.label,
+            agency_proto::org::printable(&doc.body.label),
             doc.body.version,
             role,
             doc.body.people.len(),
@@ -590,7 +590,7 @@ async fn run(cli: Cli) -> Result<()> {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
                 Joined::Member(doc) => println!(
                     "Joined org {} ({}) (version {})",
-                    doc.body.org, doc.body.label, doc.body.version
+                    doc.body.org, agency_proto::org::printable(&doc.body.label), doc.body.version
                 ),
                 Joined::Waiting(message) => println!(
                     "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."

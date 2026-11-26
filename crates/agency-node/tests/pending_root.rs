@@ -319,3 +319,75 @@ async fn one_account_holds_at_most_five_changes_in_an_org() {
     );
     assert_eq!(pending_root::waiting(&alice.node).unwrap().len(), 5);
 }
+
+const TOKEN_HEX: &str = "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12";
+
+async fn register(running: &Running, events: &[&str]) {
+    let input = serde_json::json!({ "token": TOKEN_HEX, "environment": "sandbox", "label": "iPhone", "events": events });
+    let (status, answer) = common::body(
+        reqwest::Client::new()
+            .post(format!("{}/api/push/tokens", running.url()))
+            .header("x-agency-token", common::TOKEN)
+            .json(&input)
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200, "{answer}");
+}
+
+fn root_notices(running: &Running) -> Vec<agency_core::notice::NoticeKind> {
+    let state = running.notifier.0.lock().unwrap();
+    state
+        .sent
+        .iter()
+        .map(|(_, notice)| notice.kind.clone())
+        .filter(|kind| matches!(kind, agency_core::notice::NoticeKind::RootChange { .. }))
+        .collect()
+}
+
+#[tokio::test]
+async fn the_owner_is_told_once_of_each_held_change_by_a_token_that_wants_devices() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["device"]).await;
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+
+    notify_waiting(&alice.node).await.unwrap();
+    notify_waiting(&alice.node).await.unwrap();
+    let told = root_notices(&alice);
+    assert_eq!(told.len(), 1, "once: {told:?}");
+    let agency_core::notice::NoticeKind::RootChange { what, org, .. } = &told[0] else {
+        unreachable!()
+    };
+    assert_eq!(org, &id("acme"));
+    assert_eq!(what.as_deref(), Some("add device Laptop for bob"));
+}
+
+#[tokio::test]
+async fn hidden_titles_keep_the_labels_out_of_a_held_changes_notice() {
+    use agency_core::push::notify_waiting;
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    register(&alice, &["root"]).await;
+    alice
+        .node
+        .update_config(|config| config.hide_titles = true)
+        .unwrap();
+    notify_waiting(&alice.node).await.unwrap();
+    alice.root_keys.ask_presence(true);
+    held_device_for_bob(&alice, &bob, "Laptop").await;
+    notify_waiting(&alice.node).await.unwrap();
+    let told = root_notices(&alice);
+    assert!(
+        matches!(
+            &told[..],
+            [agency_core::notice::NoticeKind::RootChange { what: None, .. }]
+        ),
+        "{told:?}"
+    );
+}

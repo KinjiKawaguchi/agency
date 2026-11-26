@@ -267,10 +267,52 @@ pub fn is_node_origin(raw: &str) -> bool {
     })
 }
 
-/// A label: 1 to 80 characters, none of them a control character.
+/// A label: 1 to 80 characters, none of them a control or a format character (which could move a
+/// terminal's cursor, reorder how a line reads, or hide part of it).
 pub fn label_ok(label: &str) -> bool {
     let count = label.chars().count();
-    (1..=80).contains(&count) && !label.chars().any(char::is_control)
+    (1..=80).contains(&count) && !label.chars().any(is_hidden_char)
+}
+
+/// A control character (Unicode category Cc) or a format character (Cf): bidirectional overrides and
+/// isolates, zero-width characters, the byte-order mark, and the rest of Cf.
+pub fn is_hidden_char(c: char) -> bool {
+    const FORMAT: &[(u32, u32)] = &[
+        (0x00AD, 0x00AD),
+        (0x0600, 0x0605),
+        (0x061C, 0x061C),
+        (0x06DD, 0x06DD),
+        (0x070F, 0x070F),
+        (0x0890, 0x0891),
+        (0x08E2, 0x08E2),
+        (0x180E, 0x180E),
+        (0x200B, 0x200F),
+        (0x202A, 0x202E),
+        (0x2060, 0x2064),
+        (0x2066, 0x206F),
+        (0xFEFF, 0xFEFF),
+        (0xFFF9, 0xFFFB),
+        (0x110BD, 0x110BD),
+        (0x110CD, 0x110CD),
+        (0x13430, 0x1343F),
+        (0x1BCA0, 0x1BCA3),
+        (0x1D173, 0x1D17A),
+        (0xE0001, 0xE0001),
+        (0xE0020, 0xE007F),
+    ];
+    let code = u32::from(c);
+    c.is_control()
+        || FORMAT
+            .iter()
+            .any(|(low, high)| (*low..=*high).contains(&code))
+}
+
+/// Text from someone else made safe to print on a terminal or in a prompt: every control or format
+/// character becomes `?`.
+pub fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| if is_hidden_char(c) { '?' } else { c })
+        .collect()
 }
 
 pub(crate) fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {

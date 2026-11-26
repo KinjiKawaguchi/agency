@@ -467,6 +467,9 @@ pub enum PushEvent {
     /// A recovery of an org whose root is this node's account was started. Every token and browser gets
     /// it, whatever kinds it names: the owner must be able to cancel.
     Recovery,
+    /// A change someone asked the root to sign waits for the owner's `agency root-sign`. A token that asks
+    /// for `device` gets it too: a device to approve is the usual case.
+    Root,
 }
 
 /// What a token gets when it names no kinds (what a token got before kinds existed).
