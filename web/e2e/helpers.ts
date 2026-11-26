@@ -19,8 +19,12 @@ export interface NodeOptions {
   claim?: { code: string; fails?: 'unknown' | 'expired' | 'other-email' | 'taken' }
   /** The node's configuration names two other home nodes, Work and a Lab on this machine. */
   homeNodes?: boolean
+  /** The org's recovery was started and waits, as the node says it. */
+  recovery?: boolean
   /** The owner is reading: the node serves the outcomes and the readings (the shared samples). Otherwise it answers 403, as to anyone but the owner. */
   outcomes?: boolean
+  /** The evaluation carries each team's participants, as it does for the team's owner. */
+  participants?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
   /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
@@ -37,9 +41,11 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
   if (options.empty === true) query.set('empty', '1')
   if (options.moreOrgs === true) query.set('orgs', 'more')
+  if (options.participants === true) query.set('participants', '1')
   if (options.outcomes === true) query.set('outcomes', '1')
   if (options.webPush === true) query.set('webPush', '1')
   if (options.homeNodes === true) query.set('homeNodes', '1')
+  if (options.recovery === true) query.set('recovery', '1')
   if (options.guest !== undefined) query.set('guest', options.guest)
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)

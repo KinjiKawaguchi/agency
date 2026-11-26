@@ -404,3 +404,136 @@ fn keys_are_checked_to_be_a_browsers() {
         assert!(check_keys(p256dh, secret).is_err(), "{p256dh} {secret}");
     }
 }
+
+#[test]
+fn a_reference_a_runtime_chose_travels_only_when_it_is_a_plain_identifier() {
+    let request = |reference: &str| Notice {
+        kind: NoticeKind::Request {
+            org: Id::parse("acme").unwrap(),
+            team: Id::parse("app").unwrap(),
+            request: reference.into(),
+            team_label: None,
+            title: None,
+        },
+        badge: 1,
+    };
+    let decision = |reference: &str| Notice {
+        kind: NoticeKind::Decision {
+            org: Id::parse("acme").unwrap(),
+            team: Id::parse("app").unwrap(),
+            id: reference.into(),
+            title: None,
+        },
+        badge: 0,
+    };
+    for plain in [
+        "r-1",
+        "app#10".replace('#', "_").as_str(),
+        "A.b_c-9",
+        &"x".repeat(200),
+    ] {
+        assert_eq!(
+            payload(&request(plain))["agency"]["request"],
+            plain,
+            "{plain}"
+        );
+        assert_eq!(payload(&decision(plain))["agency"]["id"], plain, "{plain}");
+    }
+    for other in [
+        "a/b",
+        "a b",
+        "app#10",
+        "a:b",
+        "../x",
+        ".",
+        "..",
+        "",
+        "é",
+        "a\nb",
+        &"x".repeat(201),
+    ] {
+        let message = payload(&request(other));
+        assert!(
+            message["agency"].get("request").is_none(),
+            "{other:?}: {message}"
+        );
+        assert_eq!(
+            message["agency"]["org"], "acme",
+            "the rest of what the notice is about stays"
+        );
+        let refused = payload(&decision(other));
+        assert!(
+            refused["agency"].get("id").is_none(),
+            "{other:?}: {refused}"
+        );
+        assert_eq!(refused["agency"]["type"], "decision");
+    }
+}
+
+/// A stand-in push service that answers after a while and counts how many requests it holds at once.
+async fn slow_stand_in() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let (now, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    let (held, highest) = (now.clone(), most.clone());
+    let handler = move |axum::extract::Path((code, millis)): axum::extract::Path<(u16, u64)>| {
+        let (held, highest) = (held.clone(), highest.clone());
+        async move {
+            let inside = held.fetch_add(1, Ordering::SeqCst) + 1;
+            highest.fetch_max(inside, Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
+            held.fetch_sub(1, Ordering::SeqCst);
+            StatusCode::from_u16(code).unwrap().into_response()
+        }
+    };
+    let app = axum::Router::new().route("/status/{code}/{millis}", axum::routing::post(handler));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (url, most)
+}
+
+#[tokio::test]
+async fn several_subscriptions_are_sent_to_a_few_at_once_and_answered_in_their_own_order() {
+    let delay = std::time::Duration::from_millis(300);
+    let (url, most) = slow_stand_in().await;
+    let browser = Browser::new();
+    // Even ones are taken, odd ones are gone, and the earlier a subscription the longer its push service takes, so that the
+    // answers finish in the opposite order: they must still come back in the order of the subscriptions.
+    let subscriptions: Vec<WebSubscription> = (0..12u64)
+        .map(|n| {
+            browser.subscription(&format!(
+                "{url}/status/{}/{}",
+                if n % 2 == 0 { 201 } else { 410 },
+                300 - n * 20
+            ))
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let answers = web_push()
+        .send_many(&subscriptions, &request_notice())
+        .await;
+    let took = started.elapsed();
+    let expected: Vec<Result<(), PushError>> = (0..12)
+        .map(|n| {
+            if n % 2 == 0 {
+                Ok(())
+            } else {
+                Err(PushError::Gone)
+            }
+        })
+        .collect();
+    assert_eq!(answers, expected);
+    assert!(
+        took < delay * 6,
+        "twelve at 300 ms, four at once, take about 900 ms and not 3.6 s: {took:?}"
+    );
+    assert_eq!(
+        most.load(std::sync::atomic::Ordering::SeqCst),
+        AT_ONCE,
+        "no more than AT_ONCE are held at once"
+    );
+    assert!(web_push()
+        .send_many(&[], &request_notice())
+        .await
+        .is_empty());
+}

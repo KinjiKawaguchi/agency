@@ -49,6 +49,52 @@
         }
       ],
       "from": "2026-11-18",
+      "participants": [
+        {
+          "busySeconds": 30600,
+          "costPerMergedPrUsd": 8.45,
+          "costUsd": 8.45,
+          "idleSeconds": 4800,
+          "merged": 1,
+          "name": "backend",
+          "tokens": {
+            "cacheRead": 2400000,
+            "cacheWrite": 180000,
+            "input": 120000,
+            "output": 45000
+          },
+          "waitingSeconds": 2400
+        },
+        {
+          "busySeconds": 10800,
+          "costPerMergedPrUsd": 4.35,
+          "costUsd": 4.35,
+          "idleSeconds": 25200,
+          "merged": 1,
+          "name": "lead",
+          "tokens": {
+            "cacheRead": 1300000,
+            "cacheWrite": 90000,
+            "input": 60000,
+            "output": 21000
+          },
+          "waitingSeconds": 4800
+        },
+        {
+          "busySeconds": 1500,
+          "costUsd": 0.5,
+          "idleSeconds": 300,
+          "merged": 0,
+          "name": "reviewer",
+          "tokens": {
+            "cacheRead": 150000,
+            "cacheWrite": 12000,
+            "input": 8000,
+            "output": 3000
+          },
+          "waitingSeconds": 0
+        }
+      ],
       "summary": {
         "costPerMergedPrUsd": 4.43,
         "issueLeadMedianSeconds": 14400,
@@ -69,6 +115,7 @@
         "reverts": 1
       },
       "team": "app",
+      "unattributedMerged": 1,
       "until": "2026-11-24"
     }
   ],

@@ -5,7 +5,8 @@
 use crate::error::{Error, Result};
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
-use crate::push_events::{decision_candidates, device_candidates};
+use crate::push_events::{decision_candidates, device_candidates, recovery_candidates};
+use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader};
 use agency_proto::client::{
     default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
@@ -101,7 +102,7 @@ pub fn remove_push_token(node: &Node, raw: &str) -> Result<()> {
     remove_tokens(node, &[token])
 }
 
-fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
+pub(crate) fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
     let kept: Vec<PushToken> = node
         .store()
         .push_tokens()
@@ -204,6 +205,9 @@ async fn waiting_for_owner(node: &Node, is_hidden: bool) -> Vec<Candidate> {
 pub struct Pass {
     pub sent: usize,
     pub failures: Vec<String>,
+    /// The recoveries this pass found started, worded for the node's log: a channel that is never empty,
+    /// for a node with no device registered.
+    pub recoveries: Vec<String>,
 }
 
 /// What sending one notice to one kind of destination came to.
@@ -212,6 +216,8 @@ struct Outcome {
     wanting: usize,
     accepted: bool,
     gone: Vec<String>,
+    /// The destinations that failed and are not gone: they are tried again, alone.
+    failed: Vec<String>,
 }
 
 impl Outcome {
@@ -219,7 +225,10 @@ impl Outcome {
         match answer {
             Ok(()) => self.accepted = true,
             Err(PushError::Gone) => self.gone.push(id.to_owned()),
-            Err(PushError::Failed(why)) => pass.failures.push(why),
+            Err(PushError::Failed(why)) => {
+                pass.failures.push(why);
+                self.failed.push(id.to_owned());
+            }
         }
     }
 }
@@ -228,7 +237,7 @@ async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result
     let all = node.store().push_tokens();
     let wanting: Vec<&PushToken> = all
         .iter()
-        .filter(|token| token.events.contains(&notice.event()))
+        .filter(|token| notice.is_wanted_by(&token.events))
         .collect();
     let mut outcome = Outcome {
         wanting: wanting.len(),
@@ -248,8 +257,8 @@ async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Resu
         wanting: wanting.len(),
         ..Outcome::default()
     };
-    for subscription in &wanting {
-        let answer = node.notifier().send_web(subscription, notice).await;
+    let answers = node.notifier().send_web_many(&wanting, notice).await;
+    for (subscription, answer) in wanting.iter().zip(answers) {
         outcome.record(&subscription.id, answer, pass);
     }
     crate::web_push::remove_subscriptions(node, &outcome.gone)?;
@@ -265,9 +274,16 @@ async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<De
     let browsers = send_to_browsers(node, notice, pass).await?;
     let wanting = tokens.wanting + browsers.wanting;
     let gone = tokens.gone.len() + browsers.gone.len();
+    let failed = tokens
+        .failed
+        .into_iter()
+        .map(Destination::Token)
+        .chain(browsers.failed.into_iter().map(Destination::Browser))
+        .collect();
     Ok(Delivery {
         is_done: wanting == 0 || tokens.accepted || browsers.accepted || gone == wanting,
         reached_iphone: tokens.accepted,
+        failed,
     })
 }
 
@@ -275,6 +291,8 @@ async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<De
 struct Delivery {
     /// Delivered, or nobody wants it; otherwise it is tried again on the next pass.
     is_done: bool,
+    /// The destinations that failed to take it, to be sent it again alone.
+    failed: Vec<Destination>,
     /// An iPhone took it. A request's alert wakes the app (`content-available`), so the desk it asked about
     /// needs no push of its own.
     reached_iphone: bool,
@@ -378,6 +396,59 @@ fn trimmed(keys: Vec<String>) -> Vec<String> {
     kept
 }
 
+/// What sending the fresh candidates came to.
+struct Fresh {
+    /// A request's alert reached an iPhone, which then reads its desk on its own.
+    was_woken: bool,
+    /// The destinations that failed to take a notice, each to be sent it again alone.
+    failed: Vec<Retry>,
+}
+
+/// Sends each fresh candidate with the badge. A notice is told once it has been tried, so its key goes to
+/// `notified` whatever came of it: a destination that failed has its own retry (`failed`), and one that took
+/// it is never sent it again.
+async fn send_fresh(
+    node: &Node,
+    fresh: Vec<Candidate>,
+    badge: u32,
+    notified: &mut Vec<String>,
+    pass: &mut Pass,
+) -> Result<Fresh> {
+    let mut sent = Fresh {
+        was_woken: false,
+        failed: vec![],
+    };
+    for one in fresh {
+        let notice = Notice {
+            badge,
+            ..one.notice
+        };
+        if let NoticeKind::Recovery {
+            org,
+            takes_effect_at,
+        } = &notice.kind
+        {
+            let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
+            pass.recoveries.push(format!("{title}. {body}"));
+        }
+        let delivery = send_to_all(node, &notice, pass).await?;
+        if delivery.is_done {
+            pass.sent += 1;
+        }
+        notified.push(one.key.clone());
+        sent.failed.extend(
+            delivery
+                .failed
+                .into_iter()
+                .map(|destination| failure_of(&one.key, destination, node.now())),
+        );
+        if matches!(notice.kind, NoticeKind::Request { .. }) && delivery.reached_iphone {
+            sent.was_woken = true;
+        }
+    }
+    Ok(sent)
+}
+
 /// Notifies the owner of whatever started waiting since the last pass: requests, device requests, and
 /// refused decisions. The first pass of a node with an empty data directory only records what is there,
 /// so nothing old is sent.
@@ -393,16 +464,21 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         let mut keys: Vec<String> = requests.into_iter().map(|one| one.key).collect();
         keys.extend(others.into_iter().map(|one| one.key));
         keys.push(KINDS_MARKER.to_owned());
-        node.store().save_notified(&trimmed(keys))?;
         node.store().save_desk_refresh(&DeskRefresh {
             waiting,
             at: clock::format(node.now()),
         })?;
-        return Ok(Pass::default());
+        // A recovery is told on the first pass too: the owner can cancel it only while it waits.
+        let mut pass = Pass::default();
+        let told = send_fresh(node, recovery_candidates(node), badge, &mut keys, &mut pass).await?;
+        node.store().save_push_retries(&told.failed)?;
+        node.store().save_notified(&trimmed(keys))?;
+        return Ok(pass);
     };
     let is_upgrade = !notified.iter().any(|key| key == KINDS_MARKER);
     let mut pass = Pass::default();
     let mut candidates = requests;
+    candidates.extend(recovery_candidates(node));
     if is_upgrade {
         notified.extend(others.into_iter().map(|one| one.key));
         notified.push(KINDS_MARKER.to_owned());
@@ -410,24 +486,18 @@ pub async fn notify_waiting(node: &Node) -> Result<Pass> {
         candidates.extend(others);
     }
     let fresh: Vec<Candidate> = candidates
-        .into_iter()
+        .iter()
         .filter(|one| !notified.contains(&one.key))
+        .map(|one| Candidate {
+            key: one.key.clone(),
+            notice: one.notice.clone(),
+        })
         .collect();
-    let mut was_woken = false;
-    for one in fresh {
-        let notice = Notice {
-            badge,
-            ..one.notice
-        };
-        let delivery = send_to_all(node, &notice, &mut pass).await?;
-        if delivery.is_done {
-            pass.sent += 1;
-            notified.push(one.key);
-        }
-        if matches!(notice.kind, NoticeKind::Request { .. }) && delivery.reached_iphone {
-            was_woken = true;
-        }
-    }
+    let candidates_now = candidates;
+    let sent = send_fresh(node, fresh, badge, &mut notified, &mut pass).await?;
+    // The retries of earlier passes go before this pass's failures are added, so that nothing fails twice in a pass.
+    let retried = retry_failed(node, &candidates_now, badge, sent.failed, &mut pass).await?;
+    let was_woken = sent.was_woken || retried.reached_iphone;
     node.store().save_notified(&trimmed(notified))?;
     refresh_desks(node, waiting, was_woken, &mut pass).await?;
     Ok(pass)

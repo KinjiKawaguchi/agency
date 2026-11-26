@@ -4,6 +4,7 @@ import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
+import type { OrgWithRecovery, StartedRecovery } from '../recovery/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
 import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, PushSubscription, Session, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
@@ -40,9 +41,13 @@ export interface MockNode {
   setSignInExpired: (isExpired: boolean) => void
   /** Decisions received so far, oldest first. They also appear in the decision log. */
   decisions: () => readonly DecisionAnswer[]
+  /** What `agency root-cancel-recovery` does on the root key's node: the org has no recovery that waits any more. */
+  cancelRecovery: (orgId: string) => void
 }
 
 interface MockNodeOptions {
+  /** Orgs (by id) whose recovery was started and waits, as `GET /api/me` says it. */
+  recoveries?: Readonly<Record<string, StartedRecovery>>
   /** The moment the sample is shifted to, so times read as "an hour ago" whenever the node starts. */
   now?: Date
   /** Replaces the sample TeamView of the `app` team (already in the node's time frame). */
@@ -57,6 +62,8 @@ interface MockNodeOptions {
   usage?: boolean
   /** Makes only the token use calls fail with this status. */
   usageFailsWith?: number
+  /** The evaluation answer carries each team's participants, as it does for the team's owner (left out for anyone else). */
+  participants?: boolean
   /** Serves the evaluation numbers. Off by default, as the real node does not serve them yet and answers 404. */
   evaluation?: boolean
   /** Makes only the evaluation calls fail with this status. */
@@ -149,6 +156,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let accepted: readonly Signed<Envelope>[] = []
   let pushTokens: ReadonlyArray<{ token: string; environment: string; label: string }> = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
+
+  let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
 
   const ownerMe: Me = {
     account: { id: 'alice', label: 'Alice', fingerprint: 'a1b2c3d4e5f6' },
@@ -274,7 +283,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const all = known.teams.map((team) => team.id)
     const left = options.evaluationUnavailableTeam
     const teams = all.filter((team) => team !== left)
-    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now)
+    const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now, options.participants === true)
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
 
@@ -338,7 +347,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.failWith !== undefined) return failure(options.failWith, 'The node is unavailable.')
     const url = new URL(request.url, 'http://mock.local')
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
-    if (request.method === 'GET' && url.pathname === '/api/me') return json(me)
+    if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgWithRecovery => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
@@ -380,6 +389,9 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     pushTokens: () => pushTokens,
     pushSubscriptions: () => webPush.subscriptions(),
     addDeviceFromTerminal: devices.addFromTerminal,
+    cancelRecovery: (orgId) => {
+      recoveries = Object.fromEntries(Object.entries(recoveries).filter(([id]) => id !== orgId))
+    },
     claim: { confirm: claim.confirm, state: claim.state, holdOtherKey: claim.holdOtherKey },
   }
 }

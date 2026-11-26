@@ -139,6 +139,10 @@ pub trait PushStore {
     /// until the first pass has recorded it.
     fn desk_refresh(&self) -> Option<crate::push::DeskRefresh>;
     fn save_desk_refresh(&self, state: &crate::push::DeskRefresh) -> Result<()>;
+    /// The destinations that failed to take a notice and are to be sent it again (docs/protocol.md, "Push notifications"),
+    /// oldest first.
+    fn push_retries(&self) -> Vec<crate::push_retries::Retry>;
+    fn save_push_retries(&self, retries: &[crate::push_retries::Retry]) -> Result<()>;
     /// The owner's registered Web Push subscriptions, oldest first.
     fn web_subscriptions(&self) -> Vec<WebSubscription>;
     fn save_web_subscriptions(&self, subscriptions: &[WebSubscription]) -> Result<()>;
@@ -401,6 +405,21 @@ pub trait Notifier: Send + Sync {
     /// Whether the keys of a browser's subscription can be sent to; the reason when they cannot.
     fn web_push_check_keys(&self, _p256dh: &str, _auth: &str) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Sends a notification to each of some browsers' subscriptions, the answers in the order of the subscriptions. The
+    /// default sends one after another; an adapter that can send to several at once (a push service that is slow must
+    /// not hold the others, nor the iPhone's notice) does.
+    async fn send_web_many(
+        &self,
+        subscriptions: &[WebSubscription],
+        notice: &Notice,
+    ) -> Vec<Result<(), PushError>> {
+        let mut answers = Vec::with_capacity(subscriptions.len());
+        for subscription in subscriptions {
+            answers.push(self.send_web(subscription, notice).await);
+        }
+        answers
     }
 
     /// Sends a notification to a browser's subscription.

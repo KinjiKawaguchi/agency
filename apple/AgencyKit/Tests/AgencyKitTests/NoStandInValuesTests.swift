@@ -37,8 +37,6 @@ struct NoStandInValuesTests {
             "text added after the date of an open day when the series has a total; the chart only exists after the answer",
         Use(file: "Shared/Native/NativeSession.swift", line: "let ownKey = signer?.publicKey.string ?? \"\""):
             "this device has no key: nothing of the node's",
-        Use(file: "Shared/Access/AccessSignInFlow.swift", line: "Bundle.main.object(forInfoDictionaryKey: \"AgencyAssociatedHost\") as? String ?? \"\""):
-            "a build setting of this app; empty means the sign-in cannot start, which it says",
         Use(file: "Shared/Native/DraftDefaultsStorage.swift", line: "UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: DeskDraft].self, from: $0) } ?? [:]"):
             "the owner's own drafts kept on this device, not the node's",
         Use(file: "AgencyKit/Sources/AgencyWidget/WidgetViews.swift", line: "private var count: Int { snapshot?.waitingCount ?? 0 }"):

@@ -5,8 +5,13 @@ import Foundation
 struct WidgetDefaultsStorage: WidgetPreferencesStorage {
     private let key: String
 
+    private static func key(host: String) -> String { "agency.widgets.\(host)" }
+
+    /// Removes what this device kept for the home node at `host`.
+    static func forget(host: String) { UserDefaults.standard.removeObject(forKey: key(host: host)) }
+
     init(host: String) {
-        key = "agency.widgets.\(host)"
+        key = Self.key(host: host)
     }
 
     func load() -> WidgetPreferences {

@@ -7,6 +7,8 @@ public protocol OutcomesSource: Sendable {
     func me() async throws -> Me
     func outcomes(org: String, days: Int) async throws -> Outcomes
     func readings(org: String) async throws -> Readings
+    func enterNumber(org: String, input: ObservationInput) async throws -> KpiObservation
+    func numberHistory(org: String, kpi: String, limit: Int) async throws -> [KpiObservation]
 }
 
 extension NodeClient: OutcomesSource {}
@@ -17,6 +19,23 @@ public enum OrgReadings: Equatable, Sendable {
     case lines([ReadingLine])
     /// The node does not serve the readings (404).
     case unavailable
+    case failed(String)
+}
+
+/// What is known of the history of one KPI the owner has opened.
+public enum HistoryState: Equatable, Sendable {
+    case loading
+    case entries([NumberHistoryEntry])
+    case failed(String)
+}
+
+/// What came of entering a number.
+public enum EntryOutcome: Equatable, Sendable {
+    /// Saved: what to say, and the numbers and readings were read again.
+    case saved(String)
+    /// What was typed is not one the node takes: said before anything was sent.
+    case problem(NumberProblem)
+    /// The node did not take it, or could not be asked: the words for the owner.
     case failed(String)
 }
 
@@ -73,6 +92,9 @@ public final class OutcomesStore {
     /// until a read finishes with every org refusing.
     public private(set) var isAvailable = false
 
+    /// The history of a KPI the owner has opened, by `org/kpi`: kept only while it is open, in memory like the rest.
+    public private(set) var histories: [String: HistoryState] = [:]
+
     @ObservationIgnored private let source: any OutcomesSource
     @ObservationIgnored private let retry: RetryPolicy
 
@@ -109,6 +131,64 @@ public final class OutcomesStore {
             loading = before
         } catch {
             loading = .failed(DeskStore.reason(error))
+        }
+    }
+
+    /// The key of a KPI's history in `histories`.
+    public static func historyKey(org: String, kpi: String) -> String { "\(org)/\(kpi)" }
+
+    /// Enters a number of a KPI for a day. What was typed is checked as the node checks it first, with the node's day as today;
+    /// then the node is asked once (a write is never repeated blindly), its refusals are said in words, and after a save the
+    /// numbers and the readings are read again, and so is every history that is open.
+    public func enter(org: String, kpi: Kpi, form: NumberForm) async -> EntryOutcome {
+        guard let today = orgs.first(where: { $0.id == org })?.until else { return .failed(Ja.Desk.loadFailed("")) }
+        let input: ObservationInput
+        switch NumberCheck.check(form, kpi: kpi.id, today: today) {
+        case .failure(let problem): return .problem(problem)
+        case .success(let checked): input = checked
+        }
+        do {
+            let saved = try await source.enterNumber(org: org, input: input)
+            await refresh()
+            for key in histories.keys { await loadHistory(key: key, unit: kpi.unit, until: today) }
+            return .saved(Ja.Outcomes.Enter.saved(OutcomeFormat.value(saved.value, unit: kpi.unit), day: OutcomeFormat.day(saved.date, relativeTo: today)))
+        } catch NodeError.sessionExpired, NodeError.notSignedIn {
+            needsSignIn = true
+            return .failed(Ja.Desk.signInEnded)
+        } catch NodeError.http(409, _) {
+            return .failed(Ja.Outcomes.Enter.full)
+        } catch NodeError.http(403, _) {
+            return .failed(Ja.Outcomes.Enter.forbidden)
+        } catch NodeError.http(let status, let message) where status < 500 {
+            return .failed(Ja.Outcomes.Enter.refused(message ?? "HTTP \(status)"))
+        } catch {
+            return .failed(DeskStore.reason(error))
+        }
+    }
+
+    /// Opens the history of a KPI and reads it.
+    public func showHistory(org: String, kpi: Kpi) async {
+        let key = Self.historyKey(org: org, kpi: kpi.id)
+        histories[key] = .loading
+        await loadHistory(key: key, unit: kpi.unit, until: orgs.first(where: { $0.id == org })?.until ?? "")
+    }
+
+    public func hideHistory(org: String, kpi: String) {
+        histories[Self.historyKey(org: org, kpi: kpi)] = nil
+    }
+
+    private func loadHistory(key: String, unit: Kpi.Unit, until: String) async {
+        let parts = key.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return }
+        do {
+            let entries = try await source.numberHistory(org: parts[0], kpi: parts[1], limit: 100)
+            // Closed meanwhile: nothing to show.
+            guard histories[key] != nil else { return }
+            histories[key] = .entries(NumberHistoryEntry.list(entries, unit: unit, until: until))
+        } catch is CancellationError {
+            return
+        } catch {
+            if histories[key] != nil { histories[key] = .failed(DeskStore.reason(error)) }
         }
     }
 

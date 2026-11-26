@@ -17,6 +17,8 @@ public struct TeamEvaluationReport: Equatable, Sendable, Identifiable {
     public let label: String
     public let tiles: [Tile]
     public let charts: [EvaluationChart]
+    /// What each participant did, when the node gave it: none otherwise, and nothing is drawn for none.
+    public let participants: ParticipantsSection?
     public var id: String { team }
     public var title: String { Ja.Evaluation.team(label) }
 
@@ -27,6 +29,7 @@ public struct TeamEvaluationReport: Equatable, Sendable, Identifiable {
         self.label = label
         tiles = Self.tiles(numbers.summary, days: days)
         charts = Self.charts(numbers, days: days)
+        participants = ParticipantsSection(numbers: numbers)
     }
 
     // MARK: Tiles
