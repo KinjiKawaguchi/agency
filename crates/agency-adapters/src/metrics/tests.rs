@@ -734,3 +734,80 @@ fn a_read_says_the_group_the_budget_and_whether_the_budget_applies() {
         ]
     );
 }
+
+#[test]
+fn a_day_file_that_cannot_be_read_is_not_replaced_and_the_flush_keeps_its_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let metrics = dir.path().join("metrics");
+    let clock = ManualClock::at(NOW);
+    let first = recorder(dir.path(), &clock);
+    first.record(usage_route("2xx"), ms(10));
+    first.record(usage_route("2xx"), ms(10));
+    first.flush();
+    let file = metrics.join("2026-11-24.jsonl");
+    let before = std::fs::read_to_string(&file).unwrap();
+    // The file stops being readable (a permission, a mount): not the same as there being none.
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let second = recorder(dir.path(), &clock);
+    second.record(usage_route("2xx"), ms(10));
+    second.flush();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        before,
+        "the file it could not read was not replaced"
+    );
+    assert_eq!(
+        one_series(&second.read(1, None, None)).count,
+        3,
+        "its numbers are kept, and the file's are read once it can be"
+    );
+    // The next flush finds the file again and adds to it: nothing of either is lost.
+    second.flush();
+    assert_eq!(one_series(&second.read(1, None, None)).count, 3);
+    let third = recorder(dir.path(), &clock);
+    assert_eq!(one_series(&third.read(1, None, None)).count, 3);
+    assert_eq!(std::fs::read_to_string(&file).unwrap().lines().count(), 1);
+}
+
+#[test]
+fn torn_bytes_in_a_day_file_cost_the_line_they_are_in_and_not_the_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let metrics = dir.path().join("metrics");
+    std::fs::create_dir_all(&metrics).unwrap();
+    let line = |name: &str, count: u64| {
+        format!(
+            r#"{{"hour":1795518000,"kind":"serve","name":"{name}","status":"2xx","count":{count},"errors":0,"sumMs":{count},"buckets":[{count},0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}"#
+        )
+    };
+    let mut bytes = line("GET /before", 2).into_bytes();
+    bytes.extend_from_slice(b"\n{\"hour\":17955\xff\xfe\xc3(\n");
+    bytes.extend_from_slice(line("GET /after", 4).as_bytes());
+    bytes.push(b'\n');
+    std::fs::write(metrics.join("2026-11-24.jsonl"), bytes).unwrap();
+    let recorder = Recorder::new(metrics.clone(), Arc::new(ManualClock::at(NOW)));
+    let names = |recorder: &Recorder| -> Vec<(String, u64)> {
+        recorder
+            .read(1, None, None)
+            .series
+            .iter()
+            .map(|s| (s.name.clone(), s.count))
+            .collect()
+    };
+    assert_eq!(
+        names(&recorder),
+        [("GET /after".to_owned(), 4), ("GET /before".to_owned(), 2)]
+    );
+    recorder.record(usage_route("2xx"), ms(10));
+    recorder.flush();
+    let after = names(&Recorder::new(metrics, Arc::new(ManualClock::at(NOW))));
+    assert_eq!(
+        after,
+        [
+            ("GET /after".to_owned(), 4),
+            ("GET /api/orgs/{org}/teams/{team}/usage".to_owned(), 1),
+            ("GET /before".to_owned(), 2)
+        ],
+        "the day's other lines are kept when the file is rewritten"
+    );
+}

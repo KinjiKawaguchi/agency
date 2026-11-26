@@ -11,6 +11,8 @@ use agency_adapters::handoff;
 use agency_adapters::launch::Launch;
 use agency_adapters::logging::Logger;
 use agency_adapters::memory::NoNotifier;
+use agency_adapters::metrics::serve::record_request;
+use agency_adapters::metrics::Recorder;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
@@ -124,6 +126,7 @@ pub struct Opened {
     certs: Option<Arc<dyn CertSource>>,
     launch: Option<Launch>,
     logger: Logger,
+    recorder: Recorder,
 }
 
 /// Opens the node whose configuration and account key live in `data`.
@@ -136,6 +139,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     let logger = Logger::open(data_dir.join("logs"), config.logging.clone(), clock.clone());
+    let recorder = Recorder::new(data_dir.join("metrics"), clock.clone());
     let notifier = match overrides.notifier {
         Some(notifier) => notifier,
         None => notifier(&config, &data_dir, clock.clone(), &logger),
@@ -172,6 +176,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         certs: overrides.certs,
         launch,
         logger,
+        recorder,
     })
 }
 
@@ -193,6 +198,11 @@ impl Opened {
     /// The node's log.
     pub fn logger(&self) -> &Logger {
         &self.logger
+    }
+
+    /// The node's own measurements: the recorder every request is timed into.
+    pub fn recorder(&self) -> &Recorder {
+        &self.recorder
     }
 
     /// Starts reading the usage of the funding sources that have a collector, for as long as the
@@ -258,6 +268,7 @@ impl Opened {
         let api = ClientApi {
             node: self.node.clone(),
             log: self.logger.sink(LogLevel::Warn, "access"),
+            metrics: self.recorder.clone(),
             token,
             port,
             access,
@@ -268,7 +279,11 @@ impl Opened {
         };
         let refusals = RefusalLog::new(self.logger.sink(LogLevel::Warn, "refused"));
         let app = server::router_with_log(self.node.clone(), refusals)
-            .merge(client_api::router(Arc::new(api)));
+            .merge(client_api::router(Arc::new(api)))
+            .layer(axum::middleware::from_fn_with_state(
+                self.recorder.clone(),
+                record_request,
+            ));
         Ok(if is_public {
             app.layer(axum::middleware::map_response(strict_transport))
         } else {

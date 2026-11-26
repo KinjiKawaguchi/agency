@@ -47,6 +47,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
+mod metrics;
 mod outcomes;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
@@ -65,6 +66,8 @@ pub struct ClientApi {
     pub node: Arc<Node>,
     /// Where the Client API writes a line for the node's log.
     pub log: crate::Log,
+    /// The node's own measurements, which the owner reads.
+    pub metrics: crate::metrics::Recorder,
     /// The write token embedded in the page. Random for each start of the node.
     pub token: String,
     /// The port the node listens on, for the `Host` check.
@@ -591,6 +594,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/decisions", get(get_decisions))
         .route("/api/devices", get(get_devices))
         .merge(outcomes::routes(api.clone()))
+        .merge(metrics::routes(api.clone()))
         .route(
             "/api/push/tokens",
             get(get_push_tokens).post(post_push_token),

@@ -86,7 +86,7 @@ fn write_day(
     // the number of flushes. It is written beside itself and moved into place, so a reader or a stop in the
     // middle sees the old file or the new one whole.
     let path = dir.join(file_name(date));
-    let mut merged = read_file(&path);
+    let mut merged = read_file(&path)?;
     for (key, counts) in entries {
         merged.entry(key.clone()).or_default().merge(counts);
     }
@@ -116,14 +116,20 @@ fn write_day(
     std::fs::rename(&temporary, &path)
 }
 
-/// The lines of one file, added up by hour and series. A line that is not whole, does not have 15 buckets
-/// that add up to its count, has more errors than calls, or has a status or client that no series may have
-/// is skipped; one whose name no series may have is counted as `invalid`, as the recorder would have.
-fn read_file(path: &Path) -> BTreeMap<(Hour, SeriesKey), Counts> {
+/// The lines of one file, added up by hour and series: none when there is no such file, and an error when
+/// there is one that cannot be read (a flush then keeps its numbers rather than replace what it could not
+/// read). A line that is not whole (torn bytes, which are read as they are and not as a reason to give up
+/// on the file), does not have 15 buckets that add up to its count, has more errors than calls, or has a
+/// status or client that no series may have is skipped; one whose name no series may have is counted as
+/// `invalid`, as the recorder would have.
+fn read_file(path: &Path) -> std::io::Result<BTreeMap<(Hour, SeriesKey), Counts>> {
     let mut hours = BTreeMap::new();
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return hours;
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(hours),
+        Err(error) => return Err(error),
     };
+    let text = String::from_utf8_lossy(&bytes);
     for line in text
         .lines()
         .filter_map(|line| serde_json::from_str::<Line>(line).ok())
@@ -153,7 +159,7 @@ fn read_file(path: &Path) -> BTreeMap<(Hour, SeriesKey), Counts> {
         };
         hours.entry((line.hour, key)).or_default().merge(&counts);
     }
-    hours
+    Ok(hours)
 }
 
 /// The lines of the files from the day of `first_hour` on, added up by hour and series, from `first_hour` on.
@@ -170,7 +176,8 @@ pub(super) fn read(dir: &Path, first_hour: Hour) -> BTreeMap<(Hour, SeriesKey), 
         if first_day.is_some_and(|first| day < first) {
             continue;
         }
-        for ((hour, key), counts) in read_file(&entry.path()) {
+        // A file that cannot be read is not in an answer; a flush will not replace it.
+        for ((hour, key), counts) in read_file(&entry.path()).unwrap_or_default() {
             if hour >= first_hour {
                 hours.entry((hour, key)).or_default().merge(&counts);
             }
