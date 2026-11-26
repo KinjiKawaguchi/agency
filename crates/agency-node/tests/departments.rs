@@ -177,6 +177,7 @@ async fn only_the_roots_node_changes_departments() {
 fn plan(shares: [u32; 5], weekly_budget_usd: u32) -> agency_proto::org::TeamPlan {
     let [new_feature, improvement, maintenance, debt, incident] = shares;
     agency_proto::org::TeamPlan {
+        aims: vec![],
         allocation: agency_proto::org::Allocation {
             new_feature,
             improvement,

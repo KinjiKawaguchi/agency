@@ -76,6 +76,15 @@ The numbers are worked out by the node and served at `/api/orgs/<org>/evaluation
 - **Plan** (計画). What the org intends for a team (not a subscription's plan, the product tier of a funding source, which the costs screen calls a plan too), in `teams[].plan` of the org definition, signed by the root key: the *allocation* (割合), the share of the team's effort for each work type, whole numbers that sum to 100, and the *weekly budget* (週の予算), whole US dollars at API prices. A team may have none; the screen then compares nothing.
 - **Effort** (労力). What a team spent, by work type: the token cost, API-priced as in a token usage report, served at `/api/orgs/<org>/effort`.
 
+## Outcomes
+
+What the org's work achieves, as numbers about the business or the product, not about delivery (that is the evaluation). What the org measures is stated in its signed definition, with no number in it; the numbers are business data and stay on the owner's node.
+
+- **Outcome** (成果). What an org's work achieves, told by numbers about its business (revenue, margin, churn) or its product (activation, retention, lead time of a feature, a latency budget). Not the delivery numbers of the evaluation.
+- **KPI** (KPI). A measure the org states in `kpis[]` of its definition: an `id`, a `label`, its `kind` (`business` or `product`), its `unit`, and whether a `higher` or a `lower` value is better. It holds no number and no target figure. A `money` KPI names its currency by an ISO 4217 code (`JPY`), and there is no conversion: the org measures in the currency it reports in. The other units are `percent`, `count`, `ratio`, and `seconds` (a duration).
+- **Observation** (実績値). One number for a KPI on one day, with where it came from (entered by hand, or from a connector), who entered it, and when. It is kept on the owner's node only, never in the definition, and only the owner reads it.
+- **Aim** (狙い). What a team's plan says an epic is meant to move: `plan.aims[]` pairs an epic (by its item reference) with a KPI of the org.
+
 ## Do not use
 
 | Do not say | Say | Why |

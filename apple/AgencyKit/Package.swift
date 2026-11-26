@@ -25,7 +25,7 @@ let package = Package(
         // small memory limit and must not link the API client or the signing code.
         .target(name: "AgencyWidget", dependencies: ["AgencyKit"]),
         .testTarget(name: "AgencyWidgetTests", dependencies: ["AgencyWidget", "AgencyKit"]),
-        .target(name: "AgencyModel", dependencies: ["AgencyAPI", "AgencyProtocol", "AgencyWidget"]),
+        .target(name: "AgencyModel", dependencies: ["AgencyKit", "AgencyAPI", "AgencyProtocol", "AgencyWidget"]),
         .target(name: "AgencyUI", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),
         .testTarget(name: "AgencyUITests", dependencies: ["AgencyUI", "AgencyModel", "AgencyAPI", "AgencyWidget"]),
         .testTarget(name: "AgencyModelTests", dependencies: ["AgencyModel", "AgencyAPI", "AgencyProtocol"]),

@@ -16,13 +16,25 @@ enum SecureEnclaveError: Error, CustomStringConvertible {
     }
 }
 
-/// This phone's device key: a P-256 key made inside the Secure Enclave, which no process can read, and
-/// which signs only after Face ID (the current set of faces: adding or removing one destroys the key,
-/// and the phone has to be added again). The Keychain keeps an opaque handle to it, not the key.
+/// This device's key: a P-256 key made inside the Secure Enclave, which no process can read, and which signs
+/// only after the person confirms each signature. On the iPhone that is Face ID alone (the current set of
+/// faces: adding or removing one destroys the key, and the phone has to be added again). On the Mac it is
+/// Touch ID or the Mac's password (`.userPresence`), because a Mac may have no Touch ID, or be used closed with
+/// another keyboard; with the password as an alternative, tying the key to the current set of fingers would
+/// protect nothing. The Keychain keeps an opaque handle to the key, not the key.
 ///
 /// There is one key for each home node: a node is a separate account, and its key never signs for another.
 struct SecureEnclaveSigner: DeviceSigner {
     private static let service = KeychainStore(service: "agency.device-key")
+
+    /// What the key asks of the person for each signature.
+    private static var confirmation: SecAccessControlCreateFlags {
+        #if os(macOS)
+        [.privateKeyUsage, .userPresence]
+        #else
+        [.privateKeyUsage, .biometryCurrentSet]
+        #endif
+    }
 
     private static func account(for host: String) -> String { "device-key.\(host)" }
 
@@ -39,7 +51,7 @@ struct SecureEnclaveSigner: DeviceSigner {
         }
         var error: Unmanaged<CFError>?
         guard let control = SecAccessControlCreateWithFlags(
-            nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet], &error
+            nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, confirmation, &error
         ) else {
             throw SecureEnclaveError.accessControl(error?.takeRetainedValue().localizedDescription ?? "unknown")
         }
@@ -48,7 +60,7 @@ struct SecureEnclaveSigner: DeviceSigner {
         return try SecureEnclaveSigner(handle: key.dataRepresentation)
     }
 
-    /// Forgets the key of the home node `host`. The next session makes a new one, and the phone is added again.
+    /// Forgets the key of the home node `host`. The next session makes a new one, and the device is added again.
     static func deleteKey(host: String) {
         service.delete(account: account(for: host))
     }
@@ -61,7 +73,7 @@ struct SecureEnclaveSigner: DeviceSigner {
 
     func sign(_ text: Data, reason: String) async throws -> Data {
         let handle = handle
-        // The call waits for Face ID, so it runs off the main actor.
+        // The call waits for the person to confirm, so it runs off the main actor.
         return try await Task.detached(priority: .userInitiated) {
             let context = LAContext()
             context.localizedReason = reason

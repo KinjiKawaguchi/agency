@@ -1,6 +1,7 @@
 //! Org definitions. Only the org's root key signs them; versions grow by one and link to the previous version's fingerprint (one writer).
 use crate::ids::Id;
 use crate::keys::PublicKey;
+use crate::outcome::{Aim, Kpi};
 use crate::signed::{Kind, Signed};
 use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -120,6 +121,27 @@ pub struct TeamPlan {
     /// The weekly spend the org intends, in whole US dollars, estimated at API prices like
     /// `TokenUsage.costUsd` (an integer, since the definition is signed as canonical JSON).
     pub weekly_budget_usd: u32,
+    /// What the team's epics are meant to move: each epic paired with a KPI the org states. Left out when
+    /// empty, so a plan signed before aims existed keeps its canonical JSON and signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Aim>>", optional)]
+    pub aims: Vec<Aim>,
+}
+
+impl TeamPlan {
+    /// A plan with no aims.
+    pub fn new(allocation: Allocation, weekly_budget_usd: u32) -> Self {
+        Self {
+            allocation,
+            weekly_budget_usd,
+            aims: vec![],
+        }
+    }
+
+    /// The same plan with these aims.
+    pub fn with_aims(self, aims: Vec<Aim>) -> Self {
+        Self { aims, ..self }
+    }
 }
 
 /// Percent of a team's effort for each kind of work. The five add up to 100.
@@ -167,6 +189,11 @@ pub struct OrgDefinition {
     pub teams: Vec<TeamPlace>,
     #[serde(default)]
     pub revoked: Vec<PublicKey>,
+    /// What the org measures: labels and ids only, never a number. Left out when empty, so a version signed
+    /// before KPIs existed keeps its canonical JSON and signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Kpi>>", optional)]
+    pub kpis: Vec<Kpi>,
     pub at: String,
 }
 
@@ -193,12 +220,12 @@ pub fn is_node_origin(raw: &str) -> bool {
     })
 }
 
-fn label_ok(label: &str) -> bool {
+pub(crate) fn label_ok(label: &str) -> bool {
     let count = label.chars().count();
     (1..=80).contains(&count) && !label.chars().any(char::is_control)
 }
 
-fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {
+pub(crate) fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {
     let mut seen = HashSet::new();
     ids.into_iter().all(|id| seen.insert(id))
 }
@@ -304,6 +331,7 @@ impl OrgDefinition {
         if !plans.into_iter().all(|plan| plan.allocation.total() == 100) {
             return Err("a team's plan allocation does not add up to 100".into());
         }
+        crate::outcome::validate(self)?;
         self.validate_devices()
     }
 

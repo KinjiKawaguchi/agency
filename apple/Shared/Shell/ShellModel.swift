@@ -11,9 +11,8 @@ import Observation
 @Observable
 final class ShellModel {
     private(set) var session: NativeSession?
-    var tab: AppTab = .desk
-    var organizationPage: OrganizationPage = .orgChart
-    var openItemID: String?
+    /// Which screen is open, and where a banner or a notification leads.
+    let router = ShellRouter()
     var showsSettings = false
 
     let homeNode: HomeNodeURL
@@ -33,7 +32,7 @@ final class ShellModel {
     /// What the desk says is wrong with this device's key or with the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Device.noKey }, session.signInProblem].compactMap { $0 }.first
+        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
     }
 
     // MARK: Start
@@ -83,30 +82,13 @@ final class ShellModel {
     /// A banner was tapped: go where it leads.
     func open(_ banner: NewsBanner) {
         session?.news.dismiss()
-        switch banner.destination {
-        case .desk(let itemID):
-            tab = .desk
-            openItemID = itemID
-        case .people:
-            organizationPage = .people
-            tab = .organization
-        case .devices:
-            tab = .devices
-        }
+        router.open(banner)
     }
 
     /// A notification was tapped: go where it leads.
     func takeLink() {
         guard session != nil, let link = push.takePendingLink() else { return }
-        switch link {
-        case .request(let request):
-            tab = .desk
-            openItemID = DeskItem.key(org: request.org, team: request.team, request: request.request)
-        case .devices:
-            tab = .devices
-        case .decision:
-            tab = .desk
-        }
+        router.open(link)
     }
 
     // MARK: News
@@ -129,7 +111,7 @@ final class ShellModel {
 
     /// The devices screen shows a device that asks to be added by itself, so it makes no banner there.
     func tabChanged() {
-        session?.news.suppressedKinds = tab == .devices ? [.device] : []
+        session?.news.suppressedKinds = router.suppressedNewsKinds
     }
 
     // MARK: Settings
