@@ -5,6 +5,20 @@ public struct Me: Decodable, Equatable, Sendable {
     public let account: AccountRef
     public let orgs: [OrgRef]
     public let funding: [Funding]
+    /// The node keeps titles and labels off what it sends to devices (`hideTitles` in its `push` setting), because its data
+    /// must stay where it is. A client that shows a title outside the app (a widget) then shows none. Left out by a node that
+    /// does not say, which counts as `false`.
+    public let hidesTitles: Bool
+
+    private enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        account = try container.decode(AccountRef.self, forKey: .account)
+        orgs = try container.decode([OrgRef].self, forKey: .orgs)
+        funding = try container.decode([Funding].self, forKey: .funding)
+        hidesTitles = try container.decodeIfPresent(Bool.self, forKey: .hidesTitles) ?? false
+    }
 }
 
 public struct AccountRef: Decodable, Equatable, Sendable {

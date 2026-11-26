@@ -53,6 +53,7 @@ final class ShellModel {
         case .loaded:
             push.noteSignedIn()
             registerPush()
+            publishWidgets()
         case .failed:
             // The first launch has no token: ask for the sign-in once, without waiting for a tap.
             if session.desk.needsSignIn, !triedSignIn {
@@ -62,6 +63,12 @@ final class ShellModel {
         default:
             break
         }
+    }
+
+    /// The desk's requests changed, or were read: the widgets show them.
+    func publishWidgets() {
+        guard let session else { return }
+        Task { await session.publishWidgets() }
     }
 
     /// Tells the node this device's push token and the kinds the owner chose, when there is a token.
@@ -113,6 +120,8 @@ final class ShellModel {
     func resetKey() {
         SecureEnclaveSigner.deleteKey(host: homeNode.host)
         showsSettings = false
+        // This device is no longer trusted with the home node: nothing of its desk stays on a widget.
+        session?.widgets.clear()
         session = nil
         start()
     }
@@ -121,6 +130,7 @@ final class ShellModel {
     func leave() {
         showsSettings = false
         push.setBadge(0)
+        session?.widgets.clear()
         flow?.forget()
         onChangeHomeNode()
     }

@@ -35,6 +35,10 @@ private struct ShellChrome: ViewModifier {
             }
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
+            // These follow the desk whichever screen is open: the Mac's sidebar keeps only the open screen alive.
+            .onChange(of: model.session?.desk.waitingCount) { _, count in if let count { model.push.setBadge(count) } }
+            .onChange(of: model.session?.desk.loading) { _, loading in if let loading { model.deskLoaded(loading) } }
+            .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
             .onChange(of: model.push.pendingLink) { model.takeLink() }
@@ -43,6 +47,7 @@ private struct ShellChrome: ViewModifier {
                     SettingsSheet(
                         host: model.homeNode.host,
                         notifications: session.notifications,
+                        widgets: session.widgets.preferences,
                         nodeSendsPushKinds: session.nodeSendsPushKinds,
                         onChangeHomeNode: model.leave,
                         onResetKey: model.resetKey

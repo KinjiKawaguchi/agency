@@ -172,13 +172,20 @@ run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8"
 LOG=$(cat "$ROOT/../fake/log")
 check "it succeeds" [ "$STATUS" -eq 0 ]
 check "it registers the bundle ID from Local.xcconfig for iOS" contains "$LOG" '"identifier":"com.acme.agency"'
+check "it registers the widget extension's bundle ID, the app's with .widgets" contains "$LOG" '"identifier":"com.acme.agency.widgets"'
 check "it names the platform" contains "$LOG" '"platform":"IOS"'
 check "it enables Push Notifications on the new bundle ID" contains "$LOG" '"capabilityType":"PUSH_NOTIFICATIONS"'
 check "it links the capability to the new bundle ID" contains "$LOG" '"id":"NEW-BUNDLE"'
+check "it links a capability to the widget extension's bundle ID" contains "$LOG" '"id":"NEW-WIDGET"'
 check "it says what it did" contains "$OUTPUT" "Registered bundle ID com.acme.agency."
+check "it says it registered the widget extension" contains "$OUTPUT" "Registered bundle ID com.acme.agency.widgets."
 check "it enables Associated Domains on the new bundle ID" contains "$LOG" '"capabilityType":"ASSOCIATED_DOMAINS"'
+check "it enables App Groups" contains "$LOG" '"capabilityType":"APP_GROUPS"'
+check "it enables App Groups on both bundle IDs" [ "$(grep -c '"capabilityType":"APP_GROUPS"' "$ROOT/../fake/log")" -eq 2 ]
+check "it makes four capabilities and two bundle IDs" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 6 ]
 check "it says it enabled Push Notifications" contains "$OUTPUT" "Enabled Push Notifications."
 check "it says it enabled Associated Domains" contains "$OUTPUT" "Enabled Associated Domains."
+check "it says the app group is not made by the API" contains "$OUTPUT" "group.com.acme.agency must exist"
 AUTH_LINE=$(sed -n '1p' "$ROOT/../fake/log.auth")
 BEARER=${AUTH_LINE#*Bearer }
 BEARER=${BEARER%\"*}
@@ -187,34 +194,49 @@ check "the token is not printed" [ -z "$(printf '%s' "$OUTPUT" | grep -F "$BEARE
 check "the key file is not printed" [ -z "$(printf '%s' "$OUTPUT" | grep -F 'PRIVATE KEY')" ]
 check "the token is not on a command line" [ -z "$(grep -F "$BEARER" "$ROOT/../fake/log")" ]
 
+ALL_CAPABILITIES='{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}},{"attributes":{"capabilityType":"ASSOCIATED_DOMAINS"}},{"attributes":{"capabilityType":"APP_GROUPS"}}]}'
+BOTH_BUNDLES='{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}},{"id":"B2","attributes":{"identifier":"com.acme.agency.widgets"}}]}'
+
 ROOT=$(new_repository reg-existing)
-printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
-printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}},{"attributes":{"capabilityType":"ASSOCIATED_DOMAINS"}}]}' > "$ROOT/../fake/capabilities.json"
+printf '%s' "$BOTH_BUNDLES" > "$ROOT/../fake/bundle_ids.json"
+printf '%s' "$ALL_CAPABILITIES" > "$ROOT/../fake/capabilities.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
 check "everything in place: it succeeds" [ "$STATUS" -eq 0 ]
 check "everything in place: it only reads" [ -z "$(grep -E '^(POST|PUT|PATCH|DELETE)' "$ROOT/../fake/log")" ]
 check "everything in place: it says so" contains "$OUTPUT" "is already registered"
 check "everything in place: it says Push is on" contains "$OUTPUT" "Push Notifications is already enabled."
 check "everything in place: it says Associated Domains is on" contains "$OUTPUT" "Associated Domains is already enabled."
+check "everything in place: it says App Groups is on" contains "$OUTPUT" "App Groups is already enabled."
 
 ROOT=$(new_repository reg-no-domains)
-printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
-printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}}]}' > "$ROOT/../fake/capabilities.json"
+printf '%s' "$BOTH_BUNDLES" > "$ROOT/../fake/bundle_ids.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}},{"attributes":{"capabilityType":"APP_GROUPS"}}]}' > "$ROOT/../fake/capabilities.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
-check "Push without Associated Domains: it enables only Associated Domains" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 1 ]
-check "Push without Associated Domains: it is the missing one" contains "$(cat "$ROOT/../fake/log")" '"capabilityType":"ASSOCIATED_DOMAINS"'
+check "Push and App Groups without Associated Domains: it enables only Associated Domains" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 1 ]
+check "Push and App Groups without Associated Domains: it is the missing one" contains "$(cat "$ROOT/../fake/log")" '"capabilityType":"ASSOCIATED_DOMAINS"'
+
+ROOT=$(new_repository reg-no-groups)
+printf '%s' "$BOTH_BUNDLES" > "$ROOT/../fake/bundle_ids.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"PUSH_NOTIFICATIONS"}},{"attributes":{"capabilityType":"ASSOCIATED_DOMAINS"}}]}' > "$ROOT/../fake/capabilities-B1.json"
+printf '%s' '{"data":[]}' > "$ROOT/../fake/capabilities-B2.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "no App Groups anywhere: it enables it on both" [ "$(grep -c '"capabilityType":"APP_GROUPS"' "$ROOT/../fake/log")" -eq 2 ]
+check "no App Groups anywhere: it enables it on the app" contains "$(cat "$ROOT/../fake/log")" '"id":"B1"'
+check "no App Groups anywhere: and on the widget extension" contains "$(cat "$ROOT/../fake/log")" '"id":"B2"'
 
 ROOT=$(new_repository reg-no-push)
-printf '%s' '{"data":[{"id":"B1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids.json"
-printf '%s' '{"data":[{"attributes":{"capabilityType":"ICLOUD"}}]}' > "$ROOT/../fake/capabilities.json"
+printf '%s' "$BOTH_BUNDLES" > "$ROOT/../fake/bundle_ids.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"ICLOUD"}}]}' > "$ROOT/../fake/capabilities-B1.json"
+printf '%s' '{"data":[{"attributes":{"capabilityType":"APP_GROUPS"}}]}' > "$ROOT/../fake/capabilities-B2.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
-check "bundle ID without Push: it enables both capabilities" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 2 ]
+check "bundle ID without Push: it enables the app's three capabilities" [ "$(grep -c '^POST' "$ROOT/../fake/log")" -eq 3 ]
 check "bundle ID without Push: it uses the existing bundle ID" contains "$(cat "$ROOT/../fake/log")" '"id":"B1"'
 
 ROOT=$(new_repository reg-longer)
 printf '%s' '{"data":[{"id":"B9","attributes":{"identifier":"com.acme.agency.widget"}}]}' > "$ROOT/../fake/bundle_ids.json"
 run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
 check "a longer identifier that the filter also returns is not mistaken for ours" contains "$OUTPUT" "Registered bundle ID com.acme.agency."
+check "nor is it mistaken for the widget extension's" contains "$OUTPUT" "Registered bundle ID com.acme.agency.widgets."
 
 ROOT=$(new_repository reg-denied)
 printf '403' > "$ROOT/../fake/status"

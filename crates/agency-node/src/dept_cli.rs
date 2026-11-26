@@ -1,8 +1,9 @@
-//! `agency dept-add`, `dept-set`, `dept-remove`, and `team-dept`: the org's departments and the
-//! department each team is in, changed on the root key's node.
+//! `agency dept-add`, `dept-set`, `dept-remove`, `team-dept`, and `team-plan`: the org's departments,
+//! the department each team is in, and what the org intends for each team, changed on the root key's
+//! node.
 use agency_core::departments::{self, Change};
 use agency_core::Node;
-use agency_proto::org::{Department, SignedOrg};
+use agency_proto::org::{Allocation, Department, SignedOrg, TeamPlan};
 use agency_proto::Id;
 use anyhow::Result;
 use clap::Args;
@@ -163,6 +164,78 @@ pub fn department_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
                 } else {
                     teams.join(", ")
                 }
+            )
+        })
+        .collect()
+}
+
+/// Sets what the org intends for a team: the percent of its effort for each kind of work (adding up to
+/// 100) and its weekly budget in whole US dollars; or with --none clears it (on the root key's node)
+#[derive(Args)]
+pub struct TeamPlanArgs {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    team: String,
+    #[arg(long, required_unless_present = "none", conflicts_with = "none")]
+    new_feature: Option<u32>,
+    #[arg(long, required_unless_present = "none")]
+    improvement: Option<u32>,
+    #[arg(long, required_unless_present = "none")]
+    maintenance: Option<u32>,
+    #[arg(long, required_unless_present = "none")]
+    debt: Option<u32>,
+    #[arg(long, required_unless_present = "none")]
+    incident: Option<u32>,
+    /// The weekly spend the org intends, in whole US dollars at API prices
+    #[arg(long, required_unless_present = "none")]
+    weekly_budget_usd: Option<u32>,
+    #[arg(long)]
+    none: bool,
+}
+
+fn plan_of(args: &TeamPlanArgs) -> Option<TeamPlan> {
+    Some(TeamPlan {
+        allocation: Allocation {
+            new_feature: args.new_feature?,
+            improvement: args.improvement?,
+            maintenance: args.maintenance?,
+            debt: args.debt?,
+            incident: args.incident?,
+        },
+        weekly_budget_usd: args.weekly_budget_usd?,
+    })
+}
+
+pub fn team_plan(node: &Node, args: TeamPlanArgs) -> Result<()> {
+    let plan = if args.none { None } else { plan_of(&args) };
+    let doc = departments::plan_team(node, &id(&args.org)?, &id(&args.team)?, plan)?;
+    let what = if args.none { "no plan" } else { "a plan" };
+    report(
+        format!("Team {} of org {} now has {what}", args.team, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+/// The lines `agency status` shows for the teams that have a plan.
+pub fn plan_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
+    let planned = body
+        .teams
+        .iter()
+        .filter_map(|team| team.plan.as_ref().map(|plan| (team, plan)));
+    planned
+        .map(|(team, plan)| {
+            let share = &plan.allocation;
+            format!(
+                "  Plan for team {}: new features {}%, improvement {}%, maintenance {}%, debt {}%, incidents {}%, {} USD a week",
+                team.id,
+                share.new_feature,
+                share.improvement,
+                share.maintenance,
+                share.debt,
+                share.incident,
+                plan.weekly_budget_usd
             )
         })
         .collect()

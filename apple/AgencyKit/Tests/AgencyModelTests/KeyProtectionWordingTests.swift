@@ -18,7 +18,8 @@ struct KeyProtectionWordingTests {
         let protection = KeyProtection.touchIDOrPassword
         #expect(Ja.Key.confirmSend(protection) == "送るときに Touch ID か Mac のパスワードで確認します。")
         #expect(Ja.Key.confirmAdd(protection) == "追加するときに Touch ID か Mac のパスワードで確認します。")
-        #expect(Ja.Key.resetExplain(protection).hasPrefix("Touch ID の登録を変えたあと"))
+        #expect(Ja.Key.resetExplain(protection) == "鍵を使えなくなったときに使います。作り直すと、この Mac をもう一度追加する必要があります。")
+        #expect(!Ja.Key.resetExplain(protection).contains("登録"), "with the password as an alternative, a change of fingerprints does not break the key")
         #expect(Ja.Key.noKey(protection).hasPrefix("この Mac では"))
         #expect(Ja.Key.symbol(protection) == "touchid")
     }

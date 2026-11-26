@@ -30,12 +30,7 @@ async fn a_redirect_from_another_node_is_not_followed() {
     });
     tokio::spawn(async move { axum::serve(far, redirecting).await.unwrap() });
 
-    let place = TeamPlace {
-        id: id("far"),
-        label: "Far".into(),
-        department: None,
-        node: far_url,
-    };
+    let place = TeamPlace::new(id("far"), "Far", far_url);
     orgs::add_team(&alice.node, &id("acme"), place).unwrap();
     refresh(&alice.node).await.unwrap();
     let replica = alice
