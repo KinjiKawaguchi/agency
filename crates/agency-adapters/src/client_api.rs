@@ -12,6 +12,7 @@ use crate::access::{AccessVerifier, Identity};
 use crate::handoff::{self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH};
 use crate::launch::Launch;
 use crate::server::status_of;
+use agency_core::about;
 use agency_core::activity::team_activity;
 use agency_core::client::{
     decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
@@ -237,6 +238,11 @@ async fn get_session(State(api): Shared) -> Response {
         write_token: api.token.clone(),
         now,
     }))
+}
+
+/// What this node is and speaks, so an app can tell whether the node or the app needs an update.
+async fn get_about() -> Response {
+    json_response(StatusCode::OK, &about::this_node())
 }
 
 /// The account and what it reaches; to the node's owner, also their other home nodes, which say where
@@ -531,6 +537,7 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 /// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
 pub fn router(api: Arc<ClientApi>) -> Router {
     Router::new()
+        .route("/api/about", get(get_about))
         .route("/api/me", get(get_me))
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))

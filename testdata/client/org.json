@@ -29,11 +29,11 @@
       "role": "member"
     }
   ],
-  "prev": "06aa62e22cb0a7d46650820f188b8a3bf06f604de61dd64007b0a192e454ff76",
+  "prev": "af09e9f1c3b3d93f5176f589cb02a07e9dbf183abe973514df44cb1d6eb103e2",
   "revoked": [],
   "root": {
     "account": "alice",
-    "publicKey": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w="
+    "publicKey": "V1JZy0NEVzHn0tD5K0+VibCLyjzYBcas3l78LFLOVuo="
   },
   "teams": [
     {

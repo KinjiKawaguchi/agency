@@ -60,10 +60,11 @@ Rollout of `/fed/v2`:
 The org definition, decision envelopes, device changes, join requests, and signed reads are signed over `agency/v1/<kind>\n` and canonical JSON.
 
 May change without a new version:
-- **A new optional field in a signed body**, left out when absent, so existing documents keep their canonical JSON and signatures. Examples are `devices`, `plan`, and P-256 keys.
-- **The rollout rule for such a field.** Signed definitions are read strictly, so an older node refuses a version that carries a new field. The writer must therefore not write the field until every node that reads the document understands it. Each such field has a capability name in discovery (for example `orgPlan`, `p256Devices`):
+- **A new optional field in a signed body**, left out when absent, so existing documents keep their canonical JSON and signatures. Examples are `plan`, `aims`, and `kpis`.
+- **The rollout rule for such a field.** Signed definitions are read strictly, so an older node refuses a version that carries a new field. The writer must therefore not write the field until every node that reads the document understands it. Each such field has a capability name in discovery (for example `orgPlan`, `orgKpis`):
   - the root's node checks that every node of the org lists the capability before it signs a version that uses it, and refuses otherwise, naming the nodes that are behind;
   - a client checks the same before it signs something with a new field.
+  - The root can check only the nodes it can name: the nodes of the org's teams, which are the ones it sends each version to. A member's home node that hosts no team is not named in the definition, so it is not checked, and it refuses a version it cannot read until it is updated.
 
 Breaking, so a new signed-text version `agency/v2/<kind>`:
 - any change to canonical JSON;
@@ -131,9 +132,22 @@ Each node says what it is and what it speaks, in two places.
 - **For apps:** `GET /api/about`, admitted like any Client API read. It answers:
   - `node`: the node's version;
   - `contracts`: the versions spoken of `federation`, `signedText`, and `runtime`, and `clientApi` as `{ current, oldest }`;
-  - `capabilities`: the names of optional features, such as `orgPlan`, `p256Devices`, `webPush`, and `activity`;
-  - `oldestApp`: per platform (`ios`, `macos`, and later `android`), the oldest app version it serves.
-- **For nodes:** `GET /fed/v1/about`, the same answer without `oldestApp`. It is a member's signed read like every other federation read, so a stranger cannot learn a node's version and match it against known flaws. A node reads it from each peer when it reads that peer's definition and keeps it with the replica. It reads it again daily, and at once when a call answers 404 for a route the peer should have.
+  - `capabilities`: the names of optional features and signed fields (the table below), as strings, so that a reader ignores a name it does not know;
+  - `oldestApp`: per platform (`ios`, `macos`, and later `android`), the oldest app version it serves. It is absent while the node sets no floor, which is until a breaking Client API change needs one.
+- **For nodes:** `GET /fed/v1/orgs/<org>/about`, the same answer without `oldestApp`. It is a member's signed read of an org, like every other federation read (the signature is checked against that org's members, which is why the path names the org), so a stranger cannot learn a node's version and match it against known flaws. A node reads it from each node of an org (the nodes of the org's teams that do not run on it) in the loop that re-reads the replicas, and keeps it for that org and that node, not inside a replica, since a node hosts several teams. It reads it again when the kept answer is a day old, ten minutes after a read that failed, and ten minutes after a call to the node answered 404 (the node may not be the release it was read as). A read that fails keeps the last good answer and says why it failed; an answer beyond the limits of an `About` is not kept. `agency status` lists what a node has read of each peer, and `agency sync` reads them again.
+
+### Capabilities
+
+Names start at what came after the first release: every node has what the first release had (for example departments, devices, and P-256 keys). A name is one of two kinds: a **signed field**, which an older node refuses in a definition, so the root checks it before writing it; or a **feature**, which a client or a peer checks before relying on it instead of trying a route and reading a 404. A test keeps this table the same as the list in `agency-proto`, and another fails when an optional field is added to the org definition without a name here.
+
+| Name | Kind | What it is |
+|---|---|---|
+| `orgPlan` | signed field | `teams[].plan` in the org definition: what the org intends for a team. |
+| `orgAims` | signed field | `teams[].plan.aims`: the epics a plan aims at a KPI. |
+| `orgKpis` | signed field | `kpis`: what the org measures. |
+| `webPush` | feature | A browser's Web Push subscriptions, and the notices sent to them. |
+| `activity` | feature | A team's activity feed. |
+| `outcomes` | feature | The owner's numbers and the readings of them. |
 
 ## Checks in CI
 

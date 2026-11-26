@@ -3,7 +3,8 @@ use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
-use crate::ports::DefinitionAccess;
+use crate::peer_about;
+use crate::ports::{DefinitionAccess, PeerError};
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
@@ -147,15 +148,33 @@ pub fn answerer_view(view: TeamView, hosted: &HostedTeam, person: &Id) -> TeamVi
     }
 }
 
-async fn fetch_view(node: &Node, org: &Id, place: &TeamPlace) -> Result<FederatedView, String> {
+/// Why a team's view could not be read from its node, and whether that node answered 404 (the peer may not
+/// be the release this node read it as).
+struct FetchFailure {
+    message: String,
+    is_not_found: bool,
+}
+
+async fn fetch_view(
+    node: &Node,
+    org: &Id,
+    place: &TeamPlace,
+) -> Result<FederatedView, FetchFailure> {
     let path = routes::view(org, &place.id);
     let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
     let fetched = node
         .peers()
         .get_view(&place.node, &path, &auth)
         .await
-        .map_err(|error| error.to_string())?;
-    let view = check_view(fetched.view, org, &place.id)?;
+        .map_err(|error| FetchFailure {
+            is_not_found: matches!(error, PeerError::Status { status: 404, .. }),
+            message: error.to_string(),
+        })?;
+    let other = |message: String| FetchFailure {
+        message,
+        is_not_found: false,
+    };
+    let view = check_view(fetched.view, org, &place.id).map_err(other)?;
     Ok(FederatedView {
         view,
         viewer: fetched.viewer,
@@ -176,11 +195,16 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
             view: Some(fetched.view),
             viewer: fetched.viewer,
         },
-        Err(error) => Replica {
-            tried_at: now,
-            error: Some(error),
-            ..previous
-        },
+        Err(failure) => {
+            if failure.is_not_found {
+                peer_about::note_not_found(node, org, &place.node)?;
+            }
+            Replica {
+                tried_at: now,
+                error: Some(failure.message),
+                ..previous
+            }
+        }
     };
     node.store().save_replica(org, &place.id, &next)
 }
@@ -230,6 +254,7 @@ pub async fn refresh(node: &Node) -> Result<()> {
         for place in elsewhere.filter(|place| !node.runs_here(org, &place.id)) {
             refresh_replica(node, org, place).await?;
         }
+        peer_about::refresh(node, &doc.body).await?;
         refresh_definition(node, &doc).await;
     }
     Ok(())

@@ -168,6 +168,25 @@ public actor NodeClient {
         return try await write("POST", "/api/push/tokens", body: body)
     }
 
+    /// The Access token a sign-in made for `code`, given the verifier whose SHA-256 the sign-in was started with
+    /// (`POST /app/redeem`). It needs no Access token and no write token: the app has none yet, which is what it asks
+    /// for, and the node admits the code and the verifier. A refusal is the same for every cause (`NodeError.http`
+    /// with status 400), a limit is 429, and a redirect means the node's Access policy does not let this route through.
+    public func redeemSignIn(code: String, verifier: String) async throws -> String {
+        let body = Data(try CanonicalJSON.encode(.object([.init("code", .string(code)), .init("verifier", .string(verifier))])).utf8)
+        var request = HTTPRequest(method: "POST", path: "/app/redeem", body: body)
+        request.headers["content-type"] = "application/json"
+        let response = try await transport.send(request)
+        switch response.status {
+        case 200..<300:
+            return (try decode(response) as SignInToken).token
+        case 300..<400:
+            throw NodeError.http(status: response.status, message: "the node's Access policy does not let the sign-in exchange through")
+        default:
+            throw NodeError.http(status: response.status, message: try? JSONDecoder().decode(ErrorBody.self, from: response.body).error)
+        }
+    }
+
     // MARK: Plumbing
 
     /// One path segment, escaped so that an id from the node can never add a segment or a query.
@@ -215,4 +234,8 @@ public actor NodeClient {
             throw NodeError.unreadable("\(error)")
         }
     }
+}
+
+private struct SignInToken: Decodable {
+    let token: String
 }
