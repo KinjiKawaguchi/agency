@@ -41,6 +41,7 @@ export function AppBar() {
           <Link to="/people">{t.nav.people}</Link>
           <Link to="/org">{t.nav.org}</Link>
           <Link to="/costs">{t.nav.costs}</Link>
+          <Link to="/evaluation">{t.nav.evaluation}</Link>
         </nav>
         <div className="appbar-right">
           <select aria-label={t.settings.theme} value={theme} onChange={(event) => setTheme(THEMES.find((one) => one === event.target.value) ?? 'auto')}>

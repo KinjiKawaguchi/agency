@@ -16,6 +16,7 @@ npm run e2e      # build, then drive the built client in headless Chromium again
 - **People and work** (`/people`): one card per person, work in progress and blocked work, epic forecasts.
 - **Org chart** (`/org`, `?unit=<department>` focuses on one department): departments, teams, people, and the agents of each team.
 - **Costs** (`/costs`): each subscription window projected to its reset from the pace so far, and token use by day and by person.
+- **Evaluation** (`/evaluation`, `?org=<org>&days=14|30|90`): how fast each team of an org ships. Pull requests merged per day by type, lead times, how long main's CI stayed red, reverts, and cost per merged pull request. It reads `GET /api/orgs/<org>/evaluation?days=<n>`, which an agent reads too, so a proposal can cite the same numbers.
 
 ## The mock node
 
@@ -28,6 +29,7 @@ Writes must carry the page's token: the served `index.html` has `<meta name="age
 - TeamView types come from `../bindings`, generated from the Rust types. `src/api/teamview.ts` is the only module that imports them or the sample fixture.
 - The Client API types (`Me`, `TeamSnapshot`, `DecisionInput`, `DecisionResult`, `Funding`, `OrgDefinition`, ...) also come from `../bindings`, through `src/api/clientApi.ts`, which is the only other module that imports them. Errors from the node are `{ "error": text }` with the status: 404 for something that is gone or not served, 409 for a refusal by the team's node, and a runtime's own 400 and 404 pass through.
 - Token use is served by the node at `/api/orgs/<org>/teams/<team>/usage` (404 when the team's runtime does not report it, 503 when the team's node or runtime could not answer). The mock node serves it only when asked: `AGENCY_MOCK_USAGE=1 npm run dev`. Without it the mock answers 404 and the costs screen says the team does not report token usage.
+- The evaluation route (`/api/orgs/<org>/evaluation?days=<n>`) is served in the shape `src/api/evaluationApi.ts` describes; those types stand in for the generated ones until they land in `bindings/`. The mock node serves it only when asked: `AGENCY_MOCK_EVALUATION=1 npm run dev`. Without it the mock answers 404 and the screen says the node does not report evaluation numbers yet.
 - Funding forecasts (`src/costs/forecast.ts`) are worked out in the client from each window's use, reset time, and `lengthHours`.
 
 ## Language and theme

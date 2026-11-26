@@ -11,6 +11,7 @@ const ROUTES = [
   { path: '/people', ready: 'article.mate' },
   { path: '/org', ready: '.orgchart .oc-node.agent' },
   { path: '/costs', ready: '.columns .column' },
+  { path: '/evaluation', ready: '.ev-cols .ev-col' },
   { path: '/devices', ready: '.pairing-code' },
 ] as const
 
@@ -19,7 +20,7 @@ test.use({ hasTouch: true })
 let errors: () => string[]
 
 test.beforeEach(async ({ page, request }) => {
-  await resetNode(request, { usage: true, moreOrgs: true })
+  await resetNode(request, { usage: true, evaluation: true, moreOrgs: true })
   errors = trackErrors(page)
 })
 
