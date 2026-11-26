@@ -1,4 +1,4 @@
-import { startWorker } from './fakeWorker'
+import { startWorker } from '../test/fakeWorker'
 
 // The worker is the file the node serves, run in a fake worker scope: what it keeps and what it never touches.
 /** An answer as the network gives for this origin: its type is `basic`, which a hand-made Response does not have. */

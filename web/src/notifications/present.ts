@@ -51,7 +51,7 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
 
   const requests = keysOf(events, 'request', 'request:')
   if (requests.length > 0) {
-    const { org, team, item } = placeOf(requests[0] ?? '')
+    const { org, team, item } = placeOf(requests[0] ?? '' /* stand-in-ok(index): the first of a list that is not empty */)
     const owner = teamOf(lookups, org, team)
     const title = owner?.view.requests.find((one) => one.id === item)?.title
     const target: NoticeTarget = requests.length === 1 ? { to: '/desk', item: `${org}:${team}:${item}` } : { to: '/desk' }
@@ -60,14 +60,14 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
 
   const participants = keysOf(events, 'participant', 'participant:')
   if (participants.length > 0) {
-    const { org, team, item } = placeOf(participants[0] ?? '')
+    const { org, team, item } = placeOf(participants[0] ?? '' /* stand-in-ok(index): the first of a list that is not empty */)
     const label = teamOf(lookups, org, team)?.view.people.find((one) => one.id === item)?.label
     found.push({ tone: 'info', target: { to: '/people' }, message: text.participant(participants.length, label ?? item), plain: participants.length === 1 ? text.hidden.participant : text.participant(participants.length, '') })
   }
 
   const blocked = keysOf(events, 'blocked', 'blocked:')
   if (blocked.length > 0) {
-    const { org, team, item } = placeOf(blocked[0] ?? '')
+    const { org, team, item } = placeOf(blocked[0] ?? '' /* stand-in-ok(index): the first of a list that is not empty */)
     const owner = teamOf(lookups, org, team)
     const work = owner?.view.work.find((one) => one.ref === item)
     found.push({ tone: 'info', target: { to: '/people' }, message: text.blocked(blocked.length, work?.title ?? item, owner?.view.label ?? team, work?.blocked === undefined ? undefined : t.people.blockedReasons[work.blocked.reason]), plain: blocked.length === 1 ? text.hidden.blocked : text.blocked(blocked.length, '', '', undefined) })
@@ -85,7 +85,7 @@ export function noticesFor(events: readonly NoticeEvent[], lookups: Lookups, t: 
     if (some.length === 0) continue
     const entry = lookups.decisions?.entries.find((one) => one.id === some[0]?.id)
     const reason = entry?.state.kind === 'refused' ? entry.state.message : undefined
-    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, ...(some.length === 1 ? { tag: `decision/${some[0]?.id}` } : {}), message: text.decision(state, some.length, entry?.title ?? '', reason), plain: state === 'refused' && some.length === 1 ? text.hidden.decisionRefused : text.decision(state, some.length, '', undefined) })
+    found.push({ tone: state === 'refused' ? 'error' : 'info', target: { to: '/desk' }, ...(some.length === 1 ? { tag: `decision/${some[0]?.id}` } : {}), message: text.decision(state, some.length, entry?.title ?? '' /* stand-in-ok(optional): a decision logged without a title has none to name, in a notice of something that has just happened */, reason), plain: state === 'refused' && some.length === 1 ? text.hidden.decisionRefused : text.decision(state, some.length, '', undefined) })
   }
 
   return found.length <= MOST ? found : [...found.slice(0, MOST - 1), { tone: 'info', target: { to: '/desk' }, message: text.more(found.length - (MOST - 1)), plain: text.more(found.length - (MOST - 1)) }]

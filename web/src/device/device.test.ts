@@ -23,6 +23,8 @@ describe('canonical JSON', () => {
   it.each([
     ['org', vectors.org.canonical],
     ['org with a team plan', vectors.orgWithPlan.canonical],
+    ['org naming a new root', vectors.rootRotation.namingTheNewRoot.canonical],
+    ['org signed by the new root', vectors.rootRotation.signedByTheNewRoot.canonical],
     ['device change', vectors.deviceChange.canonical],
     ['P-256 device add', vectors.deviceChangeP256.add.canonical],
     ['P-256 device remove', vectors.deviceChangeP256.remove.canonical],

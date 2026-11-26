@@ -239,4 +239,27 @@ describe('an activity stream', () => {
       vi.useRealTimers()
     }
   })
+
+  it('says which teams have not been read yet, and which could not be read at all', async () => {
+    const answers = new Map<string, 'ok' | 'fails' | 'unreported'>([['app', 'ok'], ['site', 'fails'], ['lab', 'unreported']])
+    const read = (org: string, team: string): Promise<Activity> => {
+      const answer = answers.get(team)
+      if (answer === 'fails') return Promise.reject(new ApiError('The node did not answer.', 503))
+      if (answer === 'unreported') return Promise.reject(new ApiError('Not reported.', 404))
+      return Promise.resolve({ org, team, generatedAt: new Date(T0).toISOString(), events: [], truncated: false })
+    }
+    const stream = new ActivityStream({ read, teams: ['app', 'site', 'lab'].map((team) => ({ org: 'acme', team })), now: () => T0 })
+    expect(stream.current.pending).toEqual(['acme/app', 'acme/lab', 'acme/site'])
+    await stream.poll()
+    expect(stream.current.pending, 'each has been asked once, whatever it answered').toEqual([])
+    expect(stream.current.neverRead, 'only the one that failed: a team that does not report has answered').toEqual(['acme/site'])
+    answers.set('site', 'ok')
+    await stream.poll()
+    expect(stream.current.neverRead).toEqual([])
+    answers.set('site', 'fails')
+    await stream.poll()
+    expect(stream.current.failing).toEqual(['acme/site'])
+    expect(stream.current.neverRead, 'one that has been read once and then fails is late, not unread').toEqual([])
+  })
 })
+

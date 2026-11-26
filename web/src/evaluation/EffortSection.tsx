@@ -21,7 +21,7 @@ export function EffortSection({ org, days, teamLabels }: Props) {
   const definition = useQuery(orgDefinitionQuery(api, org))
   const failure = effort.error instanceof ApiError ? effort.error : null
   const planFor = (team: string): PlanState => {
-    if (definition.data === undefined) return definition.isPending ? { kind: 'none' } : { kind: 'unreadable' }
+    if (definition.data === undefined) return definition.isPending ? { kind: 'loading' } : { kind: 'unreadable' }
     const plan = planOf(definition.data, team)
     return plan === undefined ? { kind: 'none' } : { kind: 'stated', plan }
   }
@@ -42,7 +42,7 @@ export function EffortSection({ org, days, teamLabels }: Props) {
           {effort.data.teams.map((team) => (
             <TeamEffortView key={team.team} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} />
           ))}
-          {(effort.data.unavailable ?? []).map((one) => (
+          {(effort.data.unavailable ?? [] /* stand-in-ok(optional): the node leaves the list out when every team answered, in an answer that has come */).map((one) => (
             <section key={one.team} className="ev-team">
               <h3 className="sub-head">{t.evaluation.team(teamLabels.get(one.team) ?? one.team)}</h3>
               <p className="empty">{t.evaluation.teamUnavailable(one.reason)}</p>

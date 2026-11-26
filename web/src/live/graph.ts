@@ -39,7 +39,7 @@ export const keyOf = (agent: { org: string; team: string; id: string }): string 
 /** A repeatable number in [0, 1) for a string, so that the same agents start in the same places. */
 function noise(seed: string): number {
   let hash = 2166136261
-  for (const character of seed) hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16777619) >>> 0
+  for (const character of seed) hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0 /* stand-in-ok(index): a character code in a hash of a name */), 16777619) >>> 0
   return hash / 2 ** 32
 }
 
@@ -119,7 +119,7 @@ export function step(points: readonly Point[], { agents, edges, size }: Forces, 
     push(q.key, (-dx / distance) * pull, (-dy / distance) * pull)
   }
   return points.map((point) => {
-    const anchor = anchors.get(teamOf.get(point.key) ?? '') ?? { x: size.width / 2, y: size.height / 2 }
+    const anchor = anchors.get(teamOf.get(point.key) ?? '' /* stand-in-ok(scale): where a point starts in the picture when its team has no anchor */) ?? { x: size.width / 2, y: size.height / 2 }
     const total = force.get(point.key) ?? { x: 0, y: 0 }
     // Each team gathers around its own place, and everything is held loosely to the middle.
     const gx = (anchor.x - point.x) * 0.0022 + (size.width / 2 - point.x) * 0.0006
@@ -159,10 +159,10 @@ export type Resolve = (org: string, team: string, name: string) => string
 export function resolverOf(agents: readonly Agent[]): Resolve {
   const inTeam = new Set(agents.map(keyOf))
   const inOrg = new Map<string, string[]>()
-  for (const agent of agents) inOrg.set(`${agent.org}/${agent.id}`, [...(inOrg.get(`${agent.org}/${agent.id}`) ?? []), keyOf(agent)])
+  for (const agent of agents) inOrg.set(`${agent.org}/${agent.id}`, [...(inOrg.get(`${agent.org}/${agent.id}`) ?? [] /* stand-in-ok(index): a list under a key, started when the key is first seen */), keyOf(agent)])
   return (org, team, name) => {
     if (inTeam.has(keyOf({ org, team, id: name }))) return keyOf({ org, team, id: name })
-    const named = inOrg.get(`${org}/${name}`) ?? []
+    const named = inOrg.get(`${org}/${name}`) ?? [] /* stand-in-ok(index): a list under a key; none when no agent has the name */
     return named.length === 1 ? (named[0] as string) : keyOf({ org, team: GUEST_TEAM, id: name })
   }
 }
@@ -189,11 +189,11 @@ export function guestsOf(events: readonly TaggedEvent[], resolve: Resolve, { now
       const key = resolve(org, team, name)
       if (key === keyOf({ org, team: GUEST_TEAM, id: name })) {
         found.set(key, { id: name, label: name, team: GUEST_TEAM, org })
-        counts.set(key, (counts.get(key) ?? 0) + 1)
+        counts.set(key, (counts.get(key) ?? 0 /* stand-in-ok(index): a count started when the key is first seen */) + 1)
       }
     }
   }
-  const ordered = [...found.values()].toSorted((a, b) => (counts.get(keyOf(b)) ?? 0) - (counts.get(keyOf(a)) ?? 0) || keyOf(a).localeCompare(keyOf(b)))
+  const ordered = [...found.values()].toSorted((a, b) => (counts.get(keyOf(b)) ?? 0 /* stand-in-ok(index): a count that is 0 for a key never seen, to order the picture */) - (counts.get(keyOf(a)) ?? 0) || keyOf(a).localeCompare(keyOf(b)))
   return { shown: ordered.slice(0, limit), total: ordered.length }
 }
 
@@ -218,7 +218,7 @@ export function edgesOf(events: readonly TaggedEvent[], { now, resolve, windowMs
     const id = key(a, b)
     const before = found.get(id)
     const weight = 0.5 ** ((now - at) / halfLifeMs)
-    found.set(id, { a: a < b ? a : b, b: a < b ? b : a, weight: (before?.weight ?? 0) + weight, lastAt: Math.max(before?.lastAt ?? 0, at) })
+    found.set(id, { a: a < b ? a : b, b: a < b ? b : a, weight: (before?.weight ?? 0 /* stand-in-ok(index): a weight started when the pair is first seen */) + weight, lastAt: Math.max(before?.lastAt ?? 0, at) })
   }
   return [...found.values()].toSorted((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b))
 }

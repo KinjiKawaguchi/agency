@@ -14,7 +14,7 @@ const LIFETIME_MS: Record<ToastTone, number> = { info: 4500, error: 8000 }
 const ToastContext = createContext<((message: string, tone?: ToastTone) => void) | null>(null)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<readonly Toast[]>([])
+  const [toasts, setToasts] = useState<readonly Toast[]>([]) /* stand-in-ok(device): the notices shown by this page */
 
   const show = useCallback((message: string, tone: ToastTone = 'info') => {
     const id = Date.now() + Math.random()

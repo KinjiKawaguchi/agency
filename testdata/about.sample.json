@@ -1,0 +1,10 @@
+{
+  "node": "0.3.0",
+  "contracts": {
+    "federation": [1],
+    "signedText": [1],
+    "runtime": [1],
+    "clientApi": { "current": 1, "oldest": 1 }
+  },
+  "capabilities": ["orgPlan", "orgAims", "orgKpis", "webPush", "activity", "outcomes"]
+}

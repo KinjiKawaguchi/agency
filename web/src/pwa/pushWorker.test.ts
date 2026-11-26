@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { type FakeWindow, startWorker } from './fakeWorker'
+import { type FakeWindow, startWorker } from '../test/fakeWorker'
 
 const network = () => Promise.resolve(new Response('x'))
 const payload = (value: unknown): string => JSON.stringify(value)

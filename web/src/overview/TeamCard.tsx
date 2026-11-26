@@ -21,7 +21,7 @@ function Usage({ team }: { team: Team }) {
   const { view } = team
   const usage = useQuery(usageQuery(api, view.org, view.team, USAGE_DAYS))
   if (usage.data !== undefined) return <p className="ov-line">{t.overview.usage(fmt.money(totalsOf(usage.data).costUsd))}</p>
-  if (usage.error === null) return null
+  if (usage.error === null) return <Loading quiet><p className="ov-line"><Skeleton kind="short" /></p></Loading>
   return <p className="ov-line ov-quiet">{usage.error instanceof ApiError && usage.error.status === 404 ? t.overview.usageNone : t.overview.usageFailed}</p>
 }
 
@@ -31,9 +31,9 @@ function DataAge({ team }: { team: Team }) {
   const { source } = team
   if (source.kind !== 'replica') return null
   const isStale = source.error !== undefined
-  if (source.fetchedAt === undefined) return <p className="ov-age is-stale">{t.overview.neverRead(source.error ?? '')}</p>
+  if (source.fetchedAt === undefined) return <p className="ov-age is-stale">{t.overview.neverRead(source.error ?? '' /* stand-in-ok(optional): the reason a copy could not be renewed, which the node leaves out when there is none */)}</p>
   const relative = fmt.relative(source.fetchedAt, t.time.justNow)
-  return <p className={`ov-age${isStale ? ' is-stale' : ''}`} title={fmt.dateTime(source.fetchedAt)}>{isStale ? t.overview.staleFrom(relative, source.error ?? '') : t.overview.dataFrom(relative)}</p>
+  return <p className={`ov-age${isStale ? ' is-stale' : ''}`} title={fmt.dateTime(source.fetchedAt)}>{isStale ? t.overview.staleFrom(relative, source.error ?? '' /* stand-in-ok(optional): the reason a copy could not be renewed, which the node leaves out when there is none */) : t.overview.dataFrom(relative)}</p>
 }
 
 function Body({ team }: { team: Team }) {

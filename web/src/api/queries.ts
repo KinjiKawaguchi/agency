@@ -89,7 +89,7 @@ export interface Teams {
 export function useTeams(): Teams {
   const api = useApi()
   const me = useQuery(meQuery(api))
-  const refs = (me.data?.orgs ?? []).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
+  const refs = (me.data?.orgs ?? [] /* stand-in-ok(routing): the list of team reads to make once the viewer is read; the loading flag of the hook says they are not there yet */).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
   const results = useQueries({ queries: refs.map(({ org, team }) => teamQuery(api, org, team)) })
   const failed = results.find((result) => result.data?.status === 'failed')?.data
   return {
@@ -112,7 +112,7 @@ export interface TeamStates {
   error: Error | null
 }
 
-const refsOf = (me: Me | undefined): Array<{ org: string; team: string }> => (me?.orgs ?? []).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
+const refsOf = (me: Me | undefined): Array<{ org: string; team: string }> => (me?.orgs ?? [] /* stand-in-ok(routing): the list of team reads to make once the viewer is read; what is shown comes with its own loading state */).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
 
 function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult | undefined; error: Error | null }>): readonly OrgStates[] {
   const refs = refsOf(me)
@@ -121,7 +121,7 @@ function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult 
     if (result?.data !== undefined) return result.data
     return result?.error ? { status: 'failed', error: result.error, at: Date.now() } : { status: 'loading' }
   }
-  return (me?.orgs ?? []).map((org) => ({ org, teams: org.teams.map((ref) => ({ ref, state: stateOf(org.id, ref.id) })) }))
+  return (me?.orgs ?? [] /* stand-in-ok(routing): no orgs are listed before the viewer is read; the callers show the viewer's own loading state, not these */).map((org) => ({ org, teams: org.teams.map((ref) => ({ ref, state: stateOf(org.id, ref.id) })) }))
 }
 
 /**

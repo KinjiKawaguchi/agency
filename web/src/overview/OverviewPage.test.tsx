@@ -8,7 +8,8 @@ describe('overview', () => {
     renderApp({ path: '/overview', moreOrgs: true, usage: true })
     expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
     await waitFor(() => expect(document.querySelectorAll('article.ov-team')).toHaveLength(6))
-    await waitFor(() => expect(screen.getByText(/requests wait for you, in 2 teams\./)).toBeInTheDocument())
+    // One team of the fixture cannot be read: the count is of the teams that answered, and says so.
+    await waitFor(() => expect(screen.getByText('4 requests wait for you, in 2 teams that answered. 1 team could not be read.')).toBeInTheDocument())
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['Acme', 'Lab', 'Club', 'Usage limits'])
   })
 

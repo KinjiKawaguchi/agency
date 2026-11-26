@@ -1,3 +1,4 @@
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { DecisionEntry, DecisionState, Me } from '../api/clientApi'
@@ -63,8 +64,9 @@ export function RecentDecisions({ me }: { me: Me }) {
   const api = useApi()
   const log = useQuery(decisionsQuery(api))
   const [isExpanded, setIsExpanded] = useState(false)
-  const entries = log.data?.entries ?? []
   if (log.error !== null) return <p className="muted" role="alert">{t.desk.recent.unavailable(log.error.message)}</p>
+  if (log.data === undefined) return <Loading quiet><Skeleton kind="box" /></Loading>
+  const { entries } = log.data
   if (entries.length === 0) return null
   const shown = isExpanded ? entries : entries.slice(0, FOLD_AT)
   return (

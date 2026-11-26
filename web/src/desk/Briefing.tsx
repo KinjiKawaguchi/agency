@@ -4,6 +4,7 @@ import type { Team } from '../api/teams'
 import type { Around } from '../i18n/en'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
+import { Loading, Skeleton } from '../shared/Skeleton'
 import { presenceOf, type Presence } from '../people/state'
 import type { DeskItem, Situation } from './items'
 
@@ -13,6 +14,8 @@ interface BriefingProps {
   items: readonly DeskItem[]
   situation: Situation
   now: Date
+  /** Some team has not answered yet: what the line says about all of them is not known. */
+  isLoading: boolean
 }
 
 const RING_ORDER: readonly Presence[] = ['needs-you', 'working', 'waiting', 'idle', 'away']
@@ -55,7 +58,7 @@ function Next({ top }: { top: DeskItem }) {
 }
 
 /** The one-line summary at the top: who is waiting for the viewer, and what to decide first. */
-export function Briefing({ me, teams, items, situation, now }: BriefingProps) {
+export function Briefing({ me, teams, items, situation, now, isLoading }: BriefingProps) {
   const { t, fmt } = useI18n()
   const { desk } = t
   const top = items.find((item) => item.isMine)
@@ -69,16 +72,26 @@ export function Briefing({ me, teams, items, situation, now }: BriefingProps) {
   return (
     <section className="briefing">
       <p className="briefing-date">{desk.briefing.greeting(me.account.label, when)}</p>
-      <h1 className="briefing-line">
-        {first}
-        {top === undefined ? null : <Next top={top} />}
-      </h1>
+      {isLoading ? (
+        <Loading quiet>
+          <h1 className="briefing-line"><Skeleton kind="line" /></h1>
+        </Loading>
+      ) : (
+        <h1 className="briefing-line">
+          {first}
+          {top === undefined ? null : <Next top={top} />}
+        </h1>
+      )}
       <div className="briefing-foot">
         <FaceRow teams={teams} />
-        <span className="briefing-sub">
-          {desk.briefing.peopleWorking(situation.working, situation.total)}
-          {situation.mine > 1 ? ` ${desk.briefing.allOnDesk(situation.mine)}` : ''}
-        </span>
+        {isLoading ? (
+          <span className="briefing-sub"><Skeleton kind="short" /></span>
+        ) : (
+          <span className="briefing-sub">
+            {desk.briefing.peopleWorking(situation.working, situation.total)}
+            {situation.mine > 1 ? ` ${desk.briefing.allOnDesk(situation.mine)}` : ''}
+          </span>
+        )}
       </div>
     </section>
   )

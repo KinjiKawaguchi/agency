@@ -108,14 +108,20 @@ describe('buildAllOrgsTree', () => {
     expect(design?.mine).toBe(0)
   })
 
-  it('counts nothing for a team whose view the viewer has none of, since the node lists no request of it', () => {
-    const [first] = buildAllOrgsTree([{ org: acme, definition: ORG_DEFINITION, failed: false }], [], 'alice')
-    expect(first?.mine).toBe(0)
+  it('gives no number for what is below a team that has not answered: loading while it is read, unknown when it could not be', () => {
+    const read = (loading: ReadonlySet<string>) => buildAllOrgsTree([{ org: acme, definition: ORG_DEFINITION, failed: false }], [], 'alice', loading)[0]
+    const places = ORG_DEFINITION.teams.map((place) => `acme/${place.id}`)
+    expect(read(new Set(places))?.mine).toBe('loading')
+    expect(read(new Set())?.mine).toBe('unknown')
+    expect(read(new Set(places.slice(0, 1)))?.mine, 'one team still read makes the whole loading').toBe('loading')
+    const engineering = read(new Set(places))?.children.find((child): child is DepartmentNode => child.kind === 'department' && child.department.id === 'engineering')
+    expect(engineering?.mine).toBe('loading')
   })
 
   it('keeps an org whose definition is still loading or could not be read, and draws the rest', () => {
     const orgs = buildAllOrgsTree([{ org: acme, definition: ORG_DEFINITION, failed: false }, { org: lab, definition: undefined, failed: false }, { org: club, definition: undefined, failed: true }], views, 'alice')
     expect(orgs.map((node) => node.state)).toEqual(['ready', 'loading', 'failed'])
+    expect(orgs.map((node) => node.mine === 'loading' || node.mine === 'unknown' ? node.mine : 'a number')).toEqual(['a number', 'loading', 'unknown'])
     expect(orgs[1]?.children).toEqual([])
     expect(orgs[2]?.children).toEqual([])
   })

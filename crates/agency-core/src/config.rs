@@ -400,6 +400,18 @@ impl NodeConfig {
         });
     }
 
+    /// Moves the trust in `org` from one root key to the next, once a version that names the new root
+    /// (signed by the old one) was accepted. Only the trusted fingerprint `from` is replaced.
+    pub fn retrust(&mut self, org: &Id, from: &str, to: String) {
+        let trusted = self
+            .trusted
+            .iter_mut()
+            .find(|one| &one.org == org && one.root_fingerprint == from);
+        if let Some(one) = trusted {
+            one.root_fingerprint = to;
+        }
+    }
+
     /// `trust`, and where the root's node is. It records the root's node only for the same root.
     pub fn trust_with_root_node(&mut self, org: Id, root_fingerprint: String, root_node: String) {
         self.trust(org.clone(), root_fingerprint.clone());

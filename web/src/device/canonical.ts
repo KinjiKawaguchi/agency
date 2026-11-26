@@ -9,7 +9,7 @@ const encoder = new TextEncoder()
 function compareBytes(a: Uint8Array, b: Uint8Array): number {
   const shared = Math.min(a.length, b.length)
   for (let index = 0; index < shared; index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0)
+    const difference = (a[index] ?? 0 /* stand-in-ok(index): bytes compared by position */) - (b[index] ?? 0)
     if (difference !== 0) return difference
   }
   return a.length - b.length

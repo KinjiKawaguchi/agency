@@ -1,0 +1,350 @@
+//! What a node says about itself, so an app or another node can check what it speaks before relying on
+//! something new (docs/compatibility.md, "Discovery"). Readers ignore what they do not know: an answer is
+//! read without `deny_unknown_fields`, and a capability is a plain string, so a newer node may list a name
+//! this one has never heard of.
+use crate::org::OrgDefinition;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+use ts_rs::TS;
+
+/// The `/fed/vN` versions this release serves.
+pub const FEDERATION_VERSIONS: &[u32] = &[1];
+/// The `agency/vN/<kind>` signed-text versions this release accepts and writes.
+pub const SIGNED_TEXT_VERSIONS: &[u32] = &[1];
+/// The `agency-runtime/N` versions this release speaks to a team runtime.
+pub const RUNTIME_VERSIONS: &[u32] = &[1];
+/// The Client API version this release serves, and the oldest one it still serves.
+pub const CLIENT_API_CURRENT: u32 = 1;
+pub const CLIENT_API_OLDEST: u32 = 1;
+
+/// The Client API versions a node serves: its own, and the oldest it still answers as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct ClientApiRange {
+    pub current: u32,
+    pub oldest: u32,
+}
+
+/// The contract versions a node speaks, each a list so that two can be served side by side.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Contracts {
+    pub federation: Vec<u32>,
+    pub signed_text: Vec<u32>,
+    pub runtime: Vec<u32>,
+    pub client_api: ClientApiRange,
+}
+
+/// `GET /api/about` and `GET /fed/v1/orgs/<org>/about`. The federation answer never has `oldestApp`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct About {
+    /// The node's release, `MAJOR.MINOR.PATCH`.
+    pub node: String,
+    pub contracts: Contracts,
+    /// The names of the optional features and signed fields this node understands. A reader ignores a name
+    /// it does not know.
+    pub capabilities: Vec<String>,
+    /// For each platform (`ios`, `macos`), the oldest app version the node serves. Absent when the node
+    /// sets no floor, which is always the case until a breaking Client API change needs one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oldest_app: Option<BTreeMap<String, String>>,
+}
+
+impl About {
+    /// What a node of this release says: its version, every contract this release speaks, and every
+    /// capability it has. No floor for apps.
+    pub fn of_release(node: impl Into<String>) -> Self {
+        Self {
+            node: node.into(),
+            contracts: Contracts {
+                federation: FEDERATION_VERSIONS.to_vec(),
+                signed_text: SIGNED_TEXT_VERSIONS.to_vec(),
+                runtime: RUNTIME_VERSIONS.to_vec(),
+                client_api: ClientApiRange {
+                    current: CLIENT_API_CURRENT,
+                    oldest: CLIENT_API_OLDEST,
+                },
+            },
+            capabilities: Capability::ALL
+                .iter()
+                .map(|one| one.name().to_owned())
+                .collect(),
+            oldest_app: None,
+        }
+    }
+
+    /// Whether the node lists `capability`.
+    pub fn lists(&self, capability: Capability) -> bool {
+        self.capabilities
+            .iter()
+            .any(|name| name == capability.name())
+    }
+}
+
+/// An optional feature, or an optional field of a signed document that older nodes refuse. Names start at
+/// what came after the first release: every node has what the first release had. The meaning of each is in
+/// docs/compatibility.md ("Discovery"), and a test keeps that table and this list the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Capability {
+    /// `teams[].plan` in the org definition.
+    OrgPlan,
+    /// `teams[].plan.aims` in the org definition.
+    OrgAims,
+    /// `kpis` in the org definition.
+    OrgKpis,
+    /// A browser's Web Push subscriptions and the notices sent to them.
+    WebPush,
+    /// A team's activity feed.
+    Activity,
+    /// The owner's numbers and the readings of them.
+    Outcomes,
+}
+
+impl Capability {
+    pub const ALL: [Capability; 6] = [
+        Capability::OrgPlan,
+        Capability::OrgAims,
+        Capability::OrgKpis,
+        Capability::WebPush,
+        Capability::Activity,
+        Capability::Outcomes,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Capability::OrgPlan => "orgPlan",
+            Capability::OrgAims => "orgAims",
+            Capability::OrgKpis => "orgKpis",
+            Capability::WebPush => "webPush",
+            Capability::Activity => "activity",
+            Capability::Outcomes => "outcomes",
+        }
+    }
+
+    /// The capability a name stands for, or `None` for one this release does not know.
+    pub fn parse(raw: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|one| one.name() == raw)
+    }
+
+    /// The capabilities a reader needs to read `definition`: one for each optional field it carries. A
+    /// node refuses a version with a field it does not know, so the root checks these before signing.
+    pub fn used_by(definition: &OrgDefinition) -> BTreeSet<Capability> {
+        let plans = definition
+            .teams
+            .iter()
+            .filter_map(|team| team.plan.as_ref());
+        let mut used = BTreeSet::new();
+        for plan in plans {
+            used.insert(Capability::OrgPlan);
+            if !plan.aims.is_empty() {
+                used.insert(Capability::OrgAims);
+            }
+        }
+        if !definition.kpis.is_empty() {
+            used.insert(Capability::OrgKpis);
+        }
+        used
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    const SAMPLE: &str = include_str!("../../../testdata/about.sample.json");
+    const COMPATIBILITY: &str = include_str!("../../../docs/compatibility.md");
+    const VECTORS: &str = include_str!("../../../testdata/vectors.json");
+
+    /// The paths of the org definition's JSON that the first release (v0.1.0) already had, as far as the
+    /// org vectors show them (`departments[].parent` and `people[].devices` are there too, with no vector
+    /// that carries them). A path a vector shows that is in neither list fails the test below.
+    const FIRST_RELEASE: &[&str] = &[
+        "at",
+        "departments",
+        "departments[].head",
+        "departments[].id",
+        "departments[].label",
+        "departments[].parent",
+        "label",
+        "org",
+        "people",
+        "people[].account",
+        "people[].department",
+        "people[].devices",
+        "people[].id",
+        "people[].label",
+        "people[].publicKey",
+        "people[].role",
+        "prev",
+        "revoked",
+        "root",
+        "root.account",
+        "root.publicKey",
+        "teams",
+        "teams[].department",
+        "teams[].id",
+        "teams[].label",
+        "teams[].node",
+        "version",
+    ];
+
+    /// The paths added after the first release, each with the capability a reader needs for it.
+    const AFTER_FIRST_RELEASE: &[(&str, Capability)] = &[
+        ("kpis", Capability::OrgKpis),
+        ("kpis[].currency", Capability::OrgKpis),
+        ("kpis[].goodWhen", Capability::OrgKpis),
+        ("kpis[].id", Capability::OrgKpis),
+        ("kpis[].kind", Capability::OrgKpis),
+        ("kpis[].label", Capability::OrgKpis),
+        ("kpis[].unit", Capability::OrgKpis),
+        ("teams[].plan", Capability::OrgPlan),
+        ("teams[].plan.aims", Capability::OrgAims),
+        ("teams[].plan.aims[].epic", Capability::OrgAims),
+        ("teams[].plan.aims[].kpi", Capability::OrgAims),
+        ("teams[].plan.allocation", Capability::OrgPlan),
+        ("teams[].plan.allocation.debt", Capability::OrgPlan),
+        ("teams[].plan.allocation.improvement", Capability::OrgPlan),
+        ("teams[].plan.allocation.incident", Capability::OrgPlan),
+        ("teams[].plan.allocation.maintenance", Capability::OrgPlan),
+        ("teams[].plan.allocation.newFeature", Capability::OrgPlan),
+        ("teams[].plan.weeklyBudgetUsd", Capability::OrgPlan),
+    ];
+
+    fn org_vectors() -> Vec<(String, Value)> {
+        let vectors: Value = serde_json::from_str(VECTORS).unwrap();
+        ["org", "orgWithPlan", "orgWithOutcomes"]
+            .into_iter()
+            .map(|name| {
+                let canonical = vectors[name]["canonical"].as_str().unwrap();
+                (name.to_owned(), serde_json::from_str(canonical).unwrap())
+            })
+            .collect()
+    }
+
+    fn paths(value: &Value, prefix: &str, found: &mut BTreeSet<String>) {
+        match value {
+            Value::Object(fields) => {
+                for (name, inner) in fields {
+                    let path = if prefix.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{prefix}.{name}")
+                    };
+                    found.insert(path.clone());
+                    paths(inner, &path, found);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    paths(item, &format!("{prefix}[]"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_sample_is_what_a_release_says_and_has_no_floor_for_apps() {
+        let sample: About = serde_json::from_str(SAMPLE).unwrap();
+        assert_eq!(sample, About::of_release("0.3.0"));
+        let again = serde_json::to_value(&sample).unwrap();
+        assert_eq!(again, serde_json::from_str::<Value>(SAMPLE).unwrap());
+        assert!(again.get("oldestApp").is_none(), "left out, never null");
+        for one in Capability::ALL {
+            assert!(sample.lists(one), "{one:?}");
+        }
+    }
+
+    #[test]
+    fn a_reader_ignores_what_it_does_not_know() {
+        let mut newer: Value = serde_json::from_str(SAMPLE).unwrap();
+        newer["capabilities"] = json!(["orgPlan", "someFutureThing"]);
+        newer["contracts"]["federation"] = json!([1, 2]);
+        newer["somethingNew"] = json!({ "a": 1 });
+        newer["oldestApp"] = json!({ "ios": "0.4.0" });
+        let read: About = serde_json::from_value(newer).unwrap();
+        assert!(read.lists(Capability::OrgPlan) && !read.lists(Capability::OrgKpis));
+        assert_eq!(Capability::parse("someFutureThing"), None);
+        assert_eq!(read.contracts.federation, [1, 2]);
+        assert_eq!(read.oldest_app.unwrap()["ios"], "0.4.0");
+    }
+
+    #[test]
+    fn names_are_unique_and_each_parses_back() {
+        let names: BTreeSet<&str> = Capability::ALL.iter().map(|one| one.name()).collect();
+        assert_eq!(names.len(), Capability::ALL.len());
+        for one in Capability::ALL {
+            assert_eq!(Capability::parse(one.name()), Some(one));
+        }
+        assert_eq!(Capability::parse("OrgPlan"), None, "names are exact");
+    }
+
+    #[test]
+    fn the_policys_table_lists_exactly_the_names_the_code_has() {
+        let table = COMPATIBILITY.split("### Capabilities").nth(1).unwrap();
+        let section = table.split("\n## ").next().unwrap();
+        let listed: BTreeSet<&str> = section
+            .lines()
+            .filter_map(|line| line.strip_prefix("| `"))
+            .filter_map(|rest| rest.split('`').next())
+            .collect();
+        let coded: BTreeSet<&str> = Capability::ALL.iter().map(|one| one.name()).collect();
+        assert_eq!(listed, coded);
+    }
+
+    #[test]
+    fn a_definition_needs_a_capability_for_each_optional_field_it_carries() {
+        let used = |name: &str| {
+            let (_, body) = org_vectors()
+                .into_iter()
+                .find(|(one, _)| one == name)
+                .unwrap();
+            let definition: OrgDefinition = serde_json::from_value(body).unwrap();
+            Capability::used_by(&definition)
+        };
+        assert_eq!(used("org"), BTreeSet::new());
+        assert_eq!(used("orgWithPlan"), BTreeSet::from([Capability::OrgPlan]));
+        assert_eq!(
+            used("orgWithOutcomes"),
+            BTreeSet::from([
+                Capability::OrgPlan,
+                Capability::OrgAims,
+                Capability::OrgKpis
+            ])
+        );
+    }
+
+    #[test]
+    fn no_optional_field_of_the_definition_goes_without_a_capability() {
+        let mut found = BTreeSet::new();
+        for (_, body) in org_vectors() {
+            paths(&body, "", &mut found);
+        }
+        let known: BTreeSet<&str> = FIRST_RELEASE
+            .iter()
+            .copied()
+            .chain(AFTER_FIRST_RELEASE.iter().map(|(path, _)| *path))
+            .collect();
+        let unnamed: Vec<&String> = found
+            .iter()
+            .filter(|path| !known.contains(path.as_str()))
+            .collect();
+        assert!(
+            unnamed.is_empty(),
+            "a field of the org definition has no capability: {unnamed:?}. A field added after v0.1.0 \
+             needs a `Capability`, a row in docs/compatibility.md, and an entry in AFTER_FIRST_RELEASE; \
+             one the first release had goes in FIRST_RELEASE."
+        );
+        for (path, _) in AFTER_FIRST_RELEASE {
+            assert!(
+                found.contains(*path),
+                "no vector has {path}: a stale entry, or a vector to add"
+            );
+        }
+    }
+}
