@@ -54,7 +54,7 @@ function percentile(buckets: readonly number[], percent: number): number | undef
  * next to it, so that the line moves; some hours have no call (a gap), and a series whose p95 is beyond the last bucket
  * has hours of its own that are. A range of more than 7 days has no hours, as the node gives totals only.
  */
-function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: number | undefined): unknown[] {
+function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: number | undefined, withBuckets: boolean): unknown[] {
   if (days > 7) return []
   const hours = days * 24
   const base = p95 === undefined ? BOUNDS.length - 1 : BOUNDS.indexOf(p95)
@@ -65,17 +65,25 @@ function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: numb
     const calls = Math.max(1, Math.round(count / hours))
     const shifted = Math.min(BOUNDS.length - 1, Math.max(0, base + (wobble[index % wobble.length] ?? 0)))
     const isBeyond = p95 === undefined && index % 5 === 0
+    // The hour's calls: 6 in 10 one bucket below the p95's, the rest in the p95's own, so that the hour's p95 is that bound.
+    const buckets = Array.from({ length: BUCKET_COUNT }, () => 0)
+    const own = isBeyond ? BOUNDS.length : shifted
+    const below = Math.max(0, own - 1)
+    const lower = own === below ? 0 : Math.floor(calls * 0.6)
+    buckets[below] = (buckets[below] ?? 0) + lower
+    buckets[own] = (buckets[own] ?? 0) + calls - lower
     return {
       hour: new Date(until.getTime() - (hours - index) * 3_600_000).toISOString(),
       count: calls,
       errors: spec.status === '5xx' ? calls : 0,
       ...(isBeyond ? {} : { p95Ms: BOUNDS[shifted] }),
+      ...(withBuckets ? { buckets } : {}),
     }
   }).filter((hour) => hour !== undefined)
 }
 
 /** The owner's measurements as the node answers them: the series of a few route groups and calls, from the hour before `now` back `days` days. */
-export function metricsAnswer(now: Date, days: number, variant: MetricsVariant): unknown {
+export function metricsAnswer(now: Date, days: number, variant: MetricsVariant, withHourBuckets = false): unknown {
   const until = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000 + 3_600_000)
   const from = new Date(until.getTime() - days * 24 * 3_600_000)
   const specs = variant === 'empty' ? [] : variant === 'slow' ? slow : usual
@@ -98,7 +106,7 @@ export function metricsAnswer(now: Date, days: number, variant: MetricsVariant):
         const found = percentile(buckets, percent)
         return found === undefined ? [] : [[key, found]]
       })),
-      byHour: hoursOf(spec, count, until, days, percentile(buckets, 95)),
+      byHour: hoursOf(spec, count, until, days, percentile(buckets, 95), withHourBuckets),
     }
   })
   return {

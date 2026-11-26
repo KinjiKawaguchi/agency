@@ -114,6 +114,8 @@ interface MockNodeOptions {
   metrics?: MetricsVariant | 'absent'
   /** Makes the measurements route answer this status, as a node that fails (503). */
   metricsFailWith?: number
+  /** A node that does not give the buckets of each hour (it does not know `hourBuckets`). */
+  metricsWithoutHourBuckets?: boolean
   /** A claim link the node has made for one seat (agency#201): the code, and how a redeem of it ends. Without it the claim routes answer 404. */
   claim?: MockClaimOptions
   /** Makes `POST /api/push/tokens` answer this status, as a node that does not serve it yet (404) or is failing. */
@@ -316,7 +318,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.metrics === undefined) return failure(403, 'Only the owner reads these numbers.')
     const days = Number(url.searchParams.get('days') ?? '1')
     if (!Number.isInteger(days) || days < 1 || days > 30) return failure(400, 'days is 1 to 30.')
-    return json(metricsAnswer(now, days, options.metrics))
+    // The buckets of each hour are given when they are asked for, by a node that has them.
+    return json(metricsAnswer(now, days, options.metrics, url.searchParams.get('hourBuckets') === '1' && options.metricsWithoutHourBuckets !== true))
   }
   /** The owner's numbers: the shared samples and what was entered, over the days asked; anyone else is refused, as the node refuses them, even to read. */
   const handleOutcomes = async (request: Request, url: URL, org: string, part: string | undefined): Promise<Response> => {

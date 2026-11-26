@@ -256,11 +256,38 @@ describe('the node’s own response time, on the evaluation page', () => {
       for (const one of others) expect(one.querySelector('.mt-budget')).toBeNull()
     })
 
-    it('says that it is one scale in milliseconds and that the group’s p95 is at most the slowest route’s', async () => {
+    it('says that it is one scale in milliseconds, with the p95 of each group’s routes together, and nothing of an approximation', async () => {
       open({ metrics: 'usual' })
       const found = await section()
-      expect(await found.findByText(/the group’s own p95 in that hour is at most this/)).toBeInTheDocument()
+      expect(await found.findByText(/its p95 of each hour, all its routes together/)).toBeInTheDocument()
       expect(found.getByText(/One scale, in milliseconds, drawn on a log scale/)).toBeInTheDocument()
+      expect(found.queryByText(/does not give the buckets of each hour/)).not.toBeInTheDocument()
+    })
+
+    it('says so when the node gives no buckets of the hours: a point is the slowest route’s p95, which the group’s is at most', async () => {
+      open({ metrics: 'usual', metricsWithoutHourBuckets: true })
+      const found = await section()
+      expect(await found.findByText(/a point is the slowest route’s p95 of the group: the group’s own p95 in that hour is at most this/)).toBeInTheDocument()
+      expect(charts(found).length).toBeGreaterThan(0)
+    })
+
+    it('asks for the buckets of the hours with the hours, for 1 and 7 days, and not for 30, which has no hours', async () => {
+      const node = createMockNode({ evaluation: true, metrics: 'usual' })
+      const asked: string[] = []
+      const client = createApiClient((request) => {
+        const url = new URL(request.url, 'http://mock.local')
+        if (url.pathname === '/api/metrics') asked.push(url.search)
+        return node.handle(request)
+      })
+      const user = userEvent.setup()
+      renderApp({ path: '/evaluation', node, client })
+      const found = await section()
+      await found.findAllByText('Requests')
+      await user.click(found.getByRole('button', { name: 'Last 7 days' }))
+      await waitFor(() => expect(asked).toHaveLength(2))
+      await user.click(found.getByRole('button', { name: 'Last 30 days' }))
+      await waitFor(() => expect(asked).toHaveLength(3))
+      expect(asked).toEqual(['?days=1&hourBuckets=1', '?days=7&hourBuckets=1', '?days=30'])
     })
 
     it('leaves a gap for an hour with no call: fewer dots than hours, and a line that stops and starts again', async () => {
@@ -285,7 +312,7 @@ describe('the node’s own response time, on the evaluation page', () => {
       const table = within(reads).getByRole('table', { name: 'In-node reads: the hours that had calls, newest first' })
       const cells = within(table).getAllByRole('row')[1]?.textContent ?? ''
       expect(cells).toMatch(/≤ \d+(\.\d+)? (ms|s)|slower than 30 s/)
-      expect(within(reads).getByRole('img').getAttribute('aria-label')).toMatch(/^In-node reads: the slowest route’s p95 for each hour, \d+ hours with calls, the latest ≤/)
+      expect(within(reads).getByRole('img').getAttribute('aria-label')).toMatch(/^In-node reads: the p95 for each hour, \d+ hours with calls, the latest ≤/)
     })
 
     it('shows the 7 days in hours and says only short periods have them for 30', async () => {

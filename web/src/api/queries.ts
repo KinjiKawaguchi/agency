@@ -1,3 +1,4 @@
+import { HOURS_UP_TO_DAYS } from './metricsApi'
 import { queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import type { ApiClient } from './client'
 import { useApi } from './context'
@@ -78,8 +79,9 @@ export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
 export const outcomesQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['outcomes', org, days], queryFn: () => api.outcomes(org, days), staleTime: 2 * POLL_MS })
 
+/** The buckets of each hour are asked for with the hours (up to 7 days), which is what the trend draws from; a longer range has no hours. */
 export const metricsQuery = (api: ApiClient, days: number) =>
-  queryOptions({ queryKey: ['metrics', days], queryFn: () => api.metrics(days), staleTime: 2 * POLL_MS })
+  queryOptions({ queryKey: ['metrics', days], queryFn: () => api.metrics(days, days <= HOURS_UP_TO_DAYS), staleTime: 2 * POLL_MS })
 
 export const NUMBER_HISTORY = 100
 
