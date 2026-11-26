@@ -72,6 +72,7 @@ public final class OutcomesStore {
     // MARK: Reading
 
     public func refresh() async {
+        let before = loading
         loading = .loading
         do {
             let me = try await source.me()
@@ -87,12 +88,13 @@ public final class OutcomesStore {
             }
             // A period chosen meanwhile has its own answer coming; this one is for the old one.
             guard days == self.days else { return }
-            apply(results)
+            apply(results, before: before)
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
         } catch is CancellationError {
-            loading = .idle
+            // A read that was cancelled says nothing: what was there stays.
+            loading = before
         } catch {
             loading = .failed(DeskStore.reason(error))
         }
@@ -110,6 +112,8 @@ public final class OutcomesStore {
         /// The owner may not read it (403), or the org is not one the node can answer (404): nothing to show, and no word of it.
         case refused
         case failed(String)
+        /// The Access session ended while the org was read.
+        case signInEnded
         case cancelled
     }
 
@@ -122,6 +126,8 @@ public final class OutcomesStore {
             return .refused
         } catch is CancellationError {
             return .cancelled
+        } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
+            return .signInEnded
         } catch {
             return .failed(DeskStore.reason(error))
         }
@@ -143,20 +149,27 @@ public final class OutcomesStore {
         }
     }
 
-    private func apply(_ results: [OrgRead]) {
+    private func apply(_ results: [OrgRead], before: Loading) {
         var answers: [OrgOutcomes] = []
         var failure: String?
         var isCancelled = false
+        var isSignInEnded = false
         for result in results {
             switch result {
             case .answer(let outcomes): answers.append(outcomes)
             case .refused: break
             case .failed(let reason): failure = failure ?? reason
+            case .signInEnded: isSignInEnded = true
             case .cancelled: isCancelled = true
             }
         }
+        if isSignInEnded {
+            needsSignIn = true
+            loading = .failed(Ja.Desk.signInEnded)
+            return
+        }
         if isCancelled {
-            loading = .idle
+            loading = before
             return
         }
         // A read that could not finish for some org says nothing of whether the owner may read, so what is shown stays; the
