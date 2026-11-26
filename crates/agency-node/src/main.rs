@@ -418,13 +418,8 @@ async fn run(cli: Cli) -> Result<()> {
             let doc = orgs::add_team(
                 &node,
                 &org,
-                TeamPlace {
-                    id: team.clone(),
-                    label,
-                    department: department.as_deref().map(id).transpose()?,
-                    node: place_url,
-                    plan: None,
-                },
+                TeamPlace::new(team.clone(), label, place_url)
+                    .with_department(department.as_deref().map(id).transpose()?),
             )?;
             if let (true, Some(state_dir)) = (is_here, state_dir) {
                 let owner = owner

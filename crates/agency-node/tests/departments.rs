@@ -37,13 +37,7 @@ async fn the_root_builds_departments_and_places_teams_in_them() {
     )
     .unwrap();
     departments::place_team(&alice.node, &org, &id("app"), Some(id("dev"))).unwrap();
-    let web = TeamPlace {
-        id: id("web"),
-        label: "Web".into(),
-        department: Some(id("clients")),
-        node: alice.url(),
-        plan: None,
-    };
+    let web = TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("clients")));
     orgs::add_team(&alice.node, &org, web).unwrap();
 
     let now = body(&alice);
@@ -152,13 +146,7 @@ async fn departments_stay_a_tree_with_real_links() {
             orgs::add_team(
                 &alice.node,
                 &org,
-                TeamPlace {
-                    id: id("web"),
-                    label: "Web".into(),
-                    department: Some(id("nope")),
-                    node: alice.url(),
-                    plan: None,
-                },
+                TeamPlace::new(id("web"), "Web", alice.url()).with_department(Some(id("nope"))),
             ),
             ErrorKind::NotFound,
         ),

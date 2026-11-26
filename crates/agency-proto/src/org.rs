@@ -68,10 +68,13 @@ pub struct Device {
     pub added_at: Timestamp,
 }
 
-/// A team and the node it runs on.
+/// A team and the node it runs on. Made with `TeamPlace::new`, so a new field gets its default in one place
+/// and not in every place that builds one (other crates cannot build it by hand; a test keeps this crate
+/// from doing it either).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
+#[non_exhaustive]
 pub struct TeamPlace {
     pub id: Id,
     pub label: String,
@@ -82,6 +85,29 @@ pub struct TeamPlace {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub plan: Option<TeamPlan>,
+}
+
+impl TeamPlace {
+    /// A team in no department, with no plan, that runs at the node `node`.
+    pub fn new(id: Id, label: impl Into<String>, node: impl Into<String>) -> Self {
+        Self {
+            id,
+            label: label.into(),
+            department: None,
+            node: node.into(),
+            plan: None,
+        }
+    }
+
+    /// The same team in this department (or in none).
+    pub fn with_department(self, department: Option<Id>) -> Self {
+        Self { department, ..self }
+    }
+
+    /// The same team with this plan (or none).
+    pub fn with_plan(self, plan: Option<TeamPlan>) -> Self {
+        Self { plan, ..self }
+    }
 }
 
 /// What an org intends for a team: the share of its effort for each kind of work, and how much it
