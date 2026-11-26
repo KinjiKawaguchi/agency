@@ -23,6 +23,7 @@ public final class PeopleStore {
 
     @ObservationIgnored private let source: any TeamSnapshotSource
     @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private let flight = SingleFlight()
     /// The last answer of each team that was read, so a later failed read does not take the team off the screen.
     @ObservationIgnored private var lastRead: [String: Team] = [:]
 
@@ -31,7 +32,12 @@ public final class PeopleStore {
         self.retry = retry
     }
 
+    /// Reads again. A read already running is waited for, not repeated.
     public func refresh() async {
+        await flight.run { await self.reload() }
+    }
+
+    private func reload() async {
         loading = .loading
         do {
             let me = try await source.me()

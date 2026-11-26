@@ -35,6 +35,7 @@ public final class OverviewStore {
 
     @ObservationIgnored private let source: any OverviewSource
     @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private let flight = SingleFlight()
 
     public init(source: any OverviewSource, retry: RetryPolicy = .standard) {
         self.source = source
@@ -86,7 +87,12 @@ public final class OverviewStore {
     // MARK: Reading
 
     /// Reads the account, then every team and its week's cost. A team that cannot be read is shown as that, in its place.
+    /// Reads again. A read already running is waited for, not repeated.
     public func refresh() async {
+        await flight.run { await self.reload() }
+    }
+
+    private func reload() async {
         loading = .loading
         do {
             let me = try await source.me()

@@ -156,6 +156,18 @@ struct CostsStoreTests {
         #expect(store.teams[0].usage == .unavailable)
     }
 
+    @Test("a refresh asked while one is running waits for it, and the node is asked once")
+    func oneReadAtATime() async {
+        let source = FakeCosts(me: .success(twoTeams))
+        let store = CostsStore(source: source, retry: .never)
+        async let first: Void = store.refresh()
+        async let second: Void = store.refresh()
+        _ = await (first, second)
+        #expect(source.usageAsked.count == 2)
+        await store.refresh()
+        #expect(source.usageAsked.count == 4)
+    }
+
     @Test("a team that cannot be read is not listed, and the others are")
     func teamFails() async {
         let source = FakeCosts(me: .success(twoTeams))

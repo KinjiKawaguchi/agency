@@ -63,6 +63,7 @@ public final class CostsStore {
 
     @ObservationIgnored private let source: any OverviewSource
     @ObservationIgnored private let retry: RetryPolicy
+    @ObservationIgnored private let flight = SingleFlight()
     @ObservationIgnored private var refs: [(key: String, org: String, team: String)] = []
     @ObservationIgnored private var lastRead: [String: Team] = [:]
     @ObservationIgnored private var usage: [String: UsageState] = [:]
@@ -78,7 +79,12 @@ public final class CostsStore {
 
     // MARK: Reading
 
+    /// Reads again. A read already running is waited for, not repeated.
     public func refresh() async {
+        await flight.run { await self.reload() }
+    }
+
+    private func reload() async {
         loading = .loading
         do {
             let me = try await source.me()
