@@ -455,6 +455,15 @@ export const en = {
       from: (word: string, change: string, base: string, date: string) => `${word.charAt(0).toUpperCase()}${word.slice(1)} ${change} since ${date} (${base}).`,
       same: (base: string, date: string) => `Unchanged since ${date} (${base}).`,
     },
+    cost: {
+      title: 'Cost on the same days',
+      series: 'Cost',
+      day: (date: string, cost: string) => `${date}: ${cost}`,
+      unavailable: 'The cost of these days could not be read.',
+      none: 'No cost is reported for these days.',
+      noCost: 'no cost reported',
+      partial: (count: number) => `Without ${count} ${count === 1 ? 'team' : 'teams'} that could not report.`,
+    },
     enter: {
       open: 'Enter a number',
       close: 'Close',

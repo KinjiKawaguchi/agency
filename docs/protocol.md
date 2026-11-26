@@ -407,6 +407,11 @@ ReadingState "notShipped" | "shipDateUnknown" | "noBaseline" | "tooEarly" | "noF
 A client (web, iOS, desktop) talks to its home node under `/api`. The node answers as its own account: only orgs that account belongs to are visible, and anything else is 404.
 The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 
+**`x-agency-client`.** An app tells the node which release it is, on every call: `x-agency-client: <platform>/<version> (<build>)`, for example `ios/0.3.0 (202611260418)`.
+- `platform` is `ios`, `macos`, or `android`, in lower case. `version` is exactly three decimal numbers separated by dots, of at most 6 digits each (`MAJOR.MINOR.PATCH`). `build` is optional, with one space before its parenthesis, and only decimal digits: an unsigned 64-bit integer (a TestFlight build is a UTC time to the minute, 12 digits). The whole value is at most 64 characters. An app with no version leaves the header out, and one whose build is not all digits leaves the parenthesis out.
+- It is **informational**: a request without it, or with a value that is not exactly this form, is served as before and the value is ignored, never refused. The node reads it only on requests it **admitted**, so a stranger cannot make it record anything.
+- The node keeps, in `clients-seen.json` of its data directory, for each platform and version, when it last admitted a request with it and the build then, and no more than the 32 versions seen most recently for a platform. It notes a version at most once an hour. It holds nothing about the person, the account, or the device, and `agency status` lists it. It is the fact that `oldestApp` in discovery rests on, when a breaking Client API change needs a floor.
+
 | Method | Path | Answer |
 |---|---|---|
 | GET | `/api/session` | `Session`: `writeToken`, the value writes send in `x-agency-token` (it changes each time the node starts; a client that gets 403 "missing or wrong write token" asks again once), and `now`, the node's time, which a client uses for an envelope's `at`. For clients that do not load the page; admitted like any read, so it exposes nothing the page does not |

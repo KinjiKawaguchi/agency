@@ -139,3 +139,96 @@ describe('the owner’s outcomes page', () => {
     expect(document.body.textContent, 'it says only that the work did not necessarily move it').not.toMatch(/動かしました|原因は/)
   })
 })
+
+describe('the cost on the same days', () => {
+  const NOW = new Date('2026-11-24T12:00:00Z')
+  const costNode = (extra: Parameters<typeof createTestNode>[0] = {}) => createTestNode({ outcomes: true, evaluation: true, now: NOW, ...extra })
+
+  it('is drawn under a KPI that has numbers, a column for each of its days, on the same days as the KPI', async () => {
+    renderApp({ path: '/outcomes', node: costNode(), enrolled: true })
+    const revenue = await card('Monthly revenue')
+    await waitFor(() => expect(revenue.getByText('Cost on the same days')).toBeInTheDocument())
+    const [trend, cost] = [...document.querySelectorAll('.oc-kpi')[0]?.querySelectorAll('.ev-plot') ?? []]
+    expect(cost?.querySelectorAll('.ev-col').length, 'one column for each of the 90 days').toBe(90)
+    expect(trend?.getAttribute('aria-label')).toBe('Monthly revenue, over the period')
+  })
+
+  it('is not drawn under a KPI that has no number', async () => {
+    renderApp({ path: '/outcomes', node: costNode(), enrolled: true })
+    const lead = await card('Lead time of a feature')
+    // Wait until the cost has been drawn under the KPI that has numbers: only then is its absence under this one a finding.
+    await waitFor(() => expect(document.querySelector('.oc-cost')).not.toBeNull())
+    expect(lead.queryByText('Cost on the same days')).not.toBeInTheDocument()
+    expect(lead.queryByText('The cost of these days could not be read.')).not.toBeInTheDocument()
+  })
+
+  it('leaves a day that no team’s period covers without a column, which reads aloud as no cost, and shows a quiet day inside a period as 0', async () => {
+    const node = costNode()
+    // The evaluation's answer, with each team's period starting 10 days later and the days before it left out of byDay as well.
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/evaluation')) return answer
+      const body = (await answer.json()) as { teams: Array<{ from: string; byDay: Array<{ date: string }> }> }
+      for (const team of body.teams) {
+        const kept = team.byDay.slice(10)
+        team.from = kept[0]?.date ?? team.from
+        team.byDay = kept.filter((_day, index) => index % 2 === 0)
+      }
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    await card('Monthly revenue')
+    await waitFor(() => expect(document.querySelector('.oc-cost')).not.toBeNull())
+    const columns = [...document.querySelectorAll('.oc-kpi')[0]!.querySelectorAll('.oc-cost .ev-col')]
+    expect(columns).toHaveLength(90)
+    const missing = columns.filter((column) => column.getAttribute('aria-label')?.endsWith(': no cost reported'))
+    expect(missing, 'the days before every team’s period').toHaveLength(10)
+    expect(missing.every((column) => column.querySelector('.ev-stack') === null && column.querySelector('.ev-tip') === null)).toBe(true)
+    const inside = columns.slice(10)
+    expect(inside.every((column) => !column.getAttribute('aria-label')?.endsWith('no cost reported')), 'a day the byDay leaves out is inside the period, not missing').toBe(true)
+  })
+
+  it('says both that no cost is reported and that a team could not report, when every day is missing', async () => {
+    const node = costNode()
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/evaluation')) return answer
+      const body = (await answer.json()) as Record<string, unknown>
+      return new Response(JSON.stringify({ ...body, teams: [], unavailable: [{ team: 'site', reason: 'down' }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    const revenue = await card('Monthly revenue')
+    expect(await revenue.findByText('No cost is reported for these days.')).toBeInTheDocument()
+    expect(revenue.getByText('Without 1 team that could not report.')).toBeInTheDocument()
+  })
+
+  it('says it could not be read, and leaves the KPI as it is, when the evaluation fails', async () => {
+    renderApp({ path: '/outcomes', node: costNode({ evaluationFailsWith: 500 }), enrolled: true })
+    const revenue = await card('Monthly revenue')
+    await waitFor(() => expect(revenue.getByText('The cost of these days could not be read.')).toBeInTheDocument(), { timeout: 4_000 })
+    expect(revenue.getByText('¥1,350,000', { selector: '.oc-value' })).toBeInTheDocument()
+  })
+
+  it('says the sum is without the team that could not report', async () => {
+    renderApp({ path: '/outcomes', node: costNode({ evaluationUnavailableTeam: 'site' }), enrolled: true })
+    const revenue = await card('Monthly revenue')
+    expect(await revenue.findByText('Without 1 team that could not report.')).toBeInTheDocument()
+  })
+
+  it('shows a placeholder, not a cost of 0, while the cost is read', async () => {
+    const node = costNode()
+    const { client, release } = heldNode(node, ['/evaluation'])
+    renderApp({ path: '/outcomes', node, client, enrolled: true })
+    const revenue = await card('Monthly revenue')
+    await waitFor(() => expect(revenue.getAllByText('', { selector: '.skeleton' }).length).toBeGreaterThan(0))
+    expect(revenue.queryByText('Cost on the same days')).not.toBeInTheDocument()
+    release()
+    expect(await revenue.findByText('Cost on the same days')).toBeInTheDocument()
+  })
+
+  it('reads in Japanese', async () => {
+    renderApp({ path: '/outcomes', node: costNode(), enrolled: true, locale: 'ja' })
+    const revenue = await card('Monthly revenue')
+    expect(await revenue.findByText('同じ日のコスト')).toBeInTheDocument()
+  })
+})

@@ -2,6 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
 import { meQuery, outcomesQuery } from '../api/queries'
+import { guestOf } from '../guest/provisional'
 
 /** The days the first read asks for, and the page opens on: a monthly figure usually has no number in 14 days. */
 export const DEFAULT_DAYS = 90
@@ -21,7 +22,9 @@ export const isNotTheOwner = (error: unknown): boolean => error instanceof ApiEr
 export function useOutcomesAccess(): OutcomesAccess {
   const api = useApi()
   const me = useQuery(meQuery(api))
-  const orgs = me.data?.orgs ?? [] /* stand-in-ok(routing): the orgs to ask about once the viewer is read; the status below says it is not known yet */
+  // A member the node hosts is never the owner: the numbers are not asked of the node for them.
+  const isGuest = me.data !== undefined && guestOf(me.data) !== undefined
+  const orgs = isGuest ? [] : (me.data?.orgs ?? []) /* stand-in-ok(routing): the orgs to ask about once the viewer is read; the status below says it is not known yet */
   const reads = useQueries({ queries: orgs.map((org) => outcomesQuery(api, org.id, DEFAULT_DAYS)) })
   if (me.isPending) return { status: 'loading' }
   // A refetch that failed keeps the data it had and sets the error: the viewer already read is still read.

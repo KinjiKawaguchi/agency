@@ -33,11 +33,15 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   const siteError = query?.get('siteError')
   const outcome = query?.get('outcome')
   const isEmpty = query?.get('empty') === '1'
+  const guest = query?.get('guest') ?? ''
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
     activity: activity === '1',
     outcomes: outcomes === '1',
+    // The owner's sample numbers are of fixed days; the cost beside them is drawn over the same days. This pins the day of the whole
+    // mock node (the desk's times too), for the dev server and the screenshots.
+    ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.
@@ -46,6 +50,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     ...(query?.get('recovery') === '1' ? { recoveries: { acme: { takesEffectAt: new Date(Date.now() + 71 * 3_600_000).toISOString(), newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true } } } : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
+    // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
+    ...(guest === '' ? {} : { guest: { member: guest, label: `${guest.charAt(0).toUpperCase()}${guest.slice(1)}` } }),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
     ...(siteError === null || siteError === undefined ? {} : { siteError }),
     ...(outcome === 'queued' || outcome === 'delivered' ? { outcome } : {}),
