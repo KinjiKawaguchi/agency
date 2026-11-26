@@ -77,12 +77,24 @@ export function groupsOf(series: readonly LatencySeries[], kind: LatencySeries['
   return rows.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
 }
 
-export type Verdict = { kind: 'within' } | { kind: 'over' }
+export type Verdict = { kind: 'within' } | { kind: 'over' } | { kind: 'undetermined' }
 
-/** The budget is a test of the p95 against a bound: `p95Ms <= budget`. A p95 beyond the last bucket is over it. */
+/** The upper bound of the bucket before the one that ends at `ms`; the p95 is above it. 0 for the first bucket, and the last bound for what is beyond them. */
+const lowerBoundOf = (p95: Bound): number => {
+  if (p95.kind === 'beyond') return BUCKET_BOUNDS_MS[BUCKET_BOUNDS_MS.length - 1] ?? 0 /* stand-in-ok(index): the bounds are never empty */
+  const index = BUCKET_BOUNDS_MS.indexOf(p95.ms)
+  return index <= 0 ? 0 : (BUCKET_BOUNDS_MS[index - 1] ?? 0 /* stand-in-ok(index): the bucket before has a bound */)
+}
+
+/**
+ * The budget is a test of the p95 against a bound, and a p95 is known only as the bucket it lies in: it is within the
+ * budget when the bucket's upper bound is, over it when even the bucket's lower bound is, and when the budget falls
+ * inside the bucket it cannot be told. (With the budget at a bucket's edge, as 100 ms is, it can always be told.)
+ */
 export function verdictOf(p95: Bound | undefined, budgetMs: number): Verdict | undefined {
   if (p95 === undefined) return undefined
-  return p95.kind === 'atMost' && p95.ms <= budgetMs ? { kind: 'within' } : { kind: 'over' }
+  if (p95.kind === 'atMost' && p95.ms <= budgetMs) return { kind: 'within' }
+  return lowerBoundOf(p95) >= budgetMs ? { kind: 'over' } : { kind: 'undetermined' }
 }
 
 /** Every in-node read put together, for the budget; nothing when none was measured. */

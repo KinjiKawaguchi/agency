@@ -1,5 +1,6 @@
 import type { LatencySeries } from '../api/metricsApi'
 import { useI18n } from '../i18n'
+import { groupName } from './groupName'
 import { groupsOf, type Bound, type Row } from './latency'
 import { useBoundText } from './useBound'
 
@@ -48,7 +49,7 @@ export function GroupTable({ series, kind, title }: { series: readonly LatencySe
           {groups.map((group) => (
             <tbody key={group.key} role="rowgroup">
               <tr className="mt-group" role="row">
-                <th scope="row" role="rowheader">{text.names[group.key] ?? group.key}</th>
+                <th scope="row" role="rowheader">{groupName(text.names, group.key)}</th>
                 <Cells row={group} />
               </tr>
               {group.routes.map((route) => (

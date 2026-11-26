@@ -19,7 +19,7 @@ export function BudgetCard({ series, budgetMs }: { series: readonly LatencySerie
         <p>{text.noReads}</p>
       ) : (
         <p className={`mt-verdict is-${verdict.kind}`}>
-          <strong>{verdict.kind === 'within' ? text.within(bound(reads.p95)) : text.over(bound(reads.p95))}</strong> {text.requests(fmt.integer(reads.count))}
+          <strong>{verdict.kind === 'within' ? text.within(bound(reads.p95)) : verdict.kind === 'over' ? text.over(bound(reads.p95)) : text.undetermined(bound(reads.p95), duration(budgetMs))}</strong> {text.requests(fmt.integer(reads.count))}
         </p>
       )}
       {over.length === 0 ? null : (

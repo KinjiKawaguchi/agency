@@ -28,17 +28,29 @@ describe('the node’s own response time, on the evaluation page', () => {
     expect(screen.queryByText(/in-node read/i)).not.toBeInTheDocument()
   })
 
-  it('draws nothing of numbers before the node has answered, only the heading and a skeleton', async () => {
+  it('draws nothing of the section before the node has answered, only a skeleton: no heading, no words, no buttons', async () => {
     const node = createMockNode({ evaluation: true, metrics: 'usual' })
     const { client, release } = heldNode(node, ['/api/metrics'])
     renderApp({ path: '/evaluation', node, client })
-    const found = await section()
-    expect(found.queryByRole('table')).not.toBeInTheDocument()
-    expect(found.queryByText(/Requests|Within the budget|Over the budget|No in-node read|Nothing was measured/)).not.toBeInTheDocument()
-    expect(document.querySelector('.mt-section .skeleton')).not.toBeNull()
+    await screen.findByRole('heading', { level: 1, name: 'Evaluation' })
+    await waitFor(() => expect(document.querySelector('.skeleton.box')).not.toBeNull())
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Last 7 days' })).not.toBeInTheDocument()
     release()
+    const found = await section()
     expect(await found.findAllByText('Requests')).toHaveLength(2)
-    expect(document.querySelector('.mt-section .skeleton')).toBeNull()
+  })
+
+  it('leaves nothing behind when the answer that was waited for is a 403: the heading never appears', async () => {
+    const node = createMockNode({ evaluation: true })
+    const { client, release } = heldNode(node, ['/api/metrics'])
+    renderApp({ path: '/evaluation', node, client })
+    await screen.findByRole('heading', { level: 1, name: 'Evaluation' })
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
+    release()
+    await waitFor(() => expect(document.querySelector('.mt-section, .skeleton.box')).toBeNull())
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('says one line when the node does not measure, and an alert when it fails', async () => {
@@ -48,7 +60,7 @@ describe('the node’s own response time, on the evaluation page', () => {
 
   it('says what failed when the node cannot give the measurements, and still draws the rest of the page', async () => {
     const { unmount } = open({ metricsFailWith: 503 })
-    expect(await (await section()).findByRole('alert')).toHaveTextContent('could not give its measurements')
+    expect(await (await section()).findByRole('alert')).toHaveTextContent('The node could not give its measurements.')
     expect(screen.getByRole('heading', { level: 2, name: 'App team' })).toBeInTheDocument()
     unmount()
   })
@@ -132,6 +144,71 @@ describe('the node’s own response time, on the evaluation page', () => {
     expect(items[1]).toHaveTextContent('Met')
     expect(items[2]).toHaveTextContent('Cannot be told yet')
     expect(items[2]).not.toHaveTextContent('Measured')
+  })
+
+  it('does not say an answer it cannot read in the words of its own fields', async () => {
+    const node = createMockNode({ evaluation: true, metrics: 'usual' })
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/metrics') return answer
+      const body = (await answer.json()) as { series: Array<Record<string, unknown>> }
+      return new Response(JSON.stringify({ ...body, series: body.series.map((one) => ({ ...one, buckets: [1] })) }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/evaluation', node, client })
+    const alert = await (await section()).findByRole('alert')
+    expect(alert).toHaveTextContent('The node could not give its measurements.')
+    expect(alert).not.toHaveTextContent(/buckets/)
+  })
+
+  it('names a route group by the node’s own word when it has no name of its own, and never by what every object has', async () => {
+    const node = createMockNode({ evaluation: true, metrics: 'usual' })
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/metrics') return answer
+      const body = (await answer.json()) as { series: Array<Record<string, unknown>> }
+      return new Response(JSON.stringify({ ...body, series: body.series.map((one) => (one.group === 'usage' ? { ...one, group: 'constructor' } : one.group === 'devices' ? { ...one, group: 'brand-new' } : one)) }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/evaluation', node, client })
+    const found = await section()
+    expect(await found.findByRole('rowheader', { name: 'constructor' })).toBeInTheDocument()
+    expect(found.getByRole('rowheader', { name: 'brand-new' })).toBeInTheDocument()
+  })
+
+  it('says it cannot tell against a budget that falls inside the bucket of the p95, and does not say over', async () => {
+    const node = createMockNode({ evaluation: true, metrics: 'slow' })
+    const client = createApiClient(async (request) => {
+      const answer = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/metrics') return answer
+      const body = (await answer.json()) as Record<string, unknown>
+      return new Response(JSON.stringify({ ...body, budget: { inNodeReadP95Ms: 175 } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/evaluation', node, client })
+    const found = await section()
+    expect(await found.findByText(/Cannot be told against the budget: p95 ≤ 250 ms, and the budget of 175 ms lies inside that range\./)).toBeInTheDocument()
+    expect(found.queryByText(/Over the budget|Within the budget/)).not.toBeInTheDocument()
+  })
+
+  it('draws a skeleton in place of the numbers while another period comes, not the numbers of the first under the second one’s button', async () => {
+    const node = createMockNode({ evaluation: true, metrics: 'usual' })
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const client = createApiClient(async (request) => {
+      const url = new URL(request.url, 'http://mock.local')
+      if (url.pathname === '/api/metrics' && url.searchParams.get('days') === '7') await held
+      return node.handle(request)
+    })
+    const user = userEvent.setup()
+    renderApp({ path: '/evaluation', node, client })
+    const found = await section()
+    await found.findAllByText('Requests')
+    await user.click(found.getByRole('button', { name: 'Last 7 days' }))
+    expect(found.getByRole('button', { name: 'Last 7 days' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(found.queryByRole('table')).not.toBeInTheDocument())
+    expect(document.querySelector('.mt-section .skeleton.box')).not.toBeNull()
+    release()
+    expect(await found.findAllByText('Requests')).toHaveLength(2)
   })
 
   it('reads another period from the node and keeps the first until it comes', async () => {

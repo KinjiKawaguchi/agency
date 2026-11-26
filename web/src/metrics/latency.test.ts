@@ -91,6 +91,23 @@ describe('the budget is a test of the p95 against a bound', () => {
     expect(verdictOf(undefined, 100)).toBeUndefined()
   })
 
+  it('cannot tell, when the budget falls inside the bucket the p95 lies in: 60 ms may be within 75 ms and 90 ms is not', () => {
+    expect(verdictOf({ kind: 'atMost', ms: 100 }, 75)).toEqual({ kind: 'undetermined' })
+    expect(verdictOf({ kind: 'atMost', ms: 50 }, 75)).toEqual({ kind: 'within' })
+    expect(verdictOf({ kind: 'atMost', ms: 250 }, 75)).toEqual({ kind: 'over' })
+    expect(verdictOf({ kind: 'atMost', ms: 250 }, 100)).toEqual({ kind: 'over' })
+    expect(verdictOf({ kind: 'atMost', ms: 250 }, 175)).toEqual({ kind: 'undetermined' })
+    expect(verdictOf({ kind: 'atMost', ms: 1 }, 1)).toEqual({ kind: 'within' })
+    expect(verdictOf({ kind: 'beyond' }, 30_000)).toEqual({ kind: 'over' })
+    expect(verdictOf({ kind: 'beyond' }, 40_000)).toEqual({ kind: 'undetermined' })
+  })
+
+  it('lists no read as over the budget that may be within it', () => {
+    const reads = [series({ name: 'GET /api/me', buckets: buckets({ 6: 10 }) })]
+    expect(readsOverBudget(reads, 75)).toEqual([])
+    expect(readsOverBudget(reads, 50).map((row) => row.key)).toEqual(['GET /api/me'])
+  })
+
   it('reads a row of one series like the node does', () => {
     expect(rowOf('x', [series({ buckets: buckets({ 6: 20 }) })]).p95).toEqual({ kind: 'atMost', ms: 100 })
   })
