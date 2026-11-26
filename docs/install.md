@@ -360,6 +360,20 @@ launchctl kickstart -k gui/$(id -u)/local.agency.node
 
 On Linux, restart the unit instead of the last line: `systemctl --user restart agency-node`.
 With a release build, unpack the new tarball and install its binary as in "A release build for Linux", then restart the unit.
+On macOS, `scripts/deploy-macos.sh` does these steps with a check at the end and a way back:
+
+```sh
+scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label local.agency.node
+```
+
+- It builds the web client and the node from the repository the script is in. It refuses a working tree with uncommitted changes (`--allow-dirty` allows one), and checks that the new binary starts and serves on a throwaway data directory first (port 4790, or `SMOKE_PORT`; `--skip-preflight` leaves the check out). `--binary <file>` deploys a binary you built, without building.
+- It puts the new binary in place with one rename, and keeps the one it replaces as `agency.previous` next to it. The running node keeps the file it started from until the restart.
+- It restarts the job, then waits up to 60 seconds (`--timeout`) for the node to answer at its `listen` address (`--url` names another) from a new process, and for that process to keep running for 5 seconds (`--settle`), so a node that starts and stops again is not taken for a good one.
+- If the node does not answer, it puts the previous binary back, restarts the job again, and checks again. The exit status says what happened: 0 deployed; 1 not deployed, and the previous binary is back and answering; 2 not deployed, and the previous binary does not answer either (look at the node now).
+- `--rollback` swaps the installed binary and the previous one, restarts, and checks the same way; running it twice goes back and forth.
+
+The job must already be loaded (see "Run it with launchd"). The script does not touch the data directory or the job's file. Only one deploy runs at a time.
+
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
