@@ -25,18 +25,20 @@ export const totalMerged = (counts: MergedCounts): number => PULL_REQUEST_TYPES.
  * day it reports (its date is in the node's time zone, where a timestamp's UTC date may be a day behind);
  * and only for a period with no day at all, the UTC date of when the report was made.
  */
-export function lastDayOf(byDay: readonly DayEvaluation[], until: string | undefined, generatedAt: string): string {
+export function lastDayOf(byDay: readonly { date: string }[], until: string | undefined, generatedAt: string): string {
   return until ?? byDay.map((day) => day.date).toSorted().at(-1) ?? generatedAt.slice(0, 10)
+}
+
+/** The `days` calendar days that end at `last`, oldest first. */
+export function daysEnding(last: string, days: number): string[] {
+  const end = Date.parse(`${last}T00:00:00Z`)
+  return Array.from({ length: days }, (_, index) => new Date(end - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10))
 }
 
 /** The days of the period, oldest first and none missing: the node may leave out a day with nothing in it. */
 export function fillDays(byDay: readonly DayEvaluation[], days: number, last: string): DayEvaluation[] {
-  const end = Date.parse(`${last}T00:00:00Z`)
   const known = new Map(byDay.map((day) => [day.date, day]))
-  return Array.from({ length: days }, (_, index) => {
-    const date = new Date(end - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10)
-    return known.get(date) ?? { date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [] }
-  })
+  return daysEnding(last, days).map((date) => known.get(date) ?? { date, merged: emptyCounts(), reverts: 0, mainRedSeconds: 0, costUsd: 0, prLeadSeconds: [], issueLeadSeconds: [] })
 }
 
 export function median(values: readonly number[]): number | null {

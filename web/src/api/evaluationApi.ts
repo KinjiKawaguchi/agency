@@ -58,3 +58,58 @@ export interface Evaluation {
   until?: string
   teams: TeamEvaluation[]
 }
+
+// ── Where effort goes ──
+
+/** What a piece of work is, as the board's "Work type" field or, failing that, the pull request's type says. */
+export type WorkType = 'newFeature' | 'improvement' | 'maintenance' | 'debt' | 'incident'
+
+/** The work types, and the work nothing could classify, which the screen shows as it is. */
+export type EffortType = WorkType | 'unclassified'
+
+export interface EffortTokens {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+export interface TypeUsage {
+  /** API-priced, as in `TokenUsage`. */
+  costUsd: number
+  tokens: EffortTokens
+}
+
+export interface DayEffort {
+  /** `YYYY-MM-DD`, in the node's time zone. */
+  date: string
+  costUsd: Record<EffortType, number>
+}
+
+export interface TeamEffort {
+  team: string
+  byType: Record<EffortType, TypeUsage>
+  /** Oldest first. Days with nothing in them may be left out. */
+  byDay: DayEffort[]
+}
+
+/** `GET /api/orgs/<org>/effort?days=<1 to 90>`: the cost and tokens of each team, by work type. */
+export interface Effort {
+  org: string
+  days: number
+  generatedAt: string
+  /** The period's first and last calendar day in the node's time zone, as on `Evaluation`. */
+  from?: string
+  until?: string
+  teams: TeamEffort[]
+}
+
+/**
+ * What the org intends for a team: the share of its effort for each work type (whole numbers that sum to
+ * 100) and its budget for a week, in whole US dollars at API prices. It is `teams[].plan` of the signed org
+ * definition; AgencyCore owns the protocol change.
+ */
+export interface TeamPlan {
+  allocation: Record<WorkType, number>
+  weeklyBudgetUsd: number
+}

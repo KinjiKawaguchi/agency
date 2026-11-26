@@ -4,6 +4,7 @@ import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
 import { evaluationQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
+import { EffortSection } from './EffortSection'
 import { TeamEvaluation } from './TeamEvaluation'
 import './evaluation.css'
 
@@ -27,6 +28,7 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
   }
   const chosen = me.orgs.find((one) => one.id === org) ?? me.orgs[0]
   const period = PERIODS.find((one) => one === days) ?? DEFAULT_DAYS
+  const teamLabels = new Map((chosen?.teams ?? []).map((team) => [team.id, team.label]))
   return (
     <>
       <h1 className="page-title">{t.evaluation.title}</h1>
@@ -54,7 +56,8 @@ export function EvaluationPage({ org, days, onChange }: PageProps) {
               ))}
             </div>
           </div>
-          <OrgEvaluation org={chosen.id} days={period} teamLabels={new Map(chosen.teams.map((team) => [team.id, team.label]))} />
+          <OrgEvaluation org={chosen.id} days={period} teamLabels={teamLabels} />
+          <EffortSection org={chosen.id} days={period} teamLabels={teamLabels} />
         </>
       )}
     </>

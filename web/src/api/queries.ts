@@ -35,6 +35,9 @@ export const usageQuery = (api: ApiClient, org: string, team: string, days: numb
 export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['evaluation', org, days], queryFn: () => api.evaluation(org, days), staleTime: 2 * POLL_MS })
 
+export const effortQuery = (api: ApiClient, org: string, days: number) =>
+  queryOptions({ queryKey: ['effort', org, days], queryFn: () => api.effort(org, days), staleTime: 2 * POLL_MS })
+
 export interface Teams {
   me: Me | undefined
   teams: readonly Team[]
