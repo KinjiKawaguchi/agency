@@ -9,6 +9,8 @@ struct OutcomesContent: View {
     let days: Int
     /// The histories that are open, by `org/kpi`.
     var histories: [String: HistoryState] = [:]
+    /// What each org's work cost on the days of its KPIs, by org; an org not in it has its cost on its way.
+    var costs: [String: OrgCost] = [:]
     var onChoose: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
     var onEnter: ((OrgOutcomes, KpiCard) -> Void)?
@@ -19,7 +21,7 @@ struct OutcomesContent: View {
             Text(Ja.Outcomes.note).font(.footnote).foregroundStyle(.secondary).wrapping()
             period
             ForEach(orgs) { org in
-                OrgSection(org: org, showsName: orgs.count > 1, histories: histories, onTryAgain: onTryAgain, onEnter: onEnter, onToggleHistory: onToggleHistory)
+                OrgSection(org: org, showsName: orgs.count > 1, histories: histories, cost: costs[org.id], onTryAgain: onTryAgain, onEnter: onEnter, onToggleHistory: onToggleHistory)
             }
         }
     }
@@ -38,6 +40,7 @@ private struct OrgSection: View {
     let org: OrgOutcomes
     let showsName: Bool
     let histories: [String: HistoryState]
+    let cost: OrgCost?
     var onTryAgain: (() -> Void)?
     var onEnter: ((OrgOutcomes, KpiCard) -> Void)?
     var onToggleHistory: ((OrgOutcomes, KpiCard) -> Void)?
@@ -48,7 +51,7 @@ private struct OrgSection: View {
             if org.cards.isEmpty { Text(Ja.Outcomes.noKpis).font(.subheadline).foregroundStyle(.secondary).wrapping() }
             ForEach(org.cards) { card in
                 VStack(alignment: .leading, spacing: 8) {
-                    KpiCardView(card: card, from: org.from, until: org.until)
+                    KpiCardView(card: card, from: org.from, until: org.until, cost: cost)
                     if let onEnter { Button(Ja.Outcomes.Enter.open) { onEnter(org, card) }.buttonStyle(.bordered).font(.subheadline) }
                     if let onToggleHistory {
                         NumberHistoryView(

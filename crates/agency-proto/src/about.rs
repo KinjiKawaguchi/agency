@@ -133,10 +133,14 @@ pub enum Capability {
     OrgKpis,
     /// `root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.
     OrgRecovery,
-    /// `seats` in the org definition: places in the org that no one has taken yet.
+    /// `seats` in the org definition: places in the org that no one has taken yet, and the seats a member
+    /// took (`people[].formerly`, `people[].askAbout`).
     OrgSeats,
     /// `externals` in the org definition: people the org works with who never take a seat.
     OrgExternals,
+    /// `people[].hostedBy` in the org definition: members with no node of their own, hosted by the root's
+    /// node, whose `publicKey` is left out.
+    HostedMembers,
     /// A browser's Web Push subscriptions and the notices sent to them.
     WebPush,
     /// A team's activity feed.
@@ -146,13 +150,14 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 10] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
         Capability::OrgRecovery,
         Capability::OrgSeats,
         Capability::OrgExternals,
+        Capability::HostedMembers,
         Capability::WebPush,
         Capability::Activity,
         Capability::Outcomes,
@@ -166,6 +171,7 @@ impl Capability {
             Capability::OrgRecovery => "orgRecovery",
             Capability::OrgSeats => "orgSeats",
             Capability::OrgExternals => "orgExternals",
+            Capability::HostedMembers => "hostedMembers",
             Capability::WebPush => "webPush",
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
@@ -203,6 +209,14 @@ impl Capability {
         }
         if !definition.externals.is_empty() {
             used.insert(Capability::OrgExternals);
+        }
+        if definition.people.iter().any(|one| one.hosted_by.is_some()) {
+            used.insert(Capability::HostedMembers);
+        }
+        let took_a_seat =
+            |one: &crate::org::Person| !one.formerly.is_empty() || !one.ask_about.is_empty();
+        if definition.people.iter().any(took_a_seat) {
+            used.insert(Capability::OrgSeats);
         }
         used
     }
@@ -261,10 +275,13 @@ mod tests {
         ("root.pending.publicKey", Capability::OrgRecovery),
         ("root.pending.recovery", Capability::OrgRecovery),
         ("externals", Capability::OrgExternals),
+        ("people[].hostedBy", Capability::HostedMembers),
         ("externals[].askAbout", Capability::OrgExternals),
         ("externals[].id", Capability::OrgExternals),
         ("externals[].label", Capability::OrgExternals),
         ("externals[].relays", Capability::OrgExternals),
+        ("people[].askAbout", Capability::OrgSeats),
+        ("people[].formerly", Capability::OrgSeats),
         ("seats", Capability::OrgSeats),
         ("seats[].askAbout", Capability::OrgSeats),
         ("seats[].department", Capability::OrgSeats),
@@ -437,6 +454,15 @@ mod tests {
         );
         assert_eq!(used("rootRotation.namingTheNewRoot"), BTreeSet::new());
         assert_eq!(used("orgWithPlan"), BTreeSet::from([Capability::OrgPlan]));
+        assert_eq!(
+            used("orgWithSeats"),
+            BTreeSet::from([Capability::OrgSeats, Capability::OrgExternals])
+        );
+        assert_eq!(
+            used("orgWithClaimedSeat"),
+            BTreeSet::from([Capability::OrgSeats]),
+            "a member who took a seat needs the capability although `seats` is empty"
+        );
         assert_eq!(
             used("orgWithOutcomes"),
             BTreeSet::from([

@@ -5,7 +5,7 @@ use agency_proto::device::{check_device_change, envelope_signer};
 use agency_proto::org::Root;
 use agency_proto::{
     AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id, Kind,
-    OrgDefinition, Payload, Person, PublicKey, Role, Signed, Timestamp,
+    OrgDefinition, Payload, Person, PublicKey, Signed, Timestamp,
 };
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -110,15 +110,7 @@ fn signatures_are_ecdsa_sha256_as_raw_r_and_s() {
 }
 
 fn person(account: &str, key: PublicKey) -> Person {
-    Person {
-        id: id(account),
-        label: account.to_uppercase(),
-        account: id(account),
-        public_key: key,
-        department: None,
-        role: Role::Member,
-        devices: vec![],
-    }
+    Person::new(id(account), account.to_uppercase(), id(account), key)
 }
 
 fn org(root: PublicKey, bob: PublicKey) -> OrgDefinition {

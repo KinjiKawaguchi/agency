@@ -43,6 +43,44 @@
     },
     {
       "kind": "serve",
+      "name": "GET /api/orgs/{org}/outcomes",
+      "status": "2xx",
+      "group": "outcomes",
+      "isInNodeRead": true,
+      "count": 4,
+      "errors": 0,
+      "sumMs": 150,
+      "buckets": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "p50Ms": 50,
+      "p95Ms": 50,
+      "p99Ms": 50,
+      "byHour": [
+        {
+          "hour": "2026-11-24T11:00:00Z",
+          "count": 4,
+          "errors": 0,
+          "p95Ms": 50
+        }
+      ]
+    },
+    {
+      "kind": "serve",
       "name": "GET /api/orgs/{org}/teams/{team}/usage",
       "status": "2xx",
       "count": 10,
@@ -272,5 +310,30 @@
   ],
   "budget": {
     "inNodeReadP95Ms": 100
-  }
+  },
+  "objectives": [
+    {
+      "group": "desk",
+      "p95Ms": 50,
+      "state": "met",
+      "measuredP95Ms": 10
+    },
+    {
+      "group": "outcomes",
+      "p95Ms": 30,
+      "state": "undetermined",
+      "measuredP95Ms": 50
+    },
+    {
+      "group": "usage",
+      "p95Ms": 500,
+      "state": "notMet",
+      "measuredP95Ms": 30000
+    },
+    {
+      "group": "evaluation",
+      "p95Ms": 1000,
+      "state": "unknown"
+    }
+  ]
 }

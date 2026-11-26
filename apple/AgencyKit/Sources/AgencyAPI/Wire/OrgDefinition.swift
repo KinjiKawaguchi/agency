@@ -5,7 +5,7 @@ import Foundation
 /// and the teams placed in them. Keys, devices and versions are not read here.
 public struct OrgDefinition: Decodable, Equatable, Sendable {
     public let org: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let departments: [OrgDepartment]
     public let people: [OrgMember]
     public let teams: [TeamPlace]
@@ -22,7 +22,7 @@ public struct OrgDefinition: Decodable, Equatable, Sendable {
 /// A unit of the org that groups members and teams, with an optional parent and an optional head (a member).
 public struct OrgDepartment: Decodable, Equatable, Sendable {
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let parent: String?
     public let head: String?
 
@@ -40,7 +40,7 @@ public struct OrgMember: Decodable, Equatable, Sendable {
     public enum Role: String, OpenWireEnum { case member, answerer, unknown }
 
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let account: String
     public let department: String?
     public let role: Role
@@ -57,7 +57,7 @@ public struct OrgMember: Decodable, Equatable, Sendable {
 /// A team and the node it runs on.
 public struct TeamPlace: Decodable, Equatable, Sendable {
     public let id: String
-    public let label: String
+    @Shown public private(set) var label: String
     public let department: String?
     public let node: String
 

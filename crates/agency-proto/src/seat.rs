@@ -21,9 +21,11 @@ pub const MAX_RELAYS: usize = 10;
 /// The most things a seat or an external party is asked about, and the longest of them, in characters.
 pub const MAX_ASK_ABOUT: usize = 20;
 pub const MAX_ASK_ABOUT_LENGTH: usize = 200;
+/// The most seats one member took.
+pub const MAX_FORMERLY: usize = 10;
 
-/// A place in the org that no one has taken yet. It keeps its id when someone takes it, so the requests and
-/// the history that named it stay attached.
+/// A place in the org that no one has taken yet. When someone takes it, the seat is gone and its id is kept
+/// in that member's `formerly`, so the requests and the history that named it stay attached.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export, optional_fields)]
@@ -59,9 +61,10 @@ pub struct External {
 
 /// The rules for seats and external parties: checked by `OrgDefinition::validate`, so every node refuses a bad
 /// version the same way. There are at most `MAX_SEATS` seats and `MAX_EXTERNALS` external parties; an id is
-/// used once among members, seats and external parties (so it survives a seat being taken); a seat's
-/// department is one of the org; whoever answers for one is a member (a seat answers for no one), named once,
-/// at most `MAX_RELAYS` of them, and an external party has at least one; what to ask about is at most
+/// used once among members, the seats they took (`formerly`, at most `MAX_FORMERLY` each), seats and external
+/// parties (so it survives a seat being taken); a seat's department is one of the org; whoever answers for
+/// one is a member (a seat answers for no one), named once, at most `MAX_RELAYS` of them, and an external
+/// party has at least one; what to ask about, of a seat, an external party or a member, is at most
 /// `MAX_ASK_ABOUT` texts of 1 to `MAX_ASK_ABOUT_LENGTH` characters without control characters.
 pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
     if definition.seats.len() > MAX_SEATS {
@@ -73,10 +76,9 @@ pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
         ));
     }
     let mut used: HashSet<&Id> = definition.people.iter().map(|one| &one.id).collect();
-    let named = definition
-        .seats
-        .iter()
-        .map(|one| &one.id)
+    let taken = definition.people.iter().flat_map(|one| &one.formerly);
+    let named = taken
+        .chain(definition.seats.iter().map(|one| &one.id))
         .chain(definition.externals.iter().map(|one| &one.id));
     for id in named {
         if !used.insert(id) {
@@ -84,6 +86,12 @@ pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
                 "{id} is the id of more than one member, seat, or external party"
             ));
         }
+    }
+    for person in &definition.people {
+        if person.formerly.len() > MAX_FORMERLY {
+            return Err(format!("{} took at most {MAX_FORMERLY} seats", person.id));
+        }
+        check_ask_about(&person.id, &person.ask_about)?;
     }
     for seat in &definition.seats {
         if !label_ok(&seat.label) {
@@ -156,7 +164,7 @@ fn check_relays(definition: &OrgDefinition, whose: &Id, relays: &[Id]) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::{Department, Person, Role, Root};
+    use crate::org::{Department, Person, Root};
     use crate::AccountKey;
 
     fn id(raw: &str) -> Id {
@@ -164,15 +172,12 @@ mod tests {
     }
 
     fn member(raw: &str, seed: u8) -> Person {
-        Person {
-            id: id(raw),
-            label: raw.to_uppercase(),
-            account: id(raw),
-            public_key: AccountKey::from_seed([seed; 32]).public(),
-            department: None,
-            role: Role::Member,
-            devices: vec![],
-        }
+        Person::new(
+            id(raw),
+            raw.to_uppercase(),
+            id(raw),
+            AccountKey::from_seed([seed; 32]).public(),
+        )
     }
 
     /// An org with the members alice and bob and the department dev, and nothing else yet.
@@ -370,6 +375,55 @@ mod tests {
             ..seat("carol")
         });
         assert_eq!(definition.validate(), Ok(()), "the limits are inclusive");
+    }
+
+    #[test]
+    fn a_member_keeps_the_ids_of_the_seats_they_took_and_no_one_else_may_use_them() {
+        let mut definition = org();
+        definition.people[1].formerly = vec![id("carol")];
+        definition.people[1].ask_about = vec!["invoices".into()];
+        assert_eq!(definition.validate(), Ok(()));
+        let json = serde_json::to_value(&definition.people[1]).unwrap();
+        assert_eq!(json["formerly"], serde_json::json!(["carol"]));
+        assert_eq!(json["askAbout"], serde_json::json!(["invoices"]));
+        let bare = serde_json::to_value(&definition.people[0]).unwrap();
+        assert!(bare.get("formerly").is_none() && bare.get("askAbout").is_none());
+
+        let by_a_seat = refused(|d| {
+            d.people[1].formerly = vec![id("carol")];
+            d.seats.push(seat("carol"));
+        });
+        assert!(by_a_seat.contains("carol"), "{by_a_seat}");
+        let by_an_external = refused(|d| {
+            d.people[1].formerly = vec![id("erin")];
+            d.externals.push(external("erin"));
+        });
+        assert!(by_an_external.contains("erin"), "{by_an_external}");
+        let by_a_member = refused(|d| d.people[1].formerly = vec![id("alice")]);
+        assert!(by_a_member.contains("alice"), "{by_a_member}");
+        let by_two = refused(|d| {
+            d.people[0].formerly = vec![id("carol")];
+            d.people[1].formerly = vec![id("carol")];
+        });
+        assert!(by_two.contains("carol"), "{by_two}");
+        let twice = refused(|d| d.people[1].formerly = vec![id("carol"), id("carol")]);
+        assert!(twice.contains("carol"), "{twice}");
+    }
+
+    #[test]
+    fn a_member_took_at_most_ten_seats_and_is_asked_about_a_few_short_texts() {
+        let took = |count: usize| {
+            let mut definition = org();
+            definition.people[1].formerly = (0..count).map(|n| id(&format!("s{n}"))).collect();
+            definition.validate()
+        };
+        assert_eq!(took(MAX_FORMERLY), Ok(()));
+        let said = took(MAX_FORMERLY + 1).unwrap_err();
+        assert!(said.contains("bob") && said.contains("at most"), "{said}");
+        let asked = refused(|d| d.people[1].ask_about = vec!["a\nb".into()]);
+        assert!(asked.contains("bob"), "{asked}");
+        let many = refused(|d| d.people[1].ask_about = vec!["x".into(); MAX_ASK_ABOUT + 1]);
+        assert!(many.contains("bob"), "{many}");
     }
 
     #[test]

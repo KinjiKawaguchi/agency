@@ -11,6 +11,11 @@ export type DirectoryMember = { id: Id, label: string, department?: Id,
  */
 role: string, 
 /**
- * The teams of this node that address them. Empty when none does.
+ * What to ask them about, in the org's own words: what the seat they took said, when they took one.
+ */
+askAbout: Array<string>, 
+/**
+ * The teams of this node that address them, by their own names and by those of the seats they took.
+ * Empty when none does.
  */
 runtimeNames: Array<RuntimeNames>, };

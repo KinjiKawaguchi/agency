@@ -20,6 +20,8 @@ export interface DeskItem {
   decider: PersonStatus | undefined
   /** True when the node lists the request as the viewer's to decide. */
   isMine: boolean
+  /** Whom the request is for, when it is addressed to a seat or an external party that the viewer answers for; the label, as the owner wrote it. */
+  relayedFor: string | undefined
 }
 
 /** Only the person a request is addressed to can decide it. */
@@ -27,7 +29,7 @@ export const canDecide = (item: DeskItem): boolean => item.isMine
 
 export const itemKey = (view: TeamView, request: TeamRequest): string => `${view.org}:${view.team}:${request.id}`
 
-function toItem({ view, viewer, mine }: Team, request: TeamRequest): DeskItem {
+function toItem({ view, viewer, mine, relayedFor }: Team, request: TeamRequest): DeskItem {
   // Whose it is is the node's call, because it knows how runtime names map to people; the desk only reads it.
   const isMine = mine.has(request.id)
   const to = isMine ? viewer : request.to
@@ -39,6 +41,7 @@ function toItem({ view, viewer, mine }: Team, request: TeamRequest): DeskItem {
     drafter: personOf(view, request.from),
     decider: to === undefined ? undefined : personOf(view, to),
     isMine,
+    relayedFor: relayedFor.get(request.id),
   }
 }
 

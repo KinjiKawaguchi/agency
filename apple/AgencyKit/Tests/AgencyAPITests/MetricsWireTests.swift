@@ -19,7 +19,7 @@ struct MetricsWireTests {
     func sample() throws {
         let metrics = try JSONDecoder().decode(Metrics.self, from: Fixtures.sample("metrics"))
         #expect(metrics.budget?.inNodeReadP95Ms == 100)
-        #expect(metrics.series.count == 7 && metrics.objectives.isEmpty)
+        #expect(metrics.series.count == 8 && metrics.objectives.map(\.group) == ["desk", "outcomes", "usage", "evaluation"])
         let read = try #require(metrics.series.first)
         #expect(read.kind == .serve && read.isInNodeRead && read.group == "desk" && read.p95Ms == 10)
         let runtime = try #require(metrics.series.first { $0.name == "runtime view" })

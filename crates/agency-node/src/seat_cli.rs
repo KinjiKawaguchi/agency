@@ -1,4 +1,4 @@
-//! `agency seat-add`, `seat-set`, `seat-remove`, `external-add`, `external-set`, and `external-remove`: the
+//! `agency seat-add`, `seat-set`, `seat-remove`, `seat-merge`, `external-add`, `external-set`, and `external-remove`: the
 //! org's seats (places no one has taken yet) and external parties (people the org asks through a member), changed
 //! on the root key's node. A `set` changes only the flags it is given.
 use agency_core::seats::{self, ExternalChange, SeatChange};
@@ -89,6 +89,19 @@ pub struct SeatRemove {
     seat: String,
 }
 
+/// Gives a seat to a member who is in the org already: the seat is gone, and its id and what to ask about it
+/// are theirs (on the root key's node)
+#[derive(Args)]
+pub struct SeatMerge {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    seat: String,
+    /// The member who takes it
+    #[arg(long)]
+    into: String,
+}
+
 /// Adds an external party: someone the org asks through a member and who never takes a seat (on the root
 /// key's node)
 #[derive(Args)]
@@ -175,6 +188,18 @@ pub fn seat_remove(node: &Node, args: SeatRemove) -> Result<()> {
     let doc = seats::remove_seat(node, &id(&args.org)?, &id(&args.seat)?)?;
     report(
         format!("Removed seat {} from org {}", args.seat, args.org),
+        &doc,
+    );
+    Ok(())
+}
+
+pub fn seat_merge(node: &Node, args: SeatMerge) -> Result<()> {
+    let doc = seats::merge_seat(node, &id(&args.org)?, &id(&args.seat)?, &id(&args.into)?)?;
+    report(
+        format!(
+            "Gave seat {} of org {} to {}",
+            args.seat, args.org, args.into
+        ),
         &doc,
     );
     Ok(())
