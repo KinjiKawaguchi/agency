@@ -155,6 +155,19 @@ describe('a subscription the browser ended', () => {
   })
 })
 
+describe('a label in a notice', () => {
+  it('has each character that reorders or hides a line printed as a mark, in the device’s label, the team’s label, and a request’s title', async () => {
+    const device = (await pushed(payload({ agency: { type: 'device' }, detail: 'Pi\u202Exel' }))).shown[0]
+    expect(device?.options.body).toBe('Device “Pi?xel” is waiting to be added')
+    const request = (await pushed(payload({ agency: { org: 'acme', team: 'app', request: 'r-1' }, title: 'Ap\u200Bp', body: 'Ship\u202Eit' }))).shown[0]
+    expect([request?.title, request?.options.body]).toEqual(['Ap?p', 'Ship?it'])
+  })
+
+  it('keeps the joiners that scripts and emoji need', async () => {
+    expect((await pushed(payload({ agency: { type: 'device' }, detail: '👩\u200D💻 Phone' }))).shown[0]?.options.body).toBe('Device “👩\u200D💻 Phone” is waiting to be added')
+  })
+})
+
 describe('a recovery of an org that was started', () => {
   const recovery = { agency: { type: 'recovery', org: 'acme' }, badge: 0, title: 'A recovery of acme was started', body: 'It takes effect at Dec 1, 9:30 AM. If you did not start it, sign any version of the org now.' }
   const START = '2026-12-01T09:30:00Z'
