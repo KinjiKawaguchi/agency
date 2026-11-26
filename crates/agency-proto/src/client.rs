@@ -106,6 +106,25 @@ pub fn home_node_origin(url: &str) -> Option<String> {
     })
 }
 
+/// The id a node puts in its pushes (`agency.node`), so that an app with several home nodes knows which one sent it without
+/// the push naming the host to Apple: the first 16 bytes of the SHA-256 of `agency-node:` and the node's origin
+/// (`home_node_origin`), as 32 lowercase hex characters. `None` when `url` is not a home node's origin. The apps work out the
+/// same id for each node they know (`testdata/node-id.json`).
+pub fn node_id(url: &str) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+    let origin = home_node_origin(url)?;
+    let digest = Sha256::digest(format!("agency-node:{origin}").as_bytes());
+    Some(
+        digest[..16]
+            .iter()
+            .fold(String::with_capacity(32), |mut id, byte| {
+                let _ = write!(id, "{byte:02x}");
+                id
+            }),
+    )
+}
+
 /// Whether `url` can be a home node's origin for a client (`home_node_origin`).
 pub fn is_home_node_origin(url: &str) -> bool {
     home_node_origin(url).is_some()
