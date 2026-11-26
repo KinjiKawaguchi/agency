@@ -1,4 +1,5 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::logging_config::LoggingConfig;
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -155,6 +156,9 @@ pub struct NodeConfig {
     /// node says only where they are; it never reads or copies anything from them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub home_nodes: Vec<HomeNodeConfig>,
+    /// The node's log: its level, and when its files are rotated and deleted.
+    #[serde(default, skip_serializing_if = "LoggingConfig::is_default")]
+    pub logging: LoggingConfig,
 }
 
 /// One of the owner's other home nodes, as configured: a label and its node origin.
@@ -360,6 +364,7 @@ impl NodeConfig {
             web_push: None,
             hide_titles: false,
             home_nodes: vec![],
+            logging: LoggingConfig::default(),
         }
     }
 

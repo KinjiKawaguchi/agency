@@ -4,7 +4,8 @@
 #   scripts/launchd-plist.sh --agency <agency binary> --dir <data directory> --out <plist> [--label <label>]
 #
 # The agent runs with the PATH of the shell that runs this script, so the team runtime finds the same
-# tools as your terminal does. Its output goes to <data directory>/logs/serve.log.
+# tools as your terminal does. What it prints at start and a crash go to <data directory>/logs/serve.log; the
+# node's own log is <data directory>/logs/node.jsonl.
 # This script only writes the file; load it with `launchctl bootstrap gui/$(id -u) <plist>`.
 set -euo pipefail
 
