@@ -43,14 +43,16 @@ function dayFor(team: string, date: string): DayEvaluation {
   const rates = RATES[team] ?? RATES.site ?? emptyCounts()
   const merged = Object.fromEntries(TYPES.map((type) => [type, isWeekend ? (noise(`${team}:${date}:${type}:w`) < 0.12 ? 1 : 0) : countFor(rates[type], `${team}:${date}:${type}`)])) as MergedCounts
   const count = totalMerged(merged)
-  const prLeadSeconds = Array.from({ length: count }, (_, index) => leadSeconds(`${team}:${date}:pr:${index}`, 2.2))
+  // A revert is a merged pull request counted on its own, not in a type.
+  const reverts = count > 0 && noise(`${team}:${date}:revert`) > 0.96 ? 1 : 0
+  const prLeadSeconds = Array.from({ length: count + reverts }, (_, index) => leadSeconds(`${team}:${date}:pr:${index}`, 2.2))
   // A pull request opened from an issue that was started earlier; most have one.
   const issueLeadSeconds = prLeadSeconds.filter((_, index) => noise(`${team}:${date}:has-issue:${index}`) < 0.8).map((seconds, index) => seconds + Math.round((6 + 40 * noise(`${team}:${date}:before:${index}`)) * HOUR))
   const isRedDay = noise(`${team}:${date}:red`) > 0.8
   return {
     date,
     merged,
-    reverts: count > 0 && noise(`${team}:${date}:revert`) > 0.96 ? 1 : 0,
+    reverts,
     mainRedSeconds: isRedDay ? Math.round((0.3 + 5 * noise(`${team}:${date}:red-for`)) * HOUR) : 0,
     costUsd: Math.round((isWeekend ? 4 : 16) * (0.5 + 1.4 * noise(`${team}:${date}:cost`)) * 100) / 100,
     prLeadSeconds,
@@ -71,7 +73,7 @@ export function summaryOf(days: readonly DayEvaluation[]): EvaluationSummary {
   const prLead = days.flatMap((day) => day.prLeadSeconds)
   const issueLead = days.flatMap((day) => day.issueLeadSeconds)
   const cost = days.reduce((sum, day) => sum + day.costUsd, 0)
-  const count = totalMerged(merged)
+  const count = totalMerged(merged) + days.reduce((sum, day) => sum + day.reverts, 0)
   return {
     merged,
     prLeadMedianSeconds: median(prLead),
@@ -88,7 +90,7 @@ export function summaryOf(days: readonly DayEvaluation[]): EvaluationSummary {
 export function teamEvaluation(team: string, days: number, now: Date): TeamEvaluation {
   const dates = Array.from({ length: days }, (_, index) => new Date(now.getTime() - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10))
   // A day with nothing in it is left out, as the node may do.
-  const byDay = dates.map((date) => dayFor(team, date)).filter((day) => totalMerged(day.merged) > 0 || day.mainRedSeconds > 0 || day.costUsd > 0)
+  const byDay = dates.map((date) => dayFor(team, date)).filter((day) => totalMerged(day.merged) + day.reverts > 0 || day.mainRedSeconds > 0 || day.costUsd > 0)
   return { team, summary: summaryOf(byDay), byDay }
 }
 
