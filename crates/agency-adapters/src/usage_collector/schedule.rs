@@ -24,6 +24,8 @@ pub enum Failure {
     Unavailable(String),
     /// The answer is not what the service is known to answer.
     Malformed,
+    /// The login has no plan windows to report (a login with an API key has none).
+    NoWindows,
 }
 
 impl fmt::Display for Failure {
@@ -38,6 +40,10 @@ impl fmt::Display for Failure {
             Self::RateLimited(_) => write!(f, "the service asked to be called less often"),
             Self::Unavailable(why) => write!(f, "the service did not answer ({why})"),
             Self::Malformed => write!(f, "the answer is not a usage report"),
+            Self::NoWindows => write!(
+                f,
+                "the login has no plan windows (a login with an API key has none)"
+            ),
         }
     }
 }

@@ -254,6 +254,18 @@ List the sources in `~/.agency/config.json`, with no secret in it, and restart t
 - It never renews a token: that would replace the refresh token Claude Code holds for the login. An access token lasts some hours and Claude Code renews it when it runs with that login, so a login nobody has used for a day reads as expired until it is used again.
 - On macOS, the first read of each Keychain item asks you to allow `security` to use it. Choose **Always Allow**. The node waits 20 seconds for the answer and tries again later.
 
+To read a ChatGPT plan that you use through Codex, log in with ChatGPT (`codex login`) and list it as a source:
+
+```json
+{ "id": "codex", "label": "ChatGPT (Codex)", "kind": "subscription",
+  "collector": { "type": "codex" } }
+```
+
+- `codexHome` names the `CODEX_HOME` of another login (default `~/.codex`). `command` is the path of `codex` when it is not on the `PATH` the node runs with.
+- The node starts `codex app-server` and asks it for the plan's rate limits (`account/rateLimits/read`). The 5-hour and the weekly window go to the usage file, as for Claude, on the same schedule.
+- Codex holds its own login, so the node reads no Codex token. Codex renews its login as it does for any run.
+- A login that uses an API key has no plan windows; the log says so. Codex marks `app-server` as experimental; this was checked with Codex CLI 0.151.
+
 ## Updating a node
 
 ```sh
