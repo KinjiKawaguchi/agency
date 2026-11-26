@@ -285,6 +285,7 @@ Writes (any method but GET and HEAD) also need:
 - through Access, the signed-in email must equal the configured `ownerEmail`, because writes act for the node's account: they relay its decisions and its device changes, and ask to add its devices.
 
 The node serves `web/dist` (built into the binary) for every other path, falling back to `index.html` for the web client's own routes. Pages carry `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
+A node with an `access` setting adds `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`) to every answer, so browsers reach its public host name over HTTPS only.
 If Cloudflare Access protects the node's public host name, its policy must bypass `/fed/*`, because other nodes authenticate with signatures, not with Access, and `/.well-known/apple-app-site-association`, because Apple's servers fetch it without signing in.
 
 ### App sign-in
