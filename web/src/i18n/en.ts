@@ -121,7 +121,7 @@ export const en = {
     you: 'You',
     answerer: 'Answers only',
     agents: (total: number, working: number) => `${total} agents, ${working} working`,
-    waitingOnYou: (count: number) => `${count} waiting for you`,
+    oldData: 'Old data',
     yourTurn: 'Waiting for your answer',
     emptyDepartment: 'Nobody is in this department yet.',
     teamUnavailable: 'Could not read this team',

@@ -34,7 +34,7 @@ function Branch({ children, org, compact }: { children: readonly UnitChild[]; or
             </>
           ) : child.kind === 'department' ? (
             <>
-              <DepartmentCard node={child} org={org} compact={compact} />
+              <DepartmentCard node={child} org={org} />
               <Branch children={child.children} org={org} compact={compact} />
             </>
           ) : child.kind === 'team' ? (

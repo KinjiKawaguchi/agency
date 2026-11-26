@@ -5,6 +5,7 @@ import { orgDefinitionQuery, useTeams } from '../api/queries'
 import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { CenteredFrame } from './CenteredFrame'
+import { FitFrame } from './FitFrame'
 import { AllOrgsTree, OrgTree } from './OrgTree'
 import { buildAllOrgsTree, buildOrgTree } from './tree'
 import './org.css'
@@ -36,9 +37,9 @@ function AllOrgsChart({ onChoose }: { onChoose: (org: string) => void }) {
         <h1 className="page-title">{t.org.allTitle}</h1>
         <OrgMenu value={ALL_ORGS} orgs={me.orgs} onChoose={onChoose} />
       </div>
-      <CenteredFrame resetKey={ALL_ORGS}>
+      <FitFrame resetKey={`${ALL_ORGS}/${orgs.filter((one) => one.state === 'ready').length}`}>
         <AllOrgsTree account={me.account.label} orgs={orgs} />
-      </CenteredFrame>
+      </FitFrame>
     </>
   )
 }

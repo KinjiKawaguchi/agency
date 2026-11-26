@@ -116,7 +116,7 @@ export const ja: Messages = {
     you: 'あなた',
     answerer: '回答のみ',
     agents: (total, working) => `エージェント ${total} 体、${working} 体が作業中`,
-    waitingOnYou: (count) => `${count} 件があなたを待っています`,
+    oldData: '古いデータ',
     yourTurn: 'あなたの返事待ち',
     emptyDepartment: 'この部署にはまだ誰もいません。',
     teamUnavailable: 'このチームを読み込めませんでした',

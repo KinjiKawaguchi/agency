@@ -17,7 +17,8 @@ export interface TeamNode {
   view: TeamView | undefined
   agents: AgentNode[]
   working: number
-  waiting: number
+  /** Where the team's data comes from: a copy of an old read says so on the box. */
+  source: Team['source'] | undefined
   /** What the overview says of the team: requests waiting on the viewer, blocked work, who is working. Absent when the team could not be read. */
   signals: TeamSummary | undefined
 }
@@ -33,8 +34,6 @@ export interface DepartmentNode {
   department: Department
   head: Person | undefined
   children: UnitChild[]
-  /** Agents waiting for the viewer anywhere below. */
-  waiting: number
   /** Requests that are the viewer's anywhere below. */
   mine: number
 }
@@ -56,12 +55,11 @@ export interface OrgTree {
   focus: DepartmentNode | undefined
   /** What hangs directly under the top box. */
   children: UnitChild[]
-  waiting: number
 }
 
 function teamNode(place: TeamPlace, teams: readonly Team[], orgId: string): TeamNode {
   const found = teams.find((one) => one.view.org === orgId && one.view.team === place.id)
-  if (found === undefined) return { kind: 'team', team: place, view: undefined, agents: [], working: 0, waiting: 0, signals: undefined }
+  if (found === undefined) return { kind: 'team', team: place, view: undefined, source: undefined, agents: [], working: 0, signals: undefined }
   const { view, waitingOnViewer } = found
   const agents = view.people
     .filter((person) => person.kind === 'agent')
@@ -72,13 +70,10 @@ function teamNode(place: TeamPlace, teams: readonly Team[], orgId: string): Team
     view,
     agents,
     working: agents.filter((agent) => agent.person.state === 'working').length,
-    waiting: agents.filter((agent) => agent.presence === 'needs-you').length,
+    source: found.source,
     signals: summarize(found),
   }
 }
-
-const waitingOf = (children: readonly UnitChild[]): number =>
-  children.reduce((sum, child) => sum + (child.kind === 'person' || child.kind === 'org' ? 0 : child.waiting), 0)
 
 const mineOf = (children: readonly UnitChild[]): number =>
   children.reduce((sum, child) => sum + (child.kind === 'team' ? (child.signals?.mine ?? 0) : child.kind === 'person' ? 0 : child.mine), 0)
@@ -89,7 +84,7 @@ function childrenOf(parent: string | null, definition: OrgDefinition, teams: rea
     .filter((department) => department.parent === parent)
     .map((department): DepartmentNode => {
       const children = childrenOf(department.id, definition, teams, viewerAccount)
-      return { kind: 'department', department, head: definition.people.find((person) => person.id === department.head), children, waiting: waitingOf(children), mine: mineOf(children) }
+      return { kind: 'department', department, head: definition.people.find((person) => person.id === department.head), children, mine: mineOf(children) }
     })
   const places = definition.teams.filter((place) => place.department === parent).map((place) => teamNode(place, teams, definition.org))
   const people = definition.people
@@ -113,7 +108,7 @@ export function buildOrgTree(definition: OrgDefinition, teams: readonly Team[], 
   const whole = childrenOf(null, definition, teams, viewerAccount)
   const focus = focusId === undefined ? undefined : findDepartment(whole, focusId)
   const children = focus === undefined ? whole : focus.children
-  return { focus, children, waiting: waitingOf(children) }
+  return { focus, children }
 }
 
 export interface OrgInput {

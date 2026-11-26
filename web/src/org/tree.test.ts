@@ -30,20 +30,20 @@ describe('buildOrgTree', () => {
     expect(people.map((child) => child.kind === 'person' && child.isYou)).toEqual([true])
   })
 
-  it('lists the agents of a team and counts who waits for the viewer, rolled up the tree', () => {
+  it('lists the agents of a team and counts the requests that are the viewer’s, rolled up the tree', () => {
     const team = department(tree.children, 'engineering')?.children.find((child): child is TeamNode => child.kind === 'team')
     expect(team?.agents.map((agent) => agent.person.id)).toEqual(['lead', 'backend', 'frontend', 'docs'])
     expect(team?.agents.find((agent) => agent.isLead)?.person.id).toBe('lead')
-    expect(team).toMatchObject({ working: 2, waiting: 1 })
-    expect(department(tree.children, 'engineering')?.waiting).toBe(1)
-    expect(department(tree.children, 'design')?.waiting).toBe(0)
-    expect(tree.waiting).toBe(1)
+    expect(team?.working).toBe(2)
+    expect(team?.signals?.mine).toBe(views[0]?.mine.size)
+    expect(department(tree.children, 'engineering')?.mine).toBe(views[0]?.mine.size)
+    expect(department(tree.children, 'design')?.mine).toBe(0)
   })
 
   it('keeps a team whose view could not be read, without agents', () => {
     const partial = buildOrgTree(ORG_DEFINITION, [teamOf(sampleTeamView)], 'alice')
     const site = department(partial.children, 'design')?.children.find((child): child is TeamNode => child.kind === 'team')
-    expect(site).toMatchObject({ view: undefined, agents: [] })
+    expect(site).toMatchObject({ view: undefined, source: undefined, agents: [] })
   })
 
   it('focuses on one department and what is below it', () => {

@@ -35,15 +35,15 @@ describe('org chart', () => {
     renderApp({ path: '/org' })
     const team = await box('Team', 'App')
     expect(team).toHaveTextContent('4 agents, 2 working')
-    expect(team).toHaveTextContent('1 waiting for you')
+    expect(team).toHaveTextContent('3 requests wait for you')
     expect(await box('Backend', 'Agent')).toHaveTextContent('Waiting for your answer')
     expect(await box('Lead', 'Lead (agent)')).toHaveTextContent('Reviewing app#12')
   })
 
   it('tells a department how many are waiting below it', async () => {
     renderApp({ path: '/org' })
-    expect(await box('Department', 'Engineering')).toHaveTextContent('1 waiting for you')
-    expect(await box('Department', 'Design')).not.toHaveTextContent('waiting for you')
+    expect(await box('Department', 'Engineering')).toHaveTextContent('3 requests wait for you')
+    expect(await box('Department', 'Design')).not.toHaveTextContent('wait for you')
   })
 
   it('focuses on a department and comes back to the whole organization', async () => {
@@ -61,6 +61,15 @@ describe('org chart', () => {
     renderApp({ path: '/org?unit=nowhere' })
     expect(await box('Department', 'Design')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Back to the whole organization' })).not.toBeInTheDocument()
+  })
+
+  it('marks a team whose data is an old copy, with its age and the reason in the mark’s title', async () => {
+    renderApp({ path: '/org', siteError: 'The team’s node did not answer.' })
+    const site = await box('Team', 'Site')
+    const mark = site.querySelector('.oc-old')
+    expect(mark).toHaveTextContent('Old data')
+    expect(mark?.getAttribute('title')).toContain('The team’s node could not be reached: The team’s node did not answer.')
+    expect((await box('Team', 'App')).querySelector('.oc-old')).toBeNull()
   })
 
   describe('across every org', () => {
@@ -83,10 +92,30 @@ describe('org chart', () => {
     it('shows the signals of the overview on each team and rolls the waiting requests up to the department and the org', async () => {
       renderApp({ path: '/org', moreOrgs: true })
       // The node lists three requests as the viewer's in the sample team.
-      await waitFor(async () => expect(await box('Organization', 'Acme')).toHaveTextContent('3 waiting for you'))
-      await waitFor(async () => expect(await box('Team', 'App')).toHaveTextContent('3 waiting for you'))
-      await waitFor(async () => expect(await box('Department', 'Engineering')).toHaveTextContent('3 waiting for you'))
+      await waitFor(async () => expect(await box('Organization', 'Acme')).toHaveTextContent('3 requests wait for you'))
+      await waitFor(async () => expect(await box('Team', 'App')).toHaveTextContent('3 requests wait for you'))
+      await waitFor(async () => expect(await box('Department', 'Engineering')).toHaveTextContent('3 requests wait for you'))
       await waitFor(async () => expect(await box('Team', 'Research')).toHaveTextContent('Stuck'))
+    })
+
+    it('says the same number in the same words as the chart of one org does', async () => {
+      const single = renderApp({ path: '/org?org=acme' })
+      await waitFor(async () => expect(await box('Team', 'App')).toHaveTextContent('3 requests wait for you'))
+      single.unmount()
+      renderApp({ path: '/org', moreOrgs: true })
+      await waitFor(async () => expect(await box('Team', 'App')).toHaveTextContent('3 requests wait for you'))
+    })
+
+    it('marks an old copy of a team here too, so that it does not look live', async () => {
+      renderApp({ path: '/org', moreOrgs: true, siteError: 'The team’s node did not answer.' })
+      await waitFor(async () => expect((await box('Team', 'Site')).querySelector('.oc-old')).toHaveTextContent('Old data'))
+      await waitFor(async () => expect((await box('Team', 'Notebook')).querySelector('.oc-old')).toHaveTextContent('Old data'))
+    })
+
+    it('opens the requests of a team on the desk when the viewer has some, and the overview otherwise', async () => {
+      renderApp({ path: '/org', moreOrgs: true })
+      await waitFor(async () => expect(await box('Team', 'App')).toHaveAttribute('href', '/desk?team=acme%2Fapp'))
+      expect(await box('Team', 'Site')).toHaveAttribute('href', '/overview')
     })
 
     it('says a team could not be read in its place', async () => {

@@ -274,3 +274,21 @@ a.oc-node:hover {
     max-width: 100%;
   }
 }
+
+/* The chart of every org is drawn smaller to fit the frame (FitFrame); the box that holds it takes the scaled size. */
+.oc-fit {
+  min-width: 100%;
+}
+
+.oc-scaled {
+  width: max-content;
+  min-width: 100%;
+  transform-origin: 0 0;
+}
+
+@media (max-width: 720px) {
+  .oc-scaled {
+    width: auto;
+    min-width: 0;
+  }
+}

@@ -1,20 +1,38 @@
 import { Link } from '@tanstack/react-router'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
+import type { Team } from '../api/teams'
 import type { AgentNode, DepartmentNode, OrgNode, PersonNode, TeamNode } from './tree'
+
+/** The requests that are the viewer's, in the overview's words: the same number in every chart. */
+function Waiting({ count }: { count: number }) {
+  const { t } = useI18n()
+  return count > 0 ? <span className="oc-wait">{t.overview.waitingForYou(count)}</span> : null
+}
+
+/** A mark on a team whose data is a copy that could not be renewed; the age and the reason are in its title, as in the overview. */
+function OldData({ source }: { source: Team['source'] | undefined }) {
+  const { t, fmt } = useI18n()
+  if (source === undefined || source.kind !== 'replica' || source.error === undefined) return null
+  const title = source.fetchedAt === undefined ? t.overview.neverRead(source.error) : t.overview.staleFrom(fmt.relative(source.fetchedAt, t.time.justNow), source.error)
+  return (
+    <span className="oc-old" title={title}>
+      {t.org.oldData}
+    </span>
+  )
+}
 
 /** How many faces a compact team shows before saying how many more there are. */
 const FACES = 6
 
-export function DepartmentCard({ node, org, compact = false }: { node: DepartmentNode; org: string; compact?: boolean }) {
+export function DepartmentCard({ node, org }: { node: DepartmentNode; org: string }) {
   const { t } = useI18n()
-  const waiting = compact ? node.mine : node.waiting
   return (
     <Link className="oc-node department" to="/org" search={{ org, unit: node.department.id }}>
       <span className="oc-kind">{t.org.kinds.department}</span>
       <span className="oc-name">{node.department.label}</span>
       <span className="oc-sub">{node.head === undefined ? t.org.noHead : t.org.ledBy(node.head.label)}</span>
-      {waiting > 0 ? <span className="oc-wait">{t.org.waitingOnYou(waiting)}</span> : null}
+      <Waiting count={node.mine} />
     </Link>
   )
 }
@@ -25,14 +43,15 @@ function CompactTeam({ node }: { node: TeamNode }) {
   const { signals } = node
   const shown = node.agents.slice(0, FACES)
   return (
-    <Link className={`oc-node team compact${signals === undefined ? '' : ` attention-${signals.attention}`}`} to="/overview">
+    <Link className={`oc-node team compact${signals === undefined ? '' : ` attention-${signals.attention}`}`} {...destination(node)}>
       <span className="oc-kind">{t.org.kinds.team}</span>
       <span className="oc-name">{node.team.label}</span>
+      <OldData source={node.source} />
       {signals === undefined ? (
         <span className="oc-wait">{t.org.teamUnavailable}</span>
       ) : (
         <>
-          {signals.mine > 0 ? <span className="oc-wait">{t.org.waitingOnYou(signals.mine)}</span> : null}
+          <Waiting count={signals.mine} />
           {signals.attention === 'stuck' ? <span className="oc-stuck">{t.overview.tags.stuck}</span> : null}
           {signals.attention === 'idle' ? <span className="oc-stuck">{t.overview.tags.idle}</span> : null}
           <span className="oc-sub">{signals.participants === 0 ? t.overview.noParticipants : t.overview.working(signals.working, signals.participants)}</span>
@@ -50,6 +69,11 @@ function CompactTeam({ node }: { node: TeamNode }) {
   )
 }
 
+/** Where a team's box goes: its requests on the desk when the viewer has some, else the overview. */
+function destination(node: TeamNode): { to: '/desk'; search: { team: string } } | { to: '/overview' } {
+  return node.view !== undefined && (node.signals?.mine ?? 0) > 0 ? { to: '/desk', search: { team: `${node.view.org}/${node.view.team}` } } : { to: '/overview' }
+}
+
 export function TeamCard({ node, compact = false }: { node: TeamNode; compact?: boolean }) {
   const { t } = useI18n()
   if (compact) return <CompactTeam node={node} />
@@ -62,7 +86,8 @@ export function TeamCard({ node, compact = false }: { node: TeamNode; compact?: 
       ) : (
         <span className="oc-sub">{t.org.agents(node.agents.length, node.working)}</span>
       )}
-      {node.waiting > 0 ? <span className="oc-wait">{t.org.waitingOnYou(node.waiting)}</span> : null}
+      <OldData source={node.source} />
+      <Waiting count={node.signals?.mine ?? 0} />
     </Link>
   )
 }
@@ -100,7 +125,7 @@ export function OrgCard({ node }: { node: OrgNode }) {
       <span className="oc-name">{node.org.label}</span>
       {node.state === 'failed' ? <span className="oc-wait">{t.org.orgUnavailable}</span> : null}
       {node.state === 'loading' ? <span className="oc-sub">{t.app.loading}</span> : null}
-      {node.mine > 0 ? <span className="oc-wait">{t.org.waitingOnYou(node.mine)}</span> : null}
+      <Waiting count={node.mine} />
     </Link>
   )
 }
