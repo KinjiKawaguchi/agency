@@ -38,7 +38,7 @@ before?: Observation, after?: Observation,
  */
 change?: number, changeRatio?: number, 
 /**
- * The other epics (by item reference) that aim at the same KPI and shipped between `before` and `after`:
- * their effects cannot be told apart from this one's.
+ * With `ready`: the other epics (by item reference) that aim at the same KPI and shipped between `before`
+ * and `after`: their effects cannot be told apart from this one's. Empty in every other state.
  */
 overlapping: Array<string>, basis: Basis, };

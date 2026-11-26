@@ -29,7 +29,7 @@ fn check_days(days: u32) -> Result<u32> {
 }
 
 /// The calendar day a `YYYY-MM-DD` date names.
-fn calendar_day(date: &Date) -> Option<CalendarDate> {
+pub(crate) fn calendar_day(date: &Date) -> Option<CalendarDate> {
     let mut parts = date.as_str().split('-');
     let year = parts.next()?.parse::<i32>().ok()?;
     let month = Month::try_from(parts.next()?.parse::<u8>().ok()?).ok()?;

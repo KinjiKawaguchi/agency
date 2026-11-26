@@ -11,6 +11,7 @@ mod red;
 pub use evaluate::{evaluate, Input};
 pub use facts::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 pub use kinds::{classify, Kind};
+pub(crate) use period::proto_date;
 pub use period::Period;
 
 #[cfg(test)]
