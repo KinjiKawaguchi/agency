@@ -120,6 +120,18 @@ export const ja: Messages = {
     yourTurn: 'あなたの返事待ち',
     emptyDepartment: 'この部署にはまだ誰もいません。',
     teamUnavailable: 'このチームを読み込めませんでした',
+    view: {
+      toolbar: '図の表示',
+      zoom: '拡大縮小',
+      fit: '幅に合わせる',
+      zoomIn: '拡大',
+      zoomOut: '縮小',
+      actualSize: '実寸',
+      download: '画像としてダウンロード',
+      pngHint: '文書やスライドに貼るための画像',
+      svgHint: 'ブラウザで開けます。描画ソフトや資料作成のソフトでは空に見えることがあります',
+      downloadFailed: (format, reason) => `${format.toUpperCase()} を作れませんでした: ${reason}${format === 'png' ? ' SVG を試し、ブラウザで開いてください。' : ''}`,
+    },
   },
   costs: {
     title: '費用',

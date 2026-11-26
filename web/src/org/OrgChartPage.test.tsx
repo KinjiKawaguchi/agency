@@ -72,6 +72,78 @@ describe('org chart', () => {
     expect((await box('Team', 'App')).querySelector('.oc-old')).toBeNull()
   })
 
+  describe('the chart view', () => {
+    it('gives the chart a toolbar to fit it, zoom it, and download it', async () => {
+      renderApp({ path: '/org' })
+      const toolbar = within(await screen.findByRole('toolbar', { name: 'Chart view' }))
+      for (const name of ['Fit to width', 'Zoom out', 'Actual size', 'Zoom in', 'PNG', 'SVG']) expect(toolbar.getByRole('button', { name })).toBeInTheDocument()
+      expect(toolbar.getByText('Download as image')).toBeInTheDocument()
+    })
+
+    it('zooms in and out by a quarter and goes back to the actual size', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/org' })
+      const toolbar = within(await screen.findByRole('toolbar', { name: 'Chart view' }))
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('100%')
+      await user.click(toolbar.getByRole('button', { name: 'Zoom in' }))
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('125%')
+      await user.click(toolbar.getByRole('button', { name: 'Zoom out' }))
+      await user.click(toolbar.getByRole('button', { name: 'Zoom out' }))
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('80%')
+      await user.click(toolbar.getByRole('button', { name: 'Actual size' }))
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('100%')
+    })
+
+    it('stops the zoom at its ends, so that a click that does nothing is not offered', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/org' })
+      const toolbar = within(await screen.findByRole('toolbar', { name: 'Chart view' }))
+      for (let step = 0; step < 12; step += 1) if (!(toolbar.getByRole('button', { name: 'Zoom out' }) as HTMLButtonElement).disabled) await user.click(toolbar.getByRole('button', { name: 'Zoom out' }))
+      expect(toolbar.getByRole('button', { name: 'Zoom out' })).toBeDisabled()
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('20%')
+      for (let step = 0; step < 20; step += 1) if (!(toolbar.getByRole('button', { name: 'Zoom in' }) as HTMLButtonElement).disabled) await user.click(toolbar.getByRole('button', { name: 'Zoom in' }))
+      expect(toolbar.getByRole('button', { name: 'Zoom in' })).toBeDisabled()
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('200%')
+    })
+
+    it('starts the view again when another org’s chart is shown', async () => {
+      const user = userEvent.setup()
+      renderApp({ path: '/org', moreOrgs: true })
+      const toolbar = within(await screen.findByRole('toolbar', { name: 'Chart view' }))
+      await user.click(toolbar.getByRole('button', { name: 'Zoom in' }))
+      expect(toolbar.getByRole('button', { name: 'Actual size' })).toHaveTextContent('125%')
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Organization' }), 'lab')
+      await waitFor(() => expect(within(screen.getByRole('toolbar', { name: 'Chart view' })).getByRole('button', { name: 'Actual size' })).toHaveTextContent('100%'))
+    })
+
+    it('downloads the whole chart as an SVG named for the org, from the chart as drawn', async () => {
+      const user = userEvent.setup()
+      const saved: Array<{ name: string; blob: Blob }> = []
+      const originalCreate = URL.createObjectURL
+      URL.createObjectURL = (blob: Blob | MediaSource) => {
+        saved.push({ name: '', blob: blob as Blob })
+        return 'blob:test'
+      }
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        const last = saved[saved.length - 1]
+        if (last !== undefined) last.name = this.download
+      })
+      try {
+        renderApp({ path: '/org?org=acme' })
+        await user.click(await screen.findByRole('button', { name: 'SVG' }))
+        await waitFor(() => expect(saved).toHaveLength(1))
+        expect(saved[0]?.name).toBe('org-chart-acme.svg')
+        const text = await saved[0]!.blob.text()
+        expect(text).toContain('<foreignObject')
+        expect(text).toContain('Engineering')
+        expect(text).toContain('Platform')
+      } finally {
+        click.mockRestore()
+        URL.createObjectURL = originalCreate
+      }
+    })
+  })
+
   describe('across every org', () => {
     it('draws every org of the account in one chart when it has several and none is named', async () => {
       renderApp({ path: '/org', moreOrgs: true })
