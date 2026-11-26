@@ -133,6 +133,7 @@ A read that fails any of these checks is refused like a read of an org or team t
 |---|---|---|
 | GET | `/fed/v1/orgs/<org>/definition` | A member's signed read, or an open invite code |
 | POST | `/fed/v1/orgs/<org>/definition` | It is the next version (signed by the root key) |
+| GET | `/fed/v1/orgs/<org>/about` | A member's signed read of the org. Answers `About` (see "Discovery"): the release, the contracts and the capabilities of this node, and never `oldestApp`. A stranger, a signature for another path, a copy of a read already answered, and an org this node does not have are all refused alike (404) |
 | GET | `/fed/v1/orgs/<org>/versions?after=<n>` | A member's signed read of the path with its query. Answers `{ "versions": [<signed definition>, ...] }`: the versions after `n`, oldest first, at most 20 (a node further behind asks again); 404 when this node does not have them all |
 | POST | `/fed/v1/orgs/<org>/join` | The join request's signature and the invite |
 | POST | `/fed/v1/orgs/<org>/devices` | Only on the root's node (403 elsewhere, once the change's signature checks out): a device change, checked as in "Devices". Answers the version it wrote |
@@ -400,6 +401,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | Method | Path | Answer |
 |---|---|---|
 | GET | `/api/session` | `Session`: `writeToken`, the value writes send in `x-agency-token` (it changes each time the node starts; a client that gets 403 "missing or wrong write token" asks again once), and `now`, the node's time, which a client uses for an envelope's `at`. For clients that do not load the page; admitted like any read, so it exposes nothing the page does not |
+| GET | `/api/about` | `About` (see "Discovery"): the node's release, the contract versions it speaks, its capabilities, and `oldestApp` when it sets a floor |
 | GET | `/api/me` | `Me`: the account (id, label, key fingerprint), its orgs with their teams (`location` local or remote, and the viewer's runtime name), and its funding. `hidesTitles` is `true` when the node keeps titles and labels off every notification (`hideTitles`, see "Push notifications"), so a client that shows them outside the app, such as a widget, leaves them out too; it is left out, never `false`, when the node does not To the node's owner only (a direct local request, or Access signed in as `ownerEmail`), also `homeNodes`: the owner's other home nodes, for their other accounts, as `homeNodes` in `config.json` lists them (`{ "label", "url" }`), absent when there are none. A `url` is a node origin, `https://<host>[:<port>]` or `http://` on the loopback (`localhost`, `127.0.0.1`, `[::1]`), with no path. The host is dot-joined labels of letters, digits, and hyphens, and the port is 1 to 65535. The node writes each url one way (the host lowercased, the scheme's default port and a trailing `/` left out) and compares them so: an entry with a label that is not 1 to 80 characters, another url, this node's own url, or a url listed twice is left out, and the node says so when it starts. The list only says where those nodes are: a client signs in to each and keeps a device key for each on its own, and nothing is copied between them |
 | GET | `/api/orgs/<org>` | The org definition's body (`OrgDefinition`) |
 | GET | `/api/orgs/<org>/teams/<team>/view` | `TeamSnapshot`: `view`, `viewer`, `mine` (the ids of the requests that are the viewer's to decide; see "Requests"), `waitingOnViewer` (the people who wait on the viewer; see "People"), and `source` (`local`, or `replica` with `fetchedAt`, `triedAt`, `error`). 503 when there is no replica yet |
@@ -481,6 +483,21 @@ A web view in the iOS app cannot use passkeys for the Access team domain, so the
 - `GET /app/callback` is a universal link the app receives before it loads. If a browser loads it anyway, it gets a page with no script that reads nothing from the URL, admitted like any other page.
 - `GET /.well-known/apple-app-site-association` is served to anyone, without an Access sign-in, as `application/json` without a redirect: `{ "applinks": { "details": [{ "appIDs": [<appId>], "components": [{ "/": "/app/callback" }] }] }, "webcredentials": { "apps": [<appId>] } }`. Nothing in it comes from the request.
 - A native client keeps the handed-over token and sends it in `cf-access-token`. Once Access no longer accepts it, Access answers with a redirect to the team domain instead of the node's answer. The client never follows that redirect; it treats it as signed out and runs the handoff again.
+
+## Discovery
+
+What a node says about itself, so that an app or another node can check what it speaks before relying on something new. The rules for what may change, and what each contract's rollout is, are in [compatibility.md](compatibility.md); this is the wire shape.
+
+```
+About        { node: string, contracts: Contracts, capabilities: string[], oldestApp?: { [platform]: string } }
+Contracts    { federation: number[], signedText: number[], runtime: number[], clientApi: { current: number, oldest: number } }
+```
+
+- `node` is the node's release, `MAJOR.MINOR.PATCH`. `contracts` lists, for each contract, the versions this release speaks (two at once during an overlap); `clientApi` is the version it serves and the oldest it still serves.
+- `capabilities` are **strings**, so that a reader ignores a name it does not know (a newer node may list one). The names this release knows, and what each means, are in the table of compatibility.md ("Capabilities"); they start at what came after the first release. A test fails when an optional field is added to the org definition without one.
+- `oldestApp` (per platform, `ios` or `macos`) is the oldest app version the node serves, and is **absent while the node sets no floor**, which is until a breaking Client API change needs one. `GET /api/about` may carry it; the federation answer never does.
+- Readers ignore fields they do not know in an `About`.
+- `GET /api/about` is admitted like any Client API read. `GET /fed/v1/orgs/<org>/about` is a member's signed read of the org (checked as in "Signed reads", against that org's members, which is why the path names the org), so a stranger cannot learn a node's version. The shared sample is `testdata/about.sample.json`.
 
 ## Test vectors
 
