@@ -36,6 +36,11 @@ for (const width of WIDTHS) {
       await expect(page.locator(route.ready).first()).toBeVisible()
       expect(await pageScrollsSideways(page)).toBe(false)
       expect(await stickingOut(page)).toEqual([])
+      // The menus show all their entries, in a wide font as well (a Linux runner has one wider than a phone's): none has to be scrolled to.
+      await page.locator('.mainnav, .subnav, .mainnav a, .subnav a').evaluateAll((all) => all.forEach((one) => (one as HTMLElement).style.setProperty('font-family', "Verdana, 'DejaVu Sans', sans-serif", 'important')))
+      const menus = await page.locator('.mainnav, .subnav').evaluateAll((all) => all.map((one) => one.scrollWidth <= one.clientWidth))
+      expect(menus.length).toBeGreaterThan(0)
+      expect(menus.every(Boolean)).toBe(true)
     })
   }
 }

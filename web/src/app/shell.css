@@ -77,6 +77,44 @@
   background: var(--ink);
 }
 
+.subnav {
+  order: 4;
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  min-height: 36px;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+
+.subnav a {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.subnav a:hover,
+.subnav a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.subnav a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
 .me-link {
   display: inline-flex;
   align-items: center;
@@ -130,9 +168,25 @@
     padding-top: 8px;
   }
 
+  .subnav {
+    margin: 0 -12px;
+  }
+
+  .subnav a {
+    padding: 0 7px;
+  }
+
+  .subnav a[aria-current='page']::after {
+    right: 7px;
+    left: 7px;
+  }
+
+  /* Four entries share the width of the screen, so they fit whichever font the phone has. */
   .mainnav {
     order: 3;
-    width: 100%;
+    justify-content: space-between;
+    gap: 0;
+    width: calc(100% + 24px);
     margin: 0 -12px;
     overflow-x: auto;
     min-height: 40px;
@@ -140,13 +194,13 @@
 
   .mainnav a {
     flex: none;
-    padding: 0 7px;
-    font-size: 13px;
+    padding: 0 6px;
+    font-size: 12.5px;
     white-space: nowrap;
   }
 
   .mainnav a[aria-current='page']::after {
-    right: 7px;
-    left: 7px;
+    right: 6px;
+    left: 6px;
   }
 }
