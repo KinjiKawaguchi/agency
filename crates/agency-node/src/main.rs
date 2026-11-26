@@ -372,6 +372,14 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     let app = opened.app(port)?;
     println!("Node running: {} (listening on {listen})", node.url());
     let logger = opened.logger().clone();
+    let recorder = opened.recorder().clone();
+    let flushing = recorder.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            flushing.flush();
+        }
+    });
     logger.record(
         LogLevel::Info,
         "start",
@@ -433,6 +441,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await?;
+    recorder.flush();
     Ok(())
 }
 
