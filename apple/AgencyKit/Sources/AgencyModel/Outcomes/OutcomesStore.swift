@@ -29,6 +29,15 @@ public struct OrgOutcomes: Equatable, Identifiable, Sendable {
     public let until: String
     public let cards: [KpiCard]
     public let readings: OrgReadings
+
+    public init(id: String, label: String, from: String, until: String, cards: [KpiCard], readings: OrgReadings) {
+        self.id = id
+        self.label = label
+        self.from = from
+        self.until = until
+        self.cards = cards
+        self.readings = readings
+    }
 }
 
 /// The owner's numbers for what each org measures, over a period the person chooses.
