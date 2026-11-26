@@ -90,6 +90,24 @@ struct DeskBackgroundRefreshTests {
         #expect(sink.written.isEmpty)
     }
 
+    @Test("a copy of a remote team's view that was never fetched is not a read: nothing is written")
+    func neverFetchedReplica() async {
+        source.snapshot = Teams.snapshot(source: ["kind": "replica", "triedAt": "2026-11-24T12:00:00Z", "error": "the team's node did not answer"])
+        guard case .replica(nil, _, _) = source.snapshot.source else { Issue.record("the fixture is not a never-fetched replica"); return }
+        let outcome = await refresh().run(now: now)
+        #expect(outcome == .notRead)
+        #expect(sink.written.isEmpty)
+    }
+
+    @Test("a copy of a remote team's view that was fetched is a read, however old")
+    func fetchedReplica() async {
+        source.snapshot = Teams.snapshot(source: [
+            "kind": "replica", "fetchedAt": "2026-11-20T12:00:00Z", "triedAt": "2026-11-24T12:00:00Z", "error": "the team's node did not answer",
+        ])
+        let outcome = await refresh().run(now: now)
+        #expect(outcome == .written)
+    }
+
     @Test("a team that is not ready is asked once, not again after waits: a background run has seconds")
     func notWaitedFor() async {
         source.failing = ["app"]

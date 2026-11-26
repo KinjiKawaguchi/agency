@@ -14,13 +14,14 @@ enum BackgroundDeskRefresh {
     private static let lastRunKey = "agency.backgroundRefreshAt"
 
     /// Reads the desk and writes the file, unless a reading just happened, there is no home node, or nobody is signed in.
-    /// `nil` means there was nothing to do.
+    /// `nil` means there was nothing to do (no home node, nobody signed in, or a reading just happened).
     static func run(defaults: UserDefaults = .standard, now: Date = Date()) async -> DeskBackgroundRefresh.Outcome? {
         let lastRun = defaults.object(forKey: lastRunKey) as? Date
         guard DeskWake.isDue(lastRun: lastRun, now: now) else { return nil }
         guard let homeNode = HomeNodeStore(defaults: defaults).homeNode else { return nil }
         let tokens = AccessTokenStore(host: homeNode.host)
-        guard tokens.current() != nil else { return .notRead }
+        // Nobody signed in is not a failed read: there is nothing to refresh, as with no home node.
+        guard tokens.current() != nil else { return nil }
         defaults.set(now, forKey: lastRunKey)
         let client = NodeClient(transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value })
         let preferences = WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host))

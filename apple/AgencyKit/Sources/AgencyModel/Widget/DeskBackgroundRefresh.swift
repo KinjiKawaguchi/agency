@@ -30,9 +30,13 @@ public struct DeskBackgroundRefresh {
         let expected = me.orgs.reduce(0) { $0 + $1.teams.count }
         var teams: [Team] = []
         await TeamReader.read(me.orgs, from: source, retry: .never) { _, result in
-            if case .success(let snapshot) = result { teams.append(Team(snapshot: snapshot)) }
+            guard case .success(let snapshot) = result else { return }
+            // A copy of a remote team's view that was never fetched holds nothing yet: that is not a read, and its 0
+            // would be a number nothing explains.
+            if case .replica(nil, _, _) = snapshot.source { return }
+            teams.append(Team(snapshot: snapshot))
         }
-        // A team that failed, or whose read was cancelled, is missing from `teams`: that is an incomplete desk.
+        // A team that failed, was never fetched, or whose read was cancelled is missing from `teams`: that is an incomplete desk.
         guard teams.count == expected else { return .notRead }
         publisher.preferences.nodeSays(hidesTitles: me.hidesTitles)
         publisher.publish(items: Desk.openItems(teams.sorted { $0.key < $1.key }), now: now)
