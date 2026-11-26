@@ -184,6 +184,22 @@ pub struct WorkItem {
     pub points: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eta: Option<Eta>,
+    /// What the work is for, as the board's "Work type" field says. Absent when the item has none: the
+    /// field is the board's value and is never guessed here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_type: Option<WorkType>,
+}
+
+/// What a piece of work is for (docs/glossary.md, "Work type").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum WorkType {
+    NewFeature,
+    Improvement,
+    Maintenance,
+    Debt,
+    Incident,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

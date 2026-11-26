@@ -103,7 +103,7 @@ describe('devices screen', () => {
     // Nothing is added until the person confirms.
     expect((await createApiClient((request) => node.handle(request)).devices()).orgs[0]?.devices).toHaveLength(1)
 
-    await user.click(screen.getByRole('button', { name: 'The codes match: add it' }))
+    await user.click(screen.getByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText('Phone is added.')).toBeInTheDocument()
     const added = (await createApiClient((request) => node.handle(request)).devices()).orgs[0]?.devices.map((one) => one.label)
     expect(added).toEqual(['Browser', 'Phone'])
@@ -125,7 +125,7 @@ describe('devices screen', () => {
     const tablet = (await createApiClient((request) => node.handle(request)).devices()).requests[0]
     expect(tablet).toBeDefined()
     node.addDeviceFromTerminal(tablet?.pairingCode ?? '')
-    await user.click(await screen.findByRole('button', { name: 'The codes match: add it' }))
+    await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText(/Could not add the device: /)).toBeInTheDocument()
   })
 
@@ -146,7 +146,7 @@ describe('devices screen', () => {
     }
     let sent = 0
     renderApp({ path: '/devices', node, keyStore, client: { ...real, devices, submitDeviceChange: (change) => { sent += 1; return real.submitDeviceChange(change) } } })
-    await user.click(await screen.findByRole('button', { name: 'The codes match: add it' }))
+    await user.click(await screen.findByRole('button', { name: 'The codes match: approve it' }))
     expect(await screen.findByText(/Could not add the device: This device is not added to any organization that lacks the new one\./)).toBeInTheDocument()
     expect(sent).toBe(0)
   })
@@ -238,7 +238,7 @@ describe('a device list that stays current while the screen is open', () => {
     expect(await screen.findByText('No device is waiting to be added.')).toBeInTheDocument()
     const other = await otherDeviceAsks(node, 'Phone')
     expect(await screen.findByLabelText('Pairing code of Phone', undefined, { timeout: 9000 })).toHaveTextContent(other.pairingCode)
-    expect(screen.getByRole('button', { name: 'The codes match: add it' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'The codes match: approve it' })).toBeInTheDocument()
   })
 
   it('does not read the list while the tab is hidden, and reads it again when the tab is back', async () => {
