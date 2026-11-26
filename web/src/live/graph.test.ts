@@ -1,11 +1,12 @@
 import type { ActivityEvent } from '../api/activityApi'
-import { edgesOf, keyOf, motionOf, placeAgents, settle, step, type Agent } from './graph'
+import { edgesOf, guestsOf, keyOf, motionOf, placeAgents, resolverOf, settle, step, type Agent } from './graph'
 import type { TaggedEvent } from './stream'
 
 const SIZE = { width: 800, height: 600 }
 const agent = (id: string, team = 'app'): Agent => ({ id, team, org: 'acme', label: id })
 const AGENTS = [agent('lead'), agent('backend'), agent('frontend'), agent('docs'), agent('designer', 'site'), agent('builder', 'site')]
 const NOW = Date.parse('2026-11-26T10:00:00Z')
+const resolve = resolverOf(AGENTS)
 const message = (from: string, to: string, secondsAgo: number, team = 'app'): TaggedEvent => ({
   org: 'acme',
   team,
@@ -14,7 +15,7 @@ const message = (from: string, to: string, secondsAgo: number, team = 'app'): Ta
 
 describe('edgesOf', () => {
   it('joins two agents that wrote to each other, in either direction, counting newer messages more', () => {
-    const edges = edgesOf([message('lead', 'backend', 10), message('backend', 'lead', 20), message('lead', 'docs', 200)], { now: NOW })
+    const edges = edgesOf([message('lead', 'backend', 10), message('backend', 'lead', 20), message('lead', 'docs', 200)], { now: NOW, resolve })
     expect(edges.map((edge) => [edge.a, edge.b])).toEqual([['acme/app/backend', 'acme/app/lead'], ['acme/app/docs', 'acme/app/lead']])
     expect(edges[0]!.weight).toBeGreaterThan(1.8)
     expect(edges[1]!.weight).toBeLessThan(edges[0]!.weight)
@@ -22,17 +23,39 @@ describe('edgesOf', () => {
   })
 
   it('counts a message for half after the half-life, and for nothing after the window or before it was sent', () => {
-    const [half] = edgesOf([message('lead', 'backend', 180)], { now: NOW })
+    const [half] = edgesOf([message('lead', 'backend', 180)], { now: NOW, resolve })
     expect(half!.weight).toBeCloseTo(0.5)
-    expect(edgesOf([message('lead', 'backend', 601)], { now: NOW })).toEqual([])
-    expect(edgesOf([message('lead', 'backend', -5)], { now: NOW })).toEqual([])
+    expect(edgesOf([message('lead', 'backend', 601)], { now: NOW, resolve })).toEqual([])
+    expect(edgesOf([message('lead', 'backend', -5)], { now: NOW, resolve })).toEqual([])
   })
 
-  it('keeps two teams’ agents apart even when they have the same name, and ignores a message to oneself and what is not a message', () => {
-    const edges = edgesOf([message('lead', 'backend', 5), message('lead', 'backend', 5, 'site'), message('lead', 'lead', 5)], { now: NOW })
+  it('keeps two teams’ agents of the same name apart, and ignores a message to oneself and what is not a message', () => {
+    const twins = resolverOf([...AGENTS, agent('lead', 'site'), agent('backend', 'site')])
+    const edges = edgesOf([message('lead', 'backend', 5), message('lead', 'backend', 5, 'site'), message('lead', 'lead', 5)], { now: NOW, resolve: twins })
     expect(edges).toHaveLength(2)
     const merged: TaggedEvent = { org: 'acme', team: 'app', event: { id: 'b-1', at: new Date(NOW).toISOString(), kind: 'prMerged', ref: 'app#1', title: 'x' } }
-    expect(edgesOf([merged], { now: NOW })).toEqual([])
+    expect(edgesOf([merged], { now: NOW, resolve })).toEqual([])
+  })
+})
+
+describe('who a name in a message is', () => {
+  it('is a participant of the team the feed is of, else the one agent of that name in the org, else a guest', () => {
+    expect(resolve('acme', 'app', 'lead')).toBe('acme/app/lead')
+    // A message in the feed of `site` that names an agent of `app`: the lead is not on `site`, but is the one `lead` of the org.
+    expect(resolve('acme', 'site', 'lead')).toBe('acme/app/lead')
+    expect(resolve('acme', 'app', 'AgencyLead')).toBe('acme/-/AgencyLead')
+    expect(resolverOf([agent('lead'), agent('lead', 'site')])('acme', 'other', 'lead')).toBe('acme/-/lead')
+  })
+
+  it('joins a message across teams to a line between the two agents, and draws the one who is in no team as a guest', () => {
+    const events = [message('designer', 'lead', 5, 'site'), message('lead', 'AgencyLead', 6)]
+    const edges = edgesOf(events, { now: NOW, resolve })
+    expect(edges.map((edge) => [edge.a, edge.b])).toEqual([['acme/-/AgencyLead', 'acme/app/lead'], ['acme/app/lead', 'acme/site/designer']])
+    expect(guestsOf(events, resolve, { now: NOW }).map((guest) => [keyOf(guest), guest.label, guest.team])).toEqual([['acme/-/AgencyLead', 'AgencyLead', '-']])
+  })
+
+  it('draws a guest only while a recent message names them', () => {
+    expect(guestsOf([message('lead', 'AgencyLead', 700)], resolve, { now: NOW })).toEqual([])
   })
 })
 
@@ -54,7 +77,7 @@ describe('the layout', () => {
   })
 
   it('settles inside the picture, with the agents apart, the teams gathered, and those who write to each other nearer', () => {
-    const edges = edgesOf([message('lead', 'backend', 5), message('lead', 'backend', 15), message('lead', 'backend', 25)], { now: NOW })
+    const edges = edgesOf([message('lead', 'backend', 5), message('lead', 'backend', 15), message('lead', 'backend', 25)], { now: NOW, resolve })
     const settled = settle(placeAgents(AGENTS, [], SIZE), { agents: AGENTS, edges, size: SIZE })
     const at = (name: string, team = 'app') => settled.find((point) => point.key === `acme/${team}/${name}`)!
     for (const point of settled) {

@@ -183,4 +183,37 @@ describe('an activity stream', () => {
     await stream.poll()
     expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-10', 'm-11', 'm-12'])
   })
+
+  it('reads each team on its own, so that one that is slow to answer holds back no other', async () => {
+    vi.useFakeTimers()
+    try {
+      const fast = nodeWith([message('m-1', -10)])
+      let release: (() => void) | undefined
+      const stream = new ActivityStream({
+        read: (org, team, since, signal) =>
+          team === 'slow'
+            ? new Promise((_, reject) => {
+                release = () => reject(new Error('late'))
+                signal.addEventListener('abort', () => reject(signal.reason))
+              })
+            : fast.read(org, team, since),
+        teams: [{ org: 'acme', team: 'quick' }, { org: 'acme', team: 'slow' }],
+        now: () => T0,
+        intervalMs: 10_000,
+        timeoutMs: 30_000,
+      })
+      stream.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1'])
+      fast.add(message('m-2', 5))
+      await vi.advanceTimersByTimeAsync(10_000)
+      // The slow team has not answered in 10 seconds, and the quick one has gone on regardless.
+      expect(stream.current.events.map((one) => one.event.id)).toEqual(['m-1', 'm-2'])
+      expect(stream.current.fresh.map((one) => one.event.id)).toEqual(['m-2'])
+      release?.()
+      stream.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

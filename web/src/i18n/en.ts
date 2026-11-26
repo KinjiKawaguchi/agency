@@ -453,6 +453,7 @@ export const en = {
       hint: 'A line lights up when a message passes; busier links are thicker.',
       label: 'Messages between agents: agents as points, joined by lines',
       agent: (name: string, team: string) => `${name}, ${team} team`,
+      others: 'Others (not in a team here)',
     },
     feed: {
       title: 'What is happening',

@@ -448,6 +448,7 @@ export const ja: Messages = {
       hint: 'メッセージが通ると線が光ります。やり取りの多い線ほど太くなります。',
       label: 'エージェント間のメッセージ: エージェントを点、やり取りを線で表した図',
       agent: (name, team) => `${name} (${team}チーム)`,
+      others: 'ほか (ここのチームにいない)',
     },
     feed: {
       title: '今起きていること',

@@ -126,8 +126,10 @@ export function step(points: readonly Point[], { agents, edges, size }: Forces, 
     const gy = (anchor.y - point.y) * 0.0022 + (size.height / 2 - point.y) * 0.0006
     const vx = (point.vx + (total.x * reach * 0.002 + gx) * energy * 6) * 0.82
     const vy = (point.vy + (total.y * reach * 0.002 + gy) * energy * 6) * 0.82
-    const margin = reach * 0.06
-    return { key: point.key, x: Math.min(size.width - margin, Math.max(margin, point.x + vx)), y: Math.min(size.height - margin, Math.max(margin, point.y + vy)), vx, vy }
+    // A name is written under its point and may be wide, so the sides keep a margin for it, and the bottom one more.
+    const sideMargin = Math.max(56, reach * 0.09)
+    const [topMargin, bottomMargin] = [24, 48]
+    return { key: point.key, x: Math.min(size.width - sideMargin, Math.max(sideMargin, point.x + vx)), y: Math.min(size.height - bottomMargin, Math.max(topMargin, point.y + vy)), vx, vy }
   })
 }
 
@@ -143,8 +145,46 @@ export const motionOf = (points: readonly Point[]): number => points.reduce((mos
 
 const key = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
 
+/** The team of an agent that no team's view lists: someone who writes to or hears from a team's agents, such as the lead. */
+export const GUEST_TEAM = '-'
+
+/** Who a name in a message is, as the key of a point. */
+export type Resolve = (org: string, team: string, name: string) => string
+
+/**
+ * A message names its sender and its recipient by participant name, and the other end is often not on the team the
+ * feed is of (the lead, an agent of another team). A name is a participant of the team the feed is of when it is one;
+ * otherwise it is the one agent of that name in the org, when there is exactly one; otherwise a guest, a point of its own.
+ */
+export function resolverOf(agents: readonly Agent[]): Resolve {
+  const inTeam = new Set(agents.map(keyOf))
+  const inOrg = new Map<string, string[]>()
+  for (const agent of agents) inOrg.set(`${agent.org}/${agent.id}`, [...(inOrg.get(`${agent.org}/${agent.id}`) ?? []), keyOf(agent)])
+  return (org, team, name) => {
+    if (inTeam.has(keyOf({ org, team, id: name }))) return keyOf({ org, team, id: name })
+    const named = inOrg.get(`${org}/${name}`) ?? []
+    return named.length === 1 ? (named[0] as string) : keyOf({ org, team: GUEST_TEAM, id: name })
+  }
+}
+
+/** The guests that appear in recent messages, as agents to draw. */
+export function guestsOf(events: readonly TaggedEvent[], resolve: Resolve, { now, windowMs = 10 * 60_000 }: { now: number; windowMs?: number }): Agent[] {
+  const found = new Map<string, Agent>()
+  for (const { org, team, event } of events) {
+    if (event.kind !== 'message') continue
+    const at = Date.parse(event.at)
+    if (at > now || now - at > windowMs) continue
+    for (const name of [event.from, event.to]) {
+      const key = resolve(org, team, name)
+      if (key === keyOf({ org, team: GUEST_TEAM, id: name })) found.set(key, { id: name, label: name, team: GUEST_TEAM, org })
+    }
+  }
+  return [...found.values()].toSorted((a, b) => keyOf(a).localeCompare(keyOf(b)))
+}
+
 export interface EdgeOptions {
   now: number
+  resolve: Resolve
   /** Messages older than this count for nothing. */
   windowMs?: number
   /** A message counts for half after this long. */
@@ -152,13 +192,13 @@ export interface EdgeOptions {
 }
 
 /** The lines of the picture: two agents are joined by what has passed between them in the window, newer counting more. */
-export function edgesOf(events: readonly TaggedEvent[], { now, windowMs = 10 * 60_000, halfLifeMs = 3 * 60_000 }: EdgeOptions): Edge[] {
+export function edgesOf(events: readonly TaggedEvent[], { now, resolve, windowMs = 10 * 60_000, halfLifeMs = 3 * 60_000 }: EdgeOptions): Edge[] {
   const found = new Map<string, Edge>()
   for (const { org, team, event } of events) {
     if (event.kind !== 'message') continue
     const at = Date.parse(event.at)
     if (at > now || now - at > windowMs) continue
-    const [a, b] = [keyOf({ org, team, id: event.from }), keyOf({ org, team, id: event.to })]
+    const [a, b] = [resolve(org, team, event.from), resolve(org, team, event.to)]
     if (a === b) continue
     const id = key(a, b)
     const before = found.get(id)

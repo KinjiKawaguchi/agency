@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
-import { edgesOf, keyOf, type Agent, type Edge, type Point } from './graph'
+import { edgesOf, keyOf, type Agent, type Edge, type Point, type Resolve } from './graph'
 import type { TaggedEvent } from './stream'
 import { useForceLayout } from './useForceLayout'
 import { useTicker } from './useTicker'
@@ -11,7 +11,10 @@ const PACKET_MS = 900
 const LIT_MS = 2_600
 
 interface Props {
+  /** The agents of the teams, and the guests that messages name. */
   agents: readonly Agent[]
+  /** Who a name in a message is. */
+  resolve: Resolve
   /** What happened lately: the lines come from its messages. */
   events: readonly TaggedEvent[]
   /** What has just arrived: each message in it sends a packet along its line. */
@@ -36,11 +39,14 @@ const lerp = (from: number, to: number, t: number): number => from + (to - from)
  * the busier. A message that has just passed sends a packet along its line and lights it, and the two points
  * glow. Where the viewer asked for less motion nothing travels: the line and the points light up and fade.
  */
-export function GraphView({ agents, events, fresh, isReduced, colors }: Props) {
+export function GraphView({ agents, resolve, events, fresh, isReduced, colors }: Props) {
   const { t } = useI18n()
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 760, height: 480 })
   const packets = useRef<Packet[]>([])
+  // The latest resolver, read when a message arrives: it must not make the effect run again for events it has seen.
+  const resolveRef = useRef(resolve)
+  resolveRef.current = resolve
   const litAt = useRef(new Map<string, number>())
   const [clock, setClock] = useState(() => Date.now())
 
@@ -57,7 +63,7 @@ export function GraphView({ agents, events, fresh, isReduced, colors }: Props) {
     return () => observer.disconnect()
   }, [])
 
-  const edges: Edge[] = edgesOf(events, { now: clock })
+  const edges: Edge[] = edgesOf(events, { now: clock, resolve })
   const { points, isMoving } = useForceLayout(agents, edges, size, isReduced)
 
   // A message that has just arrived lights its line and its two points, and sends a packet unless motion is not wanted.
@@ -65,7 +71,7 @@ export function GraphView({ agents, events, fresh, isReduced, colors }: Props) {
     const now = Date.now()
     for (const { org, team, event } of fresh) {
       if (event.kind !== 'message') continue
-      const [from, to] = [keyOf({ org, team, id: event.from }), keyOf({ org, team, id: event.to })]
+      const [from, to] = [resolveRef.current(org, team, event.from), resolveRef.current(org, team, event.to)]
       for (const lit of [from, to, edgeId({ a: from < to ? from : to, b: from < to ? to : from })]) litAt.current.set(lit, now)
       if (!isReduced) packets.current = [...packets.current.filter((packet) => now - packet.startedAt < PACKET_MS), { id: event.id, from, to, startedAt: now }]
     }

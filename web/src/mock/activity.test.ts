@@ -26,7 +26,8 @@ describe('the mock activity feed', () => {
     const kinds = new Set(hour.events.map((event) => event.kind))
     expect(kinds).toContain('message')
     expect(kinds).toContain('statusChanged')
-    for (const event of hour.events) if (event.kind === 'message') expect([agents.has(event.from), agents.has(event.to), event.from !== event.to]).toEqual([true, true, true])
+    // One end of a message is always the team's own agent; the other may be someone outside it (the next test).
+    for (const event of hour.events) if (event.kind === 'message') expect([agents.has(event.from) || agents.has(event.to), event.from !== event.to]).toEqual([true, true])
     expect(hour.events.filter((event) => event.kind === 'message').length).toBeGreaterThan(50)
   })
 
@@ -41,5 +42,15 @@ describe('the mock activity feed', () => {
     const merged = hour.events.filter((event) => event.kind === 'prMerged').length
     expect(merged).toBeGreaterThan(0)
     expect(merged).toBeLessThan(20)
+  })
+
+  it('has messages to and from agents of other teams and someone who is in no team, the one story the screen has to join up', () => {
+    const outsiders = ['designer', 'builder']
+    const feed = activityFor(sampleTeamView, NOW - HOUR, NOW, 500, outsiders)
+    const agents = new Set(sampleTeamView.people.filter((person) => person.kind === 'agent').map((person) => person.id))
+    const names = new Set(feed.events.flatMap((event) => (event.kind === 'message' ? [event.from, event.to] : [])))
+    expect([...names].some((name) => outsiders.includes(name))).toBe(true)
+    expect(names).toContain('Auditor')
+    for (const event of feed.events) if (event.kind === 'message') expect(agents.has(event.from) || agents.has(event.to)).toBe(true)
   })
 })

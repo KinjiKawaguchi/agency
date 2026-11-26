@@ -2,7 +2,7 @@ import type { TaggedEvent } from './stream'
 import { BIN_MS, binsOf, countsOf, lastHour, medianOf, startOfDay } from './merges'
 
 const NOW = Date.parse('2026-11-26T10:00:00Z')
-const merged = (minutesAgo: number): TaggedEvent => ({ org: 'acme', team: 'app', event: { id: `b-${minutesAgo}`, at: new Date(NOW - minutesAgo * 60_000).toISOString(), kind: 'prMerged', ref: 'app#1', title: 'x' } })
+const merged = (minutesAgo: number): TaggedEvent => ({ org: 'acme', team: 'app', event: { id: `b-${minutesAgo}`, at: new Date(NOW - minutesAgo * 60_000).toISOString(), kind: 'prMerged', ref: `app#${minutesAgo + 100}`, title: 'x' } })
 const opened = (minutesAgo: number): TaggedEvent => ({ org: 'acme', team: 'app', event: { id: `o-${minutesAgo}`, at: new Date(NOW - minutesAgo * 60_000).toISOString(), kind: 'prOpened', ref: 'app#1', title: 'x' } })
 
 describe('merges per five minutes', () => {
@@ -19,6 +19,17 @@ describe('merges per five minutes', () => {
   it('puts a merge exactly on a bin’s edge in the older bin it belongs to', () => {
     const bins = binsOf([{ ...merged(0), event: { ...merged(0).event, at: new Date(NOW - BIN_MS).toISOString() } }], NOW)
     expect(bins[10]).toBe(1)
+  })
+})
+
+describe('a pull request that two teams report', () => {
+  it('is one merge', () => {
+    const [first] = [merged(3)]
+    const again: TaggedEvent = { org: first!.org, team: 'other', event: { ...first!.event, id: 'b-other' } }
+    expect(lastHour([first!, again], NOW)).toBe(1)
+    expect(countsOf([first!, again], NOW, undefined).lastHour).toBe(1)
+    // The same number in another org is another pull request.
+    expect(lastHour([first!, { ...again, org: 'other' }], NOW)).toBe(2)
   })
 })
 
