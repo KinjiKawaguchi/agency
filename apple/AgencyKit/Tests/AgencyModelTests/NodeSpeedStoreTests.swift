@@ -65,6 +65,21 @@ struct NodeSpeedStoreTests {
         #expect(store.answer?.isReady == true)
     }
 
+    @Test("the node has answered once any period has an answer, whatever it came to, and a 403 is no answer")
+    func hasAnswered() async {
+        let source = ScriptedMetrics()
+        let store = store(source)
+        #expect(!store.hasAnswered)
+        source.set(1, .failure(NodeError.http(status: 500, message: "boom")))
+        await store.refresh()
+        #expect(store.hasAnswered && store.answer == .failed("boom"))
+        let notOwner = ScriptedMetrics()
+        notOwner.set(1, .failure(NodeError.http(status: 403, message: nil)))
+        let other = self.store(notOwner)
+        await other.refresh()
+        #expect(!other.hasAnswered && other.isHidden, "nothing was drawn before it, and nothing is left behind")
+    }
+
     @Test("403 hides the section for good, and nothing more is asked")
     func notTheOwner() async {
         let source = ScriptedMetrics()
@@ -81,9 +96,9 @@ struct NodeSpeedStoreTests {
     func failures() async {
         for (error, expected) in [
             (NodeError.http(status: 404, message: nil), NodeSpeedAnswer.unavailable),
-            (NodeError.http(status: 503, message: "busy"), .couldNotAnswer("busy")),
-            (NodeError.http(status: 503, message: nil), .couldNotAnswer("HTTP 503")),
-            (NodeError.unreadable("buckets"), .couldNotAnswer(Ja.Evaluation.unreadable)),
+            (NodeError.http(status: 503, message: "busy"), .couldNotAnswer),
+            (NodeError.http(status: 503, message: nil), .couldNotAnswer),
+            (NodeError.unreadable("buckets"), .couldNotAnswer),
             (NodeError.http(status: 500, message: "boom"), .failed("boom")),
         ] {
             let source = ScriptedMetrics()
@@ -110,6 +125,17 @@ struct NodeSpeedStoreTests {
         await store.refresh()
         guard case .ready(let speed)? = store.answer else { Issue.record("should be ready"); return }
         #expect(speed.routeGroups.first?.row.count == 8)
+    }
+
+    @Test("a period whose read was cancelled has no answer, while the node has answered another: the heading stays and the numbers are not the other period's")
+    func otherPeriodUnread() async {
+        let source = ScriptedMetrics()
+        source.set(1, .success(answer(count: 4)))
+        source.set(7, .failure(CancellationError()))
+        let store = store(source)
+        await store.refresh()
+        await store.choose(days: 7)
+        #expect(store.answer == nil && store.hasAnswered)
     }
 
     @Test("a read that is cancelled says nothing")

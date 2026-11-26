@@ -14,8 +14,8 @@ public enum NodeSpeedAnswer: Equatable, Sendable {
     case ready(NodeSpeed)
     /// The node does not measure (404).
     case unavailable
-    /// The node answered, but not in a way that can be read, or could not (503).
-    case couldNotAnswer(String)
+    /// The node answered, but not in a way that can be read, or could not (503). Said plainly, with none of its reasons.
+    case couldNotAnswer
     case failed(String)
 }
 
@@ -34,6 +34,10 @@ public final class NodeSpeedStore {
     public private(set) var answers: [Int: NodeSpeedAnswer] = [:]
     /// The node said the viewer is not its owner: nothing of the section is drawn.
     public private(set) var isHidden = false
+
+    /// Whether the node has answered at least once, for any period: before that nothing is drawn but a skeleton, so that a viewer who
+    /// is not the owner sees no heading flash and go.
+    public var hasAnswered: Bool { !answers.isEmpty }
 
     @ObservationIgnored private let source: any NodeSpeedSource
 
@@ -61,10 +65,10 @@ public final class NodeSpeedStore {
             return
         } catch NodeError.http(404, _) {
             outcome = .unavailable
-        } catch NodeError.http(503, let message) {
-            outcome = .couldNotAnswer(message ?? "HTTP 503")
+        } catch NodeError.http(503, _) {
+            outcome = .couldNotAnswer
         } catch NodeError.unreadable {
-            outcome = .couldNotAnswer(Ja.Evaluation.unreadable)
+            outcome = .couldNotAnswer
         } catch where DeskStore.isCancelled(error) {
             return
         } catch {

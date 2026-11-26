@@ -10,7 +10,8 @@ extension Ja {
         public static func days(_ count: Int) -> String { count == 1 ? "直近 1 日" : "直近 \(count) 日" }
         public static let loading = "計測を読み込んでいます…"
         public static let unavailable = "このノードは、まだ応答時間を計測しません。"
-        public static func couldNotAnswer(_ reason: String) -> String { "ノードが計測を返せませんでした: \(reason)" }
+        /// The node could not give its measurements, or what it gave could not be read: said plainly, without the reader's own words.
+        public static let couldNotAnswer = "ノードが計測を返せませんでした。"
         public static let none = "この期間は、まだ何も計測されていません。"
 
         /// The last bound of the node's buckets: what is slower than it has no bound.
@@ -40,6 +41,9 @@ extension Ja {
             public static let noReads = "この期間は、ノード内の読み取りが計測されていません。"
             public static func within(_ p95: String) -> String { "予算の内です: p95 は \(p95)。" }
             public static func over(_ p95: String) -> String { "予算を超えています: p95 は \(p95)。" }
+            public static func undetermined(_ p95: String, _ budget: String) -> String {
+                "予算に対して判断できません: p95 は \(p95) で、予算の \(budget) はその範囲の中にあります。"
+            }
             public static func requests(_ count: Int) -> String { "\(JaFormat.integer(count)) 件の読み取りを計測しました。" }
             public static let overRoutes = "予算を超えている読み取り"
         }

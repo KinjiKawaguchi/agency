@@ -31,16 +31,18 @@ struct NodeSpeedSnapshotTests {
         return Metrics(range: (instant("2026-11-24T10:00:00Z"), instant("2026-11-24T12:00:00Z")), generatedAt: instant("2026-11-24T11:30:00Z"), budget: Budget(inNodeReadP95Ms: 100), objectives: objectives, series: series)
     }
 
-    @Test("the shared sample, a slow node with long names, and the lines for nothing measured, a node that does not measure and one that failed")
+    @Test("the shared sample, a slow node with long names, and the skeleton before the first answer and for another period, a node that does not measure and one that failed")
     func drawn() {
-        let states: [(String, NodeSpeedAnswer?)] = [
-            ("node-speed-sample", .ready(NodeSpeed(sample()))), ("node-speed-slow", .ready(NodeSpeed(slow()))),
-            ("node-speed-sample-open", .ready(NodeSpeed(sample()))), ("node-speed-slow-open", .ready(NodeSpeed(slow()))),
-            ("node-speed-loading", nil), ("node-speed-unavailable", .unavailable), ("node-speed-failed", .failed("HTTP 502")),
+        let states: [(String, NodeSpeedAnswer?, Bool)] = [
+            ("node-speed-sample", .ready(NodeSpeed(sample())), true), ("node-speed-slow", .ready(NodeSpeed(slow())), true),
+            ("node-speed-sample-open", .ready(NodeSpeed(sample())), true), ("node-speed-slow-open", .ready(NodeSpeed(slow())), true),
+            ("node-speed-first-read", nil, false), ("node-speed-other-period", nil, true),
+            ("node-speed-unavailable", .unavailable, true), ("node-speed-could-not", .couldNotAnswer, true), ("node-speed-failed", .failed("HTTP 502"), true),
         ]
-        for (name, answer) in states {
+        for (name, answer, hasAnswered) in states {
             for scheme in [ColorScheme.light, .dark] {
-                let result = Snapshot.capture(name, NodeSpeedContent(days: 7, answer: answer, showsRoutes: name.hasSuffix("open")).padding(Theme.gutter), scheme: scheme)
+                let content = NodeSpeedContent(days: 7, answer: answer, hasAnswered: hasAnswered, showsRoutes: name.hasSuffix("open"))
+                let result = Snapshot.capture(name, content.padding(Theme.gutter), scheme: scheme)
                 #expect(!result.png.isEmpty)
                 #expect(result.size.width == Snapshot.phoneWidth, "\(name): \(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")
             }

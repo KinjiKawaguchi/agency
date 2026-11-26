@@ -20,7 +20,11 @@ public struct NodeSpeed: Equatable, Sendable {
         public var verdictLine: String {
             guard let reads, let p95 = reads.p95, let verdict else { return Ja.NodeSpeed.Budget.noReads }
             let bound = Ja.NodeSpeed.bound(p95)
-            return verdict == .within ? Ja.NodeSpeed.Budget.within(bound) : Ja.NodeSpeed.Budget.over(bound)
+            switch verdict {
+            case .within: return Ja.NodeSpeed.Budget.within(bound)
+            case .over: return Ja.NodeSpeed.Budget.over(bound)
+            case .undetermined: return Ja.NodeSpeed.Budget.undetermined(bound, Ja.NodeSpeed.duration(budgetMs))
+            }
         }
 
         /// How many reads the verdict is of; nothing when none was measured.

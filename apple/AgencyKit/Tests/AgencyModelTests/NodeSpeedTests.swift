@@ -90,13 +90,32 @@ struct NodeSpeedTests {
 
     // MARK: The budget
 
-    @Test("the budget is p95 at most the bound: equal is within, a bucket above is over, and beyond the last bucket is over")
+    @Test("a p95 is known only as its bucket: within when the bucket's top is at most the budget, over when its bottom is at least the budget, otherwise undetermined")
     func verdict() {
+        // The budget of 100 ms is a bucket edge: it is never undetermined.
         #expect(Latency.verdict(of: .atMost(100), budgetMs: 100) == .within)
         #expect(Latency.verdict(of: .atMost(250), budgetMs: 100) == .over)
         #expect(Latency.verdict(of: .atMost(50), budgetMs: 100) == .within)
+        #expect(Latency.verdict(of: .atMost(1), budgetMs: 100) == .within)
         #expect(Latency.verdict(of: .beyond, budgetMs: 100) == .over)
         #expect(Latency.verdict(of: nil, budgetMs: 100) == nil)
+        // A budget inside a bucket cannot be told: 75 ms against (50, 100].
+        #expect(Latency.verdict(of: .atMost(100), budgetMs: 75) == .undetermined)
+        #expect(Latency.verdict(of: .atMost(50), budgetMs: 75) == .within)
+        #expect(Latency.verdict(of: .atMost(250), budgetMs: 75) == .over)
+        #expect(Latency.verdict(of: .atMost(250), budgetMs: 175) == .undetermined)
+        #expect(Latency.verdict(of: .beyond, budgetMs: 30_000) == .over)
+        #expect(Latency.verdict(of: .beyond, budgetMs: 40_000) == .undetermined)
+        #expect(Latency.verdict(of: .atMost(1), budgetMs: 0) == .over, "the first bucket starts at 0")
+    }
+
+    @Test("a verdict that cannot be told is said so, with the budget in words, and its reads are not listed as breaking it")
+    func undetermined() throws {
+        let all = [series("GET /api/me", isRead: true, [(100, 20)])]
+        let reading = try #require(NodeSpeed(metrics(series: all, budget: 75)).budget)
+        #expect(reading.verdict == .undetermined && reading.overRoutes.isEmpty)
+        #expect(reading.verdictLine == "予算に対して判断できません: p95 は 100 ミリ秒 以下 で、予算の 75 ミリ秒 はその範囲の中にあります。")
+        #expect(reading.requestsLine == "20 件の読み取りを計測しました。")
     }
 
     @Test("only in-node reads count for the budget, put together, and the routes that break it are listed")

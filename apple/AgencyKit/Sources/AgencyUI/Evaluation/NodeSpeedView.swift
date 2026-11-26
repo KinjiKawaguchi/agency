@@ -11,7 +11,7 @@ struct NodeSpeedSection: View {
     var body: some View {
         if !store.isHidden {
             NodeSpeedContent(
-                days: store.days, answer: store.answer,
+                days: store.days, answer: store.answer, hasAnswered: store.hasAnswered,
                 onChooseDays: { days in Task { await store.choose(days: days) } },
                 onTryAgain: { Task { await store.refresh() } }
             )
@@ -24,12 +24,22 @@ struct NodeSpeedSection: View {
 struct NodeSpeedContent: View {
     let days: Int
     let answer: NodeSpeedAnswer?
+    /// Whether the node has answered any period: before that only a skeleton is drawn, no heading, lead or buttons.
+    let hasAnswered: Bool
     /// Whether each group is open to its routes from the start: for a rendering that shows them.
     var showsRoutes = false
     var onChooseDays: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
 
     var body: some View {
+        if !hasAnswered {
+            SkeletonCard().accessibilityLabel(Ja.NodeSpeed.loading).padding(.top, 20)
+        } else {
+            section
+        }
+    }
+
+    private var section: some View {
         VStack(alignment: .leading, spacing: Theme.spacing) {
             Text(Ja.NodeSpeed.title).font(.title3.weight(.semibold)).wrapping()
             Text(Ja.NodeSpeed.lead).font(.subheadline).foregroundStyle(.secondary).wrapping()
@@ -52,7 +62,12 @@ struct NodeSpeedContent: View {
             SkeletonCard().accessibilityLabel(Ja.NodeSpeed.loading)
         case .unavailable?:
             Text(Ja.NodeSpeed.unavailable).font(.subheadline).foregroundStyle(.secondary).wrapping()
-        case .couldNotAnswer(let reason)?, .failed(let reason)?:
+        case .couldNotAnswer?:
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Ja.NodeSpeed.couldNotAnswer).font(.subheadline).foregroundStyle(Theme.danger).wrapping()
+                if let onTryAgain { Button(Ja.Loading.tryAgain, action: onTryAgain).buttonStyle(.bordered).font(.subheadline) }
+            }
+        case .failed(let reason)?:
             FailedRegion(what: Ja.NodeSpeed.title, why: reason, onTryAgain: onTryAgain)
         case .ready(let speed)?:
             NodeSpeedReady(speed: speed, showsRoutes: showsRoutes)
@@ -109,7 +124,7 @@ private struct BudgetCard: View {
         switch budget.verdict {
         case .within?: "checkmark.circle.fill"
         case .over?: "exclamationmark.triangle.fill"
-        case nil: "questionmark.circle"
+        case .undetermined?, nil: "questionmark.circle"
         }
     }
 
@@ -117,7 +132,7 @@ private struct BudgetCard: View {
         switch budget.verdict {
         case .within?: .green
         case .over?: Theme.danger
-        case nil: .secondary
+        case .undetermined?, nil: .secondary
         }
     }
 }

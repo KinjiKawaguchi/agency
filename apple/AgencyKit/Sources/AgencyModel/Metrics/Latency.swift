@@ -82,13 +82,29 @@ public enum Latency {
         return groups.sorted { $0.row.count != $1.row.count ? $0.row.count > $1.row.count : $0.row.key < $1.row.key }
     }
 
-    public enum Verdict: Equatable, Sendable { case within, over }
+    /// What a p95 says of the budget. A p95 is known only as its bucket, so a budget that falls inside the bucket can be neither
+    /// kept nor broken by it: that is `undetermined`, not a guess.
+    public enum Verdict: Equatable, Sendable { case within, over, undetermined }
 
-    /// The budget is a test of the p95 against a bound: `p95 <= budget`. A p95 beyond the last bucket is over it.
+    /// The bucket a bound is the upper end of: from the bound before it (0 for the first, the last bound for "beyond") to the bound
+    /// itself (nothing for "beyond").
+    private static func range(of bound: Bound) -> (lower: Int, upper: Int?) {
+        switch bound {
+        case .beyond:
+            return (LatencySeries.bucketBoundsMs[LatencySeries.bucketBoundsMs.count - 1], nil)
+        case .atMost(let ms):
+            let index = LatencySeries.bucketBoundsMs.firstIndex(of: ms) ?? 0
+            return (index == 0 ? 0 : LatencySeries.bucketBoundsMs[index - 1], ms)
+        }
+    }
+
+    /// The budget is a test of the p95 against a bound: within when the bucket's upper bound is at most the budget, over when its lower
+    /// bound is at least the budget, and otherwise undetermined. Nothing when there is no p95.
     public static func verdict(of p95: Bound?, budgetMs: Int) -> Verdict? {
         guard let p95 else { return nil }
-        if case .atMost(let ms) = p95, ms <= budgetMs { return .within }
-        return .over
+        let bucket = range(of: p95)
+        if let upper = bucket.upper, upper <= budgetMs { return .within }
+        return bucket.lower >= budgetMs ? .over : .undetermined
     }
 
     private static func inNodeReads(_ series: [LatencySeries]) -> [LatencySeries] {
