@@ -45,6 +45,8 @@ public enum Ja {
         public static func peopleWorking(working: Int, total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
         public static func blocking(_ count: Int) -> String { "参加者 \(count) 人が待機" }
         public static func drafter(_ name: String) -> String { "起案: \(name)" }
+        /// A request addressed to a seat or an external party that the viewer answers for: whom it is for (the web's words).
+        public static func answerFor(_ label: String) -> String { "\(label) の代理で答える" }
         public static func unreadableTeam(_ team: String, reason: String) -> String { "\(team) を読み込めませんでした: \(reason)" }
         public static func loadFailed(_ reason: String) -> String { "ノードに接続できません: \(reason)" }
 
@@ -139,6 +141,8 @@ public enum Ja {
     }
 
     public enum Recent {
+        /// A decision that answered for a seat or an external party (the web's words).
+        public static func answeredFor(_ label: String) -> String { "\(label) の代理で答えました。" }
         public static func state(_ state: DecisionState) -> String {
             switch state {
             case .applied: "反映済み"

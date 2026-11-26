@@ -22,6 +22,7 @@ struct RecentDecisions: View {
                         Text(Ago.text(from: entry.decidedAt.date, now: now)).font(.caption).foregroundStyle(.secondary)
                     }
                     Text(entry.title ?? entry.target).font(.subheadline.weight(.semibold)).lineLimit(2).wrapping()
+                    if let label = entry.answeredFor { Text(Ja.Recent.answeredFor(label)).font(.footnote).foregroundStyle(.secondary).wrapping() }
                     if let line = summary(entry) { Text(line).font(.footnote).lineLimit(3).wrapping() }
                     if let detail = detail(entry.state, now: now) {
                         Text(detail).font(.caption).foregroundStyle(.secondary).wrapping()
