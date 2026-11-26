@@ -96,6 +96,12 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/evaluation?days=\(days)")
     }
 
+    /// The node's own response times over the last `days` days (1 to 30). Owner only: anyone else is told 403, and a node that does
+    /// not measure 404.
+    public func metrics(days: Int) async throws -> Metrics {
+        try await get("/api/metrics?days=\(days)")
+    }
+
     /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
     public func effort(org: String, days: Int) async throws -> Effort {
         try await get("/api/orgs/\(Self.segment(org))/effort?days=\(days)")

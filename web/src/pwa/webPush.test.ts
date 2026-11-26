@@ -58,7 +58,7 @@ describe('what a subscription is called', () => {
 
 describe('what the node takes of a subscription', () => {
   it('needs the endpoint and both keys', () => {
-    expect(subscriptionInput({ endpoint: 'https://push.example/x', keys: { p256dh: 'P', auth: 'A' } }, 'Chrome on macOS')).toEqual({ endpoint: 'https://push.example/x', p256dh: 'P', auth: 'A', label: 'Chrome on macOS' })
+    expect(subscriptionInput({ endpoint: 'https://push.example/x', keys: { p256dh: 'P', auth: 'A' } }, 'Chrome on macOS')).toEqual({ endpoint: 'https://push.example/x', p256dh: 'P', auth: 'A', label: 'Chrome on macOS', events: ['request', 'root'] })
     for (const incomplete of [{}, { endpoint: 'https://push.example/x' }, { endpoint: 'https://push.example/x', keys: { p256dh: 'P' } }, { keys: { p256dh: 'P', auth: 'A' } }]) {
       expect(subscriptionInput(incomplete as PushSubscriptionJSON, 'x')).toBeUndefined()
     }
