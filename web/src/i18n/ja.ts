@@ -328,6 +328,7 @@ export const ja: Messages = {
       },
     },
     confirmFailed: (reason) => `端末を追加できませんでした: ${reason}`,
+    pendingRoot: ['ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで ', ' を実行してください。'],
   },
   desk: {
     briefing: {
@@ -341,6 +342,12 @@ export const ja: Messages = {
       peopleWorking: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中です。`,
       allOnDesk: (count) => `机の上には全部で ${count} 件あります。`,
       seePeople: '参加者と仕事を見る',
+    },
+    rootChanges: {
+      label: 'ルート鍵の署名を待っている変更',
+      title: (count) => `ルート鍵の署名を待っている変更が ${count} 件あります。`,
+      item: (what, org, when) => `${what}（${org}、${when}に依頼）`,
+      command: ['まとめて署名するには、ルート鍵のノードで ', ' を実行してください。'],
     },
     recovery: {
       label: '組織のルート鍵の回復',
