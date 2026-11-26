@@ -93,7 +93,9 @@ describe('devices screen', () => {
     const keyStore = memoryKeyStore()
     renderApp({ path: '/devices', node, keyStore })
     await user.click(await screen.findByRole('button', { name: 'Add this device' }))
-    node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)
+    // The request is made once the click has been answered; the node can add the device only after it has it.
+    await screen.findByText(/Waiting for you to approve this device/)
+    expect(node.addDeviceFromTerminal((await browserKey(keyStore)).pairingCode)).toBe(true)
     await refreshQueries()
     await screen.findByText(/This device is added\./)
     expect(screen.getByText('No device is waiting to be added.')).toBeInTheDocument()
