@@ -164,7 +164,7 @@ Conventions:
 - Keys are camelCase. Numbers are non-negative integers.
 - `Timestamp`: RFC 3339 in UTC, ending in `Z` (`2026-11-24T12:00:00Z`; fractional seconds are allowed). `Date`: a calendar date, `YYYY-MM-DD`. They are different types.
 - An optional field is omitted when absent. It is never written as `null`.
-- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids.
+- Participants and addressees are named by the team runtime's own names (for example a session name, or `owner`), not by Agency org member ids. The team runtime does not know org member ids, except the one the node gives it in a decision (`by`), which is why a thread message can carry it (below).
 - Unknown fields are ignored, so a team runtime may add fields before the contract names them.
 
 ```
@@ -179,7 +179,7 @@ Request       { id, kind: "question" | "proposal" | "pendingDecision", title, co
                 issue?: string, blocks: string[], options: RequestOption[], thread?: ThreadMessage[],
                 answerWith: { kind: "answer" | "judge", target } }
 RequestOption { key, text, isRecommended: boolean, detail?: string }
-ThreadMessage { from, text, choice?: string, at: Timestamp }
+ThreadMessage { from, text, choice?: string, by?: Id, at: Timestamp }
 WorkItem      { ref /* repo#N */, title, status: "backlog" | "next" | "inProgress" | "release" | "done",
                 assignee?: string, blocked?: { reason: BlockedReason, since: Date }, epic?: string,
                 points?: number, eta?: { p50: Timestamp, p80: Timestamp, basis, isOverBudget: boolean } }
@@ -206,6 +206,7 @@ Requests:
   - A reader the team does not address (no `viewer`) has none.
 - `context`, `detail`, `status`, and messages are plain text. `document` is Markdown; clients render a safe subset and never render raw HTML from it.
 - `thread` holds earlier messages, oldest first, when a request was answered and then reopened.
+  - `from` is the runtime's name of the participant the message is from. `by` is optional and, when a message carries a decision, names the org member who decided: an `Id`, the `by` of the decision the node passed to the runtime (see "agency-runtime/1"), never a participant name. A message the team wrote has no `by`. A `by` that is not a valid `Id` makes the whole view fail to parse, like any other malformed field.
 
 ## agency-runtime/1
 
