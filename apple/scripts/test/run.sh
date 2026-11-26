@@ -103,6 +103,8 @@ new_repository() { # name -> prints the repository root
 }
 
 # run_script ROOT SCRIPT [ENV=value ...] -> output in $OUTPUT, status in $STATUS
+# Arguments for the script itself (not environment settings) go in SCRIPT_ARGS before the call; it is emptied after.
+SCRIPT_ARGS=()
 run_script() {
   local root="$1" script="$2" base
   base=$(dirname "$root")
@@ -110,8 +112,9 @@ run_script() {
   OUTPUT=$(env -i HOME="$WORK/home" PATH="$HERE/fakes:$PATH" \
     FAKE_DIR="$base/fake" FAKE_LOG="$base/fake/log" DERIVED_DATA_ROOT="$root/derived" \
     ASC_API_ROOT=https://asc.invalid \
-    "$@" "$root/apple/scripts/$script" 2>&1)
+    "$@" "$root/apple/scripts/$script" ${SCRIPT_ARGS[@]+"${SCRIPT_ARGS[@]}"} 2>&1)
   STATUS=$?
+  SCRIPT_ARGS=()
 }
 VALID_ENV=(ASC_KEY_ID=ABCDE12345 ASC_ISSUER_ID=11111111-2222-3333-4444-555555555555)
 requests() { grep -c '' "$1/../fake/log"; }
@@ -248,6 +251,7 @@ REAL_KEY="$(cd "$ROOT/../keys" && pwd -P)/AuthKey.p8"
 ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
 EXPORT=$(grep 'xcodebuild -exportArchive' "$ROOT/../fake/log")
 check "it archives the Release configuration for a device" contains "$ARCHIVE" "-configuration Release -destination generic/platform=iOS"
+check "it archives the iPhone's scheme" contains "$ARCHIVE" "-scheme Agency "
 check "it sets the build number" contains "$ARCHIVE" "CURRENT_PROJECT_VERSION=202611251830"
 check "the archive step has the key flags" contains "$ARCHIVE" "-allowProvisioningUpdates -authenticationKeyPath $REAL_KEY -authenticationKeyID ABCDE12345 -authenticationKeyIssuerID 11111111-2222-3333-4444-555555555555"
 check "the export step has the key flags" contains "$EXPORT" "-allowProvisioningUpdates -authenticationKeyPath $REAL_KEY -authenticationKeyID ABCDE12345"
@@ -258,12 +262,34 @@ check "it deletes this project's DerivedData" [ ! -e "$ROOT/derived/Agency-abcde
 check "it leaves another project's DerivedData" [ -d "$ROOT/derived/Other-abcdefghijklmnopqrstuvwxyzab" ]
 check "it leaves a folder that only looks similar" [ -d "$ROOT/derived/Agency-short" ]
 check "it prints no key setting" [ -z "$(printf '%s' "$OUTPUT" | grep -E 'AuthKey|ABCDE12345|11111111-2222')" ]
-check "it says the build is uploaded" contains "$OUTPUT" "build 202611251830 is uploaded"
+check "it says the build is uploaded" contains "$OUTPUT" "build 202611251830 (ios) is uploaded"
 
 ROOT=$(new_repository tf-default-number)
 run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
 check "without BUILD_NUMBER it uses the UTC time, to the minute" \
   grep -Eq 'CURRENT_PROJECT_VERSION=[0-9]{12} ' "$ROOT/../fake/log"
+
+echo "testflight.sh: for the Mac"
+ROOT=$(new_repository tf-mac)
+SCRIPT_ARGS=(--platform macos)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" BUILD_NUMBER=202611251830
+ARCHIVE=$(grep 'xcodebuild archive' "$ROOT/../fake/log")
+check "the Mac build succeeds" [ "$STATUS" -eq 0 ]
+check "it archives the Mac scheme for macOS" contains "$ARCHIVE" "-scheme AgencyMac -configuration Release -destination generic/platform=macOS"
+check "it sets the build number for the Mac too" contains "$ARCHIVE" "CURRENT_PROJECT_VERSION=202611251830"
+check "it exports with ExportOptions.plist for the Mac too" contains "$(grep 'xcodebuild -exportArchive' "$ROOT/../fake/log")" "-exportOptionsPlist ExportOptions.plist"
+check "it says the Mac build is uploaded" contains "$OUTPUT" "build 202611251830 (macos) is uploaded"
+ROOT=$(new_repository tf-platform)
+SCRIPT_ARGS=(--platform tvos)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an unknown platform is refused" contains "$OUTPUT" "--platform must be ios or macos"
+check "an unknown platform runs no tool" [ "$(requests "$ROOT")" -eq 0 ]
+SCRIPT_ARGS=(--platform)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a platform without a value is refused" contains "$OUTPUT" "--platform needs ios or macos"
+SCRIPT_ARGS=(--bogus)
+run_script "$ROOT" testflight.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an unknown argument is refused" contains "$OUTPUT" "unknown argument: --bogus"
 
 echo "testflight.sh: when a step fails"
 ROOT=$(new_repository tf-archive-fails)
