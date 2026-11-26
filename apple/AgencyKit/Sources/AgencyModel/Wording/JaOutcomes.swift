@@ -39,9 +39,17 @@ extension Ja {
         public static let correlation = "完了のあとで数値が動きました。この仕事が動かしたとは言えません。"
         public static let notShipped = "まだ完了していないため、比べるものがありません。"
         public static let shipDateUnknown = "完了した日が分からないため、比べられません。"
-        public static func noBaseline(day: String) -> String { "完了の前の 90 日に数値がありません。\(day) 以前の日付の数値を入れてください。" }
-        public static func tooEarly(readableFrom day: String) -> String { "まだ早すぎます。変化が出るまで 14 日かかります。\(day) から読めます。" }
-        public static let noFollowUp = "完了のあとの 90 日に数値がなく、比べられません。これから入れても読めません。"
+        public static func noBaseline(day: String, windowDays: Int) -> String {
+            "完了の前の \(windowDays) 日に数値がありません。\(day) 以前の日付の数値があれば読めます。"
+        }
+
+        public static func tooEarly(readableFrom day: String, settleDays: Int) -> String {
+            "まだ早すぎます。変化が出るまで \(settleDays) 日かかります。\(day) から読めます。"
+        }
+
+        public static func noFollowUp(windowDays: Int) -> String {
+            "完了のあとの \(windowDays) 日に数値がなく、比べられません。あとから数値が入っても読めません。"
+        }
         public static func tooFew(points: Int, needs: Int) -> String { "完了の前後の数値が足りません: \(points) / \(needs)" }
         /// A state a newer node has: nothing is claimed of it.
         public static let unreadable = "この読み取りは、このアプリではまだ読めません。"

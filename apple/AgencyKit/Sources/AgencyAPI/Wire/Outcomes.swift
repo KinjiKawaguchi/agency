@@ -127,6 +127,11 @@ public struct Readings: Decodable, Equatable, Sendable {
 }
 
 public struct AimReading: Decodable, Equatable, Sendable {
+    /// The days after the ship day before a number counts as after it, and how far from it a number is read against it:
+    /// the node's constants (`SETTLE_DAYS` and `WINDOW_DAYS` in `agency-proto`), which a test keeps equal to these.
+    public static let settleDays = 14
+    public static let windowDays = 90
+
     public enum State: Equatable, Sendable {
         case notShipped
         case shipDateUnknown

@@ -69,6 +69,31 @@ struct KpiCardTests {
         #expect(unknown.direction == .rose && unknown.tone == .neutral && unknown.text == "上がった +2（+20%）", "no tag, so no colour")
     }
 
+    @Test("the latest number is the one of the latest day, whatever the order the points came in")
+    func latestByDay() throws {
+        let series = try OutcomeSamples.series(unit: "count", before: 10, points: [("2026-11-24", 30), ("2026-11-10", 20), ("2026-11-17", 25)])
+        let card = KpiCard(series: series)
+        #expect(card.figure == .latest(text: "30", day: "2026年11月24日"))
+        #expect(card.points.map(\.day) == ["2026-11-10", "2026-11-17", "2026-11-24"], "oldest first, for the trend")
+        #expect(card.movement?.text == "上がった +20（+200%）良い方")
+    }
+
+    @Test("a change that is written as nothing is not a movement: unchanged, and no colour")
+    func writtenAsNothing() throws {
+        func movement(unit: String, currency: String? = nil, before: Double, latest: Double) throws -> Movement {
+            let series = try OutcomeSamples.series(unit: unit, currency: currency, before: before, points: [("2026-11-20", latest)])
+            return try #require(KpiCard(series: series).movement)
+        }
+        let percent = try movement(unit: "percent", before: 40, latest: 40.001)
+        #expect(percent.direction == .unchanged && percent.tone == .neutral && percent.text == "変わらず")
+        let yen = try movement(unit: "money", currency: "JPY", before: 100, latest: 100.4)
+        #expect(yen.direction == .unchanged && yen.text == "変わらず", "a yen has no decimals, so +0.4 is written as +0")
+        let seconds = try movement(unit: "seconds", before: 3600, latest: 3610)
+        #expect(seconds.direction == .unchanged, "ten seconds is written as 0分")
+        let real = try movement(unit: "percent", before: 40, latest: 40.5)
+        #expect(real.direction == .rose && real.text.hasPrefix("上がった +0.5ポイント"))
+    }
+
     @Test("a latest number of 0 is a number: it is drawn as 0, and is not the gap")
     func zeroIsANumber() throws {
         let series = try OutcomeSamples.series(unit: "percent", points: [("2026-11-20", 0)])

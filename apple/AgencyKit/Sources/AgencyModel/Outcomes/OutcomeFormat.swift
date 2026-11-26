@@ -66,6 +66,11 @@ public enum OutcomeFormat {
         return referenceYear == year ? "\(month)月\(day)日" : "\(year)年\(month)月\(day)日"
     }
 
+    /// Whether a written number is zero: it has no digit but 0 (so `+0`, `0%`, `0分` and `-0.00` are, and `+0.5` is not).
+    static func isNothing(_ text: String) -> Bool {
+        !text.contains { $0.isASCII && $0.isNumber && $0 != "0" }
+    }
+
     /// A change as a share of where it began, with its sign (`+10%`); none when it began at 0.
     public static func changeRatio(from: Double, to: Double) -> String? {
         guard from != 0 else { return nil }

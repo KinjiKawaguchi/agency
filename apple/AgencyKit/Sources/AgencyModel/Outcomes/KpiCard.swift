@@ -20,7 +20,8 @@ public struct Movement: Equatable, Sendable {
     /// The movement from `from` to `to`. `goodWhen` says which way is better; an unknown one colours nothing.
     public init(from: Double, to: Double, unit: Kpi.Unit, goodWhen: Kpi.GoodWhen) {
         let delta = to - from
-        direction = delta > 0 ? .rose : delta < 0 ? .fell : .unchanged
+        // The direction is the one the written change says: a change that is written as nothing (+0) is not a movement.
+        direction = OutcomeFormat.isNothing(OutcomeFormat.change(delta, unit: unit)) ? .unchanged : delta > 0 ? .rose : .fell
         tone = switch (direction, goodWhen) {
         case (.unchanged, _): .neutral
         case (.rose, .higher), (.fell, .lower): .better
@@ -75,8 +76,10 @@ public struct KpiCard: Equatable, Identifiable, Sendable {
         id = kpi.id
         label = kpi.label
         unit = kpi.unit
-        points = series.points.map { Point(day: $0.date, value: $0.value) }
-        if let latest = series.points.last {
+        // The node sends them oldest first, but the card does not rely on it: the latest is the one of the latest day.
+        let ordered = series.points.sorted { $0.date < $1.date }
+        points = ordered.map { Point(day: $0.date, value: $0.value) }
+        if let latest = ordered.last {
             figure = .latest(text: OutcomeFormat.value(latest.value, unit: kpi.unit), day: OutcomeFormat.day(latest.date, relativeTo: until))
             movement = series.before.map { Movement(from: $0.value, to: latest.value, unit: kpi.unit, goodWhen: kpi.goodWhen) }
         } else if let before = series.before {
