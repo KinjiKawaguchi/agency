@@ -1,19 +1,4 @@
-// A recovery of an org that was started and waits, as the node's `GET /api/me` gives it (docs/protocol.md, "Client API"; the node
-// side is agency#360). Until it is generated into `bindings/`, the shape is written down here and nowhere else: taking the
-// generated type in is the replacement of this file by its import, and `recoveriesOf` below.
-import type { Me, OrgRef } from '../api/clientApi'
-
-/** What a started recovery will do, and when this node takes its finish. */
-export interface StartedRecovery {
-  /** When it takes effect on this node; absent when the node kept no record of when it took the start. */
-  takesEffectAt?: string
-  /** The fingerprint of the root key it moves the org to; absent when it keeps the root key. */
-  newRootKey?: string
-  /** Whether it replaces the recovery key too; the node leaves it out, never `false`. */
-  replacesRecoveryKey?: boolean
-}
-
-export type OrgWithRecovery = OrgRef & { recovery?: StartedRecovery }
+import type { Me } from '../api/clientApi'
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined)
 
@@ -27,9 +12,9 @@ export interface Recovery {
   replacesRecoveryKey: boolean
 }
 
-/** The recoveries the node says wait, one for each org that has one, in the node's order. An org with none gives none. */
+/** The recoveries the node says wait, one for each org that has one, in the node's order. An org with none gives none; what is read is checked, not trusted. */
 export function recoveriesOf(me: Me): Recovery[] {
-  return (me.orgs as OrgWithRecovery[]).flatMap((org) => {
+  return me.orgs.flatMap((org) => {
     const started: unknown = org.recovery
     if (typeof started !== 'object' || started === null) return []
     const { takesEffectAt, newRootKey, replacesRecoveryKey } = started as Record<string, unknown>

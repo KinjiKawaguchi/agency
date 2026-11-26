@@ -1,6 +1,6 @@
 import type { Me } from '../api/clientApi'
 import { useI18n } from '../i18n'
-import { isId, recoveriesOf, type Recovery } from './provisional'
+import { isId, recoveriesOf, type Recovery } from './recoveries'
 import './recovery.css'
 
 /** What the owner takes from `agency root-cancel-recovery`: the org's id, since the command asks for the id and not the label. */
