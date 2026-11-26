@@ -37,6 +37,7 @@ struct HomeShell: View {
     @State private var session: NativeSession?
     @State private var flow: AccessSignInFlow?
     @State private var tab: Tab = .desk
+    @State private var organizationPage: OrganizationPage = .orgChart
     @State private var openItemID: String?
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsSettings = false
@@ -112,7 +113,7 @@ struct HomeShell: View {
             )
         case .organization:
             OrganizationScreen(
-                orgChart: session.orgChart, people: session.people, onOpenDesk: { self.tab = .desk },
+                orgChart: session.orgChart, people: session.people, page: $organizationPage, onOpenDesk: { self.tab = .desk },
                 onOpenOverview: { self.tab = .overview }, onSignInAgain: { Task { await session.signInAgain() } }
             )
         case .results:
@@ -162,6 +163,7 @@ struct HomeShell: View {
             tab = .desk
             openItemID = itemID
         case .people:
+            organizationPage = .people
             tab = .organization
         case .devices:
             tab = .devices
