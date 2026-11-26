@@ -18,7 +18,9 @@ input=$(cat)
 op=$(printf '%s' "$input" | sed -n 's/.*"op":"\([a-zA-Z]*\)".*/\1/p')
 printf '%s' "$input" > "$FAKE_DIR/last-$op.json"
 echo "$op" >> "$FAKE_DIR/calls"
-cat "$FAKE_DIR/$op.json"
+answer=$(cat "$FAKE_DIR/$op.json")
+sleep "$(cat "$FAKE_DIR/$op.delay" 2>/dev/null || echo 0)"
+printf '%s' "$answer"
 exit "$(cat "$FAKE_DIR/$op.exit" 2>/dev/null || echo 0)"
 "#;
 
@@ -41,6 +43,11 @@ impl Fake {
         fake.answer("view", &format!(r#"{{"result":{SAMPLE}}}"#), 0);
         fake.answer("decide", r#"{"result":{}}"#, 0);
         fake
+    }
+
+    /// Makes the runtime take `seconds` (a number, maybe fractional) to answer `op`.
+    fn delay(&self, op: &str, seconds: &str) {
+        fs::write(self.dir.path().join(format!("{op}.delay")), seconds).unwrap();
     }
 
     fn answer(&self, op: &str, response: &str, exit: u8) {
@@ -268,7 +275,8 @@ async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answer
     let runtimes = CommandRuntime::with_log(Box::new(move |line| {
         written.lock().unwrap().push(line.into())
     }))
-    .keeping(std::time::Duration::ZERO, std::time::Duration::ZERO);
+    .keeping(std::time::Duration::ZERO, std::time::Duration::ZERO)
+    .serving_stale_for(std::time::Duration::ZERO);
     let team = fake.team("app");
     let logged = || std::mem::take(&mut *lines.lock().unwrap());
 
@@ -306,18 +314,23 @@ async fn the_log_says_when_a_runtime_starts_failing_fails_differently_and_answer
         "a different failure is logged"
     );
 
+    // A decision starts a refresh of the view in the background, so the view answers here: the refresh
+    // is not what this part is about, and it is given time to finish before the next step.
+    fake.answer("view", &format!(r#"{{"result":{SAMPLE}}}"#), 0);
     fake.answer(
         "decide",
         r#"{"error":{"status":404,"message":"no such request"}}"#,
         1,
     );
     assert!(runtimes.decide(&team, decision("")).await.is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     assert_eq!(
         logged(),
         ["agency: team acme/app: the team runtime answers again"],
         "a refusal (4xx) is an answer"
     );
     assert!(runtimes.decide(&team, decision("")).await.is_err());
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     assert_eq!(logged(), Vec::<String>::new(), "and is never logged itself");
 
     fake.answer("view", "not json", 1);
@@ -490,7 +503,9 @@ async fn a_run_cut_at_the_runtimes_limit_answers_only_what_it_surely_holds() {
 #[tokio::test]
 async fn a_shared_run_is_not_reused_once_its_time_is_up() {
     let fake = activity_fake(false);
-    let runtime = CommandRuntime::default().keeping_activity(std::time::Duration::ZERO);
+    let runtime = CommandRuntime::default()
+        .keeping_activity(std::time::Duration::ZERO)
+        .serving_stale_for(std::time::Duration::ZERO);
     let team = fake.team("app");
     for _ in 0..2 {
         runtime
@@ -499,4 +514,134 @@ async fn a_shared_run_is_not_reused_once_its_time_is_up() {
             .unwrap();
     }
     assert_eq!(fake.read("calls").matches("activity").count(), 2);
+}
+
+use std::time::{Duration, Instant};
+
+/// A view with a different label, to tell a refreshed answer from the one it replaced.
+fn view_labeled(label: &str) -> String {
+    let mut view: serde_json::Value = serde_json::from_str(SAMPLE).unwrap();
+    view["label"] = serde_json::json!(label);
+    format!(r#"{{"result":{view}}}"#)
+}
+
+/// Polls until `done`, for at most `seconds`.
+async fn until(seconds: u64, mut done: impl FnMut() -> bool) {
+    let end = Instant::now() + Duration::from_secs(seconds);
+    while !done() {
+        assert!(Instant::now() < end, "it did not happen in time");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_read_answers_from_memory_while_a_slow_runtime_refreshes() {
+    let fake = Fake::new();
+    fake.answer("view", &view_labeled("before"), 0);
+    let runtime =
+        CommandRuntime::default().keeping(Duration::from_millis(50), Duration::from_secs(60));
+    let team = fake.team("app");
+    assert_eq!(runtime.view(&team).await.unwrap().label, "before");
+
+    // The answer in memory is now old, and the runtime has become slow and changed its answer.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.answer("view", &view_labeled("after"), 0);
+    fake.delay("view", "1.5");
+    let started = Instant::now();
+    let old = runtime.view(&team).await.unwrap();
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "a read waits for no runtime process (the owner's bound is p95 100 ms): {:?}",
+        started.elapsed()
+    );
+    assert_eq!(
+        old.label, "before",
+        "the answer in memory, while it refreshes"
+    );
+
+    until(5, || fake.read("calls").matches("view").count() == 2).await;
+    tokio::time::sleep(Duration::from_millis(1800)).await;
+    let started = Instant::now();
+    assert_eq!(runtime.view(&team).await.unwrap().label, "after");
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "the refreshed answer is in memory"
+    );
+    let reads = runtime.view_reads();
+    assert_eq!(
+        (reads.cold, reads.stale >= 1),
+        (1, true),
+        "only the first read waited: {reads:?}"
+    );
+}
+
+#[tokio::test]
+async fn after_a_decision_readers_share_the_refresh_that_starts_at_once() {
+    let fake = Fake::new();
+    let runtime = std::sync::Arc::new(CommandRuntime::default());
+    let team = fake.team("app");
+    runtime.view(&team).await.unwrap();
+    runtime.decide(&team, decision("")).await.unwrap();
+    let readers = (0..10).map(|_| {
+        let (runtime, team) = (runtime.clone(), team.clone());
+        tokio::spawn(async move { runtime.view(&team).await.map(|view| view.requests.len()) })
+    });
+    for reader in readers {
+        assert_eq!(reader.await.unwrap().unwrap(), 3);
+    }
+    assert_eq!(
+        fake.read("calls"),
+        "describe\nview\ndecide\nview\n",
+        "ten readers after a decision find the one refresh that began with it"
+    );
+}
+
+#[tokio::test]
+async fn a_failing_refresh_keeps_the_last_good_view_until_it_is_too_old() {
+    let fake = Fake::new();
+    let runtime = CommandRuntime::default()
+        .keeping(Duration::from_millis(50), Duration::from_secs(60))
+        .serving_stale_for(Duration::from_millis(600));
+    let team = fake.team("app");
+    runtime.view(&team).await.unwrap();
+    fake.answer("view", "not json", 1);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        runtime.view(&team).await.is_ok(),
+        "old, so served, and refreshed in the background"
+    );
+    until(5, || fake.read("calls").matches("view").count() == 2).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        runtime.view(&team).await.is_ok(),
+        "the refresh failed; the last good answer is kept"
+    );
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    assert!(
+        runtime.view(&team).await.is_err(),
+        "too old to serve: the read runs the command and fails"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_began_before_a_decision_is_not_kept() {
+    let fake = Fake::new();
+    fake.answer("view", &view_labeled("pre"), 0);
+    let runtime =
+        CommandRuntime::default().keeping(Duration::from_millis(50), Duration::from_secs(60));
+    let team = fake.team("app");
+    assert_eq!(runtime.view(&team).await.unwrap().label, "pre");
+
+    // A refresh begins and is slow; its answer, taken when it began, is the one before the decision.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.delay("view", "1");
+    assert_eq!(runtime.view(&team).await.unwrap().label, "pre");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    fake.answer("view", &view_labeled("post"), 0);
+    runtime.decide(&team, decision("")).await.unwrap();
+
+    // The refresh that began before the decision ends (about 1 s after it began) and must not be kept: the
+    // read after it waits for the run that began with the decision, and finds its answer.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    assert_eq!(runtime.view(&team).await.unwrap().label, "post");
 }
