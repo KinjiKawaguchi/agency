@@ -256,7 +256,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
-- 新しい依頼を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。
+- 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 
 設定の形式が正しくないと、起動時にログに出ます（[トラブルシューティング](#トラブルシューティング)を参照）。
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。

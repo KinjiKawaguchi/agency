@@ -241,7 +241,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 
 - `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
-- To notify your iPhone of new requests, add a `push` setting with the app's APNs key; see the README.
+- To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
