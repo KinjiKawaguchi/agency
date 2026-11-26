@@ -85,7 +85,7 @@ export const ja: Messages = {
     title: '参加者と仕事',
     team: (label) => `${label} チーム`,
     summary: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中です。`,
-    waitingOnYou: (count) => `${count} 人の参加者があなたの返事を待っています。`,
+    waitingOnYou: (count) => `参加者 ${count} 人があなたの返事を待っています。`,
     roles: { lead: 'リード' },
     stateTags: { 'needs-you': 'あなたの番', working: '作業中', waiting: '待ち', idle: '待機中', away: '離席' },
     since: (when) => `${when} から`,
@@ -268,7 +268,7 @@ export const ja: Messages = {
   desk: {
     briefing: {
       greeting: (name, when) => `${name} さん宛て · ${when}`,
-      someoneWaiting: (count) => `${count} 人の参加者があなたの返事を待っています。`,
+      someoneWaiting: (count) => `参加者 ${count} 人があなたの返事を待っています。`,
       itemsOnDesk: (count) => `机の上に ${count} 件あります。`,
       nothingToDecide: '今、決めることはありません。',
       nextProposal: ['まず ', ' を決裁してください。'],
