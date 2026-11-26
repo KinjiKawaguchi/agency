@@ -50,6 +50,12 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     ...(query?.get('claim') === null || query?.get('claim') === undefined ? {} : { claim: { code: query.get('claim') ?? '', ...(isClaimFailure(query.get('claimFails')) ? { failWith: query.get('claimFails') as ClaimFailure } : {}) } }),
     // A recovery of the org that was started and waits, as the node says it on `GET /api/me`.
     ...(query?.get('recovery') === '1' ? { recoveries: { acme: { takesEffectAt: new Date(Date.now() + 71 * 3_600_000).toISOString(), newRootKey: 'b7c8d9e0f1a2', replacesRecoveryKey: true } } } : {}),
+    // The root key's node holds a device change for its owner's `agency root-sign`.
+    ...(query?.get('pendingRoot') === '1' ? { pendingRoot: true } : {}),
+    // Changes that wait for the root key's signature, as the node tells its owner.
+    ...(query?.get('rootChanges') === '1'
+      ? { rootChanges: [{ id: 'c1', org: 'acme', what: 'add member carol (Carol)', kind: 'addMember', member: 'carol', label: 'Carol', receivedAt: new Date(Date.now() - 2 * 3_600_000).toISOString() }, { id: 'c2', org: 'acme', what: 'add device iPhone for bob', kind: 'addDevice', member: 'bob', label: 'iPhone', receivedAt: new Date(Date.now() - 5 * 60_000).toISOString() }] }
+      : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
     // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
