@@ -2,7 +2,8 @@
 # Stand-in for curl in the tests: records the request and answers from files in $FAKE_DIR.
 #   $FAKE_LOG          one line per request: METHOD URL BODY
 #   $FAKE_LOG.auth     the Authorization header curl was given on its standard input
-#   $FAKE_DIR/bundle_ids.json, capabilities.json   what the two GET requests answer; a bundle ID with its own
+#   $FAKE_DIR/bundle_ids.json, bundle_ids_mac.json (the macOS platform's), apps.json, app_store_versions.json,
+#                      capabilities.json   what the GET requests answer; a bundle ID with its own
 #                      capabilities-<resource id>.json answers from that file instead
 #   $FAKE_DIR/status   when present, the HTTP status to answer instead of 200/201
 method=GET output="" body="" url="" read_config=""
@@ -24,7 +25,11 @@ printf '%s %s %s\n' "$method" "$url" "$body" >> "$FAKE_LOG"
 
 status=200
 case "$method $url" in
+  "GET "*"/v1/bundleIds?"*"MAC_OS"*) response=$(cat "$FAKE_DIR/bundle_ids_mac.json") ;;
   "GET "*"/v1/bundleIds?"*) response=$(cat "$FAKE_DIR/bundle_ids.json") ;;
+  "GET "*"/v1/apps?"*) response=$(cat "$FAKE_DIR/apps.json") ;;
+  "GET "*"/appStoreVersions"*) response=$(cat "$FAKE_DIR/app_store_versions.json") ;;
+  "POST "*"/v1/appStoreVersions") status=201 response='{"data":{"id":"NEW-VERSION"}}' ;;
   # The real API refuses `limit` on this relationship.
   "GET "*"/bundleIdCapabilities"*limit*)
     status=400 response='{"errors":[{"title":"A given parameter is not allowed for this request","detail":"The parameter '"'"'limit'"'"' can not be used with this request : This relationship does not support this parameter."}]}' ;;

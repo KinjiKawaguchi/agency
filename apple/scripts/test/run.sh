@@ -98,6 +98,9 @@ new_repository() { # name -> prints the repository root
   cp "$KEY" "$base/keys/AuthKey.p8"
   printf '%s' '{"data":[]}' > "$base/fake/bundle_ids.json"
   printf '%s' '{"data":[]}' > "$base/fake/capabilities.json"
+  printf '%s' '{"data":[]}' > "$base/fake/bundle_ids_mac.json"
+  printf '%s' '{"data":[]}' > "$base/fake/apps.json"
+  printf '%s' '{"data":[]}' > "$base/fake/app_store_versions.json"
   : > "$base/fake/log"
   printf '%s' "$root"
 }
@@ -247,6 +250,56 @@ check "it reports Apple's reason" contains "$OUTPUT" "This key may not do that."
 check "it stopped after the first request" [ "$(requests "$ROOT")" -eq 1 ]
 
 # ---------------------------------------------------------------- testflight.sh
+
+echo "register-bundle-id.sh: the Mac"
+APP_RECORD='{"data":[{"id":"APP1","attributes":{"bundleId":"com.acme.agency"}},{"id":"APP2","attributes":{"bundleId":"com.acme.agency.other"}}]}'
+ROOT=$(new_repository reg-mac-none)
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "no app record: it succeeds" [ "$STATUS" -eq 0 ]
+check "no app record: it says so" contains "$OUTPUT" "There is no app record for com.acme.agency"
+check "no app record: it asks for macOS bundle IDs" contains "$(cat "$ROOT/../fake/log")" "filter%5Bplatform%5D=MAC_OS"
+check "no macOS bundle ID: it says only the iOS one exists and makes none" contains "$OUTPUT" "lists no macOS bundle ID com.acme.agency, only the iOS one"
+check "it never makes a second bundle ID for the Mac" [ "$(grep -c '"platform":"MAC_OS"' "$ROOT/../fake/log")" -eq 0 ]
+
+ROOT=$(new_repository reg-mac-listed)
+printf '%s' '{"data":[{"id":"M1","attributes":{"identifier":"com.acme.agency"}}]}' > "$ROOT/../fake/bundle_ids_mac.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a macOS bundle ID listed: it says so" contains "$OUTPUT" "lists com.acme.agency as a macOS bundle ID too"
+ROOT=$(new_repository reg-mac-other-id)
+printf '%s' '{"data":[{"id":"M1","attributes":{"identifier":"com.acme.agency.longer"}}]}' > "$ROOT/../fake/bundle_ids_mac.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "a longer macOS identifier is not ours" contains "$OUTPUT" "lists no macOS bundle ID com.acme.agency, only the iOS one"
+
+ROOT=$(new_repository reg-mac-no-platform)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "an app without macOS: it asks about that app's macOS versions" contains "$(cat "$ROOT/../fake/log")" "/v1/apps/APP1/appStoreVersions?filter%5Bplatform%5D=MAC_OS"
+check "an app without macOS: it says it is one-way and how to add it" contains "$OUTPUT" "Adding it cannot be undone"
+check "an app without macOS: it names the flag" contains "$OUTPUT" "ADD_MACOS_PLATFORM=1"
+check "an app without macOS: it adds nothing by itself" [ -z "$(grep -F '/v1/appStoreVersions' "$ROOT/../fake/log" | grep '^POST')" ]
+
+ROOT=$(new_repository reg-mac-second)
+printf '%s' '{"data":[{"id":"APP2","attributes":{"bundleId":"com.acme.agency.other"}},{"id":"APP1","attributes":{"bundleId":"com.acme.agency"}}]}' > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}"
+check "the app record is the one with exactly our bundle ID, not the first the filter returns" contains "$(cat "$ROOT/../fake/log")" "/v1/apps/APP1/appStoreVersions"
+
+ROOT=$(new_repository reg-mac-add)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+POST_LINE=$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")
+check "with the flag it adds the macOS platform" contains "$POST_LINE" '"platform":"MAC_OS"'
+check "with the flag it names the app" contains "$POST_LINE" '"id":"APP1"'
+check "with the flag the version is 1.0" contains "$POST_LINE" '"versionString":"1.0"'
+check "with the flag it says it added it" contains "$OUTPUT" "Added the macOS platform"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1 ASC_MACOS_VERSION=2.1
+check "a version can be named" contains "$(tail -n 3 "$ROOT/../fake/log" | grep '^POST .*/v1/appStoreVersions')" '"versionString":"2.1"'
+
+ROOT=$(new_repository reg-mac-have)
+printf '%s' "$APP_RECORD" > "$ROOT/../fake/apps.json"
+printf '%s' '{"data":[{"id":"V1","attributes":{"platform":"MAC_OS"}}]}' > "$ROOT/../fake/app_store_versions.json"
+run_script "$ROOT" register-bundle-id.sh ASC_KEY_PATH="$ROOT/../keys/AuthKey.p8" "${VALID_ENV[@]}" ADD_MACOS_PLATFORM=1
+check "an app that has macOS says so" contains "$OUTPUT" "already has a macOS platform"
+check "an app that has macOS gets nothing added even with the flag" [ -z "$(grep '^POST .*/v1/appStoreVersions' "$ROOT/../fake/log")" ]
 
 echo "testflight.sh: checks before it builds"
 ROOT=$(new_repository tf-checks)
