@@ -32,7 +32,8 @@ pub trait UsageSource: Send + Sync {
     async fn read(&self) -> Result<Value, Failure>;
 }
 
-type Log = Arc<dyn Fn(String) + Send + Sync>;
+/// Where the collector writes a line when a source fails or recovers.
+pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 type Connect = Box<dyn Fn(&UsageCollector) -> Result<Arc<dyn UsageSource>, String> + Send + Sync>;
 
 struct Tracked {
@@ -174,10 +175,9 @@ fn connect(clock: Arc<dyn Clock>, home: PathBuf, user: String) -> Connect {
 }
 
 /// Reads the node's sources for as long as the node runs.
-pub async fn run(node: Arc<Node>, data_dir: PathBuf, clock: Arc<dyn Clock>) {
+pub async fn run(node: Arc<Node>, data_dir: PathBuf, clock: Arc<dyn Clock>, log: Log) {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     let user = std::env::var("USER").unwrap_or_default();
-    let log: Log = Arc::new(|line| eprintln!("agency: {line}"));
     let mut collector = Collector::new(data_dir, connect(clock, home, user), log);
     loop {
         collector
