@@ -22,6 +22,7 @@ fn merged(title: &str, merged_at: &str) -> MergedPullRequest {
         first_commit_at: None,
         has_issue: false,
         issue_started_at: None,
+        closes_incident: false,
     }
 }
 
@@ -212,4 +213,16 @@ fn the_answer_passes_the_check_every_node_makes() {
         unavailable: vec![],
     };
     assert_eq!(answer.check(&Id::parse("acme").unwrap(), 3), Ok(()));
+}
+
+#[test]
+fn a_fix_of_an_issue_labeled_incident_is_incident_and_only_a_fix_is() {
+    let mut incident = merged("fix(web): the crash", "2026-11-24T01:00:00Z");
+    incident.closes_incident = true;
+    let mut feature = merged("feat(web): a screen", "2026-11-24T02:00:00Z");
+    feature.closes_incident = true;
+    let team = run(&[incident, feature], &[("2026-11-24", 4.0)]);
+    assert_eq!(team.by_day[0].cost_usd.incident, 2.0);
+    assert_eq!(team.by_day[0].cost_usd.new_feature, 2.0);
+    assert_eq!(team.by_day[0].cost_usd.maintenance, 0.0);
 }
