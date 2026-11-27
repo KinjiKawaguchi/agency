@@ -263,8 +263,8 @@ impl<P: Peers> Peers for TimedPeers<P> {
 
 // ── Team runtimes ──
 
-/// `TeamRuntime`, timed: the series `runtime <op>`. A runtime that does not offer an op answers 404 without
-/// running anything, and that is no call to time.
+/// `TeamRuntime`, timed: the series `runtime <op>`, for every op but `decide`, which the command runtime times
+/// itself. A runtime that does not offer an op answers 404 without running anything, and that is no call to time.
 pub struct TimedRuntime {
     inner: Arc<dyn TeamRuntime>,
     recorder: Recorder,
@@ -313,8 +313,9 @@ impl TeamRuntime for TimedRuntime {
         team: &HostedTeam,
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError> {
-        self.call("runtime decide", self.inner.decide(team, decision))
-            .await
+        // Not timed here: the command runtime times each delivery of a decision itself (`recording`), as the series
+        // `runtime decide`, and a second measurement would count every delivery twice.
+        self.inner.decide(team, decision).await
     }
 
     async fn token_usage(&self, team: &HostedTeam, days: u32) -> Result<TokenUsage, RuntimeError> {

@@ -1,6 +1,7 @@
 //! Team runtimes run as commands over agency-runtime/1 (docs/protocol.md). The node never reads or writes
 //! a runtime's files; it runs the team's configured command once per call, without a shell.
 use crate::activity_window::Window;
+use crate::metrics::{Recorder, SeriesKey};
 use crate::swr::{ReadCounts, Run, Swr};
 use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
@@ -8,6 +9,7 @@ use agency_core::ports::TeamRuntime;
 use agency_core::views::check_view;
 use agency_proto::activity::{Activity, MAX_LIMIT};
 use agency_proto::clock;
+use agency_proto::metrics::SeriesKind;
 use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::runtime::{
     Decided, Describe, RuntimeError, ACTIVITY_OP, PARTICIPANT_METRICS_OP, TOKEN_USAGE_OP,
@@ -24,6 +26,7 @@ use std::time::{Duration, Instant};
 
 /// How long one run of a team's runtime command is waited for.
 pub const TIMEOUT: Duration = Duration::from_secs(20);
+const TIMEOUT_MESSAGE: &str = "the team runtime did not answer within 20 seconds";
 
 fn unavailable(message: impl Into<String>) -> RuntimeError {
     RuntimeError {
@@ -62,7 +65,7 @@ async fn call<T: DeserializeOwned>(
     }
     let output = tokio::time::timeout(TIMEOUT, child.wait_with_output())
         .await
-        .map_err(|_| unavailable("the team runtime did not answer within 20 seconds"))?
+        .map_err(|_| unavailable(TIMEOUT_MESSAGE))?
         .map_err(|error| unavailable(format!("the team runtime failed: {error}")))?;
     match serde_json::from_slice::<RuntimeResponse<T>>(&output.stdout) {
         Ok(RuntimeResponse::Result(result)) => Ok(result),
@@ -169,6 +172,8 @@ struct Inner {
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
     health: Mutex<HashMap<(Id, Id), Option<String>>>,
     log: Log,
+    /// Where the calls to the team's command are timed (the `call` series `runtime decide`).
+    recorder: Option<Recorder>,
 }
 
 /// Runs each hosted team's command. Remembers the description of each team that described
@@ -199,6 +204,7 @@ impl CommandRuntime {
             activity: Swr::new(ACTIVITY_KEPT, MAX_STALE),
             health: Mutex::default(),
             log,
+            recorder: None,
         };
         Self {
             inner: Arc::new(inner),
@@ -208,6 +214,14 @@ impl CommandRuntime {
     /// The state, for a setting made before the runtime is used (nothing else holds it yet).
     fn configuring(&mut self) -> &mut Inner {
         Arc::get_mut(&mut self.inner).expect("a runtime is set up before it is used")
+    }
+
+    /// Times each delivery of a decision to the team's command into `recorder`, as the `call` series
+    /// `runtime decide`: `ok` when the runtime answered (a 4xx refusal is an answer), `timeout` when it
+    /// did not answer in time, `error` otherwise.
+    pub fn recording(mut self, recorder: Recorder) -> Self {
+        self.configuring().recorder = Some(recorder);
+        self
     }
 
     /// How long a view is served as it is, and how long usage is reused (`VIEW_KEPT` and `USAGE_KEPT`
@@ -246,6 +260,22 @@ impl CommandRuntime {
 }
 
 impl Inner {
+    fn record_call<T>(&self, name: &str, started: Instant, result: &Result<T, RuntimeError>) {
+        let Some(recorder) = &self.recorder else {
+            return;
+        };
+        let status = match result {
+            Ok(_) => "ok",
+            Err(error) if error.message == TIMEOUT_MESSAGE => "timeout",
+            Err(error) if error.status >= 500 => "error",
+            Err(_) => "ok",
+        };
+        recorder.record(
+            SeriesKey::new(SeriesKind::Call, name, status),
+            started.elapsed(),
+        );
+    }
+
     /// One run of the team's view, checked.
     async fn run_view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError> {
         let result = async {
@@ -390,6 +420,7 @@ impl TeamRuntime for CommandRuntime {
         team: &HostedTeam,
         decision: RuntimeDecision,
     ) -> Result<(), RuntimeError> {
+        let started = Instant::now();
         let result = async {
             self.inner.ensure_described(team).await?;
             let _: Decided = call(
@@ -404,6 +435,7 @@ impl TeamRuntime for CommandRuntime {
             .views
             .invalidate_and_refresh(team, view_run(&self.inner, team));
         self.inner.observe(team, &result);
+        self.inner.record_call("runtime decide", started, &result);
         result
     }
 

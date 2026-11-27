@@ -304,13 +304,11 @@ async fn a_call_to_a_runtime_is_ok_error_or_timeout_and_an_op_it_does_not_offer_
     assert_eq!(
         series(&recorder),
         [
-            row("runtime decide", "error", None, 1),
-            row("runtime decide", "ok", None, 1),
-            row("runtime decide", "timeout", None, 1),
             row("runtime usage", "error", None, 2),
             row("runtime usage", "timeout", None, 1),
         ],
-        "the fourth run answers 404 to both: an op the runtime does not offer is no call, so it is recorded for neither"
+        "the fourth run answers 404: an op the runtime does not offer is no call, so it is not recorded; and a decision \
+         is not timed here at all, since the command runtime times each delivery of one itself"
     );
 }
 

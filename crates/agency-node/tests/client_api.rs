@@ -62,8 +62,10 @@ async fn reads_and_decides_on_a_local_team() {
     .await;
     assert_eq!(
         (status, result),
-        (StatusCode::OK, json!({ "outcome": "applied" }))
+        (StatusCode::ACCEPTED, json!({ "outcome": "queued" }))
     );
+    assert!(memory.lock().unwrap().applied.is_empty(), "answered first");
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     assert_eq!(memory.lock().unwrap().applied[0].by, id("alice"));
 
     let (status, _) = body(
@@ -74,7 +76,17 @@ async fn reads_and_decides_on_a_local_team() {
             .unwrap(),
     )
     .await;
-    assert_eq!(status, 403, "no request r-404 waits for alice");
+    assert_eq!(status, 202, "kept; the refusal comes with the delivery");
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
+    let (_, log) = body(get(&alice, "/api/decisions").send().await.unwrap()).await;
+    assert_eq!(
+        (
+            log["entries"][0]["target"].as_str(),
+            log["entries"][0]["state"]["kind"].as_str()
+        ),
+        (Some("r-404"), Some("refused")),
+        "no request r-404 waits for alice"
+    );
     let (status, org) = body(get(&alice, "/api/orgs/acme").send().await.unwrap()).await;
     assert_eq!(
         (status, org["teams"][0]["node"].as_str()),
@@ -143,9 +155,12 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
         post(&bob, ENVELOPES, &decision(&bob, &key, target)).header("x-agency-token", TOKEN)
     };
     let (status, result) = body(decide("r-1").send().await.unwrap()).await;
+    assert_eq!(status, 202, "kept: {result}");
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
+    let (_, log) = body(get(&bob, "/api/decisions").send().await.unwrap()).await;
     assert_eq!(
-        status, 409,
-        "the owner's request is not the reviewer's to decide: {result}"
+        log["entries"][0]["state"]["kind"], "refused",
+        "the owner's request is not the reviewer's to decide: {log}"
     );
     {
         let mut state = memory.lock().unwrap();
@@ -155,8 +170,9 @@ async fn reads_a_replica_and_decides_on_a_remote_team() {
     let (status, result) = body(decide("r-2").send().await.unwrap()).await;
     assert_eq!(
         (status, result),
-        (StatusCode::OK, json!({ "outcome": "delivered" }))
+        (StatusCode::ACCEPTED, json!({ "outcome": "queued" }))
     );
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
     assert_eq!(
         memory.lock().unwrap().applied[0].by,
         id("bob"),

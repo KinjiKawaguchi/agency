@@ -97,8 +97,10 @@ pub fn open_invite(node: &Node, org: &Id, code: &str) -> Option<InviteRecord> {
 /// On the root key's node: checks the join request's signature, the invite, and duplicates, then signs
 /// the next version with the new person added and returns it.
 pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> Result<RootAnswer> {
-    let _guard = node.write_lock().lock().await;
     let request = &signed.body;
+    // Anyone can send a join request, and a request is signed by the key it adds, so a signature proves
+    // nothing yet: the checks that need no state, and the invite, come before the write lock, which only a
+    // request with an open invite waits for. The invite is read again under the lock.
     if &request.org != org
         || signed.signer != request.account
         || !signed.verify(Kind::Join, &request.public_key)
@@ -120,12 +122,15 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             request.account
         )));
     }
-    let record = open_invite(node, org, &request.code).ok_or_else(|| {
+    let no_invite = || {
         Error::new(
             ErrorKind::Forbidden,
             "no such invite, or it expired or was used",
         )
-    })?;
+    };
+    open_invite(node, org, &request.code).ok_or_else(no_invite)?;
+    let _guard = node.write_lock().lock().await;
+    let record = open_invite(node, org, &request.code).ok_or_else(no_invite)?;
     let current = load(node, org)?;
     if current
         .body
