@@ -24,6 +24,7 @@ pub mod raw_path;
 pub mod refusal_log;
 pub mod root_keys;
 pub mod runtime;
+pub mod runtime_releases;
 pub mod server;
 mod swr;
 pub use swr::ReadCounts;

@@ -321,7 +321,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 
 | op | input | result |
 |---|---|---|
-| `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text> }` |
+| `describe` | none | `{ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": <text>, "version"?: <text> }` |
 | `view` | none | TeamView |
 | `decide` | `"decision": { "kind": "answer" \| "judge", "target", "by": <org member id>, "byParticipant"?: <participant name>, "onBehalfOf"?: <seat or external party id>, "payload": { "text", "choice"? } }` | `{}` |
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
@@ -329,6 +329,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `participantMetrics` (optional) | `"days": <1 to 90>`, `"utcOffsetMinutes"?: <-720 to 840>` | `ParticipantMetrics` (see "Participant metrics") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
+- `version` is optional: the harness release that runs the team, as a short text (at most 64 characters, no control character; the runtime's own wording, for example `0.7.2`). A runtime without it is read as before, and a node takes no value beyond those limits (it reads it as none), so a long or odd value never stops a team from being served. The node notes what each hosted team's runtime said in `runtime-releases.json` of its data directory (the team, the release or none, and when it read `describe`: once per team and process, when it first calls the runtime after it starts), and `agency status` prints it beside each hosted team: `runtime release <version>, read <time>`, `runtime does not say its release, read <time>`, or `runtime release not read yet`. A remote team's runtime is not shown: its own node says it.
 - It runs at most one `view` and one `tokenUsage` per team at a time. Callers that arrive meanwhile share the answer, and the node reuses usage for 60 seconds (for the same range).
 - **A read waits for no runtime process once the node has an answer.** The node keeps each team's last view (and its activity window) in memory. A view younger than 5 seconds (activity: 10) is served as it is. An older one, up to 60 seconds old, is served at once and one refresh starts in the background. Only a read with nothing in memory, or nothing younger than 60 seconds (the first read of a team, or after the runtime has failed that long), waits for a run, and readers that must wait share the run already in flight. So a view or an activity read can be up to 60 seconds old; the runtime's own `generatedAt` says when it was made. A refresh that fails keeps the last good answer until it is that old, and then the failure is answered. The node counts the reads that were served young, served old, and had to wait, so cold reads can be told from warm ones.
 - A decision goes to the runtime directly. It drops what is kept for the team and starts a refresh of its view at once, so the read that follows finds a fresh answer or joins the run in flight.

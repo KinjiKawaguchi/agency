@@ -299,7 +299,8 @@ const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127
 If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
 --no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
 
-fn status(node: &Node) {
+fn status(node: &Node, data: &DataDir) {
+    let releases = agency_adapters::runtime_releases::read(data);
     let config = node.config();
     println!(
         "Account: {} ({}), key fingerprint {}",
@@ -394,11 +395,12 @@ fn status(node: &Node) {
     }
     for team in &config.teams {
         println!(
-            "Team on this node: {}/{} (owner {}) runs {}",
+            "Team on this node: {}/{} (owner {}) runs {}; {}",
             team.org,
             team.team,
             team.owner,
-            team.runtime.command.join(" ")
+            team.runtime.command.join(" "),
+            agency_adapters::runtime_releases::say(&releases, &team.org, &team.team)
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
@@ -794,7 +796,7 @@ async fn run(cli: Cli) -> Result<()> {
                 outcomes.len()
             );
         }
-        Command::Status => status(&node),
+        Command::Status => status(&node, &cli_data),
         Command::Serve => serve(opened).await?,
     }
     Ok(())

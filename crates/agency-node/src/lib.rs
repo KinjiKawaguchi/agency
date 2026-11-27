@@ -20,6 +20,7 @@ use agency_adapters::peers::HttpPeers;
 use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
 use agency_adapters::runtime::CommandRuntime;
+use agency_adapters::runtime_releases::ReleaseLog;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
@@ -165,13 +166,15 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         Some(notifier) => notifier,
         None => notifier(&config, &data_dir, clock.clone(), &logger),
     };
+    let release_log = ReleaseLog::new(&data, clock.clone());
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
             Arc::new(
                 CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
-                    .recording(recorder.clone()),
+                    .recording(recorder.clone())
+                    .reporting_releases(release_log),
             )
         }),
         clock: clock.clone(),
