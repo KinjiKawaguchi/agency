@@ -165,6 +165,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         view,
         viewer,
         answers_for,
+        ..
     } = replica;
     let Some(view) = view else {
         let why = error.unwrap_or_else(|| "not read yet".to_owned());

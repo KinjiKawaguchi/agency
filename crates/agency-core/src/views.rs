@@ -8,6 +8,7 @@ use crate::ports::{DefinitionAccess, PeerError};
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
+use agency_proto::clock::{self, Duration, OffsetDateTime};
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{AnswersFor, FederatedView, Request, WaitingOn};
 use agency_proto::{Id, OrgDefinition, Role, TeamView};
@@ -28,6 +29,29 @@ pub struct Replica {
     /// reported them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers_for: Vec<AnswersFor>,
+    /// How many reads in a row have failed; 0 once one succeeds. The next read waits as the outbox does
+    /// (`outbox::BACKOFF_SECONDS`), counted from `tried_at`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub failures: u32,
+    /// When the first of those failed reads was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failing_since: Option<String>,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
+}
+
+impl Replica {
+    /// When the team's node is read next: at once after a success, else after the backoff for the failures so far.
+    pub fn next_read_at(&self) -> Option<OffsetDateTime> {
+        if self.failures == 0 {
+            return None;
+        }
+        let steps = &crate::outbox::BACKOFF_SECONDS;
+        let wait = steps[(self.failures as usize - 1).min(steps.len() - 1)];
+        clock::parse(&self.tried_at).map(|tried| tried + Duration::seconds(wait))
+    }
 }
 
 /// A person's name in a hosted team's runtime: their entry in `people`, or `owner` for the team's owner.
@@ -344,12 +368,16 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
             view: Some(fetched.view),
             viewer: fetched.viewer,
             answers_for: fetched.answers_for,
+            failures: 0,
+            failing_since: None,
         },
         Err(failure) => {
             if failure.is_not_found {
                 peer_about::note_not_found(node, org, &place.node)?;
             }
             Replica {
+                failures: previous.failures.saturating_add(1),
+                failing_since: previous.failing_since.clone().or_else(|| Some(now.clone())),
                 tried_at: now,
                 error: Some(failure.message),
                 ..previous
@@ -395,6 +423,41 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
+/// What `agency status` says of the teams whose node is being waited for: one line each, with since when its reads
+/// fail, how many failed, and when it is read next.
+pub fn waiting_lines(node: &Node) -> Vec<String> {
+    let account = node.account();
+    let mut lines = vec![];
+    for doc in node.store().orgs() {
+        if doc.body.member(&account).is_none() {
+            continue;
+        }
+        let org = &doc.body.org;
+        for place in doc
+            .body
+            .teams
+            .iter()
+            .filter(|place| !node.runs_here(org, &place.id))
+        {
+            let Some(replica) = node.store().load_replica(org, &place.id) else {
+                continue;
+            };
+            let Some(next) = replica.next_read_at() else {
+                continue;
+            };
+            lines.push(format!(
+                "Team {org}/{} on {}: not answering since {} ({} tries); next try at {}",
+                place.id,
+                place.node,
+                replica.failing_since.as_deref().unwrap_or("?"),
+                replica.failures,
+                clock::format(next)
+            ));
+        }
+    }
+    lines
+}
+
 /// How many teams on other nodes are read at once. A team node that does not answer holds one of these for its
 /// timeout, not the whole pass.
 pub const READS_AT_ONCE: usize = 8;
@@ -403,6 +466,33 @@ pub const READS_AT_ONCE: usize = 8;
 /// `READS_AT_ONCE` at a time, and, at the same time, org by org, what the org's other nodes say about themselves
 /// and the org's definition. The first failure to keep what was read is returned once everything was tried.
 pub async fn refresh(node: &Node) -> Result<()> {
+    refresh_teams(node, Due::Only).await
+}
+
+/// `refresh`, reading every team now, those whose node is being waited for included (`agency sync`).
+pub async fn refresh_now(node: &Node) -> Result<()> {
+    refresh_teams(node, Due::All).await
+}
+
+/// Which teams on other nodes a pass reads.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Due {
+    /// Those whose node answered last time, or whose wait after failing is over.
+    Only,
+    All,
+}
+
+/// Whether the team's replica should be read now.
+fn is_due(node: &Node, org: &Id, team: &Id, due: Due) -> bool {
+    due == Due::All
+        || node
+            .store()
+            .load_replica(org, team)
+            .and_then(|replica| replica.next_read_at())
+            .is_none_or(|next| next <= node.now())
+}
+
+async fn refresh_teams(node: &Node, due: Due) -> Result<()> {
     use futures_util::stream::{self, StreamExt};
     let account = node.account();
     let orgs: Vec<SignedOrg> = node
@@ -419,6 +509,7 @@ pub async fn refresh(node: &Node) -> Result<()> {
                 .teams
                 .iter()
                 .filter(|place| !node.runs_here(org, &place.id))
+                .filter(|place| is_due(node, org, &place.id, due))
                 .map(|place| (org.clone(), place.clone()))
         })
         .collect();
