@@ -44,6 +44,8 @@ const MOST_PENDING: usize = 64;
 /// that, the one that has been quiet the longest is forgotten).
 const REDEEMS_PER_MINUTE: usize = 20;
 const MOST_CLIENTS: usize = 1024;
+/// Why `via=scheme` is refused: the answer a browser session shows the person who sees it.
+const SCHEME_REFUSED: &str = "this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)";
 const CALLBACK_PAGE: &str =
     "<!doctype html><meta charset=\"utf-8\"><title>Agency</title><p>Return to the Agency app.</p>";
 
@@ -239,6 +241,9 @@ pub(crate) async fn handoff(
     };
     let location = match (exchange, legacy) {
         (Some((state, challenge, via)), _) => {
+            if via == Via::Scheme && !config.allow_scheme_sign_in {
+                return refuse(StatusCode::BAD_REQUEST, SCHEME_REFUSED);
+            }
             let Some(code) = api.handoff.mint(api.node.now(), token, challenge) else {
                 return refuse(
                     StatusCode::SERVICE_UNAVAILABLE,

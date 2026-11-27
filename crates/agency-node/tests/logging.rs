@@ -23,6 +23,7 @@ async fn a_line_the_node_would_have_printed_goes_to_the_log_file_with_the_nodes_
         audience: "y".into(),
         owner_email: "alice@example.com".into(),
         app_id: None,
+        allow_scheme_sign_in: false,
     };
     running
         .node

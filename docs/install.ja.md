@@ -292,7 +292,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
-- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
+- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。`appId` だけでサインインできるのは、アプリのビルドの関連ドメインに入っているホストだけです。アプリは、ノード自身のホストのユニバーサルリンクでサインインします。ユニバーサルリンクを受け取れるのは、関連付けファイルが名指しするアプリだけで、このホストを関連ドメインに持つビルドが要ります。それ以外のホストのノードでは、`"allowSchemeSignIn": true`（既定は無効）で、アプリのカスタムスキームでのサインインを許可できます。ただしスキームのコールバックは、サインインを始めたアプリに届きます。それがどのアプリでも同じです。そのため、端末に入っている他人のアプリが始めると、システムのシートを 1 回タップしただけでオーナーのトークンが渡されます。入っているアプリがすべて信頼できる端末でだけ有効にしてください。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 - ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。プッシュサービス（Google、Mozilla、Apple、Microsoft）の運営者がこれを読むので、どのノードかが伝わります。ノードのホスト名を伝えたくないときは、このために作った別名のアドレスを使ってください。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
 
@@ -592,6 +592,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
+| アプリのサインインのシートに `this node signs the app in only through the universal link …` と出る | ノードのホストが、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。ビルドの `AGENCY_ASSOCIATED_HOST` にそのホストを入れるか、`"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
 | `agency: refused an Access request (wrong audience)` | `audience` がアプリケーションの AUD タグと違います。 |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` が自分のチームドメインと違います。 |
