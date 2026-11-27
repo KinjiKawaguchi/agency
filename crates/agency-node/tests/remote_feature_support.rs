@@ -9,7 +9,7 @@ use agency_core::peer_about::PeerAbout;
 use agency_proto::about::{About, Capability};
 use agency_proto::clock::{self, Duration};
 use agency_proto::org::TeamPlace;
-use common::{alice, id, Running};
+use common::{alice, id, joined_bob, Running};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -169,6 +169,36 @@ async fn a_node_that_lists_the_capability_and_answers_404_is_still_not_found() {
 }
 
 #[tokio::test]
+async fn a_404_from_either_read_marks_the_node_to_be_read_again_soon() {
+    let again = |alice: &Running| {
+        alice
+            .node
+            .store()
+            .peer_abouts(&id("acme"))
+            .values()
+            .all(|kept| kept.should_read_again)
+    };
+    for read_effort in [false, true] {
+        let (alice, _) = alice_with_team_on(|alice| {
+            Some(read_ago(alice, about_of("0.3.0", None), Duration::hours(1)))
+        })
+        .await;
+        assert!(!again(&alice));
+
+        if read_effort {
+            effort_reason(&alice).await;
+        } else {
+            activity(&alice).await;
+        }
+
+        assert!(
+            again(&alice),
+            "the node may not be the release it was read as (effort: {read_effort})"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_node_that_was_never_read_is_asked() {
     let (alice, hits) = alice_with_team_on(|_| None).await;
 
@@ -223,4 +253,73 @@ async fn a_node_lacking_one_feature_is_still_asked_for_the_other() {
         "the team's node does not give effort numbers"
     );
     assert_eq!(hits.load(Ordering::SeqCst), 1, "effort was asked for");
+}
+
+/// bob's kept answer of alice's node: her release, which lacks `activity`, read just now.
+fn keep_alice_as_behind(bob: &Running, alice: &Running) {
+    let about = about_of("0.2.0", Some(Capability::Activity));
+    let abouts = BTreeMap::from([(alice.url(), read_ago(bob, about, Duration::ZERO))]);
+    bob.node
+        .store()
+        .save_peer_abouts(&id("acme"), &abouts)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_node_that_was_updated_since_is_read_again_and_then_asked() {
+    let (alice, memory) = alice().await;
+    memory.lock().unwrap().activity = Some(
+        serde_json::from_str::<agency_proto::activity::Activity>(include_str!(
+            "../../../testdata/activity.sample.json"
+        ))
+        .unwrap()
+        .events,
+    );
+    let bob = joined_bob(&alice).await;
+    let read_activity = |bob: &Running| {
+        let url = format!("{}/api/orgs/acme/teams/app/activity", bob.url());
+        async move { Client::new().get(url).send().await.unwrap().status() }
+    };
+    let pass = |by: Duration| {
+        alice.clock.advance(by);
+        bob.clock.advance(by);
+    };
+    keep_alice_as_behind(&bob, &alice);
+
+    assert_eq!(read_activity(&bob).await, StatusCode::SERVICE_UNAVAILABLE);
+    let kept = bob.node.store().peer_abouts(&id("acme"));
+    assert!(
+        kept[&alice.url()].should_read_again,
+        "asking marks it for a new read"
+    );
+
+    pass(Duration::minutes(5));
+    agency_core::views::refresh(&bob.node).await.unwrap();
+    assert_eq!(
+        read_activity(&bob).await,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "not read again before ten minutes"
+    );
+
+    pass(Duration::minutes(6));
+    agency_core::views::refresh(&bob.node).await.unwrap();
+    assert_eq!(
+        read_activity(&bob).await,
+        StatusCode::OK,
+        "alice's node lists activity now"
+    );
+}
+
+#[tokio::test]
+async fn a_release_that_hides_text_is_printed_with_a_question_mark() {
+    let (alice, hits) = alice_with_team_on(|alice| {
+        let about = about_of("0.2.0\u{202e}gnp.exe", Some(Capability::Effort));
+        Some(read_ago(alice, about, Duration::hours(1)))
+    })
+    .await;
+
+    let reason = effort_reason(&alice).await;
+
+    assert!(reason.contains("release 0.2.0?gnp.exe,"), "{reason}");
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
 }

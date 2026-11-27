@@ -6,9 +6,10 @@
 //! older than three days say nothing.
 use crate::capabilities::recent_about;
 use crate::node::Node;
-use crate::peer_about::{peers_of, PeerAbout};
+use crate::peer_about::{note_not_found, peers_of, PeerAbout};
 use agency_proto::about::Capability;
 use agency_proto::clock::OffsetDateTime;
+use agency_proto::org::printable;
 use agency_proto::Id;
 
 /// What the kept answer of a node says about one capability.
@@ -39,12 +40,31 @@ pub fn support_of_peer(node: &Node, org: &Id, origin: &str, capability: Capabili
 }
 
 /// Why a feature is not read from a team's node that lacks it. `what` names the feature in the words of
-/// the read ("the team's activity feed"); `release` is what the node said it runs (an answer is kept only
-/// with a short text without control characters).
+/// the read ("the team's activity feed"); `release` is what the node said it runs, which comes from another
+/// node and is printed as such (`printable`: a character that hides or reorders text becomes `?`).
 pub fn lacking_reason(what: &str, release: &str) -> String {
+    let release = printable(release);
     format!(
         "the team's node runs release {release}, which does not have {what}; it needs an update"
     )
+}
+
+/// The reason a read of `what` (a feature of `capability`) from the team's node `origin` is not made, or `None`
+/// when it is to be made: the kept answer of the node is recent and lacks the capability. Refusing the call
+/// is the same as a 404 from the node, so the node is read again soon (`note_not_found`: ten minutes after
+/// this call), and a node that was updated since is then called again.
+pub fn refusal_for_lacking(
+    node: &Node,
+    org: &Id,
+    origin: &str,
+    capability: Capability,
+    what: &str,
+) -> Option<String> {
+    let Support::Lacking { release } = support_of_peer(node, org, origin, capability) else {
+        return None;
+    };
+    let _ = note_not_found(node, org, origin);
+    Some(lacking_reason(what, &release))
 }
 
 #[cfg(test)]
@@ -122,6 +142,13 @@ mod tests {
             },
             "exactly three days still counts"
         );
+    }
+
+    #[test]
+    fn a_release_that_hides_or_reorders_text_is_printed_with_a_question_mark() {
+        let reason = lacking_reason("effort numbers", "0.2.0\u{202e}gnp.exe");
+        assert!(reason.contains("release 0.2.0?gnp.exe,"), "{reason}");
+        assert!(!reason.contains('\u{202e}'), "{reason}");
     }
 
     #[test]

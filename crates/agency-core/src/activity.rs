@@ -4,7 +4,8 @@ use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
-use crate::peer_features::{lacking_reason, support_of_peer, Support};
+use crate::peer_about::note_not_found;
+use crate::peer_features::refusal_for_lacking;
 use crate::ports::PeerError;
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
@@ -101,13 +102,14 @@ async fn remote_activity(
     since: &Timestamp,
     limit: u32,
 ) -> Result<Activity> {
-    if let Support::Lacking { release } =
-        support_of_peer(node, org, &place.node, Capability::Activity)
-    {
-        return Err(Error::new(
-            ErrorKind::Unavailable,
-            lacking_reason("the team's activity feed", &release),
-        ));
+    if let Some(reason) = refusal_for_lacking(
+        node,
+        org,
+        &place.node,
+        Capability::Activity,
+        "the team's activity feed",
+    ) {
+        return Err(Error::new(ErrorKind::Unavailable, reason));
     }
     let path = routes::activity(org, &place.id, since, limit);
     let auth = sign_for_peer(node, org, &place.node, &path);
@@ -116,7 +118,10 @@ async fn remote_activity(
         .get_activity(&place.node, &path, &auth)
         .await
         .map_err(|error| match error {
-            PeerError::Status { status: 404, .. } => Error::not_found(error.to_string()),
+            PeerError::Status { status: 404, .. } => {
+                let _ = note_not_found(node, org, &place.node);
+                Error::not_found(error.to_string())
+            }
             PeerError::Status { status: 403, .. } => Error::new(
                 ErrorKind::Forbidden,
                 "the team's node does not let this account read the team's activity",

@@ -6,7 +6,8 @@ use crate::config::HostedTeam;
 use crate::delivery::{effort, EffortInput, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
-use crate::peer_features::{lacking_reason, support_of_peer, Support};
+use crate::peer_about::note_not_found;
+use crate::peer_features::refusal_for_lacking;
 use crate::ports::{DeliveryError, PeerError};
 use crate::read_auth::{sign_read, verify_read_once};
 use crate::routes;
@@ -114,10 +115,10 @@ async fn remote_effort(
     place: &TeamPlace,
     days: u32,
 ) -> std::result::Result<Effort, String> {
-    if let Support::Lacking { release } =
-        support_of_peer(node, org, &place.node, Capability::Effort)
+    if let Some(reason) =
+        refusal_for_lacking(node, org, &place.node, Capability::Effort, "effort numbers")
     {
-        return Err(lacking_reason("effort numbers", &release));
+        return Err(reason);
     }
     let path = routes::effort(org, &place.id, days);
     let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
@@ -127,6 +128,7 @@ async fn remote_effort(
         .await
         .map_err(|error| match error {
             PeerError::Status { status: 404, .. } => {
+                let _ = note_not_found(node, org, &place.node);
                 "the team's node does not give effort numbers".to_owned()
             }
             PeerError::Status { status: 403, .. } => {
