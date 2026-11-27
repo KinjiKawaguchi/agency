@@ -44,7 +44,7 @@ async fn the_owner_registers_and_removes_device_tokens() {
         .1;
     assert_eq!(
         listed["tokens"],
-        json!([{ "token": "34ef56ab12"[2..], "environment": "production", "label": "iPhone", "registeredAt": "2026-11-24T12:00:00Z", "events": ["request"] }]),
+        json!([{ "id": "60ee26f5b24db8ea", "token": "34ef56ab12"[2..], "environment": "production", "label": "iPhone", "registeredAt": "2026-11-24T12:00:00Z", "events": ["request"] }]),
         "one entry per token, shortened in lists"
     );
 

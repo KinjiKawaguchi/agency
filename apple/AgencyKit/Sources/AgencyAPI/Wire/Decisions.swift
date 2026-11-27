@@ -14,8 +14,8 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     public let kind: DecisionEnvelope.Kind
     /// The request id or work item ref it answered.
     public let target: String
-    public let title: String?
-    public let text: String
+    @ShownIfPresent public private(set) var title: String?
+    @ShownText public private(set) var text: String
     public let choice: String?
     @ShownIfPresent public private(set) var choiceLabel: String?
     /// The seat or external party the decision answered for, when it did: the node worked it out when it applied the decision, and
@@ -65,9 +65,9 @@ public enum DecisionState: Decodable, Equatable, Sendable {
             self = .queued(
                 attempts: try container.decode(Int.self, forKey: .attempts),
                 nextAt: try container.decode(Instant.self, forKey: .nextAt),
-                lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
+                lastError: try container.decodeIfPresent(String.self, forKey: .lastError).map(NodeLabel.shownText)
             )
-        case "refused": self = .refused(message: try container.decode(String.self, forKey: .message))
+        case "refused": self = .refused(message: NodeLabel.shownText(try container.decode(String.self, forKey: .message)))
         case let other: self = .unknown(other)
         }
     }
@@ -79,5 +79,5 @@ public struct DecisionResult: Decodable, Equatable, Sendable {
 
     public let outcome: Outcome
     /// Why a decision was queued.
-    public let message: String?
+    @ShownTextIfPresent public private(set) var message: String?
 }

@@ -441,6 +441,17 @@ struct NodeClientRedeemTests {
         #expect(tokens[1].lastSucceededAt == nil && tokens[1].lastFailure == nil, "left out until there is something to say")
     }
 
+    @Test("a refusal's own words are shown without hidden characters, since an alert reads them, and the line breaks stay")
+    func refusalText() async throws {
+        let transport = ScriptedTransport([("GET /api/me", json(#"{"error":"no\u202E label\nsecond\u200B"}"#, status: 403))])
+        do {
+            _ = try await owner(transport).me()
+            Issue.record("should be refused")
+        } catch let error as NodeError {
+            #expect(error == .http(status: 403, message: "no? label\nsecond?"))
+        }
+    }
+
     @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")
     func redeemIdentity() async throws {
         let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])

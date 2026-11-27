@@ -20,7 +20,7 @@ describe('the labels the page reads from the node', () => {
     expect(snapshot.view.label).toBe('Al?ce')
     expect(snapshot.view.people[0]?.label).toBe('Al?ce')
     expect(snapshot.relayedFor).toEqual({ 'r-1': 'Al?ce' })
-    expect(snapshot.view.requests[0]?.title, 'a title is not a label').toBe(dirty)
+    expect(snapshot.view.requests[0]?.title, 'a title is a line an agent wrote, printed as a label is').toBe('Al?ce')
     const log = await api.decisions(10)
     expect(log.entries[0]).toMatchObject({ choiceLabel: 'Al?ce', relayedFor: { id: 'finance', label: 'Al?ce' } })
   })

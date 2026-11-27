@@ -111,7 +111,7 @@ export function GraphView({ agents, resolve, events, fresh, isReduced, colors }:
         </g>
         <g className="lv-packets" aria-hidden="true">
           {packets.current.map((packet) => {
-            const [p, q] = [place.get(packet.from), place.get(packet.to)]
+            const [p, q] = [place.get(packet.from /* shown-ok(lookup): finds the point drawn */), place.get(packet.to /* shown-ok(lookup): as above */)]
             const progress = (clock - packet.startedAt) / PACKET_MS
             if (p === undefined || q === undefined || progress < 0 || progress > 1) return null
             return <circle key={packet.id} className="lv-packet" cx={lerp(p.x, q.x, progress)} cy={lerp(p.y, q.y, progress)} r={5} />

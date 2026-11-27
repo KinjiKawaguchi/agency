@@ -46,6 +46,17 @@ pub fn access_token(email: &str, edit: impl FnOnce(&mut Value)) -> String {
 /// alice's node behind Access with owner `alice@example.com`, the app identifier `app_id`, and one
 /// request (`r-1`) waiting.
 pub async fn behind_access(app_id: Option<&str>) -> Running {
+    behind_access_with_runtime(app_id).await.0
+}
+
+/// `behind_access`, with the team runtime's memory, for a test that addresses requests.
+#[allow(dead_code)]
+pub async fn behind_access_with_runtime(
+    app_id: Option<&str>,
+) -> (
+    Running,
+    Arc<std::sync::Mutex<agency_adapters::memory::MemoryRuntimeState>>,
+) {
     let (runtime, memory) = memory_runtime();
     memory
         .lock()
@@ -67,5 +78,5 @@ pub async fn behind_access(app_id: Option<&str>) -> Running {
         .unwrap();
     running.stop().await;
     running.start().await;
-    running
+    (running, memory)
 }

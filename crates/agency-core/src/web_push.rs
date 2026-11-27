@@ -5,11 +5,12 @@
 use crate::error::{Error, Result};
 use crate::node::Node;
 use crate::notice::Notice;
+use crate::push_devices::check_device;
 use agency_proto::client::{
     PushEvent, PushFailure, PushSubscription, PushSubscriptionInput, PushSubscriptionList, VapidKey,
 };
 use agency_proto::digest::sha256_hex;
-use agency_proto::Timestamp;
+use agency_proto::{Id, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// The most subscriptions kept; the oldest is dropped first.
@@ -40,6 +41,9 @@ pub struct WebSubscription {
     pub last_succeeded_at: Option<Timestamp>,
     #[serde(default)]
     pub last_failure: Option<PushFailure>,
+    /// The device it belongs to (`Device.id`); none for one registered without.
+    #[serde(default)]
+    pub device: Option<Id>,
 }
 
 /// A DNS host name: at least two labels of letters, digits, and hyphens, the last starting with a letter. That
@@ -138,6 +142,7 @@ fn view(one: WebSubscription) -> PushSubscription {
         key_id: one.key_id,
         last_succeeded_at: one.last_succeeded_at,
         last_failure: one.last_failure,
+        device: one.device,
     }
 }
 
@@ -163,6 +168,7 @@ pub fn register_subscription(
     input: PushSubscriptionInput,
 ) -> Result<PushSubscription> {
     let key = vapid_key(node).ok_or_else(not_set_up)?;
+    let device = check_device(node, input.device)?;
     let endpoint = check_endpoint(&input.endpoint, &extra_hosts(node))?;
     if !is_key(&input.p256dh, 65) || !is_key(&input.auth, 16) {
         return Err(Error::bad_request(
@@ -196,6 +202,7 @@ pub fn register_subscription(
         // What was last known of this browser's push service is kept when the browser registers again.
         last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
         last_failure: known.and_then(|one| one.last_failure),
+        device,
     };
     let mut all: Vec<WebSubscription> = node
         .store()

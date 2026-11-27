@@ -7,6 +7,7 @@ use crate::invites::open_invite;
 use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::ports::RootSigner;
+use crate::push_devices::keep_org;
 use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
@@ -170,7 +171,7 @@ pub fn is_root(node: &Node, doc: &SignedOrg) -> bool {
 /// Saves a new version and queues it for every other node that hosts one of the org's teams. Teams that
 /// run here are skipped even if their place names another origin.
 pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
-    node.store().save_org(doc)?;
+    keep_org(node, doc)?;
     let me = node.url();
     let targets = doc
         .body
@@ -278,7 +279,7 @@ pub fn create(node: &Node, org: Id, label: String) -> Result<SignedOrg> {
     let root = Root::new(account, root_key.clone());
     let body = OrgDefinition::new(org.clone(), label, root, node.now_text()).with_people(vec![me]);
     let doc = sign(node, body)?;
-    node.store().save_org(&doc)?;
+    keep_org(node, &doc)?;
     node.update_config(|config| config.trust(org, root_key.fingerprint()))?;
     Ok(doc)
 }
@@ -535,7 +536,7 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // The trust moves first: if keeping the version then fails, a retry takes it again, and the trust
     // already names its root; the other order could keep the version with the trust left behind.
     follow_new_root(node, &current, &doc)?;
-    node.store().save_org(&doc)?;
+    keep_org(node, &doc)?;
     forget_cancelled_root(node, &current, &doc);
     forget_removed(node, &current.body, &doc.body)
 }
@@ -587,7 +588,7 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }
     doc.body.validate().map_err(Error::bad_request)?;
-    node.store().save_org(&doc)
+    keep_org(node, &doc)
 }
 
 /// At most this many versions go in one answer of the versions route; a node further behind asks again.
