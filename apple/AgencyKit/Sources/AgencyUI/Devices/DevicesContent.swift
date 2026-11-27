@@ -208,6 +208,19 @@ struct DevicesContent: View {
     }
 }
 
+/// What the devices screen needs to say that this device's key cannot be used, and to offer the two ways on.
+public struct KeyUnusableSupport {
+    public let problem: KeyProblem
+    public let onTryAgain: () -> Void
+    public let onMakeNew: () -> Void
+
+    public init(problem: KeyProblem, onTryAgain: @escaping () -> Void, onMakeNew: @escaping () -> Void) {
+        self.problem = problem
+        self.onTryAgain = onTryAgain
+        self.onMakeNew = onMakeNew
+    }
+}
+
 /// The devices tab: this phone and the others, and confirming a device that asked to be added.
 public struct DevicesScreen: View {
     private let store: DevicesStore
@@ -215,13 +228,19 @@ public struct DevicesScreen: View {
     private let notice: String?
     private let noticeIsFailure: Bool
     private let pushDelivery: PushDeliveryStore?
+    private let keyUnusable: KeyUnusableSupport?
 
     /// - Parameters:
+    ///   - keyUnusable: set when this device's key is stored and cannot be used now: the screen says so, and offers to try again or to make a new key.
     ///   - pairing: this phone's state; `nil` when it has no key.
     ///   - notice: something the app has to say, such as why there is no key.
     ///   - pushDelivery: whether APNs takes the notices the node sends this phone; `nil` for a build that has none to ask.
     ///   - noticeIsFailure: whether the notice is a trouble (red), and not only something the person should know (a key made again).
-    public init(store: DevicesStore?, pairing: PairingStore?, notice: String?, noticeIsFailure: Bool = true, pushDelivery: PushDeliveryStore? = nil) {
+    public init(
+        store: DevicesStore?, pairing: PairingStore?, notice: String?, noticeIsFailure: Bool = true, pushDelivery: PushDeliveryStore? = nil,
+        keyUnusable: KeyUnusableSupport? = nil
+    ) {
+        self.keyUnusable = keyUnusable
         self.store = store ?? DevicesStore.empty
         self.pairing = pairing
         self.notice = notice
@@ -233,6 +252,7 @@ public struct DevicesScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
+                    if let keyUnusable { KeyUnusableCard(problem: keyUnusable.problem, onTryAgain: keyUnusable.onTryAgain, onMakeNew: keyUnusable.onMakeNew) }
                     if let notice { Text(notice).font(.subheadline).foregroundStyle(noticeIsFailure ? Theme.danger : Color.primary).wrapping().card() }
                     if let pushDelivery, let lines = pushDelivery.lines { PushDeliveryCard(lines: lines) }
                     if let removed = store.removedNotice {

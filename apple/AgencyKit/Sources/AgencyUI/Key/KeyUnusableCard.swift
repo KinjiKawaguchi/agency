@@ -3,9 +3,9 @@ import AgencyModel
 import SwiftUI
 
 /// What the person sees when this device's key is stored and cannot be used now: plainly, with the reason the system gave, and two ways on.
-/// Nothing was replaced and nothing is replaced by this screen: trying again reads the stored key again, and making a new key is a choice
-/// the person confirms, after which the device is added again.
-public struct KeyUnusableScreen: View {
+/// Nothing was replaced and nothing is replaced by this card: trying again reads the stored key again, and making a new key is a choice the
+/// person confirms, after which the device is added again. The rest of the app can still be read.
+public struct KeyUnusableCard: View {
     private let problem: KeyProblem
     private let onTryAgain: () -> Void
     private let onMakeNew: () -> Void
@@ -18,18 +18,16 @@ public struct KeyUnusableScreen: View {
     }
 
     public var body: some View {
-        ScrollView {
-            KeyUnusableContent(problem: problem, onTryAgain: onTryAgain, confirmsNew: $confirmsNew)
-        }
-        .confirmationDialog(Ja.Device.reset, isPresented: $confirmsNew, titleVisibility: .visible) {
-            Button(Ja.Device.resetConfirm, role: .destructive, action: onMakeNew)
-        } message: {
-            Text(Ja.Key.Unusable.makeExplain)
-        }
+        KeyUnusableContent(problem: problem, onTryAgain: onTryAgain, confirmsNew: $confirmsNew)
+            .confirmationDialog(Ja.Device.reset, isPresented: $confirmsNew, titleVisibility: .visible) {
+                Button(Ja.Device.resetConfirm, role: .destructive, action: onMakeNew)
+            } message: {
+                Text(Ja.Key.Unusable.makeExplain)
+            }
     }
 }
 
-/// The screen's text and buttons, without the scrolling, so that a rendering can draw it.
+/// The card's text and buttons.
 struct KeyUnusableContent: View {
     let problem: KeyProblem
     let onTryAgain: () -> Void
@@ -52,9 +50,7 @@ struct KeyUnusableContent: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
         }
-        .padding(Theme.gutter)
-        .frame(maxWidth: 560, alignment: .leading)
-        .frame(maxWidth: .infinity)
+        .card()
     }
 }
 #endif

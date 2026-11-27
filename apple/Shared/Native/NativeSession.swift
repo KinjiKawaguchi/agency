@@ -88,7 +88,8 @@ final class NativeSession {
         let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
             source: cached,
-            signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner } ?? NoKeySigner(),
+            signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner }
+                ?? NoKeySigner(message: unusable == nil ? Ja.Key.noKey(.platform) : Ja.Key.Unusable.cannotDecide),
             outbox: DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client),
             storage: DraftDefaultsStorage(host: homeNode.host),
             afterSend: { await cache.invalidate() }
@@ -206,11 +207,15 @@ private struct RegisteredPush: Equatable {
 
 /// Stands in for the signer when this phone has no key: the desk can be read and nothing can be decided.
 private struct NoKeySigner: DeskSigner {
+    /// Why nothing can be decided: there is no key to make, or the stored key cannot be used now.
+    let message: String
+
     func sign(_ decision: PreparedDecision) async throws -> SignedDecision {
-        throw NoKeyError()
+        throw NoKeyError(message: message)
     }
 }
 
 private struct NoKeyError: Error, LocalizedError {
-    var errorDescription: String? { Ja.Key.noKey(.platform) }
+    let message: String
+    var errorDescription: String? { message }
 }

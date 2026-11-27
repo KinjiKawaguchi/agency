@@ -25,27 +25,33 @@ struct KeychainStore: Sendable {
         guard added == errSecSuccess else { throw KeychainError(status: added) }
     }
 
-    /// Stores `data` only when nothing is stored under `account`: it throws (`errSecDuplicateItem`) when something is, so that a stored
+    /// Stores `data` only when nothing is stored under `account`: it throws `KeyCreateError.alreadyStored` when something is, so that a stored
     /// item is never replaced by it. `save` is for what may be replaced.
     func add(_ data: Data, account: String, accessible: CFString) throws {
         var item = query(account)
         item[kSecValueData] = data
         item[kSecAttrAccessible] = accessible
-        let status = SecItemAdd(item as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainError(status: status) }
+        switch KeychainStatus.add(status: SecItemAdd(item as CFDictionary, nil)) {
+        case .added: return
+        case .duplicate: throw KeyCreateError.alreadyStored
+        case .failed(let status): throw KeychainError(status: status)
+        }
     }
 
-    /// What is stored under `account`: `nil` only when there is nothing (`errSecItemNotFound`). Any other failure throws, since a failure
-    /// to read (a locked phone, a busy store) says nothing of whether something is there.
+    /// What is stored under `account`: `nil` only when there is nothing. Any other failure throws, since a failure to read (a locked phone, a
+    /// busy store) says nothing of whether something is there.
     func read(account: String) throws -> Data? {
         var request = query(account)
         request[kSecReturnData] = true
         request[kSecMatchLimit] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(request as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else { throw KeychainError(status: status == errSecSuccess ? errSecDecode : status) }
-        return data
+        let data = result as? Data
+        switch KeychainStatus.read(status: status, hasData: data != nil) {
+        case .found: return data
+        case .notFound: return nil
+        case .failed(let status): throw KeychainError(status: status)
+        }
     }
 
     func load(account: String) -> Data? {
@@ -57,8 +63,13 @@ struct KeychainStore: Sendable {
         return result as? Data
     }
 
-    func delete(account: String) {
-        SecItemDelete(query(account) as CFDictionary)
+    /// Deletes what is stored under `account`. Nothing stored is done; a refusal throws, so that "make the key again" cannot do nothing and
+    /// say it did.
+    func delete(account: String) throws {
+        switch KeychainStatus.delete(status: SecItemDelete(query(account) as CFDictionary)) {
+        case .deleted, .nothingToDelete: return
+        case .failed(let status): throw KeychainError(status: status)
+        }
     }
 
     private func query(_ account: String) -> [CFString: Any] {

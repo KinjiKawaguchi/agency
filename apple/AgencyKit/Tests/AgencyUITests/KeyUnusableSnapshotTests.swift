@@ -14,7 +14,7 @@ struct KeyUnusableSnapshotTests {
         let reasons = ["the phone is locked (-25308)", "Keychain error (-25293) \(UIFixtures.unbrokenID) and what the system said after it, at some length, so that it wraps"]
         for (index, reason) in reasons.enumerated() {
             for scheme in [ColorScheme.light, .dark] {
-                let screen = KeyUnusableContent(problem: KeyProblem(reason: reason, isTransient: index == 0), onTryAgain: {}, confirmsNew: .constant(false))
+                let screen = KeyUnusableContent(problem: KeyProblem(reason: reason, isTransient: index == 0), onTryAgain: {}, confirmsNew: .constant(false)).padding(Theme.gutter)
                 let result = Snapshot.capture("key-unusable-\(index)", screen, scheme: scheme)
                 #expect(!result.png.isEmpty)
                 #expect(result.size.width == Snapshot.phoneWidth, "key-unusable-\(index): \(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")

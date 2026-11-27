@@ -46,6 +46,10 @@ extension Ja {
             public static let explain = "決定に署名する鍵は端末に残っていますが、いまは使えません。端末がロックされている、Face ID の登録を変えた、などが考えられます。鍵は自動では作り直しません。"
             public static func reason(_ text: String) -> String { "理由: \(text)" }
             public static let tryAgain = "もう一度試す"
+            /// What a decision that cannot be signed says while the key cannot be used.
+            public static let cannotDecide = "この端末の鍵を使えないため、決めることはできません。読むことはできます。端末の画面で、もう一度試すか、鍵を作り直してください。"
+            /// Said when the Keychain would not delete the key the person chose to make again: it is still there.
+            public static func resetFailed(_ reason: String) -> String { "鍵を作り直せませんでした。いまの鍵はそのまま残っています: \(reason)" }
             public static let makeExplain = "使えない鍵は残したまま、新しい鍵を作って、この端末をもう一度追加します。追加するまで、この端末では決めることも、コメントすることもできません。"
         }
 

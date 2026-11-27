@@ -61,9 +61,10 @@ struct SecureEnclaveSigner: DeviceSigner {
         try service.read(account: account(for: host))
     }
 
-    /// Forgets the key of the home node `host`. The next session makes a new one, and the device is added again.
-    static func deleteKey(host: String) {
-        service.delete(account: account(for: host))
+    /// Forgets the key of the home node `host`. The next session makes a new one, and the device is added again. A Keychain that refuses
+    /// throws: the key is then still there, and the caller says so instead of going on as if it were gone.
+    static func deleteKey(host: String) throws {
+        try service.delete(account: account(for: host))
     }
 
     init(handle: Data) throws {

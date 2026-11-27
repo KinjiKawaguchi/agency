@@ -16,7 +16,8 @@ public protocol KeyVault: Sendable {
     func readHandle(host: String) -> KeyHandleRead
     /// Opens a stored handle as a signer; throws when it cannot be opened.
     func open(_ handle: Data) throws -> any DeviceSigner
-    /// Makes a key and stores its handle. It never replaces a handle that is stored: it throws when there is one.
+    /// Makes a key and stores its handle. It never replaces a handle that is stored: it throws `KeyCreateError.alreadyStored` when there is
+    /// one (stored by another run between the read and now), and the loader then reads it.
     func create(host: String) throws -> any DeviceSigner
 }
 
@@ -47,15 +48,15 @@ public enum KeyLoad: Sendable {
 public struct KeyLoader: Sendable {
     private let vault: any KeyVault
     private let attempts: Int
-    private let pause: @Sendable () -> Void
+    private let pause: @Sendable () async -> Void
     private let record: @Sendable (String) -> Void
 
     /// - Parameters:
     ///   - attempts: how many times a failure that may pass is tried before it is reported.
-    ///   - pause: waits between two tries.
+    ///   - pause: waits between two tries, without holding the thread it runs on.
     ///   - record: where the reason a key was judged unusable is written.
     public init(
-        vault: any KeyVault, attempts: Int = 3, pause: @escaping @Sendable () -> Void = { Thread.sleep(forTimeInterval: 0.15) },
+        vault: any KeyVault, attempts: Int = 3, pause: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .milliseconds(150)) },
         record: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.vault = vault
@@ -64,13 +65,21 @@ public struct KeyLoader: Sendable {
         self.record = record
     }
 
-    public func load(host: String) -> KeyLoad {
+    public func load(host: String) async -> KeyLoad {
+        await load(host: host, canMake: true)
+    }
+
+    /// `canMake` is false when a key was just found to be stored by someone else: reading it is all that is left to do.
+    private func load(host: String, canMake: Bool) async -> KeyLoad {
         var last = KeyProblem(reason: "", isTransient: true)
         for attempt in 0..<attempts {
-            if attempt > 0 { pause() }
+            if attempt > 0 { await pause() }
             switch vault.readHandle(host: host) {
             case .notFound:
-                return make(host: host)
+                guard canMake else {
+                    return unusable(KeyProblem(reason: "A key was stored, and then none was found.", isTransient: true))
+                }
+                return await make(host: host)
             case .failed(let reason, let isTransient):
                 last = KeyProblem(reason: reason, isTransient: isTransient)
                 guard isTransient else { return unusable(last) }
@@ -86,9 +95,12 @@ public struct KeyLoader: Sendable {
         return unusable(last)
     }
 
-    private func make(host: String) -> KeyLoad {
+    private func make(host: String) async -> KeyLoad {
         do {
             return .ready(try vault.create(host: host))
+        } catch KeyCreateError.alreadyStored {
+            // A handle was stored meanwhile: it is the key, and it is read, not replaced and not reported as "none could be made".
+            return await load(host: host, canMake: false)
         } catch {
             record("The device key could not be made: \(error)")
             return .cannotMake("\(error)")
