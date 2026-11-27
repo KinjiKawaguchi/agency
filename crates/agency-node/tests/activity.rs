@@ -125,15 +125,15 @@ async fn an_answer_that_is_not_valid_is_unavailable() {
 }
 
 #[tokio::test]
-async fn a_team_on_another_node_is_not_answered_yet_and_an_answerer_reads_none() {
+async fn an_answerer_reads_none_of_the_feed_of_a_team_on_another_node() {
     let (alice, memory) = alice().await;
     reports(&memory);
     let bob = joined_bob(&alice).await;
-    let (status, _) = activity(&bob, "").await;
+    let (status, _) = activity(&bob, "?since=2026-11-24T11:00:00Z").await;
     assert_eq!(
         status,
-        StatusCode::NOT_FOUND,
-        "the team runs on alice's node"
+        StatusCode::OK,
+        "the team runs on alice's node, which answers bob"
     );
 
     let carol = node("carol", memory_runtime().0).await;

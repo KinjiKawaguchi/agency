@@ -4,6 +4,7 @@
 use crate::peers::{ACCOUNT, DATE, SIGNATURE};
 use crate::refusal_log::RefusalLog;
 use agency_core::about::read_about;
+use agency_core::activity::{hosted_activity, Asked};
 use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::devices::accept_device_change;
 use agency_core::evaluation::hosted_evaluation;
@@ -272,6 +273,31 @@ async fn get_usage(
     respond(&fed, &method, &uri, result.await)
 }
 
+/// The activity of a team on this node, for a signed read by a member of its org. The signature covers
+/// the path with its `since` and `limit` query.
+async fn get_activity(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        let received = uri
+            .path_and_query()
+            .map_or_else(|| uri.path(), |one| one.as_str());
+        let asked = Asked {
+            since: query.get("since").map(String::as_str),
+            limit: query.get("limit").map(String::as_str),
+            received,
+        };
+        hosted_activity(&fed.node, &org, &team, &asked, &read_auth(&headers)).await
+    };
+    respond(&fed, &method, &uri, result.await)
+}
+
 /// The delivery evaluation of a team on this node, for a signed read by a member of its org. The
 /// signature covers the path with its `days` query.
 async fn get_evaluation(
@@ -331,6 +357,7 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
         .route("/fed/v1/orgs/{org}/devices", post(post_device_change))
         .route("/fed/v1/teams/{org}/{team}/view", get(get_view))
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
+        .route("/fed/v1/teams/{org}/{team}/activity", get(get_activity))
         .route("/fed/v1/teams/{org}/{team}/evaluation", get(get_evaluation))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
