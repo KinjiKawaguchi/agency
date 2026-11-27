@@ -64,10 +64,10 @@ export function browserLabel(userAgent: string): string {
 /** What the node takes, from the browser's subscription; nothing when it lacks what a message is encrypted to. */
 // `events` is what this browser asks the node to tell it: a request that waits, and a change that waits for the root key's
 // signature (a recovery is told to everyone). Without it the node tells a request only, and the owner would not hear of a held change.
-export function subscriptionInput(subscription: PushSubscriptionJSON, label: string): PushSubscriptionInput | undefined {
+export function subscriptionInput(subscription: PushSubscriptionJSON, label: string, device?: string): PushSubscriptionInput | undefined {
   const { endpoint, keys } = subscription
   if (endpoint === undefined || keys?.p256dh === undefined || keys.auth === undefined) return undefined
-  return { endpoint, p256dh: keys.p256dh, auth: keys.auth, label, events: ['request', 'root'] }
+  return { endpoint, p256dh: keys.p256dh, auth: keys.auth, label, events: ['request', 'root'], ...(device === undefined ? {} : { device }) }
 }
 
 /**

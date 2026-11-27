@@ -154,6 +154,7 @@ Names start at what came after the first release: every node has what the first 
 | `webPush` | feature | A browser's Web Push subscriptions, and the notices sent to them. |
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |
+| `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 
 ## Checks in CI
 

@@ -75,7 +75,7 @@ describe('a request addressed to a seat or an external party the viewer answers 
     renderApp({ node, path: '/desk', enrolled: true })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
-    await screen.findByText(/Alice approved this/)
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
     const log = await createApiClient((request) => node.handle(request)).decisions(10)
     expect(log.entries[0]).not.toHaveProperty('relayedFor')
     expect(screen.queryByText(/^Answered for /)).not.toBeInTheDocument()

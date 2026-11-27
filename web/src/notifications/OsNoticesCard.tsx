@@ -1,5 +1,6 @@
 import { useApi } from '../api/context'
 import { useI18n } from '../i18n'
+import { useThisDeviceId } from '../device/useThisDeviceId'
 import { useWebPushBrowser } from '../pwa/WebPushBrowserContext'
 import { useWebPush, type WebPushState } from '../pwa/useWebPush'
 import type { PushDelivery } from '../pwa/webPush'
@@ -49,7 +50,7 @@ function WebPushSwitch({ state, turnOn, turnOff }: { state: WebPushState; turnOn
 export function OsNoticesCard() {
   const { t } = useI18n()
   const { support, isOn, turnOn, turnOff } = useOsNotices()
-  const webPush = useWebPush(useApi(), useWebPushBrowser())
+  const webPush = useWebPush(useApi(), useWebPushBrowser(), useThisDeviceId())
   const text = t.notices.os
   const state = support === 'unsupported' ? text.isUnsupported : support === 'denied' ? text.isBlocked : isOn ? text.isOn : undefined
   return (

@@ -26,10 +26,19 @@ struct ShellScreen: View {
             ResultsScreen(costs: session.costs, evaluation: session.evaluation, outcomes: session.outcomes, onSignInAgain: signInAgain)
         case .devices:
             DevicesScreen(
-                store: session.devices, pairing: session.pairing, notice: session.keyProblem.map { _ in Ja.Key.noKey(.platform) },
-                pushDelivery: session.pushDelivery
+                store: session.devices, pairing: session.pairing, notice: devicesNotice,
+                noticeIsFailure: !(model.hasRenewedKeyAfterRemoval && session.keyProblem == nil), pushDelivery: session.pushDelivery
             )
         }
+    }
+
+    /// Something to say above the devices: that this device's key was replaced after its own removal and is not added yet, or why there is
+    /// no key (which, after a removal, is that the new key could not be made).
+    private var devicesNotice: String? {
+        if model.hasRenewedKeyAfterRemoval {
+            return session.keyProblem.map { _ in Ja.Devices.Remove.keyNotMade(Ja.Key.noKey(.platform)) } ?? Ja.Devices.Remove.thisDeviceRemoved
+        }
+        return session.keyProblem.map { _ in Ja.Key.noKey(.platform) }
     }
 
     private func signInAgain() {

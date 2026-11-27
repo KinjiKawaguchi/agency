@@ -389,6 +389,18 @@ export const ja: Messages = {
       blocking: (count) => `参加者 ${count} 人が待機`,
       showMore: (count) => `あと ${count} 件を表示`,
     },
+    tray: {
+      title: '送信中の決定',
+      sending: '送信中…',
+      retrying: (retry: string | null) => `まだ送れていません。${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
+      failed: (reason: string) => `送れませんでした: ${reason}`,
+      sendAgain: 'もう一度送る',
+      sendAgainFor: (title: string) => `もう一度送る: ${title}`,
+      discard: '破棄',
+      discardFor: (title: string) => `破棄: ${title}`,
+      discardNote: '破棄すると、書いた内容つきで依頼が山に戻ります。',
+      more: (count: number) => `ほか ${count} 件`,
+    },
     recent: {
       head: '最近決めたもの',
       states: { applied: '反映済み', delivered: '届きました', queued: '保存済み・未配達', refused: '断られました' },

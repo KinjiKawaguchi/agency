@@ -4,14 +4,15 @@ use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
+use agency_core::guests::Guest;
 use agency_core::invites::InviteRecord;
 use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
     AboutStore, AppliedLog, ClientsSeenStore, ConfigStore, DecisionLogStore, DeviceRequestStore,
-    InviteStore, OrgStore, OutboxStore, OutcomeStore, PendingRootStore, PushStore, ReplicaStore,
-    ShipLedger, ShipRecord,
+    GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore, PendingRootStore, PushStore,
+    ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
@@ -174,6 +175,14 @@ impl DataDir {
             .map_err(|error| io_error(path, error))
     }
 
+    fn guest_path(&self, email: &str) -> PathBuf {
+        let name: String = sha2::Sha256::digest(email.trim().to_lowercase().as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        self.dir("guests").join(format!("{name}.json"))
+    }
+
     fn recovery_start_path(&self, org: &Id, version: u64) -> PathBuf {
         self.dir("orgs")
             .join(format!("{org}.history"))
@@ -329,6 +338,21 @@ impl OutboxStore for DataDir {
 
     fn refused_parcels(&self) -> Vec<Parcel> {
         read_all(&self.dir("refused"))
+    }
+}
+
+impl GuestStore for DataDir {
+    /// `guests/<sha256 of the email>.json`: an email is never a file name.
+    fn guest(&self, email: &str) -> Option<Guest> {
+        read_json(&self.guest_path(email))
+    }
+
+    fn put_guest(&self, guest: &Guest) -> Result<()> {
+        write_json(&self.guest_path(&guest.email), guest)
+    }
+
+    fn remove_guest(&self, email: &str) -> Result<()> {
+        remove(&self.guest_path(email))
     }
 }
 

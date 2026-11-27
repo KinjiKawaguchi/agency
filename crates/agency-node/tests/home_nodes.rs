@@ -79,10 +79,9 @@ async fn the_owner_is_given_the_usable_home_nodes_and_no_one_else_any() {
     let owner = me_through_access(&public, "alice@example.com").await;
     assert_eq!(owner["homeNodes"], listed());
     let other = me_through_access(&public, "carol@example.com").await;
-    assert!(other["account"].is_object(), "the rest of me is still read");
     assert!(
-        other.get("homeNodes").is_none(),
-        "another sign-in is not told where else the owner works"
+        other.get("account").is_none() && other.get("homeNodes").is_none(),
+        "another sign-in is told nothing, where else the owner works included: {other}"
     );
 }
 
