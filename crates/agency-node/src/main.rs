@@ -303,6 +303,9 @@ fn status(node: &Node) {
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
     }
+    if let Err(error) = node.store().own_origins() {
+        println!("{}", agency_core::node::own_origins_unreadable_line(&error));
+    }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
     }

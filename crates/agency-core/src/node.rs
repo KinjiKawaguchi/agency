@@ -35,6 +35,8 @@ pub struct Node {
     bound_readers_lock: Mutex<()>,
     /// Whether the owner has been told that the file of those accounts cannot be read.
     is_unreadable_said: AtomicBool,
+    /// Whether the owner has been told that the file of the origins this node has had cannot be read.
+    is_own_origins_unreadable_said: AtomicBool,
 }
 
 /// What the journal says of a file of the accounts that read bound which cannot be read.
@@ -47,6 +49,13 @@ fn unreadable_line(error: &crate::error::Error) -> String {
 /// How many of the origins the node has been configured with are kept: the most recent. A node is renamed
 /// rarely, and a version of the org that names an origin older than these is read as naming another node.
 pub const MOST_OWN_ORIGINS: usize = 20;
+
+/// What the journal and `agency status` say of the file of the origins this node has had when it cannot be read.
+pub fn own_origins_unreadable_line(error: &crate::error::Error) -> String {
+    format!(
+        "own-origins.json cannot be read ({error}); it is left as it is, and only the origin this node is configured with now is read as its own until it is mended or removed"
+    )
+}
 
 /// At most this many recent signed reads are remembered. A signature is remembered only once it is
 /// valid, so only members fill it; beyond it, the oldest are forgotten first.
@@ -63,6 +72,7 @@ impl Node {
             reads: Mutex::default(),
             bound_readers_lock: Mutex::default(),
             is_unreadable_said: AtomicBool::new(false),
+            is_own_origins_unreadable_said: AtomicBool::new(false),
         };
         node.remember_own_origin()?;
         Ok(node)
@@ -74,7 +84,10 @@ impl Node {
         let Some(origin) = agency_proto::client::home_node_origin(&self.url()) else {
             return Ok(());
         };
-        let mut kept = self.store().own_origins();
+        let Ok(mut kept) = self.store().own_origins() else {
+            // Left as it is, never written over; `own_origins` says so.
+            return Ok(());
+        };
         if kept.contains(&origin) {
             return Ok(());
         }
@@ -87,7 +100,16 @@ impl Node {
     /// start, and the one it is configured with now. A team's place that names any of them is this node, so a
     /// version that only renames the node's own origin moves no team.
     pub fn own_origins(&self) -> Vec<String> {
-        let mut origins = self.store().own_origins();
+        let mut origins = self.store().own_origins().unwrap_or_else(|error| {
+            if !self
+                .is_own_origins_unreadable_said
+                .swap(true, Ordering::Relaxed)
+            {
+                self.journal()
+                    .warn("federation", &own_origins_unreadable_line(&error));
+            }
+            vec![]
+        });
         if let Some(now) = agency_proto::client::home_node_origin(&self.url()) {
             if !origins.contains(&now) {
                 origins.push(now);

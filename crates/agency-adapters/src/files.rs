@@ -388,9 +388,15 @@ impl ClientsSeenStore for DataDir {
 }
 
 impl OwnOriginStore for DataDir {
-    /// `own-origins.json`: origins only, no key and no secret.
-    fn own_origins(&self) -> Vec<String> {
-        read_json(&self.0.join("own-origins.json")).unwrap_or_default()
+    /// `own-origins.json`: origins only, no key and no secret. A file that is not there is no origins; one that is
+    /// there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>> {
+        let path = self.0.join("own-origins.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
     }
 
     fn save_own_origins(&self, origins: &[String]) -> Result<()> {
