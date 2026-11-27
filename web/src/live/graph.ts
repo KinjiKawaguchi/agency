@@ -3,6 +3,7 @@
 // together, each team gathers around a place of its own), written as pure steps so that a layout is the same
 // from the same input and can be tested.
 import type { TaggedEvent } from './stream'
+import { printable } from '../shared/printable'
 
 export interface Agent {
   /** The participant's name, unique inside its team. */
@@ -185,10 +186,10 @@ export function guestsOf(events: readonly TaggedEvent[], resolve: Resolve, { now
     if (event.kind !== 'message') continue
     const at = Date.parse(event.at)
     if (at > now || now - at > windowMs) continue
-    for (const name of [event.from, event.to]) {
+    for (const name of [event.from, event.to]) { // shown-ok(lookup): the agent is found by it, and drawn through `printable` below
       const key = resolve(org, team, name)
       if (key === keyOf({ org, team: GUEST_TEAM, id: name })) {
-        found.set(key, { id: name, label: name, team: GUEST_TEAM, org })
+        found.set(key, { id: name, label: printable(name), team: GUEST_TEAM, org })
         counts.set(key, (counts.get(key) ?? 0 /* stand-in-ok(index): a count started when the key is first seen */) + 1)
       }
     }
@@ -213,7 +214,7 @@ export function edgesOf(events: readonly TaggedEvent[], { now, resolve, windowMs
     if (event.kind !== 'message') continue
     const at = Date.parse(event.at)
     if (at > now || now - at > windowMs) continue
-    const [a, b] = [resolve(org, team, event.from), resolve(org, team, event.to)]
+    const [a, b] = [resolve(org, team, event.from /* shown-ok(lookup): finds the agents of an edge */), resolve(org, team, event.to /* shown-ok(lookup): as above */)]
     if (a === b) continue
     const id = key(a, b)
     const before = found.get(id)

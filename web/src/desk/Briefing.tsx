@@ -5,6 +5,7 @@ import type { Around } from '../i18n/en'
 import { useI18n } from '../i18n'
 import { Face } from '../people/Face'
 import { Loading, Skeleton } from '../shared/Skeleton'
+import { printable } from '../shared/printable'
 import { presenceOf, type Presence } from '../people/state'
 import type { DeskItem, Situation } from './items'
 
@@ -45,7 +46,7 @@ function Next({ top }: { top: DeskItem }) {
     top.request.kind === 'proposal'
       ? t.desk.briefing.nextProposal
       : top.request.kind === 'question'
-        ? t.desk.briefing.nextQuestion(top.drafter?.label ?? top.request.from)
+        ? t.desk.briefing.nextQuestion(top.drafter?.label ?? printable(top.request.from))
         : t.desk.briefing.nextPending
   return (
     <>

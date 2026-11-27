@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '../api/activityApi'
 import { useI18n } from '../i18n'
 import { formatDuration } from '../evaluation/duration'
+import { printable } from '../shared/printable'
 import { Loading, Skeleton } from '../shared/Skeleton'
 import type { TaggedEvent } from './stream'
 
@@ -25,13 +26,13 @@ function useDescribe(): (event: ActivityEvent) => { text: string; note?: string 
       case 'itemAdded':
         return { text: text.added(event.ref, event.title) }
       case 'statusChanged':
-        return { text: text.changed(event.ref, event.title, t.live.status[event.from], t.live.status[event.to]) }
+        return { text: text.changed(event.ref, event.title, t.live.status[event.from /* shown-ok(status): a state of a work item, not a name */], t.live.status[event.to /* shown-ok(status): as above */]) }
       case 'prOpened':
         return { text: text.opened(event.ref, event.title) }
       case 'prMerged':
         return { text: text.merged(event.ref, event.title), ...(event.leadSeconds === undefined ? {} : { note: text.leadTime(formatDuration(event.leadSeconds, t.evaluation.units)) }) }
       case 'message':
-        return { text: text.message(event.from, event.to), ...(event.summary === '' ? {} : { note: event.summary }) }
+        return { text: text.message(printable(event.from), printable(event.to)), ...(event.summary === '' ? {} : { note: event.summary }) }
     }
   }
 }
