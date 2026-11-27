@@ -358,10 +358,6 @@ impl GuestStore for DataDir {
         read_json(&self.guest_path(email))
     }
 
-    fn guests(&self) -> Vec<Guest> {
-        read_all(&self.dir("guests"))
-    }
-
     fn put_guest(&self, guest: &Guest) -> Result<()> {
         write_json(&self.guest_path(&guest.email), guest)
     }
