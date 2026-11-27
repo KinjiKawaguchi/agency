@@ -79,7 +79,7 @@ const unavailable = (raw: unknown): TeamUnavailable[] =>
   asList(raw).map((one) => ({ team: text(asObject(one).team, 'team'), reason: typeof asObject(one).reason === 'string' ? (asObject(one).reason as string) : '' }))
 
 /** The period a report or a team names: its first and last calendar day, in the time zone of the node that answers. */
-const periodOf = (given: Raw): { from: string; until: string } => ({ from: text(given.from, 'first day'), until: text(given.until, 'last day') })
+const periodOf = (given: Raw): { from: string; until: string } => ({ from: text(given.from, 'first day'), until: text(given.until, 'last day') }) // shown-ok(period): the first day of a range
 
 function header(given: Raw): { org: string; days: number; generatedAt: string; from: string; until: string; unavailable: TeamUnavailable[] } {
   return { org: text(given.org, 'org'), days: amount(given.days, 'days'), generatedAt: text(given.generatedAt, 'time'), ...periodOf(given), unavailable: unavailable(given.unavailable) }

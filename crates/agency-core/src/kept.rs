@@ -31,26 +31,26 @@ fn could_not_keep() -> Error {
     )
 }
 
-/// Keeps a decision signed by one of this node's account's devices, after the checks that need no runtime
+/// Keeps a decision signed by one of the devices of the account the caller acts as, after the checks that need no runtime
 /// and no peer: the account, the org and team, the shape, the freshness, and the device's signature. That
 /// the decider is the request's addressee needs the team's runtime, so the background task checks it and a
 /// refusal shows in the decision log.
 pub fn keep_signed(
     node: &Node,
+    account: &Id,
     org: &Id,
     team: &Id,
     signed: Signed<Envelope>,
     note: DecisionNote,
 ) -> Result<Kept> {
-    let (doc, place) = check_signed(node, org, team, &signed)?;
+    let (doc, place) = check_signed(node, account, org, team, &signed)?;
     let envelope = &signed.body;
     let is_local = node.runs_here(org, team);
     let record = DecisionRecord {
-        relayed_for: if is_local {
-            None
-        } else {
-            remote_relayed_for(node, &doc.body, org, team, envelope)
-        },
+        // The replica is read as the node's own account's: for anyone else it says nothing of them.
+        relayed_for: (!is_local && account == &node.account())
+            .then(|| remote_relayed_for(node, &doc.body, org, team, envelope))
+            .flatten(),
         ..DecisionRecord::of(envelope, note, is_local)
     };
     let _intake = node.intake();

@@ -19,15 +19,17 @@ use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, 
 /// devices in an org the node has. It gives the org's definition and where the org places the team.
 pub(crate) fn check_signed(
     node: &Node,
+    account: &Id,
     org: &Id,
     team: &Id,
     signed: &Signed<Envelope>,
 ) -> Result<(SignedOrg, TeamPlace)> {
     let envelope = &signed.body;
-    if envelope.account != node.account() {
+    // The account the caller acts as: the node's own, or the hosted member a guest is.
+    if &envelope.account != account {
         return Err(Error::new(
             ErrorKind::Forbidden,
-            "this node relays only its own account's decisions",
+            "this node relays only the decisions of the account the caller acts as",
         ));
     }
     if &envelope.org != org || &envelope.team != team {
@@ -55,18 +57,22 @@ pub(crate) fn check_signed(
 /// the CLI's way. A client's decision is kept and answered at once instead (`kept::keep_signed`).
 pub async fn decide_signed(
     node: &Node,
+    account: &Id,
     org: &Id,
     team: &Id,
     signed: Signed<Envelope>,
     note: DecisionNote,
 ) -> Result<Decided> {
-    let (doc, place) = check_signed(node, org, team, &signed)?;
+    let (doc, place) = check_signed(node, account, org, team, &signed)?;
     let envelope = &signed.body;
     let is_local = node.runs_here(org, team);
     let record = DecisionRecord::of(envelope, note, is_local);
     if !is_local {
         let record = DecisionRecord {
-            relayed_for: remote_relayed_for(node, &doc.body, org, team, envelope),
+            // The replica is read as the node's own account's: for anyone else it says nothing of them.
+            relayed_for: (account == &node.account())
+                .then(|| remote_relayed_for(node, &doc.body, org, team, envelope))
+                .flatten(),
             ..record
         };
         return send_envelope(node, place.node, signed, record).await;
@@ -132,5 +138,6 @@ pub async fn decide_with_device(
     envelope.validate().map_err(Error::bad_request)?;
     let signed = Signed::sign(Kind::Envelope, envelope, device.id.clone(), device.key)
         .map_err(|error| Error::internal(error.to_string()))?;
-    decide_signed(node, org, team, signed, DecisionNote::default()).await
+    let account = node.account();
+    decide_signed(node, &account, org, team, signed, DecisionNote::default()).await
 }

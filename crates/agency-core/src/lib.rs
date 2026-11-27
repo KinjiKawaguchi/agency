@@ -18,6 +18,8 @@ pub mod directory;
 pub mod error;
 pub mod evaluation;
 pub mod funding_pick;
+pub mod guest_reads;
+pub mod guests;
 pub mod invites;
 pub mod kept;
 pub mod kpis;

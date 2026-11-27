@@ -62,7 +62,10 @@ struct NodeLabelTests {
         struct Case: Decodable { let text: String; let printable: String }
         let mark: String
         let hidden: [[String]]
+        /// The code points of `hidden` that a text keeps, because it is written in lines.
+        let textKeeps: [String]
         let cases: [Case]
+        let textCases: [Case]
 
         init(from file: String = #filePath) throws {
             var url = URL(fileURLWithPath: file)
@@ -73,6 +76,11 @@ struct NodeLabelTests {
         func isListed(_ value: UInt32) -> Bool {
             hidden.contains { UInt32($0[0], radix: 16)! <= value && value <= UInt32($0[1], radix: 16)! }
         }
+
+        /// Whether a text hides it: what `hidden` lists, but what `textKeeps` names.
+        func isListedInText(_ value: UInt32) -> Bool {
+            isListed(value) && !textKeeps.contains { UInt32($0, radix: 16)! == value }
+        }
     }
 
     @Test("every code point is hidden exactly when the shared file says it is, so that the set cannot drift from the node's and the web's")
@@ -82,6 +90,34 @@ struct NodeLabelTests {
         for value in UInt32(0)...0x10FFFF where !(0xD800...0xDFFF).contains(value) {
             #expect(NodeLabel.isHidden(Unicode.Scalar(value)!) == shared.isListed(value), Comment(rawValue: "U+\(String(value, radix: 16, uppercase: true))"))
         }
+    }
+
+    @Test("a text hides exactly what the shared file's `hidden` lists except what its `textKeeps` names, for every code point, and its text cases come out as the file says")
+    func theTextSet() throws {
+        let shared = try SharedSet()
+        #expect(Set(shared.textKeeps) == ["0009", "000A", "000D"] && shared.textCases.count >= 8)
+        for value in UInt32(0)...0x10FFFF where !(0xD800...0xDFFF).contains(value) {
+            #expect(NodeLabel.isHiddenInText(Unicode.Scalar(value)!) == shared.isListedInText(value), Comment(rawValue: "U+\(String(value, radix: 16, uppercase: true))"))
+        }
+        for one in shared.textCases { #expect(NodeLabel.shownText(one.text) == one.printable, Comment(rawValue: one.text)) }
+    }
+
+    @Test("the text wrappers show a decoded text and a set one, and keep a missing one missing")
+    func textWrappers() throws {
+        struct Paragraph: Decodable, Equatable {
+            @ShownText var body: String
+            @ShownTextIfPresent var more: String?
+        }
+        let both = try JSONDecoder().decode(Paragraph.self, from: Data(#"{"body":"a\u202E\nb","more":"c\u200B\nd"}"#.utf8))
+        #expect(both.body == "a?\nb" && both.more == "c?\nd")
+        let none = try JSONDecoder().decode(Paragraph.self, from: Data(#"{"body":"x"}"#.utf8))
+        #expect(none.more == nil)
+        let null = try JSONDecoder().decode(Paragraph.self, from: Data(#"{"body":"x","more":null}"#.utf8))
+        #expect(null.more == nil)
+        var text = ShownText(wrappedValue: "x\u{FEFF}\ny")
+        #expect(text.wrappedValue == "x?\ny")
+        text.wrappedValue = "\u{202D}\n"
+        #expect(text.wrappedValue == "?\n")
     }
 
     @Test("every case of the shared file is shown as the file says, the ends of each range and the characters next to them included")

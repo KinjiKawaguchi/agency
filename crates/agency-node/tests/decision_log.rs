@@ -103,6 +103,7 @@ async fn logs_local_decisions_as_applied() {
         },
         at: "2026-11-24T12:00:00Z".into(),
         is_local: false,
+        by: None,
     };
     alice.node.store().append_decision(&elsewhere).unwrap();
     let targets: Vec<Value> = decisions(&alice, "").await["entries"]

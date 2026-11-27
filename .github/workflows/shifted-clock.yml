@@ -1,0 +1,45 @@
+name: shifted-clock
+
+# Every Monday, and when run by hand, the web client's tests are run as if it were each of a handful of other days (every weekday,
+# the end of the month and of the year, the next change of the clock of a few time zones: web/src/test/shiftedDates.ts), and the days
+# that broke a test are posted on the standing issue (#265), as the flaky tests are. A test that is true only on the day it was
+# written would otherwise turn the next PR red on some Friday. It runs on no PR. To run one day yourself:
+#   scripts/ci/shifted-clock.sh --at 2026-11-28T12:00:00Z
+on:
+  schedule:
+    # Monday 01:00 UTC, an hour after the flaky list, which is 10:00 in Tokyo.
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+    inputs:
+      at:
+        description: "One moment only, as <time>[@<time zone>], for example 2026-11-28T12:00:00Z or 2027-03-14T06:50:00Z@America/New_York. Empty runs the usual days and posts on the issue."
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  shifted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Install the web client
+        working-directory: web
+        run: |
+          corepack enable
+          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else npm ci; fi
+      - name: Run the tests on the other days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AT: ${{ inputs.at }}
+        run: |
+          if [ -n "$AT" ]; then
+            scripts/ci/shifted-clock.sh --at "$AT"
+          else
+            scripts/ci/shifted-clock.sh "${{ github.repository }}" 265
+          fi

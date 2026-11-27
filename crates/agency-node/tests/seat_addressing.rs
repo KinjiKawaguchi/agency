@@ -272,7 +272,14 @@ async fn a_client_cannot_label_a_decision_as_answered_for_someone() {
         serde_json::from_value::<SignedDecisionInput>(claim).is_err(),
         "the node alone says for whom a decision was made"
     );
-    submit_signed_decision(&alice.node, &id("acme"), &id("app"), input).unwrap();
+    submit_signed_decision(
+        &alice.node,
+        &agency_core::guests::Caller::Owner,
+        &id("acme"),
+        &id("app"),
+        input,
+    )
+    .unwrap();
     deliver_due(&alice.node).await.unwrap();
     let log = decision_log(&alice.node, None);
     assert_eq!(

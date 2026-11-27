@@ -312,3 +312,120 @@ async fn an_objective_that_is_not_one_stops_the_node_and_names_the_setting() {
         assert!(error.contains(wanted), "{error}");
     }
 }
+
+#[tokio::test]
+async fn the_buckets_of_each_hour_are_in_the_answer_only_when_asked_for_with_hour_buckets_1() {
+    let (alice, _) = alice().await;
+    for _ in 0..3 {
+        get(&alice, "/api/me").send().await.unwrap();
+    }
+    let plain = metrics_of(get(&alice, "/api/metrics?days=2").send().await.unwrap()).await;
+    assert!(plain.series.iter().all(|s| !s.by_hour.is_empty()));
+    assert!(
+        plain
+            .series
+            .iter()
+            .flat_map(|s| &s.by_hour)
+            .all(|hour| hour.buckets.is_none()),
+        "without it the answer holds none"
+    );
+    let asked = metrics_of(
+        get(&alice, "/api/metrics?days=2&hourBuckets=1")
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        asked.series.iter().all(Series::is_consistent),
+        "{:?}",
+        asked.series
+    );
+    let me = asked
+        .series
+        .iter()
+        .find(|s| s.name == "GET /api/me")
+        .unwrap();
+    let hours: u64 = me.by_hour.iter().map(|hour| hour.count).sum();
+    assert_eq!(hours, me.count, "the hours are the whole of the series");
+    for hour in &me.by_hour {
+        let buckets = hour
+            .buckets
+            .as_ref()
+            .expect("an hour with a call has its buckets");
+        assert_eq!(
+            (buckets.len(), buckets.iter().sum::<u64>()),
+            (15, hour.count)
+        );
+    }
+    // The hours' buckets added up are the series' own.
+    let summed: Vec<u64> = (0..15)
+        .map(|i| {
+            me.by_hour
+                .iter()
+                .map(|hour| hour.buckets.as_ref().unwrap()[i])
+                .sum()
+        })
+        .collect();
+    assert_eq!(summed, me.buckets);
+    // The rest of the answer is the same, and a narrowed answer can ask too.
+    let names = |m: &Metrics| m.series.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+    assert!(names(&plain)
+        .iter()
+        .all(|name| names(&asked).contains(name)));
+    let one = metrics_of(
+        get(&alice, "/api/metrics?name=GET%20/api/me&hourBuckets=1")
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(one.series[0]
+        .by_hour
+        .iter()
+        .all(|hour| hour.buckets.is_some()));
+}
+
+#[tokio::test]
+async fn hour_buckets_is_1_or_left_out_and_over_7_days_there_are_no_hours_to_have_them() {
+    let (alice, _) = alice().await;
+    get(&alice, "/api/me").send().await.unwrap();
+    for bad in [
+        "hourBuckets=0",
+        "hourBuckets=true",
+        "hourBuckets=",
+        "hourBuckets=2",
+        "hourBuckets=1x",
+    ] {
+        let response = get(&alice, &format!("/api/metrics?{bad}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400, "{bad}");
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert!(
+            body["error"].as_str().unwrap().contains("hourBuckets"),
+            "{bad}: {body}"
+        );
+    }
+    let month = metrics_of(
+        get(&alice, "/api/metrics?days=30&hourBuckets=1")
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(!month.series.is_empty() && month.series.iter().all(|s| s.by_hour.is_empty()));
+    let week = metrics_of(
+        get(&alice, "/api/metrics?days=7&hourBuckets=1")
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(week
+        .series
+        .iter()
+        .flat_map(|s| &s.by_hour)
+        .all(|hour| hour.buckets.is_some()));
+}
