@@ -1,5 +1,5 @@
 //! `agency audit`: an org's change history in words, from the signed versions this node keeps.
-use agency_core::audit::{org_history, HistoryEntry};
+use agency_core::audit::{org_history, HistoryEntry, SignatureCheck};
 use agency_core::Node;
 use agency_proto::{clock, Id};
 use anyhow::{bail, Result};
@@ -27,14 +27,25 @@ fn line(entry: &HistoryEntry) -> String {
         true => "nothing else changes".to_owned(),
         false => entry.changes.join("; "),
     };
+    let signed = match (entry.signature, entry.signed_by.as_deref()) {
+        (Some(SignatureCheck::Valid), Some(key)) => format!("signed by {key}"),
+        (Some(SignatureCheck::NotChecked), _) => {
+            "signature not checked (the version before is not kept here)".to_owned()
+        }
+        _ => "SIGNATURE DOES NOT MATCH the keys of the version before".to_owned(),
+    };
+    let fork = match entry.follows {
+        Some(false) => " (its prev is NOT the version before: a fork)",
+        _ => "",
+    };
+    let since = entry
+        .compared_with
+        .map(|version| format!(" (changes since version {version})"))
+        .unwrap_or_default();
     format!(
-        "version {} at {}, signed by {}: {changes}",
+        "version {} at {}, {signed}{fork}{since}: {changes}",
         entry.version,
         entry.at.as_deref().unwrap_or("?"),
-        entry
-            .signed_by
-            .as_deref()
-            .unwrap_or("no key of the version before")
     )
 }
 

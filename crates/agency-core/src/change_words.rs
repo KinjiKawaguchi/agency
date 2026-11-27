@@ -287,6 +287,22 @@ mod tests {
     }
 
     #[test]
+    fn every_change_says_a_change_no_words_name_and_says_nothing_for_none() {
+        let mut before = org();
+        before.revoked = vec![AccountKey::from_seed([2; 32]).public()];
+        let mut after = before.clone();
+        after.version = 2;
+        after.revoked.clear();
+        assert_eq!(
+            every_change(&before, &after),
+            ["change something these words do not name"]
+        );
+        let mut same = before.clone();
+        same.version = 2;
+        assert!(every_change(&before, &same).is_empty());
+    }
+
+    #[test]
     fn a_change_no_words_name_is_still_said() {
         let mut before = org();
         before.revoked = vec![AccountKey::from_seed([2; 32]).public()];
