@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import sample from '../../../testdata/budget.sample.json' with { type: 'json' }
 import type { BudgetPart, BudgetStatus } from '../api/clientApi'
+import { readBudget } from '../api/budgetAnswers'
 import { I18nProvider } from '../i18n'
 import { BudgetMeter } from './BudgetMeter'
 
@@ -82,6 +84,24 @@ describe('the weekly budget, as the node computed it', () => {
   it('says the org is over its budget with the amount as a lower bound when part of it was not read', () => {
     draw(ok, { capUsd: 500, spentUsd: 640, state: 'over', partial: true })
     expect(screen.getByText('The org is over its weekly budget: $640 of $500. Some usage could not be read, so it is at least this much.')).toBeInTheDocument()
+  })
+
+  it('draws the shared sample: the team close to its cap, and the org whose usage was only partly read', () => {
+    const { container } = render(
+      <I18nProvider initial="en">
+        <BudgetMeter status={readBudget(sample)} />
+      </I18nProvider>,
+    )
+    expect(screen.getByText('$163 of $200 this week, from Monday 2026-11-23')).toBeInTheDocument()
+    expect(screen.getByText('Close to the budget')).toBeInTheDocument()
+    expect(screen.getByText('Some of the org’s usage could not be read: at least $311 of $500 this week.')).toBeInTheDocument()
+    expect(fill(container).style.width).toBe('81.6%')
+  })
+
+  it('says a team’s unknown spend and the org’s lower bound in Japanese', () => {
+    draw({ capUsd: 100, spentUsd: 0, state: 'ok', partial: true }, { capUsd: 500, spentUsd: 311, state: 'ok', partial: true }, 'ja')
+    expect(screen.getByText('このチームの使用量を読めなかったため、今週の使用額は分かりません。')).toBeInTheDocument()
+    expect(screen.getByText('組織の使用量に読めなかったものがあります: 今週は $500 のうち、少なくとも $311。')).toBeInTheDocument()
   })
 
   it('draws nothing for a team with no cap: it has no plan', () => {
