@@ -8,7 +8,7 @@ use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::ports::RootSigner;
 use crate::push_devices::keep_org;
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::clock::{self, Duration, OffsetDateTime};
@@ -634,7 +634,7 @@ pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Resul
             return Ok(());
         }
         let path = routes::versions(org, current);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

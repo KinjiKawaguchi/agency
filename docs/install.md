@@ -505,6 +505,20 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
+### Signed reads between nodes of different releases
+
+Nodes of one org read each other with signed reads. A node of this release makes a read for one particular node (it signs that node's id with it), once it knows that node lists `readAudience`; a node takes such a read only if it names itself. Update the nodes of an org in any order. A node still reads an older one the old way, and answers an older one the old way too, with two things to know:
+
+- Once a node has taken a read that names it from an account, it takes no older read from that account. If one account has two nodes (for example one on a Mac and one on another machine) and you update one of them, the other one's reads of the updated node are refused (the node answers `404`, like for any read it refuses) until you update it as well. The updated node writes the reason to its log (`agency logs`): `a read signed by alice that names no node; …`.
+- To let the older node through until you update it, add the account to `config.json` of the node that refuses, and restart it:
+
+  ```json
+  "federation": { "unboundReadAccounts": ["alice"] }
+  ```
+
+  Take the line out once both nodes are updated. The same line helps an account whose node you rolled back to a release without `readAudience`. A node keeps the accounts it has taken such a read from in `bound-readers.json` in its data directory, so a restart does not reset anything, and `agency status` lists them.
+- When every node of the org is updated, set `"federation": { "requireReadAudience": true }` on each node to refuse the older reads from every account. Without it, a read that was made the old way and captured before its account first named the node can still be replayed there. `requireReadAudience` needs `url` to be this node's origin as `https://<host>[:<port>]` (or `http://` on a loopback address), and the node refuses to start otherwise.
+
 ### The measurements
 
 The node times every request it answers and writes the numbers to `~/.agency/metrics/`, one file for each UTC day, for 30 days. They are the node's own data, on this machine only; nothing leaves it unless you scrape it (below). A request is named by the route it matched (`GET /api/orgs/{org}/teams/{team}/usage`, never the path with the ids in it), what matched no route is one series, `unmatched`, and no body, token, query, or address is kept. The owner reads them:

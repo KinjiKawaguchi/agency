@@ -7,7 +7,8 @@ use crate::ports::{
 };
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Ports {
@@ -30,6 +31,17 @@ pub struct Node {
     config: RwLock<NodeConfig>,
     /// The signed reads accepted recently, with when they were signed (see `accept_read_once`).
     reads: Mutex<HashMap<String, OffsetDateTime>>,
+    /// Serializes the writes of the accounts that read bound (`change_bound_readers`).
+    bound_readers_lock: Mutex<()>,
+    /// Whether the owner has been told that the file of those accounts cannot be read.
+    is_unreadable_said: AtomicBool,
+}
+
+/// What the journal says of a file of the accounts that read bound which cannot be read.
+fn unreadable_line(error: &crate::error::Error) -> String {
+    format!(
+        "bound-readers.json cannot be read ({error}); it is left as it is, and reads that name no node are taken as before until it is mended or removed"
+    )
 }
 
 /// At most this many recent signed reads are remembered. A signature is remembered only once it is
@@ -45,6 +57,8 @@ impl Node {
             key,
             config: RwLock::new(config),
             reads: Mutex::default(),
+            bound_readers_lock: Mutex::default(),
+            is_unreadable_said: AtomicBool::new(false),
         })
     }
 
@@ -73,6 +87,47 @@ impl Node {
         }
         reads.insert(signature.to_owned(), signed_at);
         true
+    }
+
+    /// The accounts whose node signs reads that name this node (see `read_auth`). When the file that keeps them
+    /// cannot be read they are taken as none, so that reads keep being answered, and the owner is told once.
+    pub(crate) fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        self.store().bound_readers().inspect_err(|error| {
+            if !self.is_unreadable_said.swap(true, Ordering::Relaxed) {
+                self.journal().warn("federation", &unreadable_line(error));
+            }
+        })
+    }
+
+    /// Changes the accounts whose node signs reads that name this node, one change at a time, and keeps the
+    /// result in the data directory when it differs. A file that cannot be read is left as it is, never written
+    /// over, and said in the journal; a failure to keep the result is said too, and the accounts are then taken
+    /// as before.
+    pub(crate) fn change_bound_readers(&self, change: impl FnOnce(&mut BTreeSet<Id>)) {
+        let _one_at_a_time = self
+            .bound_readers_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let before = match self.store().bound_readers() {
+            Ok(before) => before,
+            Err(error) => {
+                self.journal().warn("federation", &unreadable_line(&error));
+                return;
+            }
+        };
+        let mut after = before.clone();
+        change(&mut after);
+        if after == before {
+            return;
+        }
+        if let Err(error) = self.store().save_bound_readers(&after) {
+            self.journal().warn(
+                "federation",
+                &format!(
+                    "could not keep which accounts read in the form that names this node: {error}"
+                ),
+            );
+        }
     }
 
     pub fn store(&self) -> &dyn Store {
