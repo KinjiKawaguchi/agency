@@ -12,6 +12,7 @@ use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
 use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::root_change::RootAnswer;
+use agency_proto::runtime::is_reserved_name;
 use agency_proto::seat::Seat;
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
@@ -111,6 +112,13 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
         .is_some_and(|at| (node.now() - at).whole_seconds().abs() <= JOIN_SKEW_SECONDS);
     if !is_label_valid || !is_fresh {
         return Err(Error::bad_request("malformed name or time"));
+    }
+    // Refused here as well as when the version is signed, so that such a join is never held for the root.
+    if is_reserved_name(&request.account) {
+        return Err(Error::bad_request(format!(
+            "{} is a name a team runtime reserves; join with another account id",
+            request.account
+        )));
     }
     let record = open_invite(node, org, &request.code).ok_or_else(|| {
         Error::new(
