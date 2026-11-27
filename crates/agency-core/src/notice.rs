@@ -2,6 +2,7 @@
 //! A title or label is `None` when the node leaves it out (`push.hideTitles`) or when there is none;
 //! the adapter then sends the wording that names no title.
 use agency_proto::client::PushEvent;
+use agency_proto::org::printable;
 use agency_proto::Id;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,6 +55,60 @@ pub struct Notice {
 }
 
 impl Notice {
+    /// The notice with every text someone else wrote (a team's label, a request's title, a device's label, the
+    /// words of a change) made printable: each character that could hide or reorder how it reads, a line break
+    /// included, is `?` (`agency_proto::org::printable`). A notice reaches a lock screen, where such a character
+    /// could make a line say something it does not. Every adapter builds its message from this.
+    pub fn printable(&self) -> Notice {
+        let shown = |text: &Option<String>| text.as_deref().map(printable);
+        let kind = match &self.kind {
+            NoticeKind::Request {
+                org,
+                team,
+                request,
+                team_label,
+                title,
+            } => NoticeKind::Request {
+                org: org.clone(),
+                team: team.clone(),
+                request: request.clone(),
+                team_label: shown(team_label),
+                title: shown(title),
+            },
+            NoticeKind::Device { device, label } => NoticeKind::Device {
+                device: device.clone(),
+                label: shown(label),
+            },
+            NoticeKind::Decision {
+                org,
+                team,
+                id,
+                title,
+            } => NoticeKind::Decision {
+                org: org.clone(),
+                team: team.clone(),
+                id: id.clone(),
+                title: shown(title),
+            },
+            NoticeKind::RootChange {
+                org,
+                id,
+                what,
+                waiting,
+            } => NoticeKind::RootChange {
+                org: org.clone(),
+                id: id.clone(),
+                what: shown(what),
+                waiting: *waiting,
+            },
+            recovery @ NoticeKind::Recovery { .. } => recovery.clone(),
+        };
+        Notice {
+            kind,
+            badge: self.badge,
+        }
+    }
+
     pub fn event(&self) -> PushEvent {
         match self.kind {
             NoticeKind::Request { .. } => PushEvent::Request,

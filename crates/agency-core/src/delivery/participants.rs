@@ -124,6 +124,7 @@ mod tests {
             has_issue: false,
             issue_started_at: None,
             closes_incident: false,
+            work_type: None,
         }
     }
 
