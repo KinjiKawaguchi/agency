@@ -59,25 +59,54 @@ private final class FakeSource: DeskSource, @unchecked Sendable {
     }
 }
 
-private final class FakeSender: DeskSender, @unchecked Sendable {
+private final class FakeSigner: DeskSigner, @unchecked Sendable {
     private let lock = NSLock()
-    private var _sent: [PreparedDecision] = []
-    private var _answer: Result<DecisionResult, Error> = .success(DecisionResult(outcome: .applied, message: nil))
+    private var _signed: [PreparedDecision] = []
+    private var _failure: Error?
     private var gate: CheckedContinuation<Void, Never>?
     private var holds = false
+    private var counter = 0
 
-    var sent: [PreparedDecision] { lock.withLock { _sent } }
-    func set(answer: Result<DecisionResult, Error>) { lock.withLock { _answer = answer } }
+    /// What was asked to be signed.
+    var sent: [PreparedDecision] { lock.withLock { _signed } }
+    func set(failure: Error?) { lock.withLock { _failure = failure } }
     func holdNextSend() { lock.withLock { holds = true } }
     func release() { lock.withLock { let waiting = gate; gate = nil; return waiting }?.resume() }
     var isHolding: Bool { lock.withLock { gate != nil } }
 
-    func send(_ decision: PreparedDecision) async throws -> DecisionResult {
-        lock.withLock { _sent.append(decision) }
+    func sign(_ decision: PreparedDecision) async throws -> SignedDecision {
+        lock.withLock { _signed.append(decision) }
         if lock.withLock({ let held = holds; holds = false; return held }) {
             await withCheckedContinuation { continuation in lock.withLock { gate = continuation } }
         }
-        return try lock.withLock { try _answer.get() }
+        let number = lock.withLock { counter += 1; return counter }
+        if let failure = lock.withLock({ _failure }) { throw failure }
+        let envelope = decision.envelope(id: "env-\(number)", account: "alice", at: "2026-11-27T10:00:00Z")
+        return SignedDecision(envelope: envelope, signer: "d-1", signature: "c2ln", title: decision.title, choiceLabel: decision.choiceLabel)
+    }
+}
+
+/// What the node answers a kept decision with; or never, while held.
+private final class FakeSubmitter: DecisionSubmitter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _sent: [SignedDecision] = []
+    private var _failure: Error?
+    private var gate: CheckedContinuation<Void, Never>?
+    private var holds = false
+
+    var sent: [SignedDecision] { lock.withLock { _sent } }
+    func set(failure: Error?) { lock.withLock { _failure = failure } }
+    func hold() { lock.withLock { holds = true } }
+    func release() { lock.withLock { let waiting = gate; gate = nil; return waiting }?.resume() }
+    var isHolding: Bool { lock.withLock { gate != nil } }
+
+    func submit(_ decision: SignedDecision, org: String, team: String) async throws -> DecisionResult {
+        lock.withLock { _sent.append(decision) }
+        if lock.withLock({ holds }) {
+            await withCheckedContinuation { continuation in lock.withLock { gate = continuation } }
+        }
+        if let failure = lock.withLock({ _failure }) { throw failure }
+        return try JSONDecoder().decode(DecisionResult.self, from: Data(#"{"outcome":"queued"}"#.utf8))
     }
 }
 
@@ -93,6 +122,12 @@ private final class MemoryStorage: DraftStorage, @unchecked Sendable {
     func save(_ drafts: [String: DeskDraft]) { lock.withLock { stored = drafts; _saves += 1 } }
 }
 
+/// Waits until `condition` holds, and fails (instead of hanging for ever) when it does not.
+private func waitUntil(_ condition: @Sendable () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async {
+    for _ in 0..<200_000 where !condition() { await Task.yield() }
+    #expect(condition(), "waited for a condition that never held", sourceLocation: sourceLocation)
+}
+
 private actor Told {
     private(set) var count = 0
     private(set) var readsAtThatTime = 0
@@ -103,12 +138,17 @@ private actor Told {
 @Suite("DeskStore")
 struct DeskStoreTests {
     private let source = FakeSource()
-    private let sender = FakeSender()
+    private let sender = FakeSigner()
+    private let submitter = FakeSubmitter()
     private let storage = MemoryStorage()
+    private let kept = MemoryOutboxStorage()
     private let first = "acme:app:r-1"
 
     private func makeStore(storage: MemoryStorage? = nil, standing: Standing = .loading) -> DeskStore {
-        DeskStore(source: source, sender: sender, storage: storage ?? self.storage, retry: .never, standing: standing)
+        DeskStore(
+            source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage ?? self.storage,
+            retry: .never, standing: standing
+        )
     }
 
     // MARK: Reading
@@ -453,7 +493,7 @@ struct DeskStoreTests {
             if tries.next() <= 2 { throw NodeError.http(status: 503, message: "the board has not been read yet") }
             return Fixture.decode(TeamSnapshot.self, "team-snapshot-local")
         }
-        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        let store = DeskStore(source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
         await store.refresh()
         #expect(tries.count == 3)
         #expect(store.items.count == 2)
@@ -463,7 +503,7 @@ struct DeskStoreTests {
 
     @Test("a team that keeps failing is reported after the waits are used up, and keeps its last answer")
     func givesUp() async {
-        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        let store = DeskStore(source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
         await store.refresh()
         let tries = Counter()
         source.set { _, _ in tries.next(); throw NodeError.http(status: 503, message: "not ready") }
@@ -495,7 +535,7 @@ struct DeskStoreTests {
             }
             shownAtTheWait.set(await MainActor.run { holder.store?.teams.count ?? -1 })
         })
-        let store = DeskStore(source: source, sender: sender, storage: storage, retry: policy)
+        let store = DeskStore(source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage, retry: policy)
         holder.store = store
         await store.refresh()
         #expect(shownAtTheWait.count == 1, "app was on the desk while web was waited for")
@@ -506,18 +546,22 @@ struct DeskStoreTests {
     func finalAnswer() async {
         let tries = Counter()
         source.set { _, _ in tries.next(); throw NodeError.http(status: 403, message: "no") }
-        let store = DeskStore(source: source, sender: sender, storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
+        let store = DeskStore(source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage, retry: RetryPolicy(delays: [1, 1], wait: { _ in }))
         await store.refresh()
         #expect(tries.count == 1)
     }
 
-    @Test("after a decision is sent the cache is told, before the desk reads again")
+    @Test("after the node has taken a decision the cache is told, before the desk reads again")
     func tellsTheCache() async {
         let told = Told()
-        let store = DeskStore(source: source, sender: sender, storage: storage, afterSend: { await told.mark(readsSoFar: source.meCalls) }, retry: .never)
+        let store = DeskStore(
+            source: source, signer: sender, outbox: DecisionOutbox(storage: kept, submitter: submitter), storage: storage,
+            afterSend: { await told.mark(readsSoFar: source.meCalls) }, retry: .never
+        )
         await store.refresh()
         let before = source.meCalls
         await store.send(.answer("yes"), for: first)
+        await store.outbox.flush()
         #expect(await told.count == 1)
         #expect(await told.readsAtThatTime == before, "told before the second read")
         #expect(source.meCalls == before + 1)
@@ -593,84 +637,162 @@ struct DeskStoreTests {
         #expect(makeStore(storage: kept).draft(for: first) == DeskDraft(text: "x", optionKey: "b"))
     }
 
-    // MARK: Sending
+    // MARK: Deciding
 
-    @Test("a sent reply goes to the sender as prepared, clears its draft, and the desk is read again")
-    func send() async {
+    @Test("a decision is signed as prepared, kept on the device, and the item leaves the pile and the count at once")
+    func decide() async {
         let store = makeStore()
         await store.refresh()
         store.setText("条件つきで", for: first)
-        let readsBefore = source.meCalls
+        submitter.hold()
         await store.send(.answer("条件つきで"), for: first)
-        #expect(sender.sent.count == 1)
-        #expect(!sender.sent[0].isComment)
-        #expect(sender.sent[0].text == "条件つきで")
-        #expect(sender.sent[0].answerWith.target == "r-1")
-        #expect(store.draft(for: first).isEmpty)
-        #expect(storage.drafts.isEmpty)
-        #expect(source.meCalls == readsBefore + 1)
+        #expect(sender.sent.count == 1 && !sender.sent[0].isComment && sender.sent[0].text == "条件つきで" && sender.sent[0].answerWith.target == "r-1")
+        #expect(store.draft(for: first).isEmpty && storage.drafts.isEmpty)
+        #expect(kept.entries.map(\.itemID) == [first], "on the device before anything is sent")
+        #expect(!store.items.map(\.id).contains(first), "off the pile")
+        #expect(store.waitingCount == 1, "and off the count: the other one still waits")
         #expect(store.sending.isEmpty)
+        submitter.release()
     }
 
-    @Test("a sent reply is remembered while the request is still on the desk, and forgotten when it leaves")
-    func sentIsRemembered() async {
+    @Test("deciding does not wait for the node: the node never answers and the owner is on the next item")
+    func doesNotWait() async {
         let store = makeStore()
         await store.refresh()
-        sender.set(answer: .success(DecisionResult(outcome: .queued, message: "node asleep")))
-        await store.send(.answer("hm"), for: first)
-        #expect(store.sent[first] == SentReply(isComment: false, outcome: .queued, message: "node asleep"))
-        source.set { _, _ in
-            var snapshot = Fixture.decode(TeamSnapshot.self, "team-snapshot-local")
-            snapshot = try! JSONDecoder().decode(TeamSnapshot.self, from: Data(
-                String(decoding: try! Fixture.data("team-snapshot-local"), as: UTF8.self)
-                    .replacingOccurrences(of: "\"r-1\"", with: "\"r-gone\"").utf8))
-            return snapshot
-        }
-        await store.refresh()
-        #expect(store.sent[first] == nil)
+        submitter.hold()
+        await store.send(.answer("go"), for: first)
+        await waitUntil { submitter.isHolding }
+        #expect(store.outbox.sending.count == 1, "it is being sent, in the background")
+        #expect(store.items.map(\.id) == ["acme:app:r-2"] && store.sending.isEmpty)
+        submitter.release()
     }
 
-    @Test("a comment on a request with options is sent as a comment: no choice, and nothing decided")
-    func sendComment() async {
+    @Test("once the node has taken it the entry is gone, and the desk is read again")
+    func taken() async {
+        let store = makeStore()
+        await store.refresh()
+        let readsBefore = source.meCalls
+        await store.send(.answer("yes"), for: first)
+        await store.outbox.flush()
+        #expect(store.outbox.entries.isEmpty && kept.entries.isEmpty)
+        #expect(submitter.sent.map(\.envelope.id) == ["env-1"])
+        #expect(source.meCalls == readsBefore + 1)
+    }
+
+    @Test("a decision the node took stays off the pile and the count until the desk has been read again: the request does not flash back")
+    func takenStaysOffUntilRead() async {
+        let store = makeStore()
+        await store.refresh()
+        source.holdNextMe()
+        await store.send(.answer("yes"), for: first)
+        await waitUntil { source.isHolding }
+        #expect(store.outbox.entries.isEmpty, "the node took it, and the desk is being read again")
+        #expect(!store.items.map(\.id).contains(first) && store.waitingCount == 1)
+        source.release()
+        for _ in 0..<200_000 where !store.outbox.justTaken.isEmpty { await Task.yield() }
+        #expect(store.outbox.justTaken.isEmpty, "and it is let go of once the desk has been read")
+    }
+
+    @Test("a decided item does not come back on the pile while its send is pending or refused, though the node's view still lists it, and comes back when discarded")
+    func staysOff() async {
+        let store = makeStore()
+        await store.refresh()
+        submitter.set(failure: NodeError.http(status: 409, message: "refused: not yours"))
+        await store.send(.answer("hm"), for: first)
+        await store.outbox.flush()
+        await store.refresh()
+        #expect(!store.items.map(\.id).contains(first), "refused for good: it waits for the owner to let go")
+        #expect(store.outbox.failed.first?.failure?.reason == "refused: not yours")
+        let id = store.outbox.entries[0].id
+        store.discardDecision(id)
+        #expect(store.items.map(\.id).contains(first) && store.waitingCount == 2)
+        #expect(store.draft(for: first) == DeskDraft(text: "hm", optionKey: nil), "what was typed is back in the draft")
+    }
+
+    private func log(_ state: String, target: String = "r-1") -> DecisionLog {
+        let json = """
+        {"entries":[{"choice":"a","decidedAt":"2026-11-27T10:00:00Z","id":"env-1","kind":"answer","org":"acme","state":\(state),
+        "target":"\(target)","team":"app","text":""}]}
+        """
+        return try! JSONDecoder().decode(DecisionLog.self, from: Data(json.utf8))
+    }
+
+    @Test("a decision the node took stays off the pile and the count while the decision log says it is queued, though the node's view still lists the request")
+    func queuedStaysOff() async {
+        let store = makeStore()
+        await store.send(.answer("yes"), for: first)
+        await store.refresh()
+        source.set(decisions: .success(log(#"{"kind":"queued","attempts":1,"nextAt":"2026-11-27T10:00:15Z"}"#)))
+        await store.outbox.flush()
+        await store.refresh()
+        #expect(store.outbox.entries.isEmpty, "the node took it")
+        #expect(!store.items.map(\.id).contains(first) && store.waitingCount == 1, "not back before the team has applied it")
+        source.set(decisions: .success(log(#"{"kind":"applied"}"#)))
+        await store.refresh()
+        #expect(store.items.map(\.id).contains(first), "the node's own view decides once the log no longer says queued")
+    }
+
+    @Test("a decision the team's node refused later is back on the pile")
+    func refusedLaterIsBack() async {
+        let store = makeStore()
+        await store.refresh()
+        await store.send(.answer("yes"), for: first)
+        await store.outbox.flush()
+        source.set(decisions: .success(log(#"{"kind":"refused","message":"not yours"}"#)))
+        await store.refresh()
+        #expect(store.items.map(\.id).contains(first))
+    }
+
+    @Test("a comment on a request with options is kept as a comment: no choice, and nothing decided")
+    func decideComment() async {
         source.set { _, _ in Teams.snapshot() }
         let store = makeStore()
         await store.refresh()
         let question = "acme:app:" + Teams.questionID
         await store.send(.comment("来週にしてください"), for: question)
-        #expect(sender.sent.count == 1)
-        #expect(sender.sent[0].isComment)
-        #expect(sender.sent[0].choice == nil)
-        #expect(store.sent[question]?.isComment == true)
+        #expect(sender.sent.count == 1 && sender.sent[0].isComment && sender.sent[0].choice == nil)
+        #expect(store.outbox.entries.first?.isComment == true)
     }
 
-    @Test("a failed send keeps the draft and says why; editing clears the message")
-    func sendFails() async {
+    @Test("a decision that cannot be signed keeps the draft and says why; editing clears the message")
+    func signFails() async {
         let store = makeStore()
         await store.refresh()
         store.setText("keep me", for: first)
-        sender.set(answer: .failure(NodeError.http(status: 403, message: "writes are for the owner")))
+        sender.set(failure: NodeError.http(status: 403, message: "writes are for the owner"))
         await store.send(.answer("keep me"), for: first)
         #expect(store.sendFailures[first] == "writes are for the owner")
         #expect(store.draft(for: first).text == "keep me")
-        #expect(store.sent[first] == nil)
+        #expect(store.outbox.entries.isEmpty && store.items.map(\.id).contains(first))
         #expect(store.sending.isEmpty)
         store.setText("keep me!", for: first)
         #expect(store.sendFailures[first] == nil)
     }
 
-    @Test("a send that finds the session over asks for a new sign-in and keeps the draft")
-    func sendSessionEnded() async {
+    @Test("a decision that cannot be written to the device is not accepted: the draft stays and the item stays")
+    func notKept() async {
         let store = makeStore()
         await store.refresh()
         store.setText("x", for: first)
-        sender.set(answer: .failure(NodeError.sessionExpired))
+        kept.failsToWrite = true
+        await store.send(.answer("x"), for: first)
+        #expect(store.sendFailures[first] == Ja.Outbox.notKept && store.draft(for: first).text == "x")
+        #expect(store.outbox.entries.isEmpty && store.items.map(\.id).contains(first) && submitter.sent.isEmpty)
+    }
+
+    @Test("a decision that finds the session over asks for a new sign-in and keeps the draft")
+    func signSessionEnded() async {
+        let store = makeStore()
+        await store.refresh()
+        store.setText("x", for: first)
+        sender.set(failure: NodeError.sessionExpired)
         await store.send(.answer("x"), for: first)
         #expect(store.needsSignIn)
         #expect(store.draft(for: first).text == "x")
     }
 
-    @Test("a reply the request does not allow is refused before anything is sent")
-    func refusedBeforeSending() async {
+    @Test("a reply the request does not allow is refused before anything is signed")
+    func refusedBeforeSigning() async {
         let store = makeStore()
         await store.refresh()
         await store.send(.comment("words"), for: first)
@@ -680,23 +802,22 @@ struct DeskStoreTests {
         #expect(sender.sent.isEmpty)
     }
 
-    @Test("while a reply is being sent, the same item is not sent again")
-    func noDoubleSend() async {
+    @Test("while a decision is being signed, the same item is not decided again")
+    func noDoubleDecision() async {
         let store = makeStore()
         await store.refresh()
         sender.holdNextSend()
         let running = Task { await store.send(.answer("once"), for: first) }
-        while !sender.isHolding { await Task.yield() }
+        await waitUntil { sender.isHolding }
         #expect(store.sending == [first])
         await store.send(.answer("twice"), for: first)
         sender.release()
         await running.value
-        #expect(sender.sent.count == 1)
-        #expect(sender.sent[0].text == "once")
+        #expect(sender.sent.count == 1 && sender.sent[0].text == "once")
     }
 
-    @Test("a request that was already sent is not sent again")
-    func noResendAfterSent() async {
+    @Test("an item that was already decided is not decided again")
+    func noRedecision() async {
         let store = makeStore()
         await store.refresh()
         await store.send(.answer("one"), for: first)

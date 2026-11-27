@@ -34,6 +34,9 @@ private struct ShellChrome: ViewModifier {
             .task(id: NewsWatch(phase: scenePhase, session: model.session.map(ObjectIdentifier.init))) {
                 if scenePhase == .active { await model.watchNews() }
             }
+            .task(id: NewsWatch(phase: scenePhase, session: model.session.map(ObjectIdentifier.init))) {
+                if scenePhase == .active { await model.watchOutbox() }
+            }
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
             // These follow the desk whichever screen is open: the Mac's sidebar keeps only the open screen alive.
@@ -41,9 +44,13 @@ private struct ShellChrome: ViewModifier {
             .onChange(of: model.session?.desk.loading) { _, loading in if let loading { model.deskLoaded(loading) } }
             // Which screens are offered follows what the node says the viewer is.
             .onChange(of: model.session?.desk.standing, initial: true) { _, standing in if let standing { model.router.standing = standing } }
+            // A device's own removal that took effect: its key can never sign again, so a new one is made.
+            .onChange(of: model.session?.devices?.didRemoveThisDevice) { _, removed in if removed == true { model.renewKeyAfterRemoval() } }
             .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
+            // This phone is added to the node's devices: its registration then names it.
+            .onChange(of: model.session?.devices?.thisDeviceID) { model.registerPush() }
             .onChange(of: model.push.pendingTap) { model.takeLink() }
             .sheet(isPresented: $model.showsSettings) {
                 if let session = model.session {

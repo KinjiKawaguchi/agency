@@ -7,7 +7,6 @@ import SwiftUI
 enum ReplyStatus: Equatable {
     case idle
     case sending
-    case sent(SentReply)
     case failed(String)
 }
 
@@ -34,9 +33,8 @@ struct RequestDetail: View {
 
     private var request: Request { item.request }
     private var hasOptions: Bool { !request.options.isEmpty }
-    private var isSent: Bool { if case .sent = status { true } else { false } }
     private var controls: ReplyControls {
-        ReplyControls(item: item, draft: draft, isSending: status == .sending, isSent: isSent, isDeviceReady: isDeviceReady)
+        ReplyControls(item: item, draft: draft, isSending: status == .sending, isDeviceReady: isDeviceReady)
     }
 
     var body: some View {
@@ -177,12 +175,6 @@ struct RequestDetail: View {
             EmptyView()
         case .sending:
             HStack(spacing: 8) { ProgressView(); Text(Ja.Paper.sending).font(.footnote) }
-        case .sent(let reply):
-            let drafter = item.drafterName
-            let text = reply.outcome == .queued
-                ? Ja.Paper.queued
-                : (reply.isComment ? Ja.Paper.sentComment(to: drafter, kind: request.kind) : Ja.Paper.sent(to: drafter))
-            Label(text, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green).wrapping()
         case .failed(let reason):
             Label(Ja.Paper.sendFailed(reason), systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote).foregroundStyle(Theme.danger).wrapping()

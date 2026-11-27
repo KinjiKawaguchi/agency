@@ -88,6 +88,7 @@ private struct NodeSpeedReady: View {
                 if !speed.objectives.isEmpty { ObjectivesCard(lines: speed.objectives) }
                 GroupsCard(title: Ja.NodeSpeed.Groups.title, groups: speed.routeGroups, inNodeReadRoutes: speed.inNodeReadRoutes, showsRoutes: showsRoutes)
                 GroupsCard(title: Ja.NodeSpeed.Groups.callsTitle, groups: speed.callGroups, inNodeReadRoutes: [], showsRoutes: showsRoutes)
+                HourTrendCard(trend: speed.trend, showsTable: showsRoutes)
             }
         }
     }

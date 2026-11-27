@@ -2,14 +2,18 @@
 //! the Apple clients read the same file. This reads it too, and holds the node's own rules to it exactly: a change to
 //! `is_hidden_char`, `label_ok`, `label_ok_to_write`, or `printable` that the file does not say, or a change of the file
 //! that the node does not follow, fails here, so no client can print a label differently from the node.
-use agency_proto::org::{is_hidden_char, label_ok, label_ok_to_write, printable};
+use agency_proto::org::{is_hidden_char, label_ok, label_ok_to_write, printable, printable_text};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Shared {
     mark: String,
     hidden: Vec<(String, String)>,
     cases: Vec<Case>,
+    /// The code points of the hidden set that stay in text (a tab, a line break), as hex.
+    text_keeps: Vec<String>,
+    text_cases: Vec<Case>,
 }
 
 #[derive(Deserialize)]
@@ -138,4 +142,68 @@ fn every_case_of_the_file_is_said_as_the_file_says_it() {
             case.text
         );
     }
+}
+
+fn keeps(shared: &Shared) -> Vec<char> {
+    shared
+        .text_keeps
+        .iter()
+        .map(|hex| char::from_u32(u32::from_str_radix(hex, 16).unwrap()).unwrap())
+        .collect()
+}
+
+#[test]
+fn what_stays_in_text_is_in_the_hidden_set_and_is_a_tab_and_the_line_breaks() {
+    let shared = shared();
+    let ranges = ranges(&shared);
+    let kept = keeps(&shared);
+    assert_eq!(kept, ['\t', '\n', '\r']);
+    for c in kept {
+        assert!(
+            is_listed(&ranges, c),
+            "a kept character is one the labels refuse: U+{:04X}",
+            u32::from(c)
+        );
+    }
+}
+
+#[test]
+fn text_is_printed_as_a_label_is_except_for_what_the_file_says_stays() {
+    let shared = shared();
+    let ranges = ranges(&shared);
+    let kept = keeps(&shared);
+    let wrong: Vec<String> = every_char()
+        .filter(|c| {
+            let expected = if is_listed(&ranges, *c) && !kept.contains(c) {
+                shared.mark.clone()
+            } else {
+                c.to_string()
+            };
+            printable_text(&c.to_string()) != expected
+        })
+        .map(|c| format!("U+{:04X}", u32::from(c)))
+        .collect();
+    assert_eq!(wrong, Vec::<String>::new());
+}
+
+#[test]
+fn every_text_case_of_the_file_is_said_as_the_file_says_it() {
+    let shared = shared();
+    assert!(
+        shared.text_cases.len() >= 20,
+        "the file has its examples of text"
+    );
+    for case in &shared.text_cases {
+        assert_eq!(
+            printable_text(&case.text),
+            case.printable,
+            "{:?}",
+            case.text
+        );
+    }
+    // The cases of a label are a name, one word of a line: a text that keeps a line break is not one.
+    assert!(shared
+        .text_cases
+        .iter()
+        .any(|case| case.text.contains('\n') && case.printable == case.text));
 }

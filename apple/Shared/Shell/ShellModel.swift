@@ -133,6 +133,18 @@ final class ShellModel {
         }
     }
 
+    /// Sends what was decided and the node has not yet taken, while the app is in front: now, and again whenever a failed send is due, at
+    /// the latest every 30 seconds.
+    func watchOutbox() async {
+        guard let outbox = session?.desk.outbox else { return }
+        while !Task.isCancelled {
+            await outbox.flush()
+            var seconds = 30.0
+            if let due = outbox.nextDue { seconds = min(max(1, due.timeIntervalSinceNow), 30) }
+            try? await Task.sleep(for: .seconds(seconds))
+        }
+    }
+
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
     func dismissBannersSoon() async {
         guard let session, !session.news.banners.isEmpty else { return }
@@ -147,8 +159,23 @@ final class ShellModel {
 
     // MARK: Settings
 
+    /// Whether this device's key was replaced because its own removal took effect: the Devices screen then says that the new key is not
+    /// added yet.
+    private(set) var hasRenewedKeyAfterRemoval = false
+
+    /// The removed key can never sign again: a new one is made, and it has to be added as a new device.
+    func renewKeyAfterRemoval() {
+        hasRenewedKeyAfterRemoval = true
+        replaceKey()
+    }
+
     /// Makes this device's key again, for when the biometrics were changed and the old key can no longer sign.
     func resetKey() {
+        hasRenewedKeyAfterRemoval = false
+        replaceKey()
+    }
+
+    private func replaceKey() {
         SecureEnclaveSigner.deleteKey(host: homeNode.host)
         showsSettings = false
         // This device is no longer trusted with the home node: nothing of its desk stays on a widget.

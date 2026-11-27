@@ -83,9 +83,11 @@ public struct LatencySeries: Decodable, Equatable, Sendable {
     public let p50Ms: Int?
     public let p95Ms: Int?
     public let p99Ms: Int?
+    /// The same series by hour of UTC, oldest first; an hour with no call may be missing. Empty from a node that gives no hours.
+    public let byHour: [HourSeries]
 
     private enum Keys: String, CodingKey {
-        case kind, name, status, group, peer, client, isInNodeRead, count, errors, sumMs, buckets, p50Ms, p95Ms, p99Ms
+        case kind, name, status, group, peer, client, isInNodeRead, count, errors, sumMs, buckets, p50Ms, p95Ms, p99Ms, byHour
     }
 
     /// An answer whose buckets deny its count, or that has more errors than calls, is refused whole: a screen must never show a
@@ -106,6 +108,7 @@ public struct LatencySeries: Decodable, Equatable, Sendable {
         p50Ms = try container.decodeIfPresent(Int.self, forKey: .p50Ms)
         p95Ms = try container.decodeIfPresent(Int.self, forKey: .p95Ms)
         p99Ms = try container.decodeIfPresent(Int.self, forKey: .p99Ms)
+        byHour = try container.decodeIfPresent([HourSeries].self, forKey: .byHour) ?? []
         let amounts = [count, errors, sumMs] + buckets + [p50Ms, p95Ms, p99Ms].compactMap { $0 }
         guard amounts.allSatisfy({ $0 >= 0 }), buckets.count == Self.bucketCount, buckets.reduce(0, +) == count, errors <= count else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "A series whose numbers deny each other: \(name)"))
@@ -130,5 +133,43 @@ public struct LatencySeries: Decodable, Equatable, Sendable {
         p50Ms = nil
         p95Ms = nil
         p99Ms = nil
+        byHour = []
+    }
+}
+
+/// One hour of a series (`HourSeries`). Its `buckets` come only in an answer asked for them (`hourBuckets=1`), so that the hours of
+/// several series can be added and the percentile of their whole read from the sum.
+public struct HourSeries: Decodable, Equatable, Sendable {
+    public let hour: Instant
+    public let count: Int
+    public let errors: Int
+    /// The upper bound of the bucket of the hour's 95th percentile; left out when it is beyond the last bound.
+    public let p95Ms: Int?
+    /// `LatencySeries.bucketCount` counts that add up to `count`.
+    public let buckets: [Int]?
+
+    private enum Keys: String, CodingKey { case hour, count, errors, p95Ms, buckets }
+
+    /// An hour whose buckets deny its count would give a percentile that its own numbers deny: the whole answer is refused.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        hour = try container.decode(Instant.self, forKey: .hour)
+        count = try container.decode(Int.self, forKey: .count)
+        errors = try container.decode(Int.self, forKey: .errors)
+        p95Ms = try container.decodeIfPresent(Int.self, forKey: .p95Ms)
+        buckets = try container.decodeIfPresent([Int].self, forKey: .buckets)
+        let amounts = [count, errors] + (buckets ?? []) + [p95Ms].compactMap { $0 }
+        let isBucketsRight = buckets.map { $0.count == LatencySeries.bucketCount && $0.reduce(0, +) == count } ?? true
+        guard amounts.allSatisfy({ $0 >= 0 }), isBucketsRight else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "An hour whose numbers deny each other"))
+        }
+    }
+
+    public init(hour: Instant, count: Int, errors: Int = 0, p95Ms: Int? = nil, buckets: [Int]? = nil) {
+        self.hour = hour
+        self.count = count
+        self.errors = errors
+        self.p95Ms = p95Ms
+        self.buckets = buckets
     }
 }
