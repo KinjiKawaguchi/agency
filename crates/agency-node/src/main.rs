@@ -524,7 +524,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
 /// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
 /// report becomes `partial`, as calculated by `agency_core::budget::status`.
 async fn budget_status(node: std::sync::Arc<Node>, org: Id, team: Id) -> Result<()> {
-    let definition = agency_core::client::org_definition(node, &org)?;
+    let definition = agency_core::client::org_definition(&node, &org)?;
     if definition.team(&team).is_none() {
         bail!("not found");
     }
