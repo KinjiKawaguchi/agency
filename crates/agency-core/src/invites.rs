@@ -6,12 +6,13 @@ use crate::orgs::{is_root, load, publish, sign};
 use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
 use crate::push_devices::keep_org;
-use crate::read_auth::sign_read;
+use crate::read_auth::sign_for_peer;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
 use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::root_change::RootAnswer;
+use agency_proto::runtime::is_reserved_name;
 use agency_proto::seat::Seat;
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
@@ -113,6 +114,13 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
         .is_some_and(|at| (node.now() - at).whole_seconds().abs() <= JOIN_SKEW_SECONDS);
     if !is_label_valid || !is_fresh {
         return Err(Error::bad_request("malformed name or time"));
+    }
+    // Refused here as well as when the version is signed, so that such a join is never held for the root.
+    if is_reserved_name(&request.account) {
+        return Err(Error::bad_request(format!(
+            "{} is a name a team runtime reserves; join with another account id",
+            request.account
+        )));
     }
     let no_invite = || {
         Error::new(
@@ -381,7 +389,7 @@ async fn chain_to(
     let mut last = current.clone();
     while last.body.version + 1 < joined.body.version {
         let path = routes::versions(&current.body.org, last.body.version);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, &current.body.org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

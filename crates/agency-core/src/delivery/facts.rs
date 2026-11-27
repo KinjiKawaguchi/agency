@@ -26,6 +26,8 @@ pub struct MergedPullRequest {
     pub has_issue: bool,
     /// When the issue first moved to In Progress on the board, if it did.
     pub issue_started_at: Option<OffsetDateTime>,
+    /// Whether an issue it closes carries the label `incident`.
+    pub closes_incident: bool,
 }
 
 /// How one workflow run on the default branch ended.

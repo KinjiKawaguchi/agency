@@ -155,6 +155,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    config
+        .federation
+        .check(&config.url)
+        .map_err(anyhow::Error::msg)?;
     let logger = Logger::open(data_dir.join("logs"), config.logging.clone(), clock.clone());
     let recorder = Recorder::new(data_dir.join("metrics"), clock.clone());
     let notifier = match overrides.notifier {

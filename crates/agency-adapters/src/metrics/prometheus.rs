@@ -45,9 +45,9 @@ pub fn text(totals: &[(SeriesKey, Counts)]) -> String {
     out.push_str("# TYPE agency_duration_milliseconds histogram\n");
     for (key, counts) in totals {
         let labels = labels(key);
-        let mut cumulative = 0;
+        let mut cumulative: u64 = 0;
         for (index, bound) in BUCKET_BOUNDS_MS.iter().enumerate() {
-            cumulative += counts.buckets[index];
+            cumulative = cumulative.saturating_add(counts.buckets[index]);
             let _ = writeln!(
                 out,
                 "agency_duration_milliseconds_bucket{{{labels},le=\"{bound}\"}} {cumulative}"
