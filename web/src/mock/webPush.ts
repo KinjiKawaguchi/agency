@@ -13,10 +13,14 @@ const idOf = (endpoint: string): string => {
 
 /** The node's Web Push routes, for a mock node that has them: the key, and one subscription for each endpoint. */
 /** `isFailing`: the node's record of every browser says its push service took a notice a day ago and refused the last one an hour ago. */
-export function createMockWebPush(now: () => string, isFailing = false) {
+export function createMockWebPush(now: () => string, isFailing = false, currentDevices?: () => ReadonlySet<string>) {
   let subscriptions: readonly PushSubscription[] = []
   return {
     subscriptions: () => subscriptions,
+    /** A removal of a device drops the registrations that name one the account no longer has; those that name none stay. */
+    dropWithoutDevice: (current: ReadonlySet<string>) => {
+      subscriptions = subscriptions.filter((one) => one.device === undefined || current.has(one.device))
+    },
     /** What the node comes to know of a browser's push service: the time it last took a notice, and the last time it did not. */
     recordDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => {
       subscriptions = subscriptions.map((one) => (one.id === id ? { ...one, ...delivery } : one))
@@ -29,10 +33,12 @@ export function createMockWebPush(now: () => string, isFailing = false) {
         return write().then((answer) => {
           if (answer instanceof Response) return answer
           const input = answer.body as PushSubscriptionInput | null
+          // A node without `pushDevice` refuses a field it does not know; one with it takes `device` only for a current device of the account.
+          if (input !== null && input.device !== undefined && (currentDevices === undefined || !currentDevices().has(input.device))) return json({ error: currentDevices === undefined ? 'unknown field `device`' : 'that is not a device of this account' }, 400)
           if (input === null || typeof input.endpoint !== 'string' || !input.endpoint.startsWith('https://')) return json({ error: 'the endpoint is not one of an allowed push service' }, 400)
           const known = subscriptions.find((one) => one.id === idOf(input.endpoint))
           const refused = isFailing ? { lastSucceededAt: new Date(Date.parse(now()) - 24 * 3_600_000).toISOString(), lastFailure: { at: new Date(Date.parse(now()) - 3_600_000).toISOString(), reason: 'push.example answered 503' } } : {}
-          const entry: PushSubscription = { ...refused, ...(known?.lastSucceededAt === undefined ? {} : { lastSucceededAt: known.lastSucceededAt }), ...(known?.lastFailure === undefined ? {} : { lastFailure: known.lastFailure }), id: idOf(input.endpoint), endpoint: `${new URL(input.endpoint).origin}/…${input.endpoint.slice(-8)}`, label: input.label, registeredAt: now(), events: input.events ?? ['request'], keyId: MOCK_VAPID_KEY.keyId }
+          const entry: PushSubscription = { ...refused, ...(known?.lastSucceededAt === undefined ? {} : { lastSucceededAt: known.lastSucceededAt }), ...(known?.lastFailure === undefined ? {} : { lastFailure: known.lastFailure }), id: idOf(input.endpoint), endpoint: `${new URL(input.endpoint).origin}/…${input.endpoint.slice(-8)}`, label: input.label, registeredAt: now(), events: input.events ?? ['request'], keyId: MOCK_VAPID_KEY.keyId, ...(input.device === undefined ? {} : { device: input.device }) }
           subscriptions = [...subscriptions.filter((one) => one.id !== entry.id), entry]
           return json(entry)
         })
