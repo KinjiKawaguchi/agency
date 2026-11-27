@@ -21,10 +21,9 @@ fn activation() -> Kpi {
     }
 }
 
-/// alice's node with an org of several versions (a member, a KPI), a decision, and a number, the key of the
-/// device that signed the decision, and bob's node, which joined the org.
-async fn records() -> (Running, agency_proto::AccountKey, Running) {
-    let (alice, _) = alice().await;
+/// alice's node `alice` with an org of several versions (a member, a KPI), a decision, and a number, the key
+/// of the device that signed the decision, and bob's node, which joined the org.
+async fn filled(alice: Running) -> (Running, agency_proto::AccountKey, Running) {
     let bob = joined_bob(&alice).await;
     kpis::add(&alice.node, &id("acme"), activation()).unwrap();
     let key = device(&alice).await;
@@ -40,6 +39,11 @@ async fn records() -> (Running, agency_proto::AccountKey, Running) {
         .await
         .unwrap();
     (alice, key, bob)
+}
+
+async fn records() -> (Running, agency_proto::AccountKey, Running) {
+    let (alice, _) = alice().await;
+    filled(alice).await
 }
 
 async fn alice_with_records() -> (Running, agency_proto::AccountKey) {
@@ -196,10 +200,23 @@ async fn a_manifest_that_names_another_root_key_fails() {
 
 #[tokio::test]
 async fn no_file_holds_a_key() {
-    let (alice, device_key) = alice_with_records().await;
+    // A seeded node, whose root key is the one a mutant can name again: it is alice's org's root, the key that
+    // matters most. The port is outside what the system hands out, and no other test in this file uses it.
+    let (runtime, memory) = common::memory_runtime();
+    let alice = common::alice_on(
+        common::seeded_node("alice", runtime, 7, 7741).await,
+        &memory,
+    );
+    let (alice, device_key, _bob) = filled(alice).await;
     let (_dir, to) = exported(&alice);
     let account_key = std::fs::read_to_string(alice.data_dir().join("account.key")).unwrap();
-    let secrets = [account_key.trim().to_owned(), device_key.encoded()];
+    let root_keys = alice.root_keys.secrets();
+    assert_eq!(root_keys.len(), 1, "alice holds the root key of acme");
+    let secrets = [
+        account_key.trim().to_owned(),
+        device_key.encoded(),
+        root_keys[0].clone(),
+    ];
     for path in files_of(&to) {
         let text = std::fs::read_to_string(&path).unwrap();
         for secret in &secrets {
@@ -333,4 +350,37 @@ async fn a_file_listed_twice_fails() {
     manifest["files"].as_array_mut().unwrap().push(first);
     std::fs::write(to.join("manifest.json"), manifest.to_string()).unwrap();
     assert!(error_of(&to).contains("lists versions/000001.json twice"));
+}
+
+#[tokio::test]
+async fn a_rotation_is_named_and_the_chain_still_verifies() {
+    let (alice, _) = alice_with_records().await;
+    let first_root = alice
+        .node
+        .store()
+        .load_org(&id("acme"))
+        .unwrap()
+        .body
+        .root
+        .public_key;
+    let rotated = agency_core::orgs::rotate_root(&alice.node, &id("acme")).unwrap();
+    let (_dir, to) = exported(&alice);
+    let verified = verify_path(&to).unwrap();
+    assert_eq!(verified.root_moved_at, Some(rotated.body.version));
+    assert_eq!(verified.first_root_fingerprint, first_root.fingerprint());
+    assert_eq!(
+        verified.manifest.root_fingerprint,
+        rotated.body.root.public_key.fingerprint()
+    );
+    assert_ne!(
+        verified.first_root_fingerprint,
+        verified.manifest.root_fingerprint
+    );
+}
+
+#[tokio::test]
+async fn an_org_whose_root_never_moved_names_no_move() {
+    let (alice, _) = alice_with_records().await;
+    let (_dir, to) = exported(&alice);
+    assert_eq!(verify_path(&to).unwrap().root_moved_at, None);
 }

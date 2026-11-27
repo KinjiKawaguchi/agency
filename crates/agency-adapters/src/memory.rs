@@ -454,6 +454,13 @@ impl MemoryRootKeys {
         self.state.lock().unwrap().is_needing_recovery = is_needing_recovery;
     }
 
+    /// The secret of every root key made here, as `AccountKey::encoded` writes it: for a test that checks a
+    /// secret is in no file a node writes.
+    pub fn secrets(&self) -> Vec<String> {
+        let state = self.state.lock().unwrap();
+        state.keys.iter().map(|(_, key)| key.encoded()).collect()
+    }
+
     /// How many signatures were made.
     pub fn signed(&self) -> usize {
         self.state.lock().unwrap().signed

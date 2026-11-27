@@ -35,7 +35,7 @@ pub fn verify_dir(dir: &Path) -> Result<()> {
         verify_path(dir).with_context(|| format!("{} does not verify", dir.display()))?;
     let manifest = &verified.manifest;
     println!(
-        "{} verifies: org {}, versions {} to {} signed as the protocol says, {} decisions, {} numbers.",
+        "{} verifies: org {}, versions {} to {}, each signed as the one before it allows, {} decisions, {} numbers.",
         dir.display(),
         manifest.org,
         manifest.first_version,
@@ -44,8 +44,17 @@ pub fn verify_dir(dir: &Path) -> Result<()> {
         verified.numbers
     );
     println!(
-        "Root key fingerprint {}: compare it with the one you know this org by; the manifest is not signed.",
+        "Root key fingerprint of the last version: {}.",
         manifest.root_fingerprint
+    );
+    if let Some(version) = verified.root_moved_at {
+        println!(
+            "The root key moved at version {version}; the first version names fingerprint {}.",
+            verified.first_root_fingerprint
+        );
+    }
+    println!(
+        "The first version vouches only for itself, and the manifest is not signed: that this is your org is what comparing a fingerprint above with the one you know the org by says."
     );
     Ok(())
 }

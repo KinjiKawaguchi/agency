@@ -19,20 +19,31 @@ pub struct Verified {
     pub manifest: Manifest,
     pub decisions: usize,
     pub numbers: usize,
+    /// The fingerprint of the root key the first kept version names.
+    pub first_root_fingerprint: String,
+    /// The first version whose root key is not the first kept version's, when the root moved (a rotation or a
+    /// recovery) within the versions kept.
+    pub root_moved_at: Option<u64>,
 }
 
 /// Checks every file of `files` (the export's directory, by path) and returns what it holds, or why not.
 pub fn verify(files: &BTreeMap<String, Vec<u8>>) -> Result<Verified> {
     let manifest = read_manifest(files)?;
     check_files(files, &manifest)?;
-    check_versions(files, &manifest)?;
+    let chain = check_versions(files, &manifest)?;
     let decisions: Vec<DecisionRecord> =
         read_list(files, DECISIONS_PATH)?.context("decisions.json is not in the export")?;
     if let Some(wrong) = decisions.iter().find(|record| record.org != manifest.org) {
         bail!("decisions.json holds a decision of org {}", wrong.org);
     }
     let numbers: Vec<Observation> = read_list(files, OUTCOMES_PATH)?.unwrap_or_default();
+    let first_root = &chain[0].body.root.public_key;
     Ok(Verified {
+        first_root_fingerprint: first_root.fingerprint(),
+        root_moved_at: chain
+            .iter()
+            .find(|doc| &doc.body.root.public_key != first_root)
+            .map(|doc| doc.body.version),
         manifest,
         decisions: decisions.len(),
         numbers: numbers.len(),
@@ -79,7 +90,10 @@ fn check_files(files: &BTreeMap<String, Vec<u8>>, manifest: &Manifest) -> Result
 }
 
 /// The versions are the ones the manifest names, in order, and each is signed as the protocol says.
-fn check_versions(files: &BTreeMap<String, Vec<u8>>, manifest: &Manifest) -> Result<()> {
+fn check_versions(
+    files: &BTreeMap<String, Vec<u8>>,
+    manifest: &Manifest,
+) -> Result<Vec<SignedOrg>> {
     if manifest.first_version == 0 || manifest.first_version > manifest.last_version {
         bail!("manifest.json names no versions");
     }
@@ -112,12 +126,15 @@ fn check_versions(files: &BTreeMap<String, Vec<u8>>, manifest: &Manifest) -> Res
     if versions_listed != chain.len() {
         bail!("the export holds a file under versions/ that is not a version in order");
     }
-    Ok(())
+    Ok(chain)
 }
 
 /// Version 1 signed by the root key and well formed, or, for an export that starts later (a member's node keeps
 /// the versions from the one it joined at), the first kept version signed by its own root key; then each next
-/// version signed as the one before it allows.
+/// version signed as the one before it allows. The first version vouches only for itself: anyone can make a
+/// version 1 under a key of their own, so that the chain is the org's is for the reader to say, by the
+/// fingerprint. A recovery's finish is checked as signed and formed, not for its wait of 72 hours, which each
+/// node counts from when it took the start and an export does not carry.
 fn check_chain(chain: &[SignedOrg]) -> Result<()> {
     let first = chain.first().context("no version")?;
     if first.body.version == 1 {
