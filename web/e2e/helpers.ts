@@ -38,6 +38,8 @@ export interface NodeOptions {
   moreOrgs?: boolean
   /** The account has a second device, Work laptop, which can be removed. */
   laptop?: boolean
+  /** The node ties push registrations to devices (the capability `pushDevice`). */
+  pushDevice?: boolean
   /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
   guest?: string
 }
@@ -64,6 +66,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.relayedFor === true) query.set('relayedFor', '1')
   if (options.guest !== undefined) query.set('guest', options.guest)
   if (options.laptop === true) query.set('laptop', '1')
+  if (options.pushDevice === true) query.set('pushDevice', '1')
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
     if (options.claim.fails !== undefined) query.set('claimFails', options.claim.fails)

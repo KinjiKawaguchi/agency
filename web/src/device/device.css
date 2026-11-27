@@ -259,3 +259,23 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+.destination-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.destination-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.destination-list p {
+  margin: 0;
+}
