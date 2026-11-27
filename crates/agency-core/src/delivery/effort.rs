@@ -24,13 +24,15 @@ enum Slot {
     NewFeature,
     Maintenance,
     Debt,
+    Incident,
     Unclassified,
 }
 
-const SLOTS: [Slot; 4] = [
+const SLOTS: [Slot; 5] = [
     Slot::NewFeature,
     Slot::Maintenance,
     Slot::Debt,
+    Slot::Incident,
     Slot::Unclassified,
 ];
 
@@ -39,6 +41,7 @@ fn get<T>(by: &ByWorkType<T>, slot: Slot) -> &T {
         Slot::NewFeature => &by.new_feature,
         Slot::Maintenance => &by.maintenance,
         Slot::Debt => &by.debt,
+        Slot::Incident => &by.incident,
         Slot::Unclassified => &by.unclassified,
     }
 }
@@ -48,15 +51,18 @@ fn get_mut<T>(by: &mut ByWorkType<T>, slot: Slot) -> &mut T {
         Slot::NewFeature => &mut by.new_feature,
         Slot::Maintenance => &mut by.maintenance,
         Slot::Debt => &mut by.debt,
+        Slot::Incident => &mut by.incident,
         Slot::Unclassified => &mut by.unclassified,
     }
 }
 
-/// The work type a merged pull request's title gives it. A revert and a title of no known type are
+/// The work type a merged pull request has without the board saying: its title's type, and incident for a
+/// fix of an issue labeled `incident`. A revert and a title of no known type are
 /// unclassified.
 fn slot_of(pull_request: &MergedPullRequest) -> Slot {
     match classify(&pull_request.title, &pull_request.body) {
         Kind::Feat => Slot::NewFeature,
+        Kind::Fix if pull_request.closes_incident => Slot::Incident,
         Kind::Refactor => Slot::Debt,
         Kind::Fix | Kind::Docs | Kind::Test | Kind::Chore => Slot::Maintenance,
         Kind::Other | Kind::Revert => Slot::Unclassified,
