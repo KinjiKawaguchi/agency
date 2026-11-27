@@ -309,6 +309,18 @@ describe('removing one of the account’s devices', () => {
       expect(await within(panel).findByText('1 decision saved, not delivered was signed by Work laptop. The node will refuse it once Work laptop is removed.')).toBeInTheDocument()
     })
 
+    it('says "at least 1 decision", not "decisions", when one is counted in a full log', async () => {
+      const others = Array.from({ length: 199 }, () => ({ signer: TEST_DEVICE_ID, state: { kind: 'applied' } }))
+      const panel = await open([{ signer: OTHER_ID }, ...others], 'Remove Work laptop')
+      expect(await within(panel).findByText('At least 1 decision saved, not delivered was signed by Work laptop. The node will refuse it once Work laptop is removed.')).toBeInTheDocument()
+    })
+
+    it('says it so of the total too, when no signer is recorded', async () => {
+      const others = Array.from({ length: 199 }, () => ({ state: { kind: 'applied' } }))
+      const panel = await open([{}, ...others], 'Remove Work laptop')
+      expect(await within(panel).findByText('At least 1 decision is saved, not delivered. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+    })
+
     it('says it in Japanese', async () => {
       const user = userEvent.setup()
       const node = withLaptop()
