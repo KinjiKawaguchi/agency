@@ -2,7 +2,7 @@
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
 pub mod budget;
-use agency_adapters::access::{AccessVerifier, CertSource, HttpCerts, is_valid_config};
+use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
@@ -14,8 +14,8 @@ use agency_adapters::keychain_root_keys::KeychainRootKeys;
 use agency_adapters::launch::Launch;
 use agency_adapters::logging::Logger;
 use agency_adapters::memory::NoNotifier;
-use agency_adapters::metrics::Recorder;
 use agency_adapters::metrics::serve::record_request;
+use agency_adapters::metrics::Recorder;
 use agency_adapters::peers::HttpPeers;
 use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
