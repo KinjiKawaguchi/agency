@@ -37,7 +37,7 @@ public struct Device: Decodable, Equatable, Sendable {
 /// A device that asked to be added and waits for one of the person's devices (or the node's terminal) to add it.
 public struct DeviceRequest: Decodable, Equatable, Sendable {
     public let deviceId: String
-    @Shown public private(set) var label: String
+    @ShownWithRaw public private(set) var label: String
     /// `dbc2-9825-1c51`: what the person compares on both devices.
     public let pairingCode: String
     public let publicKey: String

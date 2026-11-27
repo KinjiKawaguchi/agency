@@ -65,9 +65,9 @@ public enum DecisionState: Decodable, Equatable, Sendable {
             self = .queued(
                 attempts: try container.decode(Int.self, forKey: .attempts),
                 nextAt: try container.decode(Instant.self, forKey: .nextAt),
-                lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
+                lastError: try container.decodeIfPresent(String.self, forKey: .lastError).map(NodeLabel.shownText)
             )
-        case "refused": self = .refused(message: try container.decode(String.self, forKey: .message))
+        case "refused": self = .refused(message: NodeLabel.shownText(try container.decode(String.self, forKey: .message)))
         case let other: self = .unknown(other)
         }
     }

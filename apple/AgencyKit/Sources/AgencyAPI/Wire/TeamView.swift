@@ -55,7 +55,7 @@ public struct Request: Decodable, Equatable, Sendable {
 
     public let id: String
     public let kind: Kind
-    @Shown public private(set) var title: String
+    @ShownWithRaw public private(set) var title: String
     /// Plain text: the background needed to decide.
     @ShownText public private(set) var context: String
     /// Markdown body of a proposal.
@@ -63,9 +63,11 @@ public struct Request: Decodable, Equatable, Sendable {
 
     /// The title as the runtime wrote it, for what is sent back to the node (the decision log's title): never the shown one.
     public var rawTitle: String { $title }
-    @Shown public private(set) var from: String
-    /// The addressee by the team runtime's name; absent means the team's owner.
-    @ShownIfPresent public private(set) var to: String?
+    /// The drafter by the team runtime's name, as the runtime wrote it: it finds the person who has that name, so it is never changed.
+    /// A screen that draws it as a name draws `shownFrom`.
+    public let from: String
+    /// The addressee by the team runtime's name (as written, like `from`); absent means the team's owner. A screen draws `shownTo`.
+    public let to: String?
     public let createdAt: Instant
     public let issue: String?
     public let blocks: [String]
@@ -74,11 +76,16 @@ public struct Request: Decodable, Equatable, Sendable {
     public let thread: [ThreadMessage]?
     /// Exactly the `kind` and `target` of the envelope that answers it.
     public let answerWith: AnswerWith
+
+    /// `from` as a screen draws it: without the characters that can reorder what is around it.
+    public var shownFrom: String { NodeLabel.shown(from) }
+    /// `to` as a screen draws it.
+    public var shownTo: String? { to.map(NodeLabel.shown) }
 }
 
 public struct RequestOption: Decodable, Equatable, Sendable {
     public let key: String
-    @ShownText public private(set) var text: String
+    @ShownTextWithRaw public private(set) var text: String
     public let isRecommended: Bool
     @ShownTextIfPresent public private(set) var detail: String?
 
@@ -87,10 +94,14 @@ public struct RequestOption: Decodable, Equatable, Sendable {
 }
 
 public struct ThreadMessage: Decodable, Equatable, Sendable {
-    @Shown public private(set) var from: String
+    /// The runtime's name for who wrote it, as written. A screen draws `shownFrom`.
+    public let from: String
     @ShownText public private(set) var text: String
     public let choice: String?
     public let at: Instant
+
+    /// `from` as a screen draws it.
+    public var shownFrom: String { NodeLabel.shown(from) }
 }
 
 public struct AnswerWith: Decodable, Equatable, Sendable {

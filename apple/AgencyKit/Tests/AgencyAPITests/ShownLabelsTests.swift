@@ -58,9 +58,11 @@ struct ShownLabelsTests {
     @Test("the names a runtime gives (whom a request is from and to, who wrote a message) and the label of a chosen option in the log")
     func runtimeNames() throws {
         let request = try read(Request.self, #"{"id":"r-1","kind":"question","title":"t","context":"c","from":"\#(bad)","to":"\#(bad)","createdAt":"2026-11-24T11:00:00Z","blocks":[],"options":[],"thread":[{"from":"\#(bad)","text":"x","at":"2026-11-24T11:10:00Z"}],"answerWith":{"kind":"answer","target":"r-1"}}"#)
-        #expect(request.from == shown && request.to == shown && request.thread?.first?.from == shown)
+        let written = "E\u{202E}rin\u{200B}"
+        #expect(request.from == written && request.to == written && request.thread?.first?.from == written, "kept as written: it finds the person who has the name")
+        #expect(request.shownFrom == shown && request.shownTo == shown && request.thread?.first?.shownFrom == shown, "drawn without the hidden characters")
         let bare = try read(Request.self, #"{"id":"r-2","kind":"question","title":"t","context":"c","from":"backend","createdAt":"2026-11-24T11:00:00Z","blocks":[],"options":[],"answerWith":{"kind":"answer","target":"r-2"}}"#)
-        #expect(bare.to == nil && bare.from == "backend", "an addressee the node leaves out is none")
+        #expect(bare.to == nil && bare.shownTo == nil && bare.from == "backend", "an addressee the node leaves out is none")
         let entry = #"{"id":"e1","org":"acme","team":"app","kind":"answer","target":"r-1","text":"","choice":"a","choiceLabel":"\#(bad)","decidedAt":"2026-11-26T09:00:00Z","state":{"kind":"applied"}}"#
         #expect(try read(DecisionEntry.self, entry).choiceLabel == shown)
         #expect(try read(DecisionEntry.self, entry.replacingOccurrences(of: #","choiceLabel":"\#(bad)""#, with: "")).choiceLabel == nil)
@@ -101,6 +103,21 @@ struct ShownLabelsTests {
         #expect(try read(DecisionResult.self, #"{"outcome":"applied"}"#).message == nil)
         let observation = try read(KpiObservation.self, #"{"kpi":"k","date":"2026-11-20","value":1,"source":{"kind":"manual"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner","note":"n\u202E"}"#)
         #expect(observation.note == "n?")
+    }
+
+    @Test("the words inside the cases of a decision's state, a team's source and an observation's origin, and an epic's title in a reading")
+    func payloads() throws {
+        let state = try read(DecisionState.self, #"{"kind":"queued","attempts":2,"nextAt":"2026-11-26T09:00:00Z","lastError":"down\u202E\nretry"}"#)
+        guard case .queued(_, _, let lastError) = state else { Issue.record("should be queued"); return }
+        #expect(lastError == "down?\nretry")
+        guard case .refused(let message) = try read(DecisionState.self, #"{"kind":"refused","message":"no\u200B\nway"}"#) else { Issue.record("should be refused"); return }
+        #expect(message == "no?\nway")
+        guard case .replica(_, _, let error) = try read(TeamSnapshot.Source.self, #"{"kind":"replica","triedAt":"2026-11-26T09:00:00Z","error":"unreachable\u202E"}"#) else { Issue.record("should be a replica"); return }
+        #expect(error == "unreachable?")
+        let observation = try read(KpiObservation.self, #"{"kpi":"k","date":"2026-11-20","value":1,"source":{"kind":"connector","name":"exp\u202Eort"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner"}"#)
+        #expect(observation.source == .connector(name: "exp?ort"))
+        let reading = try read(AimReading.self, #"{"team":"app","epic":"e1","epicTitle":"Epic\u202E","kpi":"k","state":"notShipped","overlapping":[]}"#)
+        #expect(reading.epicTitle == "Epic?")
     }
 }
 

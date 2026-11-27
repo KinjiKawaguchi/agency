@@ -55,6 +55,8 @@ public final class DeskStore {
     public private(set) var recoveries: [RecoveryNotice] = []
     /// What waits for the root key's owner to sign, once the node has said; `nil` when nothing waits or before it answered.
     public private(set) var rootChanges: RootChangeNotice?
+    /// What the node says the viewer is (a member it hosts, or anyone else), once it has said: it decides which screens are offered.
+    public private(set) var standing: Standing = .loading
     public private(set) var recentFailure: String?
     public private(set) var loading: Loading = .idle
     /// Teams whose view could not be read, by `org/team`, with the reason.
@@ -125,6 +127,7 @@ public final class DeskStore {
             let me = try await source.me()
             recoveries = RecoveryNotice.all(in: me.orgs)
             rootChanges = RootChangeNotice(me: me)
+            standing = Standing(me: me)
             let keys = Set(me.orgs.flatMap { org in org.teams.map { "\(org.id)/\($0.id)" } })
             var snapshots: [(key: String, result: Result<TeamSnapshot, Error>)] = []
             // Each team is shown as soon as it answers, so one that is not ready does not hold back the others.
@@ -152,6 +155,9 @@ public final class DeskStore {
             loading = .failed("Not signed in.")
         } catch {
             isReadFailing = true
+            // Nothing earlier to go by: the viewer is taken for anyone else, whose screens show their own failures. A sign-in that has
+            // ended (above) says nothing of who is asking, so it leaves the viewer not yet told.
+            if standing == .loading { standing = .unknown }
             loading = .failed(Self.reason(error))
         }
     }

@@ -215,6 +215,11 @@ public actor NodeClient {
         _ = try await writeResponse("DELETE", "/api/push/tokens/\(Self.segment(token))", body: nil)
     }
 
+    /// What the node says in a refusal, shown with its hidden characters as `?` (it can name a label or a title): this is what an alert reads.
+    private static func refusalText(_ response: HTTPResponse) -> String? {
+        (try? JSONDecoder().decode(ErrorBody.self, from: response.body).error).flatMap { $0 }.map(NodeLabel.shownText)
+    }
+
     /// The Access token a sign-in made for `code`, given the verifier whose SHA-256 the sign-in was started with
     /// (`POST /app/redeem`). It needs no Access token and no write token: the app has none yet, which is what it asks
     /// for, and the node admits the code and the verifier. A refusal is the same for every cause (`NodeError.http`
@@ -230,7 +235,7 @@ public actor NodeClient {
         case 300..<400:
             throw NodeError.http(status: response.status, message: "the node's Access policy does not let the sign-in exchange through")
         default:
-            throw NodeError.http(status: response.status, message: try? JSONDecoder().decode(ErrorBody.self, from: response.body).error)
+            throw NodeError.http(status: response.status, message: Self.refusalText(response))
         }
     }
 
@@ -275,7 +280,7 @@ public actor NodeClient {
         case 200..<300:
             return response
         default:
-            throw NodeError.http(status: response.status, message: try? JSONDecoder().decode(ErrorBody.self, from: response.body).error)
+            throw NodeError.http(status: response.status, message: Self.refusalText(response))
         }
     }
 

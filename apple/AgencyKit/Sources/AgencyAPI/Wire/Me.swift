@@ -19,8 +19,12 @@ public struct Me: Decodable, Equatable, Sendable {
     /// The changes others asked an org's root key to sign, which wait for the owner (`agency root-sign`), oldest first. Only the
     /// owner is told; for anyone else, and when none waits, the node leaves it out and the list is empty.
     public let rootChanges: [RootChangeRef]
+    /// Present only when the viewer is a member the node hosts (a guest of it): which member, and in which org. Any `guest` the node says
+    /// that is not null counts, whatever its shape: if it says it in another shape, the viewer must still get a guest's pages and not the
+    /// owner's menu and refusals. `nil` for anyone else.
+    public let guest: GuestRef?
 
-    enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes, nodeId, rootChanges }
+    enum Keys: String, CodingKey { case account, orgs, funding, hidesTitles, homeNodes, nodeId, rootChanges, guest }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: Keys.self)
@@ -31,6 +35,7 @@ public struct Me: Decodable, Equatable, Sendable {
         homeNodes = try container.decodeIfPresent([HomeNodeRef].self, forKey: .homeNodes) ?? []
         nodeId = try container.decodeIfPresent(String.self, forKey: .nodeId)
         rootChanges = Self.rootChanges(in: container)
+        guest = Self.guest(in: container)
     }
 }
 
@@ -112,3 +117,35 @@ public struct UsageWindow: Decodable, Equatable, Sendable {
     public let utilization: Int
     public let resetsAt: Instant
 }
+
+/// The member the node hosts that the viewer is, as the node says it (`Me.guest = { member, org }`). A field that is missing or is not
+/// text is not read: it is still a guest.
+public struct GuestRef: Decodable, Equatable, Sendable {
+    public let member: String?
+    public let org: String?
+
+    private enum Keys: String, CodingKey { case member, org }
+
+    public init(member: String?, org: String?) {
+        self.member = member
+        self.org = org
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        func text(_ key: Keys) -> String? {
+            (try? container.decodeIfPresent(String.self, forKey: key)).flatMap { $0 }.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        member = text(.member)
+        org = text(.org)
+    }
+}
+
+extension Me {
+    /// `nil` when the node leaves `guest` out or says `null`; a guest otherwise, in whatever shape it is said.
+    static func guest(in container: KeyedDecodingContainer<Keys>) -> GuestRef? {
+        guard container.contains(.guest), (try? container.decodeNil(forKey: .guest)) != true else { return nil }
+        return (try? container.decode(GuestRef.self, forKey: .guest)) ?? GuestRef(member: nil, org: nil)
+    }
+}
+

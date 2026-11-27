@@ -111,7 +111,7 @@ public struct KpiObservation: Decodable, Equatable, Sendable {
         note = try values.decodeIfPresent(String.self, forKey: .note)
         let origin = try values.nestedContainer(keyedBy: SourceKeys.self, forKey: .source)
         source = switch try origin.decode(String.self, forKey: .kind) {
-        case "connector": .connector(name: try origin.decode(String.self, forKey: .name))
+        case "connector": .connector(name: NodeLabel.shown(try origin.decode(String.self, forKey: .name)))
         default: .manual
         }
     }
@@ -173,7 +173,8 @@ public struct AimReading: Decodable, Equatable, Sendable {
         let values = try decoder.container(keyedBy: Keys.self)
         team = try values.decode(String.self, forKey: .team)
         epic = try values.decode(String.self, forKey: .epic)
-        epicTitle = try values.decodeIfPresent(String.self, forKey: .epicTitle)
+        // The epic's title is what an agent wrote: shown with its hidden characters as `?`.
+        epicTitle = try values.decodeIfPresent(String.self, forKey: .epicTitle).map(NodeLabel.shown)
         kpi = try values.decode(String.self, forKey: .kpi)
         shippedOn = try values.decodeIfPresent(String.self, forKey: .shippedOn)
         state = switch try values.decode(String.self, forKey: .state) {

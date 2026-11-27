@@ -32,13 +32,13 @@ export const itemKey = (view: TeamView, request: TeamRequest): string => `${view
 function toItem({ view, viewer, mine, relayedFor }: Team, request: TeamRequest): DeskItem {
   // Whose it is is the node's call, because it knows how runtime names map to people; the desk only reads it.
   const isMine = mine.has(request.id)
-  const to = isMine ? viewer : request.to
+  const to = isMine ? viewer : request.to // shown-ok(lookup): the name whose person is looked for, never drawn as it is
   return {
     key: itemKey(view, request),
     group: isMine ? request.kind : 'others',
     request,
     view,
-    drafter: personOf(view, request.from),
+    drafter: personOf(view, request.from), // shown-ok(lookup): the name whose person is looked for
     decider: to === undefined ? undefined : personOf(view, to),
     isMine,
     relayedFor: relayedFor.get(request.id),
