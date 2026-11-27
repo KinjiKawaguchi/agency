@@ -5,7 +5,7 @@
 //! (see `orgs::amend`) treats an answer that is not recent as no answer.
 use crate::error::Result;
 use crate::node::Node;
-use crate::read_auth::sign_read;
+use crate::read_auth::sign_for_peer;
 use crate::routes;
 use agency_proto::about::About;
 use agency_proto::clock::{self, Duration, OffsetDateTime};
@@ -69,7 +69,7 @@ pub(crate) fn is_due(kept: Option<&PeerAbout>, now: OffsetDateTime) -> bool {
 
 async fn read_one(node: &Node, org: &Id, origin: &str, previous: Option<&PeerAbout>) -> PeerAbout {
     let path = routes::about(org);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, origin, &path);
     let now = node.now_text();
     let answer = match node.peers().get_about(origin, &path, &auth).await {
         Ok(about) => about.check().map(|()| about),

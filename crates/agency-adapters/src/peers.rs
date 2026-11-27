@@ -3,6 +3,7 @@ use agency_core::ports::{DefinitionAccess, PeerError, Peers};
 use agency_core::read_auth::ReadAuth;
 use agency_proto::about::About;
 use agency_proto::activity::Activity;
+use agency_proto::effort::Effort;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::root_change::{PendingRootAnswer, RootAnswer};
@@ -16,13 +17,17 @@ use std::time::Duration;
 pub const ACCOUNT: &str = "x-agency-account";
 pub const DATE: &str = "x-agency-date";
 pub const SIGNATURE: &str = "x-agency-signature";
+/// The id of the node a read is made for, present only when the signature covers it.
+pub const AUDIENCE: &str = "x-agency-audience";
 
-pub fn read_headers(auth: &ReadAuth) -> [(&'static str, String); 3] {
-    [
+pub fn read_headers(auth: &ReadAuth) -> Vec<(&'static str, String)> {
+    let mut headers = vec![
         (ACCOUNT, auth.account.clone()),
         (DATE, auth.date.clone()),
         (SIGNATURE, auth.signature.clone()),
-    ]
+    ];
+    headers.extend(auth.audience.clone().map(|audience| (AUDIENCE, audience)));
+    headers
 }
 
 pub struct HttpPeers {
@@ -183,6 +188,15 @@ impl Peers for HttpPeers {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<Evaluation, PeerError> {
+        self.get_signed(node, path, auth).await
+    }
+
+    async fn get_effort(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Effort, PeerError> {
         self.get_signed(node, path, auth).await
     }
 

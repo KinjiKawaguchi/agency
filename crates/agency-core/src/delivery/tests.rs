@@ -31,6 +31,7 @@ fn pull_request(
         first_commit_at: first_commit.map(at),
         has_issue,
         issue_started_at: in_progress.map(at),
+        closes_incident: false,
     }
 }
 

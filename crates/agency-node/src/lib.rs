@@ -1,6 +1,7 @@
 //! Agency's node: wires agency-core to its adapters. One node runs per machine; it serves the teams it
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
+pub mod budget;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
@@ -154,6 +155,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    config
+        .federation
+        .check(&config.url)
+        .map_err(anyhow::Error::msg)?;
     let logger = Logger::open(data_dir.join("logs"), config.logging.clone(), clock.clone());
     let recorder = Recorder::new(data_dir.join("metrics"), clock.clone());
     let notifier = match overrides.notifier {
@@ -306,8 +311,13 @@ impl Opened {
             .layer(axum::middleware::from_fn(
                 agency_adapters::raw_path::refuse_ambiguous_paths,
             ));
+        let is_https = self.node.config().url.starts_with("https://");
         Ok(if is_public {
             app.layer(axum::middleware::map_response(strict_transport))
+        } else if is_https {
+            app.layer(axum::middleware::from_fn(
+                strict_transport_through_cloudflare,
+            ))
         } else {
             app
         })
@@ -318,6 +328,21 @@ impl Opened {
 /// year. Without `includeSubDomains`, it says nothing about other names under the same domain.
 /// Browsers ignore the header on plain HTTP, so local answers carrying it change nothing.
 pub const STRICT_TRANSPORT_SECURITY: &str = "max-age=31536000";
+
+/// HSTS for a node without an access setting whose url is HTTPS: on every answer to a request that came through
+/// Cloudflare, since that is how browsers reach it at its public host name. A direct local request gets none.
+async fn strict_transport_through_cloudflare(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let is_via_cloudflare = client_api::is_via_cloudflare(request.headers());
+    let response = next.run(request).await;
+    if is_via_cloudflare {
+        strict_transport(response).await
+    } else {
+        response
+    }
+}
 
 async fn strict_transport(mut response: axum::response::Response) -> axum::response::Response {
     response.headers_mut().insert(

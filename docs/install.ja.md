@@ -188,6 +188,16 @@ loginctl show-user "$USER" --property=Linger
 2 つ目のコマンドは `Linger=yes` を出力するはずです。有効でないと、最後のセッションからログアウトした時点でノードが止まります。
 `systemctl --user` はログインセッション（ターミナルや SSH のログイン）で実行してください。`su` や `sudo -u` からでは自分のサービスに届かず、`Failed to connect to bus` と表示されます。
 
+### 他のアカウントもログインするマシン
+
+ノードは、直接のローカルのリクエスト（`127.0.0.1` や `localhost` から）をオーナーとして受け入れます。自分だけがログインするマシンなら、それで問題ありません。他の人もログインするマシンでは、どのローカルアカウントも同じように `127.0.0.1` に届くので、ローカルのクライアントを受け入れないようにします。`~/.agency/config.json` の最上位に次を書いてノードを再起動するか、ノードを作るときに `agency init` に `--no-local-clients` を渡します。
+
+```json
+"localClients": false
+```
+
+こうすると、Client API と Web クライアントはすべてのローカルのリクエストを 403 で断ります（`/metrics` も含みます）。連合は同じポートで動き続けます。チームを置くだけのノードには、ローカルのクライアントは要りません。ホームノードから連合を通して届き、そのマシンの `agency` コマンド（`status`、`funding`、`metrics`）はデータディレクトリを直接読みます。チームのランタイムは Client API ではなく、標準入出力でノードとやりとりします。設定が有効なあいだ、`agency status` は `Local clients: refused` と表示します。
+
 ### 最初の端末としてブラウザを追加する
 
 決定に署名するのは自分の端末で、ノードは署名しません。
@@ -292,7 +302,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ノードが受け入れるのは、このアドレスと、ゲスト（このノードにつながる、ノードを持たないメンバー）のアドレスだけです。ほかのサインインは、Access のポリシーが通していても 403 になります。オーナーとして書き込める（決定する、端末を追加する）のは `ownerEmail` だけです。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
-- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
+- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。`appId` だけでサインインできるのは、アプリのビルドの関連ドメインに入っているホスト名だけです。そのときアプリは、ノード自身のホスト名のユニバーサルリンクでサインインし、それを受け取れるのは、関連付けファイルが名指しするアプリだけです。自分でアプリをビルドするなら、ホスト名を `AGENCY_ASSOCIATED_HOST` に入れ、`allowSchemeSignIn` は無効のままにします。これが安全な方法です。関連ドメインを自分では決められないビルドのアプリを使うなら、ホスト名はその中にありません。その場合は、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定するか（既定は無効で、`appId` がなければ効きません）、アプリからはそのノードにサインインしないでください（ノードのアドレスのページはブラウザで使え、通知も届きます）。スキームのコールバックは、サインインを始めたアプリに届きます。それがどのアプリでも同じです。サインインする全端末の全アプリが信頼できる場合にだけ、有効にしてください。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 - ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。プッシュサービス（Google、Mozilla、Apple、Microsoft）の運営者がこれを読むので、どのノードかが伝わります。ノードのホスト名を伝えたくないときは、このために作った別名のアドレスを使ってください。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
 
@@ -470,10 +480,11 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
-- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
+- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベル、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- 労力の画面（チームのトークンがどの作業種別に使われたか。`/api/orgs/<org>/effort`）は、同じリポジトリと、チームのランタイムが報告するトークン使用量（`tokenUsage`）から求めます。これは推定です。ランタイムは費用を日ごとに報告するので、1 日の費用は、その日にマージした PR の種別に分けます。マージのない日は、次にマージのある日の種別に分けます（規則は [protocol.md](protocol.md#evaluation) にあります）。ランタイムがトークン使用量を報告しないチームは、0 ではなく理由とともに並びます。
 - `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
 
 | 画面に出る理由 | すること |
@@ -485,6 +496,9 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
+| the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |
+| the team's node does not give effort numbers | そのノードがこの機能より古いので、更新します。 |
+| the team's node does not give effort numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | a repository of the team is not written owner/name | チームが動いているノードの設定の `delivery.repos` を直します。 |
 | the team's node did not answer | そのノードが止まっているか、届きません。 |
 
@@ -526,6 +540,20 @@ scripts/deploy-macos.sh --agency ~/.local/bin/agency --dir ~/.agency --label loc
 データディレクトリには手を加えません。
 ノードは起動のたびに書き込み用のトークンを作り直すため、開いていたページは次の書き込みの前に一度読み込み直します。
 
+### 版の違うノード間の署名付き読み取り
+
+同じ組織のノードは、署名付き読み取りでお互いを読みます。このリリースのノードは、相手が `readAudience` を持つと知ったあとは、特定のノードのための読み取りを作ります（そのノードの id も署名に含めます）。受け取るノードは、自分の名前が入っている読み取りだけを受け付けます。ノードはどの順番で更新してもかまいません。古いノードとは、これまでどおりの形で読み合います。ただし次の点に注意してください。
+
+- あるアカウントから、自分の名前が入った読み取りを一度受け取ったノードは、そのアカウントの古い形の読み取りを、それ以後は受け付けません。1 つのアカウントがノードを 2 つ持っていて（たとえば Mac に 1 つ、別のマシンに 1 つ）、片方だけを更新すると、もう片方から更新済みのノードへの読み取りは、そちらも更新するまで拒否されます（拒否するほかの読み取りと同じく、ノードは `404` で答えます）。更新済みのノードは、理由をログ（`agency logs`）に書きます。`a read signed by alice that names no node; …` という行です。
+- 更新するまで古いほうのノードを通したいときは、拒否しているノードの `config.json` にそのアカウントを書いて、再起動します。
+
+  ```json
+  "federation": { "unboundReadAccounts": ["alice"] }
+  ```
+
+  2 つとも更新できたら、この行は消してください。`readAudience` を持たないリリースに戻したノードのアカウントにも、同じ行が使えます。このような読み取りを受け取ったアカウントは、ノードのデータディレクトリの `bound-readers.json` に残るので、再起動しても元に戻りません。`agency status` にも一覧が出ます。
+- 組織のすべてのノードを更新したら、各ノードに `"federation": { "requireReadAudience": true }` を設定すると、どのアカウントの古い形の読み取りも断ります。設定しないあいだは、古い形で作られ、そのアカウントが初めてノードの名前を入れる前に盗み見られた読み取りは、そのノードで再送できてしまいます。`requireReadAudience` を使うには、`url` がこのノードの origin を `https://<ホスト名>[:<ポート>]`（ループバックアドレスなら `http://`）の形で書いたものである必要があります。そうでないと、ノードは起動を断ります。
+
 ### 計測
 
 ノードは、受けたすべてのリクエストの時間を計り、数字を `~/.agency/metrics/` に、UTC の日ごとに 1 ファイル、30 日分書きます。ノード自身のデータで、このマシンの中にだけあります。取りに来る（下のスクレイプ）ときのほかは、外には出ません。リクエストは、一致した route の名前（`GET /api/orgs/{org}/teams/{team}/usage`。id の入った path ではありません）で数えられ、どの route にも一致しないものは `unmatched` の 1 つの系列になり、本文、トークン、クエリ、アドレスは残りません。オーナーは次のように読みます。
@@ -538,6 +566,7 @@ curl -s http://127.0.0.1:4400/metrics            # Prometheus が読むテキス
 - `GET /api/metrics?days=<1 から 30>&kind=&name=` は、系列（route、ノードが行う呼び出し、クライアントが報告したもの）ごとに、呼び出しの数、そのうちエラーの数、中央値と 95 パーセンタイルと 99 パーセンタイルをミリ秒で返します。7 日までの範囲では時間ごとにも返します（`hourBuckets=1` を付けると、各時間のバケットも返します。画面が複数の系列の時間を足して全体のパーセンタイルを読むためで、答えは約 1.7 倍の大きさになります）。パーセンタイルは、そのバケットの**上限**です（1、2、5、10、25、50、100、250、500、1000、2500、5000、10 000、30 000 ms）。「p95 100」は、100 ms 以下という意味です。答えには、性能の予算が当てはまる系列（ノード自身の状態から答える読み取り。参照環境で 95 パーセンタイルが 100 ms 以下）と、予算そのものも入ります。
 - ノードを自分の数字で縛るには、`config.json` に objectives を書いて、ノードを再起動します: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`。`group` は `desk`、`teams`、`usage`、`evaluation`、`outcomes`、`devices`、`push`、`federation`、`metrics`、`other` のどれか（答えの各系列に、その group が書かれます）で、`p95Ms` は 1 から 30 000 です。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。`GET /api/metrics` は、それぞれについて、聞かれた日数で `met`（95 パーセンタイルが目標以内）、`notMet`（95 パーセンタイルのバケットの時間がすべて目標を超えている）、`undetermined`（目標がそのバケットの内側にあり、測定からは言えない）、`unknown`（その範囲に呼び出しがない）を、そのバケットの上限とともに返します。group 全体についての答えで、kind や name で絞った答えには付きません。
 - `agency metrics [--days n] [--kind serve|call|client] [--name <名前>] [--json]` は、同じものを表にして、ファイルから出力します。ノードが止まっていても、鍵なしで動きます。`<=100` は 100 ms 以下（バケットの上限）、`>30000` は最後の境界より遅いこと、BUDGET の列は、性能の予算が当てはまる読み取りについて `ok` か `OVER` です。動いているノードは数字を 1 分に 1 回書くので、直近の 1 分は `GET /api/metrics` にだけあります。
+- Web クライアントとアプリは、自分の呼び出しにかかった時間を `POST /api/telemetry` でノードに報告します（1 分ごとにまとめて）。設定は要りません。聞くのはオーナーのクライアントだけで、ノードのものでない route は捨てます。数字は `GET /api/metrics` の `client` 系列に出るので、ノードがかかった時間と並べて、人が待った時間を見られます。
 - オーナーだけが読めます。直接のローカルのリクエスト、またはオーナーとして Access にサインインしたものです。Access が入れた他の人は 403 になります。`/metrics` は、ノードのあるマシンの上でだけ読めるので、Prometheus はそこで取りに来ます（トンネル経由ではありません）。
 - `serve` 以外のコマンドは、データディレクトリに何も記録しません。ディレクトリに書けないノードは、持っているものをメモリに保ち、あとでもう一度試します。
 
@@ -592,6 +621,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
+| アプリのサインインのシートに `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)` と出て、ノードが `via=scheme` に `400` を返した | ノードのホスト名が、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。自分でアプリをビルドするなら、ビルドの `AGENCY_ASSOCIATED_HOST` にそのホスト名を入れます。そうでなければ、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
 | `agency: refused an Access request (wrong audience)` | `audience` がアプリケーションの AUD タグと違います。 |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` が自分のチームドメインと違います。 |

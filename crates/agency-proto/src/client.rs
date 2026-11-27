@@ -371,6 +371,11 @@ pub struct DecisionEntry {
     /// it out from the org and the team when it applied the decision; no client says it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relayed_for: Option<RelayedFor>,
+    /// The id of the device that signed the decision (`Device.id`), as the node verified it on the envelope; no
+    /// client says it. Left out for a decision logged before the node kept it: a client says "signer not
+    /// recorded" for those, and counts them for no device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<Id>,
     pub decided_at: Timestamp,
     pub state: DecisionState,
 }
@@ -586,6 +591,11 @@ pub struct PushToken {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub device: Option<Id>,
+    /// The guest whose app this is (docs/protocol.md, "Guests"): it gets only that member's request notices.
+    /// Left out for the owner's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub guest: Option<GuestRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

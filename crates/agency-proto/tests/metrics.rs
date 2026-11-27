@@ -1,9 +1,9 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, HourSeries,
-    Metrics, ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS,
-    IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
+    bucket_total, group_of, is_error_status, is_in_node_read, judge, percentile_bucket,
+    percentile_ms, valid_name, valid_status, HourSeries, Metrics, ObjectiveResult, ObjectiveState,
+    Series, SeriesKind, BUCKETS, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -269,6 +269,7 @@ fn a_route_is_in_the_group_of_its_template_and_a_call_in_the_group_of_its_first_
         ("GET /fed/v1/teams/{org}/{team}/view", "federation"),
         ("POST /fed/v1/orgs/{org}/join", "federation"),
         ("GET /api/metrics", "metrics"),
+        ("POST /api/telemetry", "metrics"),
         ("GET /metrics", "metrics"),
         ("unmatched", "unmatched"),
         ("GET /api/something/new", "other"),
@@ -583,6 +584,32 @@ fn the_buckets_of_an_hour_add_up_to_its_count_and_give_its_percentile() {
 }
 
 #[test]
+fn buckets_that_hold_more_than_a_count_can_are_inconsistent_and_give_no_percentile() {
+    assert_eq!(bucket_total(&[u64::MAX, 0, 0]), Some(u64::MAX));
+    assert_eq!(bucket_total(&[u64::MAX, 1, 0]), None);
+    assert_eq!(percentile_ms(&[u64::MAX, 1, 0], 95), None);
+    assert_eq!(percentile_bucket(&[u64::MAX, 0, 0], 95), Some(0));
+    // The sum wraps to the count it claims; the hour is still told apart.
+    let mut wrapped = hour_with(0, 0, None);
+    assert!(wrapped.is_consistent());
+    wrapped.buckets.as_mut().unwrap()[0] = u64::MAX;
+    wrapped.buckets.as_mut().unwrap()[1] = 1;
+    assert!(!wrapped.is_consistent());
+    let mut series = sample().series.remove(0);
+    series.count = 0;
+    series.errors = 0;
+    series.by_hour = Vec::new();
+    series.buckets = vec![0; BUCKETS];
+    series.p50_ms = None;
+    series.p95_ms = None;
+    series.p99_ms = None;
+    assert!(series.is_consistent());
+    series.buckets[0] = u64::MAX;
+    series.buckets[1] = 1;
+    assert!(!series.is_consistent());
+}
+
+#[test]
 fn a_series_is_consistent_only_when_its_hours_are_and_the_buckets_of_an_hour_are_left_out_when_not_asked_for(
 ) {
     let mut with = sample().series.remove(0);
@@ -602,5 +629,32 @@ fn a_series_is_consistent_only_when_its_hours_are_and_the_buckets_of_an_hour_are
     assert!(
         value["byHour"][0].get("buckets").is_none(),
         "left out, not null"
+    );
+}
+
+#[test]
+fn an_objective_over_series_that_add_up_past_what_a_count_holds_says_nothing() {
+    let template = sample()
+        .series
+        .into_iter()
+        .find(|one| one.kind == SeriesKind::Serve && one.group == "desk")
+        .unwrap();
+    let mut half = template.clone();
+    half.buckets = vec![0; BUCKETS];
+    half.buckets[3] = u64::MAX / 2 + 2;
+    let (mut over, mut exact) = (half.clone(), half.clone());
+    over.status = "5xx".into();
+    exact.buckets[3] = u64::MAX / 2 - 1;
+    let result = judge("desk", 10, &[half.clone(), over]);
+    assert_eq!(
+        (result.state, result.measured_p95_ms),
+        (ObjectiveState::Unknown, None),
+        "a wrapped sum would have said 2 durations, in a bucket that nobody measured"
+    );
+    let result = judge("desk", 10, &[half, exact]);
+    assert_ne!(
+        result.state,
+        ObjectiveState::Unknown,
+        "what adds up to exactly a u64's most is still a count"
     );
 }
