@@ -14,7 +14,7 @@ struct HomeShell: View {
         Group {
             if let session = model.session {
                 TabView(selection: Bindable(model.router).tab) {
-                    ForEach(AppTab.allCases, id: \.self) { tab in
+                    ForEach(model.router.availableTabs, id: \.self) { tab in
                         ShellScreen(tab: tab, model: model, session: session)
                             .tabItem { Label(tab.title, systemImage: tab.symbol) }
                             .tag(tab)

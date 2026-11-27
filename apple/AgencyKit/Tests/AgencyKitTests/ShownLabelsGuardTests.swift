@@ -21,6 +21,8 @@ struct ShownLabelsGuardTests {
             "what a held change names: its reader shows it with `NodeLabel.shown` (`RootChangeRef.init(from:)`)",
         "AgencyKit/Sources/AgencyAPI/Wire/RootChanges.swift:RootChangeRef.public let device: String?":
             "what a held change names: its reader shows it with `NodeLabel.shown` (`RootChangeRef.init(from:)`)",
+        "AgencyKit/Sources/AgencyAPI/Wire/Me.swift:GuestRef.public let member: String?":
+            "the id of the hosted member, which the app reads to know the viewer is a guest and never shows",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:Effort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:TeamEffort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Evaluation.swift:Evaluation.public let from: String": "a calendar day, the period's first: never a label",
