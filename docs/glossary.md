@@ -41,6 +41,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Device id**. `d-` and the pairing code without dashes.
 - **Client** (クライアント). A program with device keys that talks to a home node: the web client, the iPhone app, the CLI on the node's terminal. A client is not a node.
 - **Push token**. An APNs token for the iPhone app to be notified at. Apple calls it a device token; the protocol does not, since a *device* here is a signing key.
+- **Notice destination** (通知の送り先). A browser's Web Push subscription or an app's push token that the node sends notices to. A registration may name the device it belongs to (`device`, a `Device.id`), and a node with the capability `pushDevice` drops it when that device is removed; one that names no device stays until it is stopped by hand. The owner's list of them is "Where notices are sent" (通知の送り先), and stopping one is "Stop notices" (通知を止める), not removing a device.
 
 ## Seats and claiming
 

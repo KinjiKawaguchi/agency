@@ -14,6 +14,7 @@ import { KeyKeepingNotes } from './KeyKeepingNotes'
 import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
 import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
+import { DestinationsCard } from '../notifications/DestinationsCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
 import { isHeldFor } from '../rootchange/held'
 import { answerOf } from '../rootchange/changes'
@@ -226,6 +227,7 @@ export function DevicesPage() {
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
       {standing.status === 'member' ? <HomeNodesCard /> : null}
       <OsNoticesCard />
+      {standing.status === 'member' ? <DestinationsCard /> : null}
       <InstallCard />
     </>
   )
