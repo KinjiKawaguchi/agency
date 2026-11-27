@@ -48,9 +48,18 @@ async fn read(running: &Running, path: &str) -> Value {
 }
 
 async fn write(running: &Running, path: &str, input: &Value) -> Value {
+    write_answered(running, path, input, StatusCode::OK).await
+}
+
+async fn write_answered(
+    running: &Running,
+    path: &str,
+    input: &Value,
+    expected: StatusCode,
+) -> Value {
     let request = post(running, path, input).header("x-agency-token", TOKEN);
     let (status, answer) = body(request.send().await.unwrap()).await;
-    assert_eq!(status, StatusCode::OK, "{path}: {answer}");
+    assert_eq!(status, expected, "{path}: {answer}");
     answer
 }
 
@@ -236,7 +245,13 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     };
     decide_as(alice, &key, "r-2", comment).await.unwrap();
     let envelope = signed_answer(alice, &key, "r-2", "b");
-    let decided = write(alice, ENVELOPES, &json!({ "envelope": envelope })).await;
+    let envelope_id = envelope.body.id.as_str().to_owned();
+    let input = json!({ "envelope": envelope });
+    let kept = write_answered(alice, ENVELOPES, &input, StatusCode::ACCEPTED).await;
+    assert_eq!(kept, json!({ "outcome": "queued" }));
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
+    let decided = write(alice, ENVELOPES, &input).await;
+    let entry = read(alice, &format!("/api/decisions/{}", envelope_id)).await;
     let phone = AccountKey::from_seed([10; 32]).public();
     let request = json!({ "label": "iPhone", "publicKey": phone });
     let requested = write(alice, "/api/devices/requests", &request).await;
@@ -275,6 +290,7 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         ),
         ("decision-log", read(alice, "/api/decisions").await),
         ("decision-result", decided),
+        ("decision-entry", entry),
         ("device-list", read(alice, "/api/devices").await),
         ("device-request", requested),
         ("push-token", registered),
@@ -382,12 +398,11 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
     let added = agency_core::devices::add_device(&bob.node, "Laptop", &key.public(), None).await;
     assert_eq!(added.len(), 1, "{added:?}");
     alice.stop().await;
-    let queued = write(
-        bob,
-        ENVELOPES,
-        &json!({ "envelope": signed_answer(bob, &key, "r-1", "b") }),
-    )
-    .await;
+    let input = json!({ "envelope": signed_answer(bob, &key, "r-1", "b") });
+    let kept = write_answered(bob, ENVELOPES, &input, StatusCode::ACCEPTED).await;
+    assert_eq!(kept, json!({ "outcome": "queued" }));
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
+    let queued = write_answered(bob, ENVELOPES, &input, StatusCode::ACCEPTED).await;
     assert_eq!(queued["outcome"], "queued", "{queued}");
     let phone = AccountKey::from_seed([13; 32]).public();
     let change = signed_add("bob", "iPhone", &phone, &key);
@@ -397,6 +412,7 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
         ("device-change-result-queued", change_queued),
         ("team-snapshot-replica", replica),
         ("me-member", me),
+        ("decision-result-kept", kept),
         ("decision-result-queued", queued),
         ("decision-log-member", read(bob, "/api/decisions").await),
     ]

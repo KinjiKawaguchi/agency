@@ -60,7 +60,13 @@ async fn logs_local_decisions_as_applied() {
         .send()
         .await
         .unwrap();
-    assert_eq!(sent.status(), 200);
+    assert_eq!(sent.status(), 202);
+    assert_eq!(
+        decisions(&alice, "").await["entries"][0]["state"]["kind"],
+        "queued",
+        "answered before the runtime was asked"
+    );
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     let log = decisions(&alice, "").await;
     let entry = &log["entries"][0];
     assert_eq!(entry["state"], json!({ "kind": "applied" }));
@@ -88,14 +94,18 @@ async fn logs_local_decisions_as_applied() {
         .send()
         .await
         .unwrap();
-    assert_eq!(refused.status(), 403, "no request r-404 waits for alice");
-    assert_eq!(
-        decisions(&alice, "").await["entries"]
-            .as_array()
+    assert_eq!(refused.status(), 202, "kept; checked when it is applied");
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
+    let log = decisions(&alice, "").await;
+    assert_eq!(log["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(log["entries"][0]["target"], "r-404");
+    assert_eq!(log["entries"][0]["state"]["kind"], "refused");
+    assert!(
+        !log["entries"][0]["state"]["message"]
+            .as_str()
             .unwrap()
-            .len(),
-        1,
-        "a decision the runtime refused is not logged"
+            .is_empty(),
+        "no request r-404 waits for alice, and the log says why"
     );
 
     let elsewhere = agency_core::decisions::DecisionRecord {
@@ -125,7 +135,7 @@ async fn logs_local_decisions_as_applied() {
         .collect();
     assert_eq!(
         targets,
-        vec![json!("r-1")],
+        vec![json!("r-404"), json!("r-1")],
         "decisions in orgs the account does not belong to are hidden"
     );
 }
@@ -153,8 +163,14 @@ async fn logs_sent_decisions_with_their_delivery_state() {
     .await;
     assert_eq!(
         (status, result["outcome"].as_str()),
-        (StatusCode::OK, Some("queued"))
+        (StatusCode::ACCEPTED, Some("queued"))
     );
+    assert_eq!(
+        decisions(&bob, "").await["entries"][0]["state"]["attempts"],
+        0,
+        "not tried when it was kept"
+    );
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
     let queued = decisions(&bob, "").await["entries"][0]["state"].clone();
     assert_eq!(
         (
@@ -183,7 +199,8 @@ async fn logs_sent_decisions_with_their_delivery_state() {
             .unwrap(),
     )
     .await;
-    assert_eq!(status, 409, "the team's node refused");
+    assert_eq!(status, 202, "kept; the team's node refuses it when sent");
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
     let log = decisions(&bob, "").await;
     assert_eq!(
         log["entries"][0]["state"]["kind"], "refused",
@@ -259,7 +276,11 @@ async fn logs_the_device_that_signed_each_decision() {
             .send()
             .await
             .unwrap();
-        assert_eq!(sent.status(), 200, "{target}");
+        assert_eq!(
+            sent.status(),
+            202,
+            "{target}: kept, applied in the background"
+        );
     }
     let log = decisions(&alice, "").await;
     let signer_of = |target: &str| {
@@ -292,7 +313,7 @@ async fn logs_the_device_of_a_decision_that_waits_to_be_sent() {
         .send()
         .await
         .unwrap();
-    assert_eq!(sent.status(), 200);
+    assert_eq!(sent.status(), 202);
     let entry = decisions(&bob, "").await["entries"][0].clone();
     assert_eq!(entry["state"]["kind"], "queued");
     assert_eq!(entry["signer"], json!(key.public().device_id().as_str()));

@@ -822,3 +822,44 @@ async fn readers_of_a_runtime_that_stays_down_share_one_failure() {
         "once it is old, the command is run again"
     );
 }
+
+#[tokio::test]
+async fn times_each_decision_as_its_own_call_series_by_how_the_runtime_answered() {
+    use agency_adapters::memory::ManualClock;
+    use agency_adapters::metrics::Recorder;
+    use agency_proto::metrics::SeriesKind;
+    use std::sync::Arc;
+
+    let fake = Fake::new();
+    let recorder = Recorder::new(
+        fake.path().join("metrics"),
+        Arc::new(ManualClock::at("2026-11-24T12:00:00Z")),
+    );
+    let runtimes = CommandRuntime::default().recording(recorder.clone());
+    let team = fake.team("app");
+    runtimes.view(&team).await.unwrap();
+    runtimes.decide(&team, decision("go")).await.unwrap();
+    fake.answer(
+        "decide",
+        r#"{"error":{"status":404,"message":"no such request"}}"#,
+        1,
+    );
+    runtimes.decide(&team, decision("go")).await.unwrap_err();
+    fake.answer("decide", "Traceback: something broke", 1);
+    runtimes.decide(&team, decision("go")).await.unwrap_err();
+
+    let metrics = recorder.read(1, Some(SeriesKind::Call), None);
+    let counted: Vec<(String, String, u64)> = metrics
+        .series
+        .iter()
+        .map(|series| (series.name.clone(), series.status.clone(), series.count))
+        .collect();
+    assert_eq!(
+        counted,
+        vec![
+            ("runtime decide".to_owned(), "error".to_owned(), 1),
+            ("runtime decide".to_owned(), "ok".to_owned(), 2),
+        ],
+        "an answer of the runtime, a refusal too, is `ok`; a failure is `error`; reading the view is not a decision"
+    );
+}
