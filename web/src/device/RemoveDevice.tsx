@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useApi } from '../api/context'
 import type { Device, DeviceList } from '../api/clientApi'
 import { DEVICES_KEY, meQuery } from '../api/queries'
@@ -10,6 +10,7 @@ import { signChange } from './changes'
 import type { DeviceKey } from './deviceKey'
 import { pairingCodeOf } from './fingerprint'
 import { isRemovable, removalPlanOf, removeChangeFor, type RemovalPlan } from './removal'
+import { useReplaceDeviceKey } from './useDeviceKey'
 
 const messageOf = (failure: unknown): string => (failure instanceof Error ? failure.message : String(failure))
 
@@ -55,6 +56,8 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
   const queryClient = useQueryClient()
   const toast = useToast()
   const me = useQuery(meQuery(api))
+  const replaceKey = useReplaceDeviceKey()
+  const isRemoved = useRef(false)
   const code = useQuery({ queryKey: ['pairing-code', device.publicKey], queryFn: () => pairingCodeOf(device.publicKey), staleTime: Infinity })
   const pendingWords = `${words.pendingRoot[0]}agency root-sign${words.pendingRoot[1]}`
   const remove = useMutation({
@@ -67,14 +70,18 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
         const answer = answerOf(result)
         if (answer.status !== 'done') waiting.push(answer.status === 'pending' ? pendingWords : answer.message)
       }
+      isRemoved.current = waiting.length === 0
+      // The org has revoked this browser's key once the removal is done (not while it is only held): it makes a new one, and the
+      // screen offers to add that, never the revoked one.
+      if (plan.isThisDevice && waiting.length === 0) await replaceKey()
       return waiting
     },
     onSuccess: (waiting) => {
       const left = plan.unsignedIn.length > 0 ? [words.stillIn(plan.unsignedIn.join(', '))] : []
-      if (waiting.length === 0) toast(words.removed(device.label))
+      if (waiting.length === 0) toast(plan.isThisDevice ? words.removedThis : words.removed(device.label))
       onDone([...new Set([...waiting, ...left])])
     },
-    onError: (failure) => toast(words.failed(messageOf(failure)), 'error'),
+    onError: (failure) => toast(isRemoved.current ? words.newKeyFailed(messageOf(failure)) : words.failed(messageOf(failure)), 'error'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: DEVICES_KEY }),
   })
   return (

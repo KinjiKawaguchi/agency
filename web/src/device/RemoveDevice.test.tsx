@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { renderApp } from '../test/render'
-import { createTestNode } from '../test/testDevice'
+import { createTestNode, testKeyStore } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair } from './deviceKey'
 import { deviceIdOf } from './fingerprint'
 
@@ -31,10 +31,14 @@ describe('removing one of the account’s devices', () => {
     const user = userEvent.setup()
     const node = withLaptop()
     renderApp({ path: '/devices', node, enrolled: true })
+    const before = (await screen.findByLabelText('Pairing code of this device')).textContent
     await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
     await user.click(await screen.findByRole('button', { name: 'Remove this device' }))
     expect(await screen.findByText('Work laptop is removed. It can never sign again.')).toBeInTheDocument()
     expect(await listedBy(node)).toEqual([['acme', ['Browser']]])
+    // Another device's removal leaves this browser's own key alone.
+    expect(screen.getByLabelText('Pairing code of this device').textContent).toBe(before)
+    expect(screen.queryByRole('button', { name: 'Add this device' })).not.toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove Work laptop' })).not.toBeInTheDocument())
   })
 
@@ -68,7 +72,35 @@ describe('removing one of the account’s devices', () => {
     renderApp({ path: '/devices', node, enrolled: true })
     await user.click(await screen.findByRole('button', { name: 'Remove Browser' }))
     const panel = await screen.findByRole('group', { name: 'Remove Browser?' })
-    expect(within(panel).getByText(/This is the device you are using\. After it is removed, this browser can no longer sign, and its key cannot be added again\./)).toBeInTheDocument()
+    expect(within(panel).getByText(/This is the device you are using\. After it is removed, this browser can no longer sign with this key, and the key cannot be added again\. The browser then makes a new key, which has to be added as a new device\./)).toBeInTheDocument()
+  })
+
+  it('makes a new key when this browser removes itself, and offers to add that one, never the revoked key', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop()
+    const kept = vi.fn(() => Promise.resolve())
+    renderApp({ path: '/devices', node, enrolled: true, keyStore: { load: testKeyStore().load, save: kept } })
+    const before = (await screen.findByLabelText('Pairing code of this device')).textContent
+    await user.click(await screen.findByRole('button', { name: 'Remove Browser' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove this device' }))
+    expect(await screen.findByText(/This device is removed\. This browser made a new key, which is not added yet/)).toBeInTheDocument()
+    expect(await listedBy(node)).toEqual([['acme', ['Work laptop']]])
+    expect(await screen.findByRole('button', { name: 'Add this device' })).toBeInTheDocument()
+    expect((await screen.findByLabelText('Pairing code of this device')).textContent).not.toBe(before)
+    // The new key is kept in the browser's store, so that it is the one the next visit finds.
+    expect(kept).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps its key while the removal of this browser is only held for the root key’s node', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop({ pendingRoot: true })
+    renderApp({ path: '/devices', node, enrolled: true })
+    const before = (await screen.findByLabelText('Pairing code of this device')).textContent
+    await user.click(await screen.findByRole('button', { name: 'Remove Browser' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove this device' }))
+    await screen.findByText(/Removal sent here/)
+    expect(screen.getByLabelText('Pairing code of this device').textContent).toBe(before)
+    expect(screen.queryByRole('button', { name: 'Add this device' })).not.toBeInTheDocument()
   })
 
   it('does not offer to remove the only device of the account, and says why', async () => {
