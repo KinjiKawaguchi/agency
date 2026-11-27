@@ -41,14 +41,10 @@ struct SecureEnclaveSigner: DeviceSigner {
     private let handle: Data
     let publicKey: DevicePublicKey
 
-    /// The key of the home node `host` made on an earlier launch, or a new one.
-    static func loadOrCreate(host: String) throws -> SecureEnclaveSigner {
-        let keychain = service
-        let account = account(for: host)
+    /// Makes a key for the home node `host` and keeps its handle. It never replaces a handle that is kept: the Keychain refuses to add one
+    /// where there is one (`KeychainStore.add`), and what to do about a key that exists and cannot be used is the person's to choose.
+    static func create(host: String) throws -> SecureEnclaveSigner {
         guard SecureEnclave.isAvailable else { throw SecureEnclaveError.unavailable }
-        if let handle = keychain.load(account: account), let signer = try? SecureEnclaveSigner(handle: handle) {
-            return signer
-        }
         var error: Unmanaged<CFError>?
         guard let control = SecAccessControlCreateWithFlags(
             nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, confirmation, &error
@@ -56,8 +52,13 @@ struct SecureEnclaveSigner: DeviceSigner {
             throw SecureEnclaveError.accessControl(error?.takeRetainedValue().localizedDescription ?? "unknown")
         }
         let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: control)
-        try keychain.save(key.dataRepresentation, account: account, accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+        try service.add(key.dataRepresentation, account: account(for: host), accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
         return try SecureEnclaveSigner(handle: key.dataRepresentation)
+    }
+
+    /// What is kept for the home node `host`: `nil` only when nothing is. A failure to read it throws.
+    static func storedHandle(host: String) throws -> Data? {
+        try service.read(account: account(for: host))
     }
 
     /// Forgets the key of the home node `host`. The next session makes a new one, and the device is added again.
@@ -65,7 +66,7 @@ struct SecureEnclaveSigner: DeviceSigner {
         service.delete(account: account(for: host))
     }
 
-    private init(handle: Data) throws {
+    init(handle: Data) throws {
         let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle)
         self.handle = handle
         publicKey = try DevicePublicKey(p256X963: key.publicKey.x963Representation)

@@ -67,6 +67,7 @@ describe('what each call of the client asks the node for', () => {
     ['requestDevice', (api) => api.requestDevice({ label: 'x', publicKey: 'k' } as never), 'POST /api/devices/requests'],
     ['claimState', (api) => api.claimState(), 'GET /api/claim'],
     ['about', (api) => api.about(), 'GET /api/about'],
+    ['removePushToken', (api) => api.removePushToken('0123456789abcdef'), 'DELETE /api/push/tokens/0123456789abcdef'],
   ]
   it.each(cases)('%s', async (_name, call, expected) => {
     expect(await asked(call)).toBe(expected)

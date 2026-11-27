@@ -66,6 +66,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
       : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
+    // A node that ties push registrations to devices (the capability `pushDevice`).
+    ...(query?.get('pushDevice') === '1' ? { pushDevice: true } : {}),
     // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
     ...(guest === '' ? {} : { guest: { member: guest, label: `${guest.charAt(0).toUpperCase()}${guest.slice(1)}` } }),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),

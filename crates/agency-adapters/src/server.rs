@@ -7,6 +7,7 @@ use agency_core::about::read_about;
 use agency_core::activity::{hosted_activity, Asked};
 use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::devices::accept_device_change;
+use agency_core::effort::hosted_effort;
 use agency_core::evaluation::hosted_evaluation;
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, read_versions, receive};
@@ -319,6 +320,27 @@ async fn get_evaluation(
     respond(&fed, &method, &uri, result.await)
 }
 
+/// The effort of a team on this node, for a signed read by a member of its org. The signature covers the
+/// path with its `days` query.
+async fn get_effort(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        let days = query
+            .get("days")
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .ok_or_else(|| Error::bad_request("days must be a number"))?;
+        hosted_effort(&fed.node, &org, &team, days, &read_auth(&headers)).await
+    };
+    respond(&fed, &method, &uri, result.await)
+}
+
 async fn post_envelope(
     State(fed): Shared,
     method: Method,
@@ -359,6 +381,7 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
         .route("/fed/v1/teams/{org}/{team}/activity", get(get_activity))
         .route("/fed/v1/teams/{org}/{team}/evaluation", get(get_evaluation))
+        .route("/fed/v1/teams/{org}/{team}/effort", get(get_effort))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(Arc::new(Fed { node, refusals }))

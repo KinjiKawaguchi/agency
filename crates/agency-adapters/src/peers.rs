@@ -3,6 +3,7 @@ use agency_core::ports::{DefinitionAccess, PeerError, Peers};
 use agency_core::read_auth::ReadAuth;
 use agency_proto::about::About;
 use agency_proto::activity::Activity;
+use agency_proto::effort::Effort;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::root_change::{PendingRootAnswer, RootAnswer};
@@ -183,6 +184,15 @@ impl Peers for HttpPeers {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<Evaluation, PeerError> {
+        self.get_signed(node, path, auth).await
+    }
+
+    async fn get_effort(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Effort, PeerError> {
         self.get_signed(node, path, auth).await
     }
 

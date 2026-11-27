@@ -19,6 +19,7 @@ use agency_core::activity::team_activity;
 use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
 use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device};
+use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
@@ -139,6 +140,10 @@ async fn admit(
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
         return match (peer.ip().is_loopback(), is_local_host) {
+            // On a machine other accounts log in to, each of them reaches the loopback address too.
+            (true, true) if !api.node.config().local_clients => {
+                Err((StatusCode::FORBIDDEN, "this node admits no local clients"))
+            }
             (true, true) => Ok(Admitted::Local),
             (true, false) => Err((StatusCode::MISDIRECTED_REQUEST, "wrong host")),
             (false, _) => Err((StatusCode::FORBIDDEN, "the Client API is local only")),
@@ -404,6 +409,22 @@ async fn get_evaluation(
         Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
     };
     let result = async { org_evaluation(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
+/// Where the tokens of every team of an org went over the last `days` days, by work type (default 14,
+/// at most 90).
+async fn get_effort(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_effort(&api.node, &parse_id(&org)?, days).await };
     respond(result.await)
 }
 
@@ -673,6 +694,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("GET", "/api/orgs/{org}/teams/{team}/usage"),
     ("GET", "/api/orgs/{org}/evaluation"),
+    ("GET", "/api/orgs/{org}/effort"),
     ("GET", "/api/orgs/{org}/teams/{team}/activity"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
     ("GET", HANDOFF_PATH),
@@ -712,6 +734,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
+        "/api/orgs/{org}/effort" => get(get_effort),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
         "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),
         HANDOFF_PATH => get(handoff::handoff),
