@@ -282,6 +282,38 @@ struct DeskStoreTests {
         #expect(store.recoveries.isEmpty, "the node no longer says it waits: cancelled or taken")
     }
 
+    @Test("what the node says the viewer is is known once the account has answered: a hosted member, or anyone else, and a later failed read keeps it")
+    func standing() async throws {
+        func me(_ extra: String) throws -> Me {
+            let json = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]\#(extra)}"#
+            return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+        }
+        let store = makeStore()
+        #expect(store.standing == .loading, "not told yet is not anyone")
+        source.set(me: .success(try me(#","guest":{"member":"erin","org":"acme"}"#)))
+        await store.refresh()
+        #expect(store.standing == .guest(GuestRef(member: "erin", org: "acme")))
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.standing.isGuest, "a read that fails later does not make the guest anyone else")
+        let owner = makeStore()
+        source.set(me: .success(try me("")))
+        await owner.refresh()
+        #expect(owner.standing == .member)
+    }
+
+    @Test("a read that fails with nothing earlier to go by counts as anyone else, and an ended sign-in says nothing of who is asking")
+    func standingWhenFailed() async {
+        let store = makeStore()
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await store.refresh()
+        #expect(store.standing == .unknown)
+        let signedOut = makeStore()
+        source.set(me: .failure(NodeError.sessionExpired))
+        await signedOut.refresh()
+        #expect(signedOut.standing == .loading, "the sign-in has to run again before the node can say")
+    }
+
     @Test("what waits for the root key is on the desk until the node stops naming it, a failed read leaves it, and nothing is there before the node answered")
     func rootChanges() async throws {
         func me(_ changes: String) throws -> Me {

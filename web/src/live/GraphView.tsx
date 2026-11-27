@@ -78,7 +78,7 @@ export function GraphView({ agents, resolve, events, fresh, isReduced, colors }:
     for (const { org, team, event } of fresh) {
       if (event.kind !== 'message' || acted.current.has(`${org}/${team}/${event.id}`)) continue
       acted.current.add(`${org}/${team}/${event.id}`)
-      const [from, to] = [resolveRef.current(org, team, event.from), resolveRef.current(org, team, event.to)]
+      const [from, to] = [resolveRef.current(org, team, event.from /* shown-ok(lookup): finds the agent drawn */), resolveRef.current(org, team, event.to /* shown-ok(lookup): as above */)]
       for (const lit of [from, to, edgeId({ a: from < to ? from : to, b: from < to ? to : from })]) litAt.current.set(lit, now)
       if (!isReduced) packets.current = [...packets.current.filter((packet) => now - packet.startedAt < PACKET_MS), { id: event.id, from, to, startedAt: now }]
     }

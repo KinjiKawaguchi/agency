@@ -113,6 +113,10 @@
   border-left-color: var(--ok);
 }
 
+.mt-objective.is-undetermined {
+  border-left-color: var(--idle);
+}
+
 .mt-objective.is-notMet {
   border-left-color: var(--hold);
 }
@@ -283,4 +287,9 @@
   margin-top: 4px;
   font-size: 0.7rem;
   color: var(--ink-3);
+}
+
+.mt-note {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
 }

@@ -3,9 +3,9 @@ import type { HourPoint, HourValue } from './trend'
 import { useBoundText } from './useBound'
 
 /** The scale is in milliseconds only, drawn on a log scale from the first bound to the last (a p95 runs from 1 ms to 30 s). */
-const SCALE_MIN_MS = 1
+const SCALE_MIN_MS = 0.5
 const SCALE_MAX_MS = 30_000
-const TICKS_MS = [1, 10, 100, 1000, 10_000]
+const TICKS_MS = [1, 10, 100, 1000, 30_000]
 
 const share = (ms: number): number => (Math.log10(Math.min(Math.max(ms, SCALE_MIN_MS), SCALE_MAX_MS) / SCALE_MIN_MS) / Math.log10(SCALE_MAX_MS / SCALE_MIN_MS)) * 100
 
@@ -36,13 +36,15 @@ interface HourChartProps {
   points: readonly HourPoint[]
   /** The budget, drawn as a horizontal line; only on the chart of the reads it applies to. */
   budgetMs?: number
+  /** Whether a point is the group's own p95 (from the hour's buckets) and not the slowest route's, which it is at most. */
+  isExact: boolean
 }
 
 /**
  * One group's p95 for each hour: the slowest route's, at most. One axis, in milliseconds. A gap is an hour with no call.
  * For anyone who cannot see the picture the same hours are a table under it.
  */
-export function HourChart({ title, points, budgetMs }: HourChartProps) {
+export function HourChart({ title, points, budgetMs, isExact }: HourChartProps) {
   const { t, fmt } = useI18n()
   const text = t.metrics.trend
   const { duration, bound } = useBoundText()
@@ -62,7 +64,7 @@ export function HourChart({ title, points, budgetMs }: HourChartProps) {
           ))}
         </div>
         <div className="mt-main">
-          <div className="mt-plot" role="img" aria-label={lastWithCalls === undefined ? title : text.summary(title, String(withCalls.length), boundOf(lastWithCalls.value))}>
+          <div className="mt-plot" role="img" aria-label={lastWithCalls === undefined ? title : (isExact ? text.summary : text.summaryApproximate)(title, String(withCalls.length), boundOf(lastWithCalls.value))}>
             {TICKS_MS.map((tick) => (
               <i key={tick} className="mt-grid" style={{ bottom: `${share(tick)}%` }} />
             ))}
@@ -85,6 +87,8 @@ export function HourChart({ title, points, budgetMs }: HourChartProps) {
           </div>
         </div>
       </div>
+      {isExact ? null : <p className="mt-note muted">{text.approximateNote}</p>}
+      {isExact || budgetMs === undefined ? null : <p className="mt-note muted">{text.budgetNote}</p>}
       <details className="ev-details">
         <summary>{text.show}</summary>
         <div className="ev-table-wrap">

@@ -12,6 +12,7 @@ import { useI18n } from '../i18n'
 import { RecoveryNotice } from '../recovery/RecoveryNotice'
 import { RootChangesNotice } from '../rootchange/RootChangesNotice'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
+import { printable } from '../shared/printable'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
 import { draftOf, loadDrafts, saveDrafts, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
@@ -89,7 +90,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
         const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
         setDrafts((current) => withoutDraft(current, item.key))
         setSealed((current) => new Map([...current, [item.key, { at: new Date().toISOString(), isComment: asComment }]]))
-        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : (asComment ? t.desk.paper.sentComment : t.desk.paper.sent)(item.drafter?.label ?? item.request.from))
+        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : (asComment ? t.desk.paper.sentComment : t.desk.paper.sent)(item.drafter?.label ?? printable(item.request.from)))
         void queryClient.invalidateQueries({ queryKey: DECISIONS_KEY })
         timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
       } catch (failure) {

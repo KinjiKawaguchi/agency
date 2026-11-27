@@ -36,7 +36,11 @@ const KINDS: readonly SeriesKind[] = ['serve', 'call', 'client']
 function hour(raw: unknown): HourSeries {
   const given = asObject(raw, 'hour')
   const p95Ms = optional(given.p95Ms, (value) => count(value, 'hour p95'))
-  return { hour: time(given.hour, 'hour'), count: count(given.count, 'hour count'), errors: count(given.errors, 'hour errors'), ...(p95Ms === undefined ? {} : { p95Ms }) }
+  const total = count(given.count, 'hour count')
+  const buckets = optional(given.buckets, (value) => asList(value, 'hour buckets').map((one) => count(one, 'hour bucket')))
+  // An hour's buckets that deny its count would give a percentile that its own numbers deny.
+  if (buckets !== undefined && (buckets.length !== BUCKET_COUNT || buckets.reduce((sum, one) => sum + one, 0) !== total)) throw new MalformedAnswer('hour buckets')
+  return { hour: time(given.hour, 'hour'), count: total, errors: count(given.errors, 'hour errors'), ...(p95Ms === undefined ? {} : { p95Ms }), ...(buckets === undefined ? {} : { buckets }) }
 }
 
 /** A series of a kind this client does not know is left out (null): it could not be placed in any table. */
@@ -71,7 +75,10 @@ function series(raw: unknown): LatencySeries | null {
   }
 }
 
-const STATES: readonly ObjectiveState[] = ['met', 'notMet', 'unknown']
+/** The states this client knows: a new one in the generated type is a compile error here, to be worded and drawn. */
+const KNOWN_STATES: Record<ObjectiveState, true> = { met: true, notMet: true, undetermined: true, unknown: true }
+
+const stateOf = (value: unknown): ObjectiveState => (typeof value === 'string' && Object.hasOwn(KNOWN_STATES, value) ? (value as ObjectiveState) : 'unknown')
 
 function objective(raw: unknown): Objective {
   const given = asObject(raw, 'objective')
@@ -79,7 +86,7 @@ function objective(raw: unknown): Objective {
   return {
     group: text(given.group, 'objective group'),
     p95Ms: count(given.p95Ms, 'objective p95'),
-    state: STATES.find((one) => one === given.state) ?? 'unknown',
+    state: stateOf(given.state),
     ...(measuredP95Ms === undefined ? {} : { measuredP95Ms }),
   }
 }

@@ -22,7 +22,7 @@ public struct Evaluation: Decodable, Equatable, Sendable {
 /// A team the node could not get numbers for. The reason is plain text, with no secret and no address in it.
 public struct TeamUnavailable: Decodable, Equatable, Sendable {
     public let team: String
-    public let reason: String
+    @Shown public private(set) var reason: String
 }
 
 public struct TeamEvaluation: Decodable, Equatable, Sendable {
