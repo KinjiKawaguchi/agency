@@ -49,17 +49,23 @@ describe('an expired sign-in', () => {
     }
   })
 
-  it('keeps what was written, and tells the viewer when sending fails for it', async () => {
+  it('keeps the decision while the sign-in is gone, tells the viewer so, and sends it when a call works again', async () => {
     const user = userEvent.setup()
-    const { client, state } = clientWithSignIn()
-    renderApp({ client })
+    const { client, state, node } = clientWithSignIn()
+    renderApp({ client, node, enrolled: true })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
     state.isExpired = true
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
     expect(await screen.findAllByText(EXPIRED)).not.toHaveLength(0)
-    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
-    expect(screen.queryByText(/Could not send/)).not.toBeInTheDocument()
+    // Nothing is lost: it waits in the tray, and nothing says it could not be sent.
+    expect(await screen.findByRole('region', { name: 'Sending decisions' })).toBeInTheDocument()
+    expect(screen.queryByText(/Not sent:/)).not.toBeInTheDocument()
+    expect(node.decisions()).toHaveLength(0)
+    state.isExpired = false
+    window.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Sending decisions' })).not.toBeInTheDocument())
   })
 
   it('goes away once a call works again', async () => {

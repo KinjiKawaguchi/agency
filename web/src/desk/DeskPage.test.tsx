@@ -43,14 +43,15 @@ describe('decision desk', () => {
     expect(headings).toEqual(['Proposals for you to approve1', 'Questions for you1', 'Pending decisions on the board1', 'Waiting on someone else1'])
   })
 
-  it('sends the chosen option and the note with the request’s own answer target, then stamps the document', async () => {
+  it('sends the chosen option and the note with the request’s own answer target, and opens the next document at once', async () => {
     const user = userEvent.setup()
     const { node } = renderApp()
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Start next week.')
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
 
-    expect(await screen.findByText(/Alice approved this\. It is on its way to the drafter\./)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: QUESTION })).toBeInTheDocument()
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
     expect(node.decisions()).toEqual([
       { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, choice: 'approve', choiceLabel: 'Approve', text: 'Start next week.' },
     ])
@@ -63,11 +64,7 @@ describe('decision desk', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send a comment' }))
 
-    expect(await screen.findByText(/Alice commented on this\. It is on its way to the drafter\./)).toBeInTheDocument()
-    expect(screen.getByText('Comment sent. Lead will get it. Nothing is decided yet.')).toBeInTheDocument()
-    expect(screen.queryByText(/Alice approved this/)).not.toBeInTheDocument()
-    // Nothing is sealed: the approver's box stays open.
-    expect(screen.getByRole('article').querySelector('.seal.you')).toBeNull()
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
     expect(node.decisions()).toEqual([
       { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, text: 'Can we start in December instead?' },
     ])
@@ -117,14 +114,16 @@ describe('decision desk', () => {
     )
   })
 
-  it('moves the answered document out of the pile once the node no longer lists it', async () => {
+  it('takes the answered document off the pile at once, and keeps it off once the node has it', async () => {
     const user = userEvent.setup()
     renderApp()
     await user.click(await screen.findByRole('radio', { name: /Reject/ }))
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
     const list = await pile()
-    await waitFor(() => expect(list.queryByText(PROPOSAL)).not.toBeInTheDocument(), { timeout: 4000 })
+    expect(list.queryByText(PROPOSAL)).not.toBeInTheDocument()
     expect(screen.getByRole('article')).toHaveTextContent(QUESTION)
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Sending decisions' })).not.toBeInTheDocument())
+    expect(list.queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
   it('picks options with number keys and sends with Cmd+Enter', async () => {
@@ -180,7 +179,7 @@ describe('decision desk', () => {
     expect(screen.queryByText(/Sent\./)).not.toBeInTheDocument()
   })
 
-  it('keeps the draft and reports the failure when the node refuses the answer', async () => {
+  it('keeps a decision the node refused in the tray, and discarding it gives back the request and what was chosen', async () => {
     const user = userEvent.setup()
     const node = createTestNode()
     renderApp({ node, enrolled: true })
@@ -188,8 +187,12 @@ describe('decision desk', () => {
     // Answer the request behind the viewer's back, so the node no longer has it.
     await decideAsTestDevice(createApiClient((request) => node.handle(request)), { org: 'acme', team: 'app', answerWith: { kind: 'answer', target: 'r-20261124-113000-c3d4' }, title: PROPOSAL, text: 'x' })
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
-    expect(await screen.findByText('Could not send: That request is not open.')).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Reject/ })).toBeChecked()
+    // The request is off the pile and the failure is in the tray with the node's words; discarding gives it back with what was chosen.
+    const tray = await screen.findByRole('region', { name: 'Sending decisions' })
+    expect(await within(tray).findByText('Not sent: That request is not open.')).toBeInTheDocument()
+    await user.click(within(tray).getByRole('button', { name: `Discard: ${PROPOSAL}` }))
+    await user.click(await (await pile()).findByText(PROPOSAL))
+    expect(await screen.findByRole('radio', { name: /Reject/ })).toBeChecked()
   })
 
   it('warns when a team’s data is a copy that could not be refreshed', async () => {
@@ -203,22 +206,28 @@ describe('decision desk', () => {
     expect(screen.queryByText(/Showing a copy/)).not.toBeInTheDocument()
   })
 
-  it('reports a queued decision as saved for later', async () => {
+  it('takes a queued decision as the node having it', async () => {
     const user = userEvent.setup()
     const { node } = renderApp({ outcome: 'queued' })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
-    expect(await screen.findByText(/The team’s node is asleep.*Its node is not reachable right now\./)).toBeInTheDocument()
-    expect(node.decisions()).toHaveLength(1)
+    // The node took it (queued): the tray is empty and the request stays off the pile while the node's log says it is queued.
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Sending decisions' })).not.toBeInTheDocument())
+    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await pile()).queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
-  it('tells the viewer when the team’s node refuses the decision, and keeps the draft', async () => {
+  it('keeps a refused decision in the tray with the node’s words, and gives the draft back when it is discarded', async () => {
     const user = userEvent.setup()
     renderApp({ refuseDecisionsWith: 'The decision has expired.' })
     await user.click(await screen.findByRole('radio', { name: /Reject/ }))
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
-    expect(await screen.findByText('The team’s node refused the decision: The decision has expired.')).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Reject/ })).toBeChecked()
+    const tray = await screen.findByRole('region', { name: 'Sending decisions' })
+    expect(await within(tray).findByText('Not sent: The decision has expired.')).toBeInTheDocument()
+    await user.click(within(tray).getByRole('button', { name: `Discard: ${PROPOSAL}` }))
+    await user.click(await (await pile()).findByText(PROPOSAL))
+    expect(await screen.findByRole('radio', { name: /Reject/ })).toBeChecked()
   })
 
   it('shows earlier messages on a request', async () => {

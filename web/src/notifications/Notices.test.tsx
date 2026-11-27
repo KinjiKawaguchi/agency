@@ -65,7 +65,9 @@ describe('what is new, said in the page', () => {
     renderApp({ path: '/desk', node, enrolled: true })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
-    expect(await screen.findByText(/Sent\. Lead will get it\./)).toBeInTheDocument()
+    // The decision is sent from the tray; once the node has it the tray is empty.
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Sending decisions' })).not.toBeInTheDocument())
     window.dispatchEvent(new Event('visibilitychange'))
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(screen.queryByText(/was applied/)).not.toBeInTheDocument()

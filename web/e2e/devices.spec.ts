@@ -73,7 +73,7 @@ test('asks to be added, is confirmed in the terminal, then signs a decision the 
   await page.getByRole('link', { name: 'Decisions' }).click()
   await page.getByRole('article').locator('label.choice').filter({ hasText: 'Approve' }).click()
   await page.getByRole('button', { name: 'Approve with “Approve”' }).click()
-  await expect(page.getByText('Sent. Lead will get it.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Sending decisions' })).toHaveCount(0, { timeout: 10_000 })
 
   // The mock node checked the signature of the browser's WebCrypto key over the canonical text.
   const accepted = (await (await request.get('/__mock/envelopes')).json()) as Array<{ signer: string; body: { target: string; kind: string } }>
