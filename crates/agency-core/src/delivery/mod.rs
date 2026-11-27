@@ -9,14 +9,16 @@ mod kinds;
 mod participants;
 mod period;
 mod red;
+mod team_share;
 
 pub use effort::{effort, EffortInput};
 pub use evaluate::{evaluate, Input};
-pub use facts::{DeliveryFacts, MainRun, MergedPullRequest, Verdict};
+pub use facts::{BoardValue, DeliveryFacts, MainRun, MergedPullRequest, Verdict};
 pub use kinds::{board_work_type, classify, Kind};
 pub use participants::attribute;
 pub(crate) use period::proto_date;
 pub use period::Period;
+pub use team_share::of_team;
 
 #[cfg(test)]
 mod effort_tests;

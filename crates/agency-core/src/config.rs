@@ -56,9 +56,24 @@ impl HostedTeam {
     /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`).
     pub fn with_delivery(self, repos: Vec<String>) -> Self {
         Self {
-            delivery: Some(DeliveryConfig { repos }),
+            delivery: Some(DeliveryConfig {
+                repos,
+                team_field: None,
+                team_value: None,
+            }),
             ..self
         }
+    }
+
+    /// The same team, counting only the pull requests whose issue has `value` in the board's `field`
+    /// (a team that shares its repositories with others). It changes nothing for a team without delivery.
+    pub fn with_team_value(self, field: impl Into<String>, value: impl Into<String>) -> Self {
+        let delivery = self.delivery.map(|delivery| DeliveryConfig {
+            team_field: Some(field.into()),
+            team_value: Some(value.into()),
+            ..delivery
+        });
+        Self { delivery, ..self }
     }
 
     /// The same team run by another command.
@@ -260,6 +275,43 @@ pub struct WebPushConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
+    /// For a team that shares its repositories with other teams: the board's single-select field that says
+    /// which team an issue belongs to (`Team`), and this team's option of it (`Keel`). Only the pull requests
+    /// that close an issue with this option count for the team. Both or neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_field: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_value: Option<String>,
+}
+
+/// The longest a board field's name or option may be, in characters.
+const MOST_BOARD_NAME: usize = 80;
+
+impl DeliveryConfig {
+    /// Why these settings cannot be used, in words that name the setting; `at` is where they sit
+    /// (`teams[0].delivery`).
+    pub fn check(&self, at: &str) -> Result<(), String> {
+        let named = |what: &str, text: &Option<String>| -> Result<(), String> {
+            let Some(text) = text else { return Ok(()) };
+            let is_bad = text.trim().is_empty()
+                || text.chars().count() > MOST_BOARD_NAME
+                || text.chars().any(char::is_control);
+            if is_bad {
+                return Err(format!(
+                    "{at}.{what} is empty, longer than {MOST_BOARD_NAME} characters, or holds a control character"
+                ));
+            }
+            Ok(())
+        };
+        named("teamField", &self.team_field)?;
+        named("teamValue", &self.team_value)?;
+        if self.team_field.is_some() != self.team_value.is_some() {
+            return Err(format!(
+                "{at} sets only one of teamField and teamValue; set both, or neither"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -558,6 +610,75 @@ mod tests {
             serde_json::from_str::<HostedTeam>(&unknown).is_err(),
             "no other key, a token least of all"
         );
+    }
+
+    #[test]
+    fn a_team_of_a_shared_repository_names_the_boards_field_and_its_own_option_or_neither() {
+        let team = HostedTeam::new(
+            Id::parse("acme").unwrap(),
+            Id::parse("app").unwrap(),
+            Id::parse("alice").unwrap(),
+            RuntimeCommand::of(vec!["scrum".into()]),
+        );
+        assert_eq!(
+            team.clone().with_team_value("Team", "Keel").delivery,
+            None,
+            "a team without delivery has no repositories to share"
+        );
+        let shared = team
+            .with_delivery(vec!["acme/app".into()])
+            .with_team_value("Team", "Keel");
+        let text = serde_json::to_string(&shared).unwrap();
+        assert!(
+            text.contains(
+                r#""delivery":{"repos":["acme/app"],"teamField":"Team","teamValue":"Keel"}"#
+            ),
+            "{text}"
+        );
+        assert_eq!(
+            serde_json::from_str::<HostedTeam>(&text).unwrap().delivery,
+            shared.delivery
+        );
+        let delivery = |field: Option<&str>, value: Option<&str>| DeliveryConfig {
+            repos: vec!["acme/app".into()],
+            team_field: field.map(str::to_owned),
+            team_value: value.map(str::to_owned),
+        };
+        let at = "teams[2].delivery";
+        assert_eq!(delivery(None, None).check(at), Ok(()));
+        assert_eq!(delivery(Some("Team"), Some("Keel")).check(at), Ok(()));
+        for (field, value, wanted) in [
+            (
+                Some("Team"),
+                None,
+                "sets only one of teamField and teamValue",
+            ),
+            (
+                None,
+                Some("Keel"),
+                "sets only one of teamField and teamValue",
+            ),
+            (
+                Some(" "),
+                Some("Keel"),
+                "teams[2].delivery.teamField is empty",
+            ),
+            (
+                Some("Team"),
+                Some(""),
+                "teams[2].delivery.teamValue is empty",
+            ),
+            (
+                Some("Te\nam"),
+                Some("Keel"),
+                "teams[2].delivery.teamField is empty",
+            ),
+        ] {
+            let error = delivery(field, value).check(at).unwrap_err();
+            assert!(error.contains(wanted), "{error}");
+        }
+        let long = "x".repeat(81);
+        assert!(delivery(Some(&long), Some("Keel")).check(at).is_err());
     }
 
     #[test]

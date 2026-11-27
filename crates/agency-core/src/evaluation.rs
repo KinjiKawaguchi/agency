@@ -3,7 +3,7 @@
 //! Nothing is stored here; a read of GitHub is kept for a short while by the adapter, not by this module.
 use crate::client::membership;
 use crate::config::HostedTeam;
-use crate::delivery::{attribute, evaluate, Input, Period};
+use crate::delivery::{attribute, evaluate, of_team, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
@@ -106,6 +106,7 @@ pub async fn evaluate_hosted(
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };
+    let pull_requests = of_team(hosted.delivery.as_ref(), facts.pull_requests);
     let costs = daily_costs(node, hosted, days).await;
     let offset_minutes = i32::from(node.utc_offset().whole_minutes());
     let participants = match reader == &hosted.owner {
@@ -116,14 +117,13 @@ pub async fn evaluate_hosted(
         now,
         offset: node.utc_offset(),
         days,
-        pull_requests: &facts.pull_requests,
+        pull_requests: &pull_requests,
         runs: &facts.runs,
         cost_by_day: &costs,
     };
     let mut team = evaluate(hosted.team.clone(), &input);
     if let Some(report) = &participants {
-        (team.participants, team.unattributed_merged) =
-            attribute(report, &facts.pull_requests, &period);
+        (team.participants, team.unattributed_merged) = attribute(report, &pull_requests, &period);
     }
     Evaluation {
         org: hosted.org.clone(),

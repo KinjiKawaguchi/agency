@@ -33,6 +33,7 @@ fn pull_request(
         issue_started_at: in_progress.map(at),
         closes_incident: false,
         work_type: None,
+        board: vec![],
     }
 }
 
