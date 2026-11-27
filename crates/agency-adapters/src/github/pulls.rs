@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 /// The board status whose first appearance on an issue is when work on it started.
 const STARTED_STATUS: &str = "In Progress";
-/// The label of an issue whose fix is incident work.
+/// The label of an issue whose fix is incident work. GitHub label names ignore case, so does the match.
 const INCIDENT_LABEL: &str = "incident";
 const PAGES_AT_MOST: usize = 20;
 
@@ -132,7 +132,7 @@ fn closes_incident(issues: &[Issue]) -> bool {
     issues
         .iter()
         .flat_map(|issue| &issue.labels.nodes)
-        .any(|label| label.name == INCIDENT_LABEL)
+        .any(|label| label.name.eq_ignore_ascii_case(INCIDENT_LABEL))
 }
 
 /// The board's "Work type" of the first issue a pull request closes that has one, in the order GitHub lists
@@ -497,7 +497,7 @@ mod tests {
                 "fix: a",
                 merged,
                 "2026-11-22T02:00:00Z",
-                json!([labeled_issue(&["bug", "incident"], json!([]))]),
+                json!([labeled_issue(&["bug", "Incident"], json!([]))]),
             ),
             node(
                 "fix: b",
