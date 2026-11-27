@@ -1,5 +1,5 @@
 //! The real clock, the operating system's randomness, and an async write lock.
-use agency_core::ports::{Clock, Random, WriteLock};
+use agency_core::ports::{Clock, OutboxBell, Random, WriteLock};
 use agency_proto::clock::{OffsetDateTime, UtcOffset};
 use async_trait::async_trait;
 use std::sync::Mutex;
@@ -85,5 +85,23 @@ pub struct TokioWriteLock(tokio::sync::Mutex<()>);
 impl WriteLock for TokioWriteLock {
     async fn lock(&self) -> Box<dyn Send + '_> {
         Box::new(self.0.lock().await)
+    }
+}
+
+/// Wakes the task that delivers the outbox when a parcel is queued. A ring while nothing waits is kept
+/// for the next wait, so it is never lost.
+#[derive(Default)]
+pub struct OutboxWake(tokio::sync::Notify);
+
+impl OutboxBell for OutboxWake {
+    fn ring(&self) {
+        self.0.notify_one();
+    }
+}
+
+impl OutboxWake {
+    /// Returns when the bell rings, or after `at_most`, whichever is first.
+    pub async fn wait(&self, at_most: std::time::Duration) {
+        let _ = tokio::time::timeout(at_most, self.0.notified()).await;
     }
 }

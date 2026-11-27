@@ -55,9 +55,12 @@ final class NativeSession {
     let notifications: NotificationPreferencesStore
 
     /// - Parameter deviceLabel: what this device is called in the list of devices (`iPhone`, `Mac`).
-    /// - Parameter key: this device's key for the home node, as the loader found it: in use, stored and unusable now (nothing is replaced and
-    ///   the person is asked), or not makeable here (the desk can only be read).
-    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String, key: KeyLoad) {
+    /// - Parameters:
+    ///   - key: this device's key for the home node, as the loader found it: in use, stored and unusable now (nothing is replaced and the
+    ///     person is asked), or not makeable here (the desk can only be read).
+    ///   - standing: what the node said the viewer is, for a session that replaces one of the same node and account (a key reset); the
+    ///     screens the viewer had are then not closed while the node is asked again.
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String, key: KeyLoad, standing: Standing = .loading) {
         self.signIn = signIn
         let client = NodeClient(
             transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
@@ -91,7 +94,8 @@ final class NativeSession {
             signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner } ?? NoKeySigner(),
             outbox: DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client),
             storage: DraftDefaultsStorage(host: homeNode.host),
-            afterSend: { await cache.invalidate() }
+            afterSend: { await cache.invalidate() },
+            standing: standing
         )
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
