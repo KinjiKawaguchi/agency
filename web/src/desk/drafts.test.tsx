@@ -1,6 +1,7 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp } from '../test/render'
+import { draftOf, loadDrafts } from './drafts'
 
 describe('drafts', () => {
   it('survive a reload of the page, so signing in again does not cost what was written', async () => {
@@ -21,7 +22,8 @@ describe('drafts', () => {
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Go.')
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
-    await screen.findByText(/It is on its way to the drafter/)
+    // The decision is kept and the desk has moved on: what was typed is forgotten, so that a reload does not bring it back.
+    await waitFor(() => expect(draftOf(loadDrafts(), 'acme:app:r-20261124-113000-c3d4')).toEqual({ text: '', choice: null }))
     first.unmount()
 
     renderApp()

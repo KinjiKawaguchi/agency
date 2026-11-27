@@ -393,6 +393,19 @@ export const en = {
       blocking: (count: number) => (count === 1 ? '1 participant waiting' : `${count} participants waiting`),
       showMore: (count: number) => `Show ${count} more`,
     },
+    tray: {
+      title: 'Sending decisions',
+      sending: 'Sending…',
+      // `retry` is when the next try is, as the log words it ("in under a minute", "in 4 minutes"), and null when it is now.
+      retrying: (retry: string | null) => `Not sent yet. ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
+      failed: (reason: string) => `Not sent: ${reason}`,
+      sendAgain: 'Send again',
+      sendAgainFor: (title: string) => `Send again: ${title}`,
+      discard: 'Discard',
+      discardFor: (title: string) => `Discard: ${title}`,
+      discardNote: 'Discarding gives the request back to the pile with what you wrote.',
+      more: (count: number) => `+${count} more`,
+    },
     recent: {
       head: 'Recently decided',
       states: { applied: 'Applied', delivered: 'Delivered', queued: 'Waiting to send', refused: 'Refused' },
@@ -598,7 +611,7 @@ export const en = {
       lead: 'Response times the operator set for a route group in the node’s configuration. The node says whether each held over this period.',
       target: (group: string, p95: string) => `${group}: p95 ${p95}`,
       measured: (value: string) => `Measured: ${value}.`,
-      states: { met: 'Met', notMet: 'Not met', unknown: 'Cannot be told yet' },
+      states: { met: 'Met', notMet: 'Not met', undetermined: 'Cannot be told against this objective', unknown: 'Cannot be told yet' },
     },
   },
   evaluation: {

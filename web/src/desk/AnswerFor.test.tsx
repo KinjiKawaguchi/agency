@@ -10,6 +10,7 @@ import { openItems } from './items'
 const REQUEST = 'r-20261124-120000-e5f6'
 const TITLE = 'Should the nightly export include archived projects?'
 const nodeFor = (label: string) => createTestNode({ view: withRequestFor('finance'), relayedFor: { [REQUEST]: { id: 'finance', label } } })
+const groupOf = (name: RegExp): HTMLElement => screen.getByRole('heading', { level: 2, name }).parentElement as HTMLElement
 const pileRow = async () => (await screen.findAllByText(TITLE)).map((one) => one.closest('button')).find((one) => one !== null) as HTMLElement
 
 describe('a request addressed to a seat or an external party the viewer answers for', () => {
@@ -74,10 +75,58 @@ describe('a request addressed to a seat or an external party the viewer answers 
     renderApp({ node, path: '/desk', enrolled: true })
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
-    await screen.findByText(/Alice approved this/)
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
     const log = await createApiClient((request) => node.handle(request)).decisions(10)
     expect(log.entries[0]).not.toHaveProperty('relayedFor')
     expect(screen.queryByText(/^Answered for /)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * What a team on another node answers when it does not address the reader by a name there, and the reader answers only for a seat
+ * (docs/protocol.md, "Requests"): no `viewer`, and in `mine` only the requests of that seat, each with whom it is for.
+ */
+function throughSeatOnly(node: ReturnType<typeof createTestNode>) {
+  return createApiClient(async (request) => {
+    const reply = await node.handle(request)
+    if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/teams/app/view')) return reply
+    const { viewer: _viewer, ...snapshot } = (await reply.json()) as { viewer?: string; mine: string[] }
+    return new Response(JSON.stringify({ ...snapshot, mine: [REQUEST] }), { headers: { 'content-type': 'application/json' } })
+  })
+}
+
+describe('a team on another node that does not address the viewer by a name, only through a seat', () => {
+  it('shows the request of the seat, whom it is for, as the viewer’s only, and the others as waiting on someone else', async () => {
+    const node = nodeFor('Erin (outside counsel)')
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    expect(within(await pileRow()).getByText('Answer for Erin (outside counsel)')).toBeInTheDocument()
+    const heading = await screen.findByRole('heading', { level: 2, name: TITLE })
+    expect(within(heading.parentElement as HTMLElement).getByText('Answer for Erin (outside counsel)')).toBeInTheDocument()
+    // The seat's request is the only one in the viewer's group; every other request waits on someone else, with no "Answer for" line.
+    const mine = groupOf(/^Questions for you/)
+    expect(within(mine).getAllByText(/./, { selector: '.pile-title' })).toHaveLength(1)
+    expect(within(mine).getByText(TITLE)).toBeInTheDocument()
+    const others = groupOf(/^Waiting on someone else/)
+    expect(within(others).getByText('Add a second frontend agent', { selector: '.pile-title' })).toBeInTheDocument()
+    expect(within(others).queryByText(TITLE)).not.toBeInTheDocument()
+    expect(within(others).queryByText(/^Answer for /)).not.toBeInTheDocument()
+  })
+
+  it('is answered for the seat: nothing of it is sent, and the log, which the node writes, says whom it was for', async () => {
+    const user = userEvent.setup()
+    const node = nodeFor('Erin (outside counsel)')
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    await user.click(await screen.findByRole('radio', { name: /Include them/ }))
+    await user.click(screen.getByRole('button', { name: /Include them/ }))
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    expect(node.decisions()[0]).not.toHaveProperty('relayedFor')
+    expect(await screen.findByText('Answered for Erin (outside counsel).')).toBeInTheDocument()
+  })
+
+  it('says a party the definition does not have yet by its id, which the node gives in place of a label', async () => {
+    const node = createTestNode({ view: withRequestFor('finance'), relayedFor: { [REQUEST]: { id: 'finance', label: 'finance' } } })
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    expect(within(await pileRow()).getByText('Answer for finance')).toBeInTheDocument()
   })
 })
 

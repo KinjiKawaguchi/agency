@@ -1,9 +1,9 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, Metrics,
-    ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS,
-    ROUTE_GROUPS,
+    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, HourSeries,
+    Metrics, ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS,
+    IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -546,4 +546,61 @@ fn the_first_bucket_starts_at_zero_and_the_last_has_no_upper_bound() {
         ObjectiveState::Undetermined
     );
     assert_eq!(judge("desk", 10_000, &near).state, ObjectiveState::NotMet);
+}
+
+fn hour_with(count: u64, bucket: usize, p95: Option<u32>) -> HourSeries {
+    let mut buckets = vec![0u64; 15];
+    buckets[bucket] = count;
+    HourSeries {
+        hour: agency_proto::Timestamp::parse("2026-11-24T11:00:00Z").unwrap(),
+        count,
+        errors: 0,
+        p95_ms: p95,
+        buckets: Some(buckets),
+    }
+}
+
+#[test]
+fn the_buckets_of_an_hour_add_up_to_its_count_and_give_its_percentile() {
+    assert!(hour_with(4, 5, Some(50)).is_consistent());
+    let mut short = hour_with(4, 5, Some(50));
+    short.buckets.as_mut().unwrap().pop();
+    assert!(!short.is_consistent(), "15 buckets");
+    let mut denied = hour_with(4, 5, Some(50));
+    denied.count = 5;
+    assert!(!denied.is_consistent(), "they add up to the count");
+    assert!(
+        !hour_with(4, 5, Some(100)).is_consistent(),
+        "the percentile is that of the buckets"
+    );
+    assert!(!hour_with(4, 5, None).is_consistent());
+    // The slowest bucket has no bound, so no percentile.
+    assert!(hour_with(2, 14, None).is_consistent());
+    // An hour without buckets has nothing to disagree with.
+    let mut plain = hour_with(4, 5, Some(999));
+    plain.buckets = None;
+    assert!(plain.is_consistent());
+}
+
+#[test]
+fn a_series_is_consistent_only_when_its_hours_are_and_the_buckets_of_an_hour_are_left_out_when_not_asked_for(
+) {
+    let mut with = sample().series.remove(0);
+    assert!(
+        with.by_hour.iter().all(|hour| hour.buckets.is_some()),
+        "the sample is an answer asked for them"
+    );
+    assert!(with.is_consistent());
+    with.by_hour[0].buckets.as_mut().unwrap()[0] += 1;
+    assert!(
+        !with.is_consistent(),
+        "an hour that denies itself denies the series"
+    );
+    let without = sample().series.remove(0).without_hour_buckets();
+    assert!(without.by_hour.iter().all(|hour| hour.buckets.is_none()) && without.is_consistent());
+    let value = serde_json::to_value(&without).unwrap();
+    assert!(
+        value["byHour"][0].get("buckets").is_none(),
+        "left out, not null"
+    );
 }

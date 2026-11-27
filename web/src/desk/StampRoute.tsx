@@ -1,6 +1,7 @@
 import type { PersonStatus } from '../api/teamview'
 import { useI18n } from '../i18n'
 import { initials } from '../people/identity'
+import { printable } from '../shared/printable'
 
 interface StampRouteProps {
   drafter: PersonStatus | undefined
@@ -9,15 +10,15 @@ interface StampRouteProps {
   step: 'approved' | 'answered'
   draftedAt: string
   /** Shown when the drafter is not a person on the team, such as the board. */
-  draftedBy: string
+  draftedBy: string // shown-ok(type): drawn through `printable` below
   /** When the decider's stamp was pressed, if it was. */
   sealedAt: string | null
 }
 
 /** The drafted → approved boxes at the head of a document. Pressing send puts the decider's seal in their box. */
-export function StampRoute({ drafter, deciderLabel, step, draftedAt, draftedBy, sealedAt }: StampRouteProps) {
+export function StampRoute({ drafter, deciderLabel, step, draftedAt, draftedBy /* shown-ok(passed): printed below */, sealedAt }: StampRouteProps) {
   const { t, fmt } = useI18n()
-  const drafterLabel = drafter?.label ?? draftedBy
+  const drafterLabel = drafter?.label ?? printable(draftedBy)
   const stepLabel = t.desk.paper.stamps[step]
   return (
     <div className="stamps" role="group" aria-label={t.desk.paper.stamps.label(drafterLabel, stepLabel, deciderLabel)}>

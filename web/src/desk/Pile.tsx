@@ -1,4 +1,5 @@
 import { Loading, Skeleton } from '../shared/Skeleton'
+import { printable } from '../shared/printable'
 import { useState } from 'react'
 import { Face } from '../people/Face'
 import { useI18n } from '../i18n'
@@ -16,7 +17,7 @@ interface PileProps {
 
 function PileRow({ item, isSelected, orgLabel, onSelect }: { item: DeskItem; isSelected: boolean; orgLabel: string | null; onSelect: () => void }) {
   const { t, fmt } = useI18n()
-  const drafterLabel = item.drafter?.label ?? item.request.from
+  const drafterLabel = item.drafter?.label ?? printable(item.request.from)
   return (
     <button className="pile-item" type="button" role="option" aria-selected={isSelected} onClick={onSelect}>
       <Face label={drafterLabel} kind={item.drafter?.kind ?? 'agent'} size="sm" />

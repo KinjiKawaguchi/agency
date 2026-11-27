@@ -226,6 +226,13 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The guests of this node, by sign-in email (`guests`), kept in its data directory.
+pub trait GuestStore {
+    fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
+    fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
+    fn remove_guest(&self, email: &str) -> Result<()>;
+}
+
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.
 pub trait ClientsSeenStore {
     fn clients_seen(&self) -> ClientsSeen;
@@ -254,6 +261,7 @@ pub trait Store:
     + ShipLedger
     + AboutStore
     + ClientsSeenStore
+    + GuestStore
     + Send
     + Sync
 {
@@ -274,6 +282,7 @@ impl<
             + ShipLedger
             + AboutStore
             + ClientsSeenStore
+            + GuestStore
             + Send
             + Sync,
     > Store for T
@@ -436,6 +445,11 @@ pub trait DeliverySource: Send + Sync {
 pub trait FundingSource: Send + Sync {
     /// The windows that could be read and when; nothing when the usage is unknown.
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
+}
+
+/// The node's log. A caller passes a finished sentence, never a token, an endpoint, a request body or a query.
+pub trait Journal: Send + Sync {
+    fn info(&self, event: &str, line: &str);
 }
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push

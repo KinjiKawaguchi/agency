@@ -69,7 +69,7 @@ function series(raw: unknown): KpiSeries {
 export function readOutcomes(raw: unknown): Outcomes {
   const given = asObject(raw, 'answer')
   const days = figure(given.days, 'days')
-  return { org: text(given.org, 'org'), days, from: day(given.from, 'from'), until: day(given.until, 'until'), generatedAt: text(given.generatedAt, 'time'), series: asList(given.series, 'series').map(series) }
+  return { org: text(given.org, 'org'), days, from: day(given.from, 'from'), until: day(given.until, 'until'), generatedAt: text(given.generatedAt, 'time'), series: asList(given.series, 'series').map(series) } // shown-ok(period): the first day of a range
 }
 
 function reading(raw: unknown): Reading {

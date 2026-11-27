@@ -15,7 +15,7 @@ export interface CostDay {
  */
 export function costByDay(evaluation: Evaluation, dates: readonly string[]): { days: CostDay[]; teamsWithout: number } {
   const days = dates.map((date): CostDay => {
-    const covering = evaluation.teams.filter((team) => team.from <= date && date <= team.until)
+    const covering = evaluation.teams.filter((team) => team.from /* shown-ok(period): the first day of a team's range */ <= date && date <= team.until)
     if (covering.length === 0) return { date, usd: undefined }
     return { date, usd: covering.reduce((sum, team) => sum + (team.byDay.find((one) => one.date === date)?.costUsd ?? 0), 0) } /* stand-in-ok(sparse): the node leaves out a day of the team's period that has nothing in it: 0 is what it says */
   })
