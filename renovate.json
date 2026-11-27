@@ -40,7 +40,7 @@
   },
   "packageRules": [
     {
-      "description": "GitHub Actions that only CI uses: patch, minor, and pin updates merge when CI is green. The ones a release workflow uses are the next rule.",
+      "description": "GitHub Actions that only CI uses: patch, minor, and pin updates merge when CI is green. A digest update (a tag that moved to another commit) is never merged by itself. The ones a release workflow uses are in a rule below.",
       "matchManagers": [
         "github-actions"
       ],
@@ -48,8 +48,7 @@
         "minor",
         "patch",
         "pin",
-        "pinDigest",
-        "digest"
+        "pinDigest"
       ],
       "automerge": true
     },
