@@ -3,7 +3,7 @@ import { labelsMadePrintable } from '../shared/printable'
 import { at, type Target } from './routes'
 import { statusOf, wholeMs, type Sample } from '../telemetry/samples'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { About, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
+import type { About, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, PushTokenList, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
@@ -66,6 +66,9 @@ export interface ApiClient {
   registerPushSubscription: (input: PushSubscriptionInput) => Promise<PushSubscription>
   /** Removes a subscription by its `id`. Removing one that is gone is not an error. */
   removePushSubscription: (id: string) => Promise<void>
+  /** The owner's APNs tokens, each with the `id` a removal names. */
+  pushTokens: () => Promise<PushTokenList>
+  removePushToken: (id: string) => Promise<void>
   /** Asks the node to add this device; a device that is already added confirms it after comparing the pairing codes. */
   requestDevice: (input: DeviceRequestInput) => Promise<DeviceRequest>
   /** Adds a device: a change signed by one of the account's devices. */
@@ -292,6 +295,8 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     pushSubscriptions: () => get<PushSubscriptionList>(at('GET /api/push/subscriptions')),
     registerPushSubscription: (input) => post<PushSubscription>(at('POST /api/push/subscriptions'), input),
     removePushSubscription: async (id) => void (await remove(at('DELETE /api/push/subscriptions/{id}', { id }))),
+    pushTokens: () => get<PushTokenList>(at('GET /api/push/tokens')),
+    removePushToken: async (id) => void (await remove(at('DELETE /api/push/tokens/{token}', { token: id }))),
     devices: () => get<DeviceList>(at('GET /api/devices')),
     requestDevice: (input) => post<DeviceRequest>(at('POST /api/devices/requests'), input),
     submitDeviceChange: (change) => post<DeviceChangeResult>(at('POST /api/devices/changes'), change),

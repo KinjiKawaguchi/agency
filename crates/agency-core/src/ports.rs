@@ -16,6 +16,7 @@ use agency_proto::about::About;
 use agency_proto::activity::Activity;
 use agency_proto::client::{PushToken, UsageWindow, VapidKey};
 use agency_proto::clock::OffsetDateTime;
+use agency_proto::effort::Effort;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::observation::Observation;
 use agency_proto::org::{SignedOrg, Versions};
@@ -29,7 +30,7 @@ use agency_proto::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
@@ -162,6 +163,14 @@ pub trait DecisionLogStore {
     fn append_decision(&self, record: &DecisionRecord) -> Result<()>;
     /// At most `limit` records, newest first.
     fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
+    /// Replaces the record with the same id, if the log still has it.
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()>;
+}
+
+/// Tells the task that delivers the outbox that a parcel is waiting, so that it does not wait for its
+/// next round.
+pub trait OutboxBell: Send + Sync {
+    fn ring(&self);
 }
 
 /// Devices waiting to be added, newest last.
@@ -226,11 +235,29 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The accounts this node has taken a read from that names it (`read_auth`), kept in the data directory so that a
+/// restart does not forget them: once an account's node signs reads that way, this node takes no read that
+/// names no node from it.
+pub trait BoundReaderStore {
+    /// The accounts: none when nothing was ever kept, and an error when something is kept that cannot be read,
+    /// which is not the same and must never be written over.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>>;
+    /// Keeps exactly these accounts.
+    fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()>;
+}
+
 /// The guests of this node, by sign-in email (`guests`), kept in its data directory.
 pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
+    /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
+    fn guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Option<Vec<String>>;
+    fn save_guest_notified(
+        &self,
+        guest: &agency_proto::client::GuestRef,
+        keys: &[String],
+    ) -> Result<()>;
 }
 
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.
@@ -260,6 +287,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + BoundReaderStore
     + ClientsSeenStore
     + GuestStore
     + Send
@@ -281,6 +309,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + BoundReaderStore
             + ClientsSeenStore
             + GuestStore
             + Send
@@ -343,6 +372,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<Evaluation, PeerError>;
+    /// A team's effort by work type, from the node it runs on.
+    async fn get_effort(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Effort, PeerError>;
     /// What another node says about itself (`routes::about`), by a member's signed read.
     async fn get_about(&self, node: &str, path: &str, auth: &ReadAuth) -> Result<About, PeerError>;
     async fn get_definition(
@@ -450,6 +486,10 @@ pub trait FundingSource: Send + Sync {
 /// The node's log. A caller passes a finished sentence, never a token, an endpoint, a request body or a query.
 pub trait Journal: Send + Sync {
     fn info(&self, event: &str, line: &str);
+    /// A line for the owner to act on; a journal that has no levels writes it as `info`.
+    fn warn(&self, event: &str, line: &str) {
+        self.info(event, line);
+    }
 }
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push

@@ -6,6 +6,7 @@
       "id": "01010101010101010101010101010101",
       "kind": "answer",
       "org": "acme",
+      "signer": "d-dbc298251c51",
       "state": {
         "kind": "applied"
       },
@@ -18,6 +19,7 @@
       "id": "00000000000000000000000000000003",
       "kind": "answer",
       "org": "acme",
+      "signer": "d-dbc298251c51",
       "state": {
         "kind": "applied"
       },
@@ -31,6 +33,7 @@
       "id": "00000000000000000000000000000002",
       "kind": "answer",
       "org": "acme",
+      "signer": "d-dbc298251c51",
       "state": {
         "kind": "applied"
       },

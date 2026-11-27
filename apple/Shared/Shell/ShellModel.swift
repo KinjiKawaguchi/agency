@@ -42,12 +42,14 @@ final class ShellModel {
 
     // MARK: Start
 
-    func start() {
+    /// - Parameter standing: what the node said the viewer is, when this session replaces one of the same node and account.
+    func start(standing: Standing = .loading) {
         guard session == nil else { return }
         let tokens = AccessTokenStore(host: homeNode.host)
         let flow = AccessSignInFlow(homeNode: homeNode, tokens: tokens)
         self.flow = flow
-        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel)
+        let key = SecureEnclaveVault.loader.load(host: homeNode.host)
+        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key, standing: standing)
         takeLink()
     }
 
@@ -168,6 +170,14 @@ final class ShellModel {
         replaceKey()
     }
 
+    /// Reads the stored key again, for when it could not be used and may be now (the phone was locked, the store was busy). It keeps the
+    /// stored key whatever comes of it.
+    func retryKey() {
+        guard session?.keyUnusable != nil else { return }
+        session = nil
+        start()
+    }
+
     /// Makes this device's key again, for when the biometrics were changed and the old key can no longer sign.
     func resetKey() {
         hasRenewedKeyAfterRemoval = false
@@ -179,8 +189,11 @@ final class ShellModel {
         showsSettings = false
         // This device is no longer trusted with the home node: nothing of its desk stays on a widget.
         session?.widgets.clear()
+        // The same node and the same account: what the node said the viewer is stays, so that an owner's open screen is not closed to the desk
+        // while the new session asks again.
+        let standing = session?.desk.standing ?? .loading
         session = nil
-        start()
+        start(standing: standing)
     }
 
     /// Asks the node to stop sending to this device's push token, before the sign-in goes: the node's alerts would otherwise

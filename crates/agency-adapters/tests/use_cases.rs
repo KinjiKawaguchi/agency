@@ -13,7 +13,7 @@ use agency_core::invites::{accept_join, invite, open_invite};
 use agency_core::orgs::{self, receive};
 use agency_core::outbox::{deliver_due, pending, Parcel, ParcelBody};
 use agency_core::ports::ConfigStore;
-use agency_core::read_auth::{sign_read, verify_read};
+use agency_core::read_auth::{sign_read, verify_read, ReadPolicy};
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::{ErrorKind, Node, Ports};
 use agency_proto::clock::Duration;
@@ -259,7 +259,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
                 &signed_at(offset),
                 "GET",
                 path,
-                now
+                now,
+                &ReadPolicy::open(None)
             )
             .is_ok(),
             "{offset}"
@@ -273,7 +274,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
                 &signed_at(offset),
                 "GET",
                 path,
-                now
+                now,
+                &ReadPolicy::open(None)
             )
             .unwrap_err()
             .kind,
@@ -288,7 +290,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
             &signed_at(0),
             "GET",
             "/fed/v1/teams/acme/other/view",
-            now
+            now,
+            &ReadPolicy::open(None)
         )
         .is_err(),
         "the signature covers the path"

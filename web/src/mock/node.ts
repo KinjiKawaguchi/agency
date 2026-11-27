@@ -4,10 +4,10 @@ import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockTelemetry, type KeptSample } from './telemetry'
-import { createMockWebPush } from './webPush'
+import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { About, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { About, PushToken, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
@@ -33,6 +33,8 @@ export interface MockNode {
   claim: { confirm: () => void; state: () => ClaimState | undefined; holdOtherKey: (pairingCode: string) => void }
   /** Push tokens registered so far, one entry per token, as the node keeps them. */
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
+  /** The tokens as the node keeps them: with the id a removal names, when they registered, and the device they name. */
+  pushTokenEntries: () => ReadonlyArray<PushToken>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
   /** The samples of how long a client's calls took, as the node kept them from the reports it took (`POST /api/telemetry`). */
@@ -95,6 +97,8 @@ interface MockNodeOptions {
   activityClock?: () => number
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
+  /** The orgs that list the account's devices, where it is more than the one org (each lists the same devices). */
+  deviceOrgs?: readonly string[]
   /** False to leave out the node's own command for approving a device, as the node does for anyone but its owner. */
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
@@ -188,7 +192,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let isSignInExpired = false
   let writeToken = MOCK_TOKEN
   let accepted: readonly Signed<Envelope>[] = []
-  let pushTokens: ReadonlyArray<{ token: string; environment: string; label: string }> = []
+  let pushTokenEntries: ReadonlyArray<PushToken> = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
 
   let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
@@ -248,7 +252,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
-  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
+  const devices = createMockDevices(options.deviceOrgs ?? [ORG_DEFINITION.org], me.account.id, options.devices ?? [])
 
   const decideSigned = async (request: Request, view: TeamView): Promise<Response> => {
     const write = await readWrite(request)
@@ -364,11 +368,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.pushTokensFailWith !== undefined) return failure(options.pushTokensFailWith, 'The node does not take push tokens.')
     const write = await readWrite(request)
     if (write instanceof Response) return write
-    const { token, environment, label } = (write.body ?? {}) as Record<string, unknown>
+    const { token, environment, label, device } = (write.body ?? {}) as Record<string, unknown>
     if (typeof token !== 'string' || !/^[0-9a-f]{32,200}$/.test(token)) return failure(400, 'The token is hex of 32 to 200 characters.')
     if (environment !== 'sandbox' && environment !== 'production') return failure(400, 'The environment is sandbox or production.')
     if (typeof label !== 'string' || label.trim() === '') return failure(400, 'The label is missing.')
-    pushTokens = [...pushTokens.filter((one) => one.token !== token), { token, environment, label }]
+    // As for a subscription: a node without `pushDevice` refuses a field it does not know, and one with it takes `device` only for a current device.
+    if (device !== undefined && (typeof device !== 'string' || options.pushDevice !== true || !devices.deviceIds().has(device))) return failure(400, options.pushDevice === true ? 'That is not a device of this account.' : 'Unknown field `device`.')
+    pushTokenEntries = [...pushTokenEntries.filter((one) => one.token !== token), { id: idOf(token), token, environment, label, registeredAt: now.toISOString(), events: ['request'], ...(typeof device === 'string' ? { device } : {}) }]
     return json({})
   }
 
@@ -388,7 +394,10 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (refusal === undefined) {
         // A node that ties registrations to devices drops the ones that name a device that is no longer the account's.
         const body = (write.body as { body?: { op?: string } } | null)?.body
-        if (options.pushDevice === true && body?.op === 'remove') webPush.dropWithoutDevice(devices.deviceIds())
+        if (options.pushDevice === true && body?.op === 'remove') {
+          webPush.dropWithoutDevice(devices.deviceIds())
+          pushTokenEntries = pushTokenEntries.filter((one) => one.device === undefined || devices.deviceIds().has(one.device))
+        }
       }
       return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
     }
@@ -413,6 +422,15 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const claimed = claim.handle(request, url, () => readWrite(request))
     if (claimed !== undefined) return claimed
     if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
+    if (url.pathname === PUSH_TOKENS_PATH && request.method === 'GET') return json({ tokens: pushTokenEntries.map((one) => ({ ...one, token: one.token.slice(-8) })) })
+    const tokenRemoval = /^\/api\/push\/tokens\/([^/]+)$/.exec(url.pathname)
+    if (tokenRemoval !== null && request.method === 'DELETE') {
+      const write = await readWrite(request)
+      if (write instanceof Response) return write
+      const named = decodeURIComponent(tokenRemoval[1] ?? '')
+      pushTokenEntries = pushTokenEntries.filter((one) => one.id !== named && one.token !== named)
+      return new Response(null, { status: 204 })
+    }
     if (options.webPush === true) {
       const answered = webPush.handle(request, url, () => readWrite(request))
       if (answered !== undefined) return answered
@@ -445,7 +463,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     },
     decisions: () => received,
     envelopes: () => accepted,
-    pushTokens: () => pushTokens,
+    pushTokens: () => pushTokenEntries.map(({ token, environment, label }) => ({ token, environment, label })),
+    pushTokenEntries: () => pushTokenEntries,
     pushSubscriptions: () => webPush.subscriptions(),
     telemetry: telemetry.kept,
     recordPushDelivery: webPush.recordDelivery,

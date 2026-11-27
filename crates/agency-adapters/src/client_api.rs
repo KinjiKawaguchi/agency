@@ -16,18 +16,23 @@ use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
 use agency_core::activity::team_activity;
-use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
+use agency_core::client::{
+    decision_entry, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
+};
 use agency_core::clients_seen;
-use agency_core::devices::{device_list, request_device};
+use agency_core::devices::{device_list, request_device_as};
+use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
-use agency_core::push::{push_tokens, register_push_token, remove_push_token};
+use agency_core::push::{push_tokens_of, register_push_token_as, remove_push_token_as};
 use agency_core::usage::team_usage;
-use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
-use agency_core::{Error, Node};
+use agency_core::web_push::{
+    register_subscription_as, remove_subscription_as, subscriptions_of, vapid_key,
+};
+use agency_core::{Error, ErrorKind, Node};
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
-    SignedDecisionInput,
+    DecisionOutcome, DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput,
+    PushTokenInput, Session, SignedDecisionInput,
 };
 use agency_proto::client_version::{self, Platform};
 use agency_proto::clock::{Duration, OffsetDateTime};
@@ -121,7 +126,8 @@ pub(crate) fn header_text(headers: &HeaderMap, name: impl header::AsHeaderName) 
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-fn is_via_cloudflare(headers: &HeaderMap) -> bool {
+/// Whether the request came through Cloudflare (its tunnel or proxy adds these headers).
+pub fn is_via_cloudflare(headers: &HeaderMap) -> bool {
     headers.contains_key("cf-ray") || headers.contains_key("cf-connecting-ip")
 }
 
@@ -139,6 +145,10 @@ async fn admit(
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
         return match (peer.ip().is_loopback(), is_local_host) {
+            // On a machine other accounts log in to, each of them reaches the loopback address too.
+            (true, true) if !api.node.config().local_clients => {
+                Err((StatusCode::FORBIDDEN, "this node admits no local clients"))
+            }
             (true, true) => Ok(Admitted::Local),
             (true, false) => Err((StatusCode::MISDIRECTED_REQUEST, "wrong host")),
             (false, _) => Err((StatusCode::FORBIDDEN, "the Client API is local only")),
@@ -356,6 +366,12 @@ async fn get_decisions(
     json_response(StatusCode::OK, &log)
 }
 
+/// One decision of the account with where it is now, which a client that sent it reads until it is applied,
+/// delivered, or refused.
+async fn get_decision(State(api): Shared, Path(id): Path<String>) -> Response {
+    respond(decision_entry(&api.node, &id))
+}
+
 async fn get_org(State(api): Shared, Path(org): Path<String>) -> Response {
     respond(parse_id(&org).and_then(|org| org_definition(&api.node, &org)))
 }
@@ -407,6 +423,22 @@ async fn get_evaluation(
     respond(result.await)
 }
 
+/// Where the tokens of every team of an org went over the last `days` days, by work type (default 14,
+/// at most 90).
+async fn get_effort(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_effort(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
 /// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
 /// (default 200, at most 500), oldest first.
 async fn get_activity(
@@ -446,13 +478,30 @@ async fn post_envelope(
     Path((org, team)): Path<(String, String)>,
     bytes: Bytes,
 ) -> Response {
-    let result = async {
+    let result = (|| {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         let input: SignedDecisionInput = json_body(&bytes, "signed decision")?;
-        submit_signed_decision(&api.node, &caller_of(&admitted), &org, &team, input).await
-    };
-    respond(result.await)
+        submit_signed_decision(&api.node, &caller_of(&admitted), &org, &team, input)
+    })();
+    match result {
+        Ok(result) if result.outcome == DecisionOutcome::Queued => {
+            json_response(StatusCode::ACCEPTED, &result)
+        }
+        Ok(result) => json_response(StatusCode::OK, &result),
+        Err(error) if error.kind == ErrorKind::Unavailable => {
+            let mut response = refuse(StatusCode::SERVICE_UNAVAILABLE, &error.message);
+            response.headers_mut().insert(
+                header::RETRY_AFTER,
+                HeaderValue::from_static(KEEP_RETRY_AFTER_SECONDS),
+            );
+            response
+        }
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
 }
+
+/// What a client is told to wait before it sends a decision again that this node could not keep.
+const KEEP_RETRY_AFTER_SECONDS: &str = "5";
 
 /// Who the request acts as: a guest as its hosted member, anyone else admitted as the node's own account.
 fn caller_of(admitted: &Admitted) -> Caller {
@@ -497,10 +546,15 @@ async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted
     respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
 }
 
-/// A new device asks to be added; the answer carries its pairing code.
-async fn post_device_request(State(api): Shared, bytes: Bytes) -> Response {
+/// A new device asks to be added, for the owner's account or for the guest's hosted member; the answer
+/// carries its pairing code.
+async fn post_device_request(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
     let result = json_body::<DeviceRequestInput>(&bytes, "device request")
-        .and_then(|input| request_device(&api.node, input));
+        .and_then(|input| request_device_as(&api.node, &caller_of(&admitted), input));
     respond(result)
 }
 
@@ -518,19 +572,31 @@ async fn post_device_change(
     respond(result.await)
 }
 
-async fn get_push_tokens(State(api): Shared) -> Response {
-    json_response(StatusCode::OK, &push_tokens(&api.node))
+async fn get_push_tokens(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    json_response(
+        StatusCode::OK,
+        &push_tokens_of(&api.node, &caller_of(&admitted)),
+    )
 }
 
 /// Registers an APNs device token for the owner's notifications (or updates its environment and label).
-async fn post_push_token(State(api): Shared, bytes: Bytes) -> Response {
+async fn post_push_token(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
+    let caller = caller_of(&admitted);
     let result = json_body::<PushTokenInput>(&bytes, "push token")
-        .and_then(|input| register_push_token(&api.node, input));
+        .and_then(|input| register_push_token_as(&api.node, &caller, input));
     respond(result)
 }
 
-async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Response {
-    match remove_push_token(&api.node, &token) {
+async fn delete_push_token(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    Path(token): Path<String>,
+) -> Response {
+    match remove_push_token_as(&api.node, &caller_of(&admitted), &token) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }
@@ -541,19 +607,31 @@ async fn get_vapid_key(State(api): Shared) -> Response {
     respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
 }
 
-async fn get_push_subscriptions(State(api): Shared) -> Response {
-    respond(subscriptions(&api.node))
+async fn get_push_subscriptions(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+) -> Response {
+    respond(subscriptions_of(&api.node, &caller_of(&admitted)))
 }
 
 /// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
-async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
+async fn post_push_subscription(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
+    let caller = caller_of(&admitted);
     let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
-        .and_then(|input| register_subscription(&api.node, input));
+        .and_then(|input| register_subscription_as(&api.node, &caller, input));
     respond(result)
 }
 
-async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
-    match remove_subscription(&api.node, &id) {
+async fn delete_push_subscription(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    Path(id): Path<String>,
+) -> Response {
+    match remove_subscription_as(&api.node, &caller_of(&admitted), &id) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }
@@ -659,6 +737,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/me"),
     ("GET", "/api/session"),
     ("GET", "/api/decisions"),
+    ("GET", "/api/decisions/{id}"),
     ("GET", "/api/devices"),
     ("GET", "/api/push/tokens"),
     ("POST", "/api/push/tokens"),
@@ -673,6 +752,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("GET", "/api/orgs/{org}/teams/{team}/usage"),
     ("GET", "/api/orgs/{org}/evaluation"),
+    ("GET", "/api/orgs/{org}/effort"),
     ("GET", "/api/orgs/{org}/teams/{team}/activity"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
     ("GET", HANDOFF_PATH),
@@ -700,6 +780,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/me" => get(get_me),
         "/api/session" => get(get_session),
         "/api/decisions" => get(get_decisions),
+        "/api/decisions/{id}" => get(get_decision),
         "/api/devices" => get(get_devices),
         "/api/push/tokens" => get(get_push_tokens).post(post_push_token),
         "/api/push/tokens/{token}" => delete(delete_push_token),
@@ -712,6 +793,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
+        "/api/orgs/{org}/effort" => get(get_effort),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
         "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),
         HANDOFF_PATH => get(handoff::handoff),

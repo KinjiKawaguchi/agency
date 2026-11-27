@@ -43,7 +43,7 @@ May change without a new version:
 
 Breaking, so a new `/fed/v2`:
 - removing or renaming a route or a field, or changing its type or meaning;
-- changing what a signed read covers;
+- changing what a signed read covers, other than by a new signed-text version of the read (see "Signed data"; the routes stay as they are);
 - refusing something current nodes send.
 
 Rollout of `/fed/v2`:
@@ -65,6 +65,7 @@ May change without a new version:
   - the root's node checks that every node of the org lists the capability before it signs a version that uses it, and refuses otherwise, naming the nodes that are behind;
   - The check is made on every version the root signs, before it is signed, from what the node has kept of its peers (see "Discovery"), so signing never waits for the network. The nodes it checks are those of the **new** version's teams that do not run on the root's node, and it checks, for a node already in the org, the capabilities the new version uses and the current one does not use yet: a node that cannot read a field the current version already carries refuses the current version already, and refusing every later one would not help it. A node the version **brings into** the org (a first team on it, or a team moved to it) is checked against everything the version uses, since it would refuse every version from the start. The root cannot have read such a node yet, since only nodes of the org's teams are read, so `agency team-add --node` and `agency team-move` read it first; that works because a node that joined the org holds its definition and can answer. Taking a lagging node's teams out of the org leaves it out of the check.
   - A node counts as listing nothing when it was never read, never answered, or its last answer is more than **3 days** old. The refusal names each node, says why (not read, not answered, too old, or the capability it lacks and the release it runs), and says to update those nodes and run `agency sync`, which reads them again.
+  - So one team node that never lists a capability holds back every version that would use the field, for as long as it runs teams of the org: the root signs no such version over it. The owner's remedy is to move that node's teams to another node (`agency team-move`) or to take them out of the org; both take it out of the check. There is no option to sign over a node that lags, because that would cut the node off from the org without anyone being told.
   - a client checks the same before it signs something with a new field.
   - The root can check only the nodes it can name: the nodes of the org's teams, which are the ones it sends each version to. A member's home node that hosts no team is not named in the definition, so it is not checked, and it refuses a version it cannot read until it is updated.
 
@@ -73,7 +74,12 @@ Breaking, so a new signed-text version `agency/v2/<kind>`:
 - a change to the signed text's layout;
 - a change to the meaning of an existing field.
 
-Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
+Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`.
+
+A new layout of one kind can come alone, and then it is announced by a capability (the first is `readAudience`, for `agency/v2/read`, a signed read that names the node it is for) instead of by `signedText`, which lists a version only when every kind has it. The rules for it are these:
+- The new layout has its own kind line, and a header that travels with the signed document says which text was signed (for a read, `x-agency-audience` present means `agency/v2/read`). A verifier then makes one check, and neither text can pass for the other.
+- A writer uses the new layout toward a peer only when the peer lists the capability, and the older layout otherwise.
+- A verifier takes the older layout through the overlap. It may stop earlier: for an account that has already used the new layout (the account's node speaks it, so an older signature of that account is a copy), and for every account when its owner sets so. A way to take an account's older layout again is named in the refusal's log line, for an account that has two nodes of different releases. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
 
 ## Node and team runtime (`agency-runtime/1`)
 
@@ -155,6 +161,8 @@ Names start at what came after the first release: every node has what the first 
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
+| `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
+| `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
 
 ## Checks in CI
 

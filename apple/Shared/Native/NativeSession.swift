@@ -14,6 +14,8 @@ final class NativeSession {
     /// `nil` when this phone cannot make the key that signs decisions (no Secure Enclave, or Face ID is not set up).
     let pairing: PairingStore?
     let keyProblem: String?
+    /// This device's key is stored and cannot be used now: the whole app says so, and nothing is decided or signed meanwhile.
+    let keyUnusable: KeyProblem?
     /// The devices screen's state; `nil` when this phone has no key.
     let devices: DevicesStore?
     /// Whether APNs takes the notices the node sends this phone, read from the node's list of the owner's tokens.
@@ -53,21 +55,27 @@ final class NativeSession {
     let notifications: NotificationPreferencesStore
 
     /// - Parameter deviceLabel: what this device is called in the list of devices (`iPhone`, `Mac`).
-    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String) {
+    /// - Parameters:
+    ///   - key: this device's key for the home node, as the loader found it: in use, stored and unusable now (nothing is replaced and the
+    ///     person is asked), or not makeable here (the desk can only be read).
+    ///   - standing: what the node said the viewer is, for a session that replaces one of the same node and account (a key reset); the
+    ///     screens the viewer had are then not closed while the node is asked again.
+    init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String, key: KeyLoad, standing: Standing = .loading) {
         self.signIn = signIn
         let client = NodeClient(
             transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
         )
         self.client = client
-        let signer: SecureEnclaveSigner?
+        let signer: (any DeviceSigner)?
         var problem: String?
-        do {
-            signer = try SecureEnclaveSigner.loadOrCreate(host: homeNode.host)
-        } catch {
-            signer = nil
-            problem = "\(error)"
+        var unusable: KeyProblem?
+        switch key {
+        case .ready(let ready): signer = ready
+        case .cannotMake(let reason): (signer, problem) = (nil, reason)
+        case .unusable(let reason): (signer, unusable) = (nil, reason)
         }
         keyProblem = problem
+        keyUnusable = unusable
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
         devices = signer.map { signer in
             let sender = DeviceChangeSender(poster: client, signer: signer)
@@ -86,7 +94,8 @@ final class NativeSession {
             signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner } ?? NoKeySigner(),
             outbox: DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client),
             storage: DraftDefaultsStorage(host: homeNode.host),
-            afterSend: { await cache.invalidate() }
+            afterSend: { await cache.invalidate() },
+            standing: standing
         )
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)

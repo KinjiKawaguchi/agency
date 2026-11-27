@@ -10,21 +10,21 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, ClientsSeenStore, ConfigStore, DecisionLogStore, DeviceRequestStore,
-    GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore, PendingRootStore, PushStore,
-    ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
+    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
+    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
-use agency_proto::client::PushToken;
+use agency_proto::client::{GuestRef, PushToken};
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -173,6 +173,17 @@ impl DataDir {
                 file.sync_all()
             })
             .map_err(|error| io_error(path, error))
+    }
+
+    fn guest_notified_path(&self, guest: &GuestRef) -> PathBuf {
+        let name: String =
+            sha2::Sha256::digest(format!("{}/{}", guest.org, guest.member).as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+        self.dir("guests")
+            .join("notified")
+            .join(format!("{name}.json"))
     }
 
     fn guest_path(&self, email: &str) -> PathBuf {
@@ -354,6 +365,15 @@ impl GuestStore for DataDir {
     fn remove_guest(&self, email: &str) -> Result<()> {
         remove(&self.guest_path(email))
     }
+
+    /// `guests/notified/<sha256 of org/member>.json`.
+    fn guest_notified(&self, guest: &GuestRef) -> Option<Vec<String>> {
+        read_json(&self.guest_notified_path(guest))
+    }
+
+    fn save_guest_notified(&self, guest: &GuestRef, keys: &[String]) -> Result<()> {
+        write_json(&self.guest_notified_path(guest), &keys)
+    }
 }
 
 impl ClientsSeenStore for DataDir {
@@ -375,6 +395,23 @@ impl AboutStore for DataDir {
 
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()> {
         write_json(&self.dir("about").join(format!("{org}.json")), abouts)
+    }
+}
+
+impl BoundReaderStore for DataDir {
+    /// `bound-readers.json`: account ids only, no key and no signature. A file that is not there is no accounts;
+    /// one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        let path = self.0.join("bound-readers.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()> {
+        write_json(&self.0.join("bound-readers.json"), accounts)
     }
 }
 
@@ -428,6 +465,16 @@ impl DecisionLogStore for DataDir {
         let records: Vec<DecisionRecord> =
             read_json(&self.0.join("decisions.json")).unwrap_or_default();
         records.into_iter().rev().take(limit).collect()
+    }
+
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()> {
+        let path = self.0.join("decisions.json");
+        let mut records: Vec<DecisionRecord> = read_json(&path).unwrap_or_default();
+        let Some(kept) = records.iter_mut().find(|one| one.id == record.id) else {
+            return Ok(());
+        };
+        *kept = record.clone();
+        write_json(&path, &records)
     }
 }
 

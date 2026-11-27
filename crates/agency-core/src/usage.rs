@@ -5,7 +5,7 @@ use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::PeerError;
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::TeamPlace;
@@ -46,7 +46,7 @@ async fn runtime_usage(node: &Node, hosted: &HostedTeam, days: u32) -> Result<To
 /// Usage from the node a team runs on, read live. A node that cannot be reached is unavailable.
 async fn remote_usage(node: &Node, org: &Id, place: &TeamPlace, days: u32) -> Result<TokenUsage> {
     let path = routes::usage(org, &place.id, days);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let usage = node
         .peers()
         .get_usage(&place.node, &path, &auth)
