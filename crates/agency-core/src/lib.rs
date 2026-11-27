@@ -24,6 +24,7 @@ pub mod guest_push;
 pub mod guest_reads;
 pub mod guests;
 pub mod invites;
+pub mod kept;
 pub mod kpis;
 pub mod logging_config;
 pub mod metrics_config;

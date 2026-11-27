@@ -302,7 +302,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ノードが受け入れるのは、このアドレスと、ゲスト（このノードにつながる、ノードを持たないメンバー）のアドレスだけです。ほかのサインインは、Access のポリシーが通していても 403 になります。オーナーとして書き込める（決定する、端末を追加する）のは `ownerEmail` だけです。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
-- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
+- iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。`appId` だけでサインインできるのは、アプリのビルドの関連ドメインに入っているホスト名だけです。そのときアプリは、ノード自身のホスト名のユニバーサルリンクでサインインし、それを受け取れるのは、関連付けファイルが名指しするアプリだけです。自分でアプリをビルドするなら、ホスト名を `AGENCY_ASSOCIATED_HOST` に入れ、`allowSchemeSignIn` は無効のままにします。これが安全な方法です。関連ドメインを自分では決められないビルドのアプリを使うなら、ホスト名はその中にありません。その場合は、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定するか（既定は無効で、`appId` がなければ効きません）、アプリからはそのノードにサインインしないでください（ノードのアドレスのページはブラウザで使え、通知も届きます）。スキームのコールバックは、サインインを始めたアプリに届きます。それがどのアプリでも同じです。サインインする全端末の全アプリが信頼できる場合にだけ、有効にしてください。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
 - ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。プッシュサービス（Google、Mozilla、Apple、Microsoft）の運営者がこれを読むので、どのノードかが伝わります。ノードのホスト名を伝えたくないときは、このために作った別名のアドレスを使ってください。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
 
@@ -480,10 +480,11 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
-- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
+- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- 労力の画面で改善と新機能を区別するには、ボードに `Work type` という名前の単一選択のフィールドを作り、選択肢を `New feature`、`Improvement`、`Maintenance`、`Tech debt`、`Incident` として、Issue に値を設定します。値のない Issue を閉じる PR は、タイトルの種別で分けます。ラベル `incident` の付いた Issue の fix は障害対応になります。
 - 労力の画面（チームのトークンがどの作業種別に使われたか。`/api/orgs/<org>/effort`）は、同じリポジトリと、チームのランタイムが報告するトークン使用量（`tokenUsage`）から求めます。これは推定です。ランタイムは費用を日ごとに報告するので、1 日の費用は、その日にマージした PR の種別に分けます。マージのない日は、次にマージのある日の種別に分けます（規則は [protocol.md](protocol.md#evaluation) にあります）。ランタイムがトークン使用量を報告しないチームは、0 ではなく理由とともに並びます。
 - `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
 
@@ -621,6 +622,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。書き方だけの違い（ホスト名の大文字小文字、既定のポート）なら、ほかは何も変わりません。実際に名前を変えた場合は、それより前に行い、まだ届いていない決定は断られるので、もう一度行います。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
+| アプリのサインインのシートに `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)` と出て、ノードが `via=scheme` に `400` を返した | ノードのホスト名が、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。自分でアプリをビルドするなら、ビルドの `AGENCY_ASSOCIATED_HOST` にそのホスト名を入れます。そうでなければ、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
 | `agency: refused an Access request (wrong audience)` | `audience` がアプリケーションの AUD タグと違います。 |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` が自分のチームドメインと違います。 |
