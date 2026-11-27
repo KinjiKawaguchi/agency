@@ -17,7 +17,6 @@ test.beforeEach(async ({ request }) => {
   await resetNode(request)
 })
 
-
 test('says the sign-in expired when the session ends, keeps the decision, and sends it after a reload', async ({ page, request }) => {
   await enrolBrowser(page, request, PAGE)
   await page.goto(`${PAGE}/desk`)
