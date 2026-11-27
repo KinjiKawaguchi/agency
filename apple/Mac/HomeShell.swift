@@ -7,7 +7,7 @@ struct HomeShell: View {
 
     var body: some View {
         NavigationSplitView {
-            List(AppTab.allCases, id: \.self, selection: Bindable(model.router).tab) { tab in
+            List(model.router.availableTabs, id: \.self, selection: Bindable(model.router).tab) { tab in
                 Label(tab.title, systemImage: tab.symbol)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)

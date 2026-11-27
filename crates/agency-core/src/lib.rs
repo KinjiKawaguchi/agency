@@ -4,6 +4,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod budget;
 pub mod capabilities;
 pub mod change_words;
 pub mod client;
@@ -17,6 +18,8 @@ pub mod directory;
 pub mod error;
 pub mod evaluation;
 pub mod funding_pick;
+pub mod guest_reads;
+pub mod guests;
 pub mod invites;
 pub mod kpis;
 pub mod logging_config;

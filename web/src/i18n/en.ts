@@ -598,7 +598,7 @@ export const en = {
       lead: 'Response times the operator set for a route group in the node’s configuration. The node says whether each held over this period.',
       target: (group: string, p95: string) => `${group}: p95 ${p95}`,
       measured: (value: string) => `Measured: ${value}.`,
-      states: { met: 'Met', notMet: 'Not met', unknown: 'Cannot be told yet' },
+      states: { met: 'Met', notMet: 'Not met', undetermined: 'Cannot be told against this objective', unknown: 'Cannot be told yet' },
     },
   },
   evaluation: {

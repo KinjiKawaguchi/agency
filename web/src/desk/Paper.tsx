@@ -8,6 +8,7 @@ import { Link } from '@tanstack/react-router'
 import { Suspense, lazy } from 'react'
 import type { SigningState } from '../device/useDecide'
 import { useI18n } from '../i18n'
+import { printable } from '../shared/printable'
 
 /** The Markdown renderer is large and only needed once a document body is opened. */
 const Markdown = lazy(() => import('../markdown/Markdown').then((module) => ({ default: module.Markdown })))
@@ -35,8 +36,8 @@ function Thread({ item }: { item: DeskItem }) {
   return (
     <div className="doc-thread">
       {messages.map((message) => (
-        <div key={`${message.at}-${message.from}`} className="doc-msg">
-          <b>{t.desk.paper.thread(personOf(item.view, message.from)?.label ?? message.from, item.request.options.find((option) => option.key === message.choice)?.text ?? message.choice ?? null)}</b>{' '}
+        <div key={`${message.at}-${message.from}`} /* shown-ok(key): the key of a row, never drawn */ className="doc-msg">
+          <b>{t.desk.paper.thread(personOf(item.view, message.from)?.label ?? printable(message.from), item.request.options.find((option) => option.key === message.choice)?.text ?? message.choice ?? null)}</b>{' '}
           <span className="muted">{fmt.dateTime(message.at)}</span>
           {message.text === '' ? null : <p>{message.text}</p>}
         </div>
@@ -102,7 +103,7 @@ export function Paper(props: PaperProps) {
   const { item, orgLabel, viewerLabel, sealedAt, wasComment } = props
   const { t, fmt } = useI18n()
   const { request } = item
-  const deciderLabel = item.isMine ? viewerLabel : (item.decider?.label ?? request.to ?? '?')
+  const deciderLabel = item.isMine ? viewerLabel : (item.decider?.label ?? printable(request.to ?? '?'))
   const stoppedNames = blockedPeople(item).map((person) => person.label).join(', ')
   const titleId = `doc-title-${item.key}`
 
@@ -118,7 +119,7 @@ export function Paper(props: PaperProps) {
             {stoppedNames === '' ? null : <span>{t.desk.paper.stoppedBy(stoppedNames)}</span>}
           </p>
         </div>
-        <StampRoute drafter={item.drafter} deciderLabel={deciderLabel} step={request.kind === 'proposal' ? 'approved' : 'answered'} draftedAt={request.createdAt} draftedBy={request.from} sealedAt={wasComment ? null : sealedAt} />
+        <StampRoute drafter={item.drafter} deciderLabel={deciderLabel} step={request.kind === 'proposal' ? 'approved' : 'answered'} draftedAt={request.createdAt} draftedBy={request.from /* shown-ok(passed): StampRoute prints it as a mark */} sealedAt={wasComment ? null : sealedAt} />
       </header>
       {request.context === '' ? null : <p className="doc-context">{request.context}</p>}
       <Thread item={item} />

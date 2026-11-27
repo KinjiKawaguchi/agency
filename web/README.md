@@ -6,9 +6,14 @@ A single-page app for answering the requests your teams are waiting on. Vite, Re
 npm install
 npm run dev      # http://localhost:5173, served against a mock node
 npm test         # component and unit tests
+                 # as if it were another day or zone: AGENCY_TEST_NOW=2026-11-28T12:00:00Z TZ=Asia/Tokyo npm test
 npm run build    # type-check and production build
 npm run e2e      # build, then drive the built client in headless Chromium against the mock node
 ```
+
+## Tests on other days
+
+A test must not say something that is true only on the day it was written (a number made up from the date, a week that has moved on): pin the clock in it, as a mock node does with its `now` option. `AGENCY_TEST_NOW=<moment>` (and `TZ=<zone>`) starts the clock of every test at a moment, in `src/test/shiftedClock.ts`, so that one day can be tried at once; without it nothing changes. `scripts/ci/shifted-clock.sh --at <moment>[@<zone>]` is the same with the answer written out. Every Monday, and when run by hand from the Actions tab, the workflow `shifted-clock` runs all the tests as if it were each of the next seven days, the end of the month and of the year, and the next change of the clock of three zones (`src/test/shiftedDates.ts`), and posts the days that broke a test on the standing issue (#265), not on a PR. A test that depends on the clock without pinning it is fixed by pinning it, not by changing the page.
 
 ## Screens
 

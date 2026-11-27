@@ -29,11 +29,39 @@ struct AnswerForTests {
     func labels() throws {
         let empty = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": ""])
         #expect(try #require(Desk.openItems([empty]).first { $0.request.id == "r-seat" }).answersFor == nil)
-        let spaces = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": "  \n "])
+        let spaces = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": "   "])
         #expect(try #require(Desk.openItems([spaces]).first { $0.request.id == "r-seat" }).answersFor == nil, "only spaces is empty too")
+        let newline = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": "  \n "])
+        #expect(try #require(Desk.openItems([newline]).first { $0.request.id == "r-seat" }).answersFor == "?", "a newline is a control character: shown as ?, so it is not nothing")
         let odd = "<b>Dan</b> & " + String(repeating: "税務", count: 40)
         let team = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": odd])
         #expect(try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" }).answersFor == odd)
+    }
+
+    @Test("a team on another node, read from a copy, and a reader the team does not name: the seat's request is theirs and says whom it is for")
+    func remoteTeamWithoutViewer() throws {
+        let replica: [String: Any] = ["kind": "replica", "fetchedAt": "2026-11-26T09:00:00Z", "triedAt": "2026-11-26T09:00:30Z"]
+        let team = Team(snapshot: Teams.snapshot(
+            viewer: nil, mine: ["r-seat"], source: replica, addRequests: [seat], relayedFor: ["r-seat": "Dan (tax)"]
+        ))
+        #expect(team.isReplica && team.viewer == nil)
+        let item = try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" })
+        #expect(item.isMine && item.answersFor == "Dan (tax)")
+        #expect(Desk.waitingCount([team]) == 1, "it counts on the desk and the icon: it is theirs to answer")
+        let others = try #require(Desk.openItems([team]).first { $0.request.id == Teams.questionID })
+        #expect(!others.isMine && others.answersFor == nil, "what the team addresses to someone else is not theirs and says nothing")
+    }
+
+    @Test("a label that hides characters is shown with them as ?, on the desk and in the log, and the request ids stay as the node wrote them")
+    func hiddenCharacters() throws {
+        let override = "Erin\u{202E}\u{200B}"
+        let team = Teams.team(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r-seat": " \(override) "])
+        #expect(team.relayedFor == ["r-seat": " Erin?? "], "read once, at the wire")
+        #expect(try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" }).answersFor == "Erin??")
+        let log = try entry(#","relayedFor":{"id":"erin","label":"\#(override)"}"#)
+        #expect(log.relayedFor?.label == "Erin??" && log.answeredFor == "Erin??")
+        #expect(Teams.snapshot(mine: ["r-seat"], addRequests: [seat], relayedFor: ["r\u{202E}-seat": "Dan"]).relayedFor == ["r\u{202E}-seat": "Dan"],
+                "an id is not a label: it is matched as it is, never changed")
     }
 
     @Test("the words are the web's")
