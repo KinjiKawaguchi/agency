@@ -630,7 +630,7 @@ struct DeskStoreTests {
         await store.send(.answer("条件つきで"), for: first)
         #expect(sender.sent.count == 1 && !sender.sent[0].isComment && sender.sent[0].text == "条件つきで" && sender.sent[0].answerWith.target == "r-1")
         #expect(store.draft(for: first).isEmpty && storage.drafts.isEmpty)
-        #expect(kept.load().map(\.itemID) == [first], "on the device before anything is sent")
+        #expect(kept.entries.map(\.itemID) == [first], "on the device before anything is sent")
         #expect(!store.items.map(\.id).contains(first), "off the pile")
         #expect(store.waitingCount == 1, "and off the count: the other one still waits")
         #expect(store.sending.isEmpty)
@@ -656,9 +656,23 @@ struct DeskStoreTests {
         let readsBefore = source.meCalls
         await store.send(.answer("yes"), for: first)
         await store.outbox.flush()
-        #expect(store.outbox.entries.isEmpty && kept.load().isEmpty)
+        #expect(store.outbox.entries.isEmpty && kept.entries.isEmpty)
         #expect(submitter.sent.map(\.envelope.id) == ["env-1"])
         #expect(source.meCalls == readsBefore + 1)
+    }
+
+    @Test("a decision the node took stays off the pile and the count until the desk has been read again: the request does not flash back")
+    func takenStaysOffUntilRead() async {
+        let store = makeStore()
+        await store.refresh()
+        source.holdNextMe()
+        await store.send(.answer("yes"), for: first)
+        await waitUntil { source.isHolding }
+        #expect(store.outbox.entries.isEmpty, "the node took it, and the desk is being read again")
+        #expect(!store.items.map(\.id).contains(first) && store.waitingCount == 1)
+        source.release()
+        for _ in 0..<200_000 where !store.outbox.justTaken.isEmpty { await Task.yield() }
+        #expect(store.outbox.justTaken.isEmpty, "and it is let go of once the desk has been read")
     }
 
     @Test("a decided item does not come back on the pile while its send is pending or refused, though the node's view still lists it, and comes back when discarded")
@@ -744,7 +758,7 @@ struct DeskStoreTests {
         store.setText("x", for: first)
         kept.failsToWrite = true
         await store.send(.answer("x"), for: first)
-        #expect(store.sendFailures[first] != nil && store.draft(for: first).text == "x")
+        #expect(store.sendFailures[first] == Ja.Outbox.notKept && store.draft(for: first).text == "x")
         #expect(store.outbox.entries.isEmpty && store.items.map(\.id).contains(first) && submitter.sent.isEmpty)
     }
 

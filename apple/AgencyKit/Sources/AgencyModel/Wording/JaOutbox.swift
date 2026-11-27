@@ -20,6 +20,8 @@ extension Ja {
         public static func more(_ count: Int) -> String { "ほか \(count) 件" }
         /// How many entries the tray lists before it says how many more there are.
         public static let shown = 4
+        /// The decision was signed but could not be written to the device, so it was not accepted and nothing was sent.
+        public static let notKept = "この端末に決定を保存できなかったため、送っていません。もう一度お試しください。"
         public static let signInEnded = "サインインが切れています。サインインし直すと、続きを送ります。"
     }
 }

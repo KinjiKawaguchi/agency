@@ -22,6 +22,39 @@ private final class ScriptedSubmitter: DecisionSubmitter, @unchecked Sendable {
     }
 }
 
+/// Holds every send until `open()`.
+private final class GateSubmitter: DecisionSubmitter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private var seen: [String] = []
+
+    var sent: [String] { lock.withLock { seen } }
+    var isHolding: Bool { lock.withLock { !waiting.isEmpty } }
+
+    func open() {
+        let held = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            isOpen = true
+            defer { waiting = [] }
+            return waiting
+        }
+        for continuation in held { continuation.resume() }
+    }
+
+    func submit(_ decision: SignedDecision, org: String, team: String) async throws -> DecisionResult {
+        await withCheckedContinuation { continuation in
+            let passes = lock.withLock { () -> Bool in
+                if isOpen { return true }
+                waiting.append(continuation)
+                return false
+            }
+            if passes { continuation.resume() }
+        }
+        lock.withLock { seen.append(decision.envelope.id) }
+        return try took.get()
+    }
+}
+
 private func answer(_ outcome: String) -> Result<DecisionResult, Error> {
     .success(try! JSONDecoder().decode(DecisionResult.self, from: Data(#"{"outcome":"\#(outcome)"}"#.utf8)))
 }
@@ -60,10 +93,58 @@ struct DecisionOutboxTests {
     func keeping() throws {
         let (outbox, _, storage) = outbox([])
         try outbox.keep(decision(1))
-        #expect(storage.load().map(\.id) == ["id-1"], "on the device already")
+        #expect(storage.entries.map(\.id) == ["id-1"], "on the device already")
         storage.failsToWrite = true
         #expect(throws: OutboxError.notKept) { try outbox.keep(decision(2)) }
         #expect(outbox.entries.map(\.id) == ["id-1"], "not accepted: nothing is promised that a kill could lose")
+    }
+
+    @Test("kept decisions that cannot be read now are not replaced: nothing new is kept until they can be read, and then they are all still there")
+    func unreadable() throws {
+        let storage = MemoryOutboxStorage([decision(1)])
+        storage.failsToRead = true
+        let (outbox, _, _) = outbox([], storage: storage)
+        #expect(!outbox.isReadable)
+        #expect(throws: OutboxError.notKept) { try outbox.keep(decision(2)) }
+        #expect(storage.entries.map(\.id) == ["id-1"], "the file was not written over")
+        storage.failsToRead = false
+        try outbox.keep(decision(2))
+        #expect(outbox.isReadable && storage.entries.map(\.id) == ["id-1", "id-2"], "what was kept is there, and the new one with it")
+    }
+
+    @Test("kept decisions are not read again in the middle of a send: the send has its own view of them")
+    func noReloadWhileSending() async throws {
+        let gate = GateSubmitter()
+        let storage = MemoryOutboxStorage()
+        let outbox = DecisionOutbox(storage: storage, submitter: gate, now: { clock.now })
+        try outbox.keep(decision(1))
+        let flush = Task { await outbox.flush() }
+        for _ in 0..<200_000 where !gate.isHolding { await Task.yield() }
+        try storage.save([])
+        outbox.reload()
+        #expect(outbox.entries.map(\.id) == ["id-1"], "not replaced while it is being sent")
+        gate.open()
+        await flush.value
+        outbox.reload()
+        #expect(outbox.entries.isEmpty)
+    }
+
+    @Test("a flush asked for while one goes on waits for it, and sends what was kept meanwhile before it returns")
+    func joiningAFlush() async throws {
+        let gate = GateSubmitter()
+        let outbox = DecisionOutbox(storage: MemoryOutboxStorage(), submitter: gate, now: { clock.now })
+        try outbox.keep(decision(1))
+        let first = Task { await outbox.flush() }
+        for _ in 0..<200_000 where !gate.isHolding { await Task.yield() }
+        #expect(gate.isHolding, "the first send is held")
+        try outbox.keep(decision(2))
+        let second = Task { await outbox.flush() }
+        for _ in 0..<200 { await Task.yield() }
+        gate.open()
+        await first.value
+        await second.value
+        #expect(gate.sent == ["id-1", "id-2"], "the one kept meanwhile did not wait for the next tick")
+        #expect(outbox.entries.isEmpty)
     }
 
     @Test("an item has one decision kept; the items decided are the ones the pile leaves out")
@@ -80,7 +161,7 @@ struct DecisionOutboxTests {
         let (outbox, submitter, storage) = outbox([took, answer("applied"), failing(NodeError.unreadable("x"))])
         for number in 1...3 { try outbox.keep(decision(number)) }
         await outbox.flush()
-        #expect(outbox.entries.isEmpty && storage.load().isEmpty)
+        #expect(outbox.entries.isEmpty && storage.entries.isEmpty)
         #expect(submitter.sent.map(\.envelope.id) == ["id-1", "id-2", "id-3"])
     }
 
@@ -167,9 +248,10 @@ struct DecisionOutboxTests {
         for status in [425, 500, 502, 504, 599] {
             #expect(SendFailure.of(NodeError.http(status: status, message: nil)) == .retry(reason: "HTTP \(status)"), Comment(rawValue: "\(status)"))
         }
-        for status in [400, 401, 403, 404, 409] {
+        for status in [400, 403, 404, 409] {
             #expect(SendFailure.of(NodeError.http(status: status, message: "no")) == .final(reason: "no"), Comment(rawValue: "\(status)"))
         }
+        #expect(SendFailure.of(NodeError.http(status: 401, message: "no token")) == .signInEnded, "the gate does not know the token")
         #expect(SendFailure.of(NodeError.notSignedIn) == .signInEnded && SendFailure.of(NodeError.sessionExpired) == .signInEnded)
         #expect(SendFailure.of(NodeError.unreadable("x")) == .taken)
         #expect([1, 2, 3, 4, 5, 9].map(SendFailure.delay(afterAttempts:)) == [5, 15, 60, 300, 300, 300])

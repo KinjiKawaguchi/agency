@@ -14,7 +14,8 @@ public enum SendFailure: Equatable, Sendable {
 
     public static func of(_ error: Error) -> SendFailure {
         switch error {
-        case NodeError.sessionExpired, NodeError.notSignedIn:
+        case NodeError.sessionExpired, NodeError.notSignedIn, NodeError.http(status: 401, _):
+            // The gate does not know the token: signing in again mends it, and the decision is kept for that.
             return .signInEnded
         case NodeError.unreadable:
             return .taken

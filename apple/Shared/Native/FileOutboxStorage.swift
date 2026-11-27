@@ -27,8 +27,15 @@ struct FileOutboxStorage: OutboxStorage {
         try? FileManager.default.removeItem(at: url(host: host))
     }
 
-    func load() -> [PendingDecision] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+    /// Only "there is no file" is an empty outbox. A file that exists and cannot be read now (protected until the first unlock, an I/O
+    /// error) throws: the outbox then keeps nothing new, because writing would replace what is in the file.
+    func load() throws -> [PendingDecision] {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return []
+        }
         do {
             return try JSONDecoder().decode([PendingDecision].self, from: data)
         } catch {

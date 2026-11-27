@@ -251,9 +251,9 @@ public final class DeskStore {
             Task { await outbox.flush() }
         } catch NodeError.sessionExpired {
             needsSignIn = true
-            sendFailures[id] = "The sign-in has ended."
+            sendFailures[id] = Ja.Outbox.signInEnded
         } catch OutboxError.notKept {
-            sendFailures[id] = "The decision could not be kept on this device."
+            sendFailures[id] = Ja.Outbox.notKept
         } catch {
             sendFailures[id] = Self.reason(error)
         }
