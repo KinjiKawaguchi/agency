@@ -163,15 +163,23 @@ pub struct ObjectiveResult {
 /// before it, 0 for the first) is at or above it, and `Undetermined` when the objective falls inside it.
 pub fn judge(group: &str, p95_ms: u32, series: &[Series]) -> ObjectiveResult {
     let mut buckets = [0u64; BUCKETS];
+    let mut is_too_many = false;
     for one in series
         .iter()
         .filter(|one| one.kind == SeriesKind::Serve && one.group == group)
     {
         for (total, count) in buckets.iter_mut().zip(&one.buckets) {
-            *total += count;
+            match total.checked_add(*count) {
+                Some(sum) => *total = sum,
+                None => is_too_many = true,
+            }
         }
     }
-    let bucket = percentile_bucket(&buckets, 95);
+    // More durations than a count holds are not ones a node recorded: nothing is said of them.
+    let bucket = match is_too_many {
+        true => None,
+        false => percentile_bucket(&buckets, 95),
+    };
     let measured = bucket.and_then(|index| BUCKET_BOUNDS_MS.get(index).copied());
     let state = match bucket {
         None => ObjectiveState::Unknown,
