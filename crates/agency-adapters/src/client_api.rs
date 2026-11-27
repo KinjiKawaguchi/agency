@@ -49,6 +49,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 mod metrics;
 mod outcomes;
+mod telemetry;
+
+pub use telemetry::REPORTABLE_ROUTES;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -595,6 +598,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/devices", get(get_devices))
         .merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
+        .merge(telemetry::routes())
         .route(
             "/api/push/tokens",
             get(get_push_tokens).post(post_push_token),

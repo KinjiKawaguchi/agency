@@ -76,7 +76,7 @@ fn route_group(template: &str) -> &'static str {
     let starts = |prefix: &str| template.starts_with(prefix);
     if starts("/fed/v1/") {
         "federation"
-    } else if template == "/metrics" || starts("/api/metrics") {
+    } else if template == "/metrics" || starts("/api/metrics") || template == "/api/telemetry" {
         "metrics"
     } else if starts("/api/push") {
         "push"
