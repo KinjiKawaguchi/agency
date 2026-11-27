@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { ApiClient } from '../api/client'
 import { type BrowserSupport, type PushDelivery, browserLabel, deliveryOf, isMadeWith, isWebPushOffered, keyBytes, subscriptionInput } from './webPush'
@@ -45,19 +45,29 @@ export const realBrowser: WebPushBrowser = {
   },
 }
 
-type Api = Pick<ApiClient, 'vapidKey' | 'registerPushSubscription' | 'removePushSubscription'>
+type Api = Pick<ApiClient, 'about' | 'vapidKey' | 'registerPushSubscription' | 'removePushSubscription'>
+
+/** The capability of a node that ties a registration to the device it names, and drops it when that device is removed. A node without it refuses a field it does not know. */
+const PUSH_DEVICE = 'pushDevice'
+
+/** The device a registration names: this browser's, when the node knows what to do with it (`pushDevice`) and this browser is added. */
+async function deviceToName(api: Api, device: string | undefined): Promise<string | undefined> {
+  if (device === undefined) return undefined
+  const about = await api.about().catch(() => undefined)
+  return about?.capabilities.includes(PUSH_DEVICE) === true ? device : undefined
+}
 
 const failed = (error: unknown): WebPushState => ({ kind: 'failed', message: error instanceof Error ? error.message : String(error) })
 
 /** Registers what the browser holds at the node (idempotent), and says whether it can be sent to. */
-async function stateWithSubscription(api: Api, browser: WebPushBrowser, subscription: PushSubscription, key: Uint8Array): Promise<WebPushState> {
+async function stateWithSubscription(api: Api, browser: WebPushBrowser, subscription: PushSubscription, key: Uint8Array, device: string | undefined): Promise<WebPushState> {
   if (!isMadeWith(subscription.options.applicationServerKey, key)) return { kind: 'stale' }
-  const input = subscriptionInput(subscription.toJSON(), browserLabel(browser.support().userAgent))
+  const input = subscriptionInput(subscription.toJSON(), browserLabel(browser.support().userAgent), await deviceToName(api, device))
   if (input === undefined) return { kind: 'stale' }
   return { kind: 'on', delivery: deliveryOf(await api.registerPushSubscription(input)) }
 }
 
-async function read(api: Api, browser: WebPushBrowser): Promise<WebPushState> {
+async function read(api: Api, browser: WebPushBrowser, device: string | undefined): Promise<WebPushState> {
   if (!isWebPushOffered(browser.support())) return { kind: 'unsupported' }
   let key: Uint8Array | undefined
   try {
@@ -69,10 +79,10 @@ async function read(api: Api, browser: WebPushBrowser): Promise<WebPushState> {
   if (browser.permission() === 'denied') return { kind: 'denied' }
   const subscription = await (await browser.registration()).pushManager.getSubscription()
   if (subscription === null || browser.permission() !== 'granted') return { kind: 'off' }
-  return stateWithSubscription(api, browser, subscription, key)
+  return stateWithSubscription(api, browser, subscription, key, device)
 }
 
-async function subscribe(api: Api, browser: WebPushBrowser): Promise<WebPushState> {
+async function subscribe(api: Api, browser: WebPushBrowser, device: string | undefined): Promise<WebPushState> {
   // The permission is asked first and at once, inside the click: Firefox and Safari take a request that comes after an
   // await (the node's key is read) as not made by the person, and refuse it.
   const permission = browser.permission() === 'granted' ? 'granted' : await browser.requestPermission()
@@ -83,7 +93,7 @@ async function subscribe(api: Api, browser: WebPushBrowser): Promise<WebPushStat
   const earlier = await pushManager.getSubscription()
   if (earlier !== null && !isMadeWith(earlier.options.applicationServerKey, key)) await earlier.unsubscribe()
   const subscription = await pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
-  return stateWithSubscription(api, browser, subscription, key)
+  return stateWithSubscription(api, browser, subscription, key, device)
 }
 
 /** Takes this browser's subscription off the node and then off the browser. The node's id is what registering the same endpoint answers. */
@@ -102,7 +112,7 @@ async function unsubscribe(api: Api, browser: WebPushBrowser): Promise<WebPushSt
  * The page does it wherever the viewer is (not only on the Devices screen), so that a subscription the browser
  * renewed while the app was closed is registered the next time any page of the app is opened.
  */
-export async function registerHeldSubscription(api: Api, browser: WebPushBrowser): Promise<void> {
+export async function registerHeldSubscription(api: Api, browser: WebPushBrowser, device?: string): Promise<void> {
   if (!isWebPushOffered(browser.support()) || browser.permission() !== 'granted') return
   const subscription = await (await browser.registration()).pushManager.getSubscription()
   if (subscription === null) return
@@ -110,11 +120,15 @@ export async function registerHeldSubscription(api: Api, browser: WebPushBrowser
     (found) => keyBytes(found.publicKey),
     () => undefined,
   )
-  if (key !== undefined) await stateWithSubscription(api, browser, subscription, key)
+  if (key !== undefined) await stateWithSubscription(api, browser, subscription, key, device)
 }
 
-export function useWebPush(api: Api, browser: WebPushBrowser = realBrowser): { state: WebPushState; turnOn: () => void; turnOff: () => void } {
+export function useWebPush(api: Api, browser: WebPushBrowser = realBrowser, device?: string): { state: WebPushState; turnOn: () => void; turnOff: () => void } {
   const [state, setState] = useState<WebPushState>({ kind: 'loading' })
+  // The device a registration names is read when the registration is made. Its arrival does not read the node again here: the page's own
+  // registration (`WebPushRegistration`) tells the node when this browser is added.
+  const deviceNow = useRef(device)
+  deviceNow.current = device
   const run = useCallback(
     (work: () => Promise<WebPushState>) => {
       work().then(setState, (error: unknown) => setState(failed(error)))
@@ -122,12 +136,12 @@ export function useWebPush(api: Api, browser: WebPushBrowser = realBrowser): { s
     [],
   )
   useEffect(() => {
-    run(() => read(api, browser))
-    return browser.support().hasServiceWorker ? browser.onSubscriptionChanged(() => run(() => read(api, browser))) : undefined
+    run(() => read(api, browser, deviceNow.current))
+    return browser.support().hasServiceWorker ? browser.onSubscriptionChanged(() => run(() => read(api, browser, deviceNow.current))) : undefined
   }, [api, browser, run])
   return {
     state,
-    turnOn: () => run(() => subscribe(api, browser)),
+    turnOn: () => run(() => subscribe(api, browser, deviceNow.current)),
     turnOff: () => run(() => unsubscribe(api, browser)),
   }
 }

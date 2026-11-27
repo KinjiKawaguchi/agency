@@ -2,7 +2,7 @@ import type { ClaimInput, ClaimState } from '../claim/provisional'
 import { labelsMadePrintable } from '../shared/printable'
 import { at, type Target } from './routes'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, VapidKey, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
+import type { About, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, VapidKey, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import type { Activity } from './activityApi'
@@ -57,6 +57,8 @@ export interface ApiClient {
   /** The browsers subscribed to the owner's notifications. */
   pushSubscriptions: () => Promise<PushSubscriptionList>
   /** Registers this browser's subscription. Idempotent: the node keeps one entry per endpoint, and answers it with its `id`. */
+  /** What the node says about itself: the capabilities a client checks before it relies on something newer than the first release. */
+  about: () => Promise<About>
   registerPushSubscription: (input: PushSubscriptionInput) => Promise<PushSubscription>
   /** Removes a subscription by its `id`. Removing one that is gone is not an error. */
   removePushSubscription: (id: string) => Promise<void>
@@ -218,6 +220,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
       return () => void listeners.delete(listener)
     },
     me: () => get<Me>(at('GET /api/me')),
+    about: () => get<About>(at('GET /api/about')),
     teamSnapshot: (org, team) => get<TeamSnapshot>(at('GET /api/orgs/{org}/teams/{team}/view', { org, team })),
     orgDefinition: (org) => get<OrgDefinition>(at('GET /api/orgs/{org}', { org })),
     usage: (org, team, days) => get<TokenUsage>(at('GET /api/orgs/{org}/teams/{team}/usage', { org, team }, { days })),
