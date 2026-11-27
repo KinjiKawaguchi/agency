@@ -864,14 +864,22 @@ async fn times_each_decision_as_its_own_call_series_by_how_the_runtime_answered(
     );
 }
 
-/// A runtime that keeps its releases in the data directory `data`, whose clock stands at 2026-11-28T01:00:00Z.
-fn reporting(data: &TempDir) -> CommandRuntime {
+/// A runtime that keeps its releases in the data directory `data` for the teams `hosted` (acme/<name>), whose
+/// clock stands at 2026-11-28T01:00:00Z.
+fn reporting_for(data: &TempDir, hosted: &[&str]) -> CommandRuntime {
     let clock = ManualClock::at("2026-11-28T01:00:00Z");
+    let acme = id("acme");
+    let teams: Vec<Id> = hosted.iter().map(|name| id(name)).collect();
     let log = ReleaseLog::new(
         &DataDir::new(data.path().to_owned()),
         std::sync::Arc::new(clock),
+        teams.iter().map(|team| (&acme, team)),
     );
     CommandRuntime::default().reporting_releases(log)
+}
+
+fn reporting(data: &TempDir) -> CommandRuntime {
+    reporting_for(data, &["app", "old", "web"])
 }
 
 fn describe_with(version: &str) -> String {
@@ -963,4 +971,48 @@ async fn a_runtime_that_does_not_speak_agency_runtime_1_is_noted_and_refused() {
 
     let kept = read(&DataDir::new(data.path().to_owned()));
     assert_eq!(kept["acme/app"].version.as_deref(), Some("9.0.0"));
+}
+
+#[tokio::test]
+async fn two_processes_add_to_the_file_and_do_not_write_back_an_old_copy() {
+    let data = TempDir::new().unwrap();
+    let fake = Fake::new();
+    // `serve` and a command both started before either read `describe`.
+    let serve = reporting(&data);
+    let command = reporting(&data);
+    fake.answer("describe", &describe_with(r#","version":"0.7.2""#), 0);
+
+    serve.view(&fake.team("app")).await.unwrap();
+    command
+        .decide(&fake.team("web"), decision("x"))
+        .await
+        .unwrap();
+
+    let kept = read(&DataDir::new(data.path().to_owned()));
+    assert_eq!(
+        kept["acme/app"].version.as_deref(),
+        Some("0.7.2"),
+        "what the other process wrote is still there"
+    );
+    assert!(kept.contains_key("acme/web"));
+}
+
+#[tokio::test]
+async fn the_entry_of_a_team_the_node_no_longer_hosts_is_dropped() {
+    let data = TempDir::new().unwrap();
+    let fake = Fake::new();
+    reporting_for(&data, &["app", "old"])
+        .decide(&fake.team("old"), decision("x"))
+        .await
+        .unwrap();
+    assert!(read(&DataDir::new(data.path().to_owned())).contains_key("acme/old"));
+
+    reporting_for(&data, &["app"])
+        .view(&fake.team("app"))
+        .await
+        .unwrap();
+
+    let kept = read(&DataDir::new(data.path().to_owned()));
+    assert!(kept.contains_key("acme/app"));
+    assert!(!kept.contains_key("acme/old"), "{kept:?}");
 }

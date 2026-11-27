@@ -1,14 +1,15 @@
 //! Which harness release each hosted team's runtime says it is (`version` of `describe`, docs/protocol.md). The
 //! node reads `describe` once per team and process; what it read is kept in `runtime-releases.json` of the data
 //! directory, so that `agency status`, a separate process, can print it. A team with no entry has not been
-//! read since the file was made; an entry without a `version` is a runtime that did not say.
+//! read since the file was made; an entry without a `version` is a runtime that did not say. An entry of a team
+//! the node no longer hosts is dropped the next time a team is noted.
 use crate::files::{read_json, write_json, DataDir};
 use agency_core::ports::Clock;
 use agency_proto::clock;
 use agency_proto::runtime::Describe;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -49,21 +50,35 @@ pub fn say(kept: &BTreeMap<String, Reported>, org: &Id, team: &Id) -> String {
     }
 }
 
-/// Writes what a runtime said into the file, one entry for each team.
+/// Writes what a runtime said into the file, one entry for each team the node hosts.
+///
+/// The file is shared by the processes of one node (`agency serve` and the commands, each of which reads
+/// `describe` for its own use), so every note reads the file again and adds its entry to what is there; it
+/// never writes back the copy it read when it started.
 pub struct ReleaseLog {
     path: PathBuf,
     clock: Arc<dyn Clock>,
-    kept: Mutex<BTreeMap<String, Reported>>,
+    /// The teams the node hosts: an entry of any other team is dropped at the next note.
+    hosted: BTreeSet<String>,
+    /// Serves the notes of this process one at a time.
+    writing: Mutex<()>,
 }
 
 impl ReleaseLog {
-    /// A log in `data`'s directory, which starts from what the file already holds (the entries of other
-    /// teams stay until the team is read again).
-    pub fn new(data: &DataDir, clock: Arc<dyn Clock>) -> Self {
+    /// A log in `data`'s directory for the teams `hosted` (org and team).
+    pub fn new<'a>(
+        data: &DataDir,
+        clock: Arc<dyn Clock>,
+        hosted: impl IntoIterator<Item = (&'a Id, &'a Id)>,
+    ) -> Self {
         Self {
             path: data.root().join(FILE),
             clock,
-            kept: Mutex::new(read(data)),
+            hosted: hosted
+                .into_iter()
+                .map(|(org, team)| key(org, team))
+                .collect(),
+            writing: Mutex::new(()),
         }
     }
 
@@ -74,9 +89,11 @@ impl ReleaseLog {
             version: description.release().map(str::to_owned),
             read_at: clock::format(self.clock.now()),
         };
-        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        let _one_at_a_time = self.writing.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut kept: BTreeMap<String, Reported> = read_json(&self.path).unwrap_or_default();
+        kept.retain(|name, _| self.hosted.contains(name));
         kept.insert(key(org, team), entry);
-        let _ = write_json(&self.path, &*kept);
+        let _ = write_json(&self.path, &kept);
     }
 }
 

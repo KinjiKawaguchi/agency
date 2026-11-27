@@ -131,12 +131,13 @@ pub const MOST_RELEASE_CHARS: usize = 64;
 
 impl Describe {
     /// The harness release the runtime reported, or `None` when it reported none or a text that is empty,
-    /// longer than `MOST_RELEASE_CHARS` characters, or holds a control character.
+    /// longer than `MOST_RELEASE_CHARS` characters, or holds a control character or one that reorders or hides
+    /// how a line reads (`is_hidden_char`).
     pub fn release(&self) -> Option<&str> {
         self.version.as_deref().filter(|text| {
             !text.is_empty()
                 && text.chars().count() <= MOST_RELEASE_CHARS
-                && !text.chars().any(char::is_control)
+                && !text.chars().any(crate::org::is_hidden_char)
         })
     }
 

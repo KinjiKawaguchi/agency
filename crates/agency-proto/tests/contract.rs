@@ -366,4 +366,11 @@ fn a_version_beyond_the_limits_is_ignored_and_the_runtime_is_still_read() {
     assert_eq!(described_with(json!("")).release(), None);
     assert_eq!(described_with(json!("0.7\u{1b}[31m")).release(), None);
     assert_eq!(described_with(json!("0.7\n2")).release(), None);
+    for hidden in ["0.7\u{202e}2", "0.7\u{2066}2", "0.7\u{200b}", "\u{feff}0.7"] {
+        assert_eq!(
+            described_with(json!(hidden)).release(),
+            None,
+            "a character that hides or reorders text: {hidden:?}"
+        );
+    }
 }

@@ -166,7 +166,11 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         Some(notifier) => notifier,
         None => notifier(&config, &data_dir, clock.clone(), &logger),
     };
-    let release_log = ReleaseLog::new(&data, clock.clone());
+    let release_log = ReleaseLog::new(
+        &data,
+        clock.clone(),
+        config.teams.iter().map(|team| (&team.org, &team.team)),
+    );
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
