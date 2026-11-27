@@ -402,12 +402,14 @@ struct DevicesHeldTests {
         #expect(store.confirmed.isEmpty && store.confirmFailures.isEmpty)
     }
 
-    @Test("an outcome the app does not know is said with the node's message, and not as a success; with no message it is taken as done")
+    @Test("an outcome the app does not know is never a success: said with the node's message, or without one that it is not known and where the result is")
     func unknown() async {
         let said = await confirmed(.success([result(.unknown("later"), "It will take a while.")]))
         #expect(said.held[newKey.publicKey] == "It will take a while." && said.confirmed.isEmpty)
         let silent = await confirmed(.success([result(.unknown("later"))]))
-        #expect(silent.held.isEmpty && silent.confirmed[newKey.publicKey] == Ja.Devices.confirmed("iPhone"))
+        #expect(silent.held[newKey.publicKey] == Ja.Devices.unknownOutcome && silent.confirmed.isEmpty)
+        let empty = await confirmed(.success([result(.unknown("later"), "")]))
+        #expect(empty.held[newKey.publicKey] == Ja.Devices.unknownOutcome && empty.confirmed.isEmpty)
     }
 
     @Test("with several orgs, a held one is not turned into a success by the others, and a node that was asleep is still said")

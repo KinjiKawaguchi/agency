@@ -56,7 +56,7 @@ pub(crate) fn current_device_ids(node: &Node) -> Vec<Id> {
         .collect()
 }
 
-fn my_devices<'a>(definition: &'a OrgDefinition, account: &Id) -> &'a [Device] {
+pub(crate) fn my_devices<'a>(definition: &'a OrgDefinition, account: &Id) -> &'a [Device] {
     definition
         .member(account)
         .map_or(&[], |person| person.devices.as_slice())
@@ -286,7 +286,17 @@ pub async fn submit_device_change(
     node: &Node,
     signed: Signed<DeviceChange>,
 ) -> Result<DeviceChangeResult> {
-    if signed.body.account != node.account() {
+    submit_device_change_as(node, &crate::guests::Caller::Owner, signed).await
+}
+
+/// `submit_device_change` for the account the caller acts as: the node's own, or the hosted member a guest is,
+/// whose org is the only one it reaches.
+pub async fn submit_device_change_as(
+    node: &Node,
+    caller: &crate::guests::Caller,
+    signed: Signed<DeviceChange>,
+) -> Result<DeviceChangeResult> {
+    if signed.body.account != caller.account(node) || !caller.is_in(&signed.body.org) {
         return Err(Error::new(
             ErrorKind::Forbidden,
             "this node relays only its own account's device changes",
@@ -296,7 +306,7 @@ pub async fn submit_device_change(
     let current = node
         .store()
         .load_org(&org)
-        .filter(|doc| doc.body.member(&node.account()).is_some())
+        .filter(|doc| doc.body.member(&caller.account(node)).is_some())
         .ok_or_else(|| Error::not_found("not found"))?;
     check_device_change(&current.body, &signed, node.now()).map_err(Error::bad_request)?;
     if is_root(node, &current) {

@@ -29,8 +29,7 @@ describe('deciding with the device key', () => {
     const deviceId = await enrol(node, keyStore)
     renderApp({ node, keyStore })
     await approve(user)
-    await screen.findByText(/Alice approved this/)
-    expect(node.envelopes()).toHaveLength(1)
+    await waitFor(() => expect(node.envelopes()).toHaveLength(1))
     const [signed] = node.envelopes()
     expect(signed).toMatchObject({ signer: deviceId, body: { kind: 'answer', org: 'acme', team: 'app', target: PROPOSAL, account: 'alice', payload: { text: 'Start next week.', choice: 'approve' } } })
     expect(signed?.body.id).toMatch(/^[0-9a-f]{32}$/)
@@ -46,7 +45,7 @@ describe('deciding with the device key', () => {
     renderApp({ node, keyStore })
     await user.type(await screen.findByLabelText(/^Notes/), 'Can we start in December instead?')
     await user.click(screen.getByRole('button', { name: 'Send a comment' }))
-    await screen.findByText(/Alice commented on this/)
+    await waitFor(() => expect(node.envelopes()).toHaveLength(1))
     const [signed] = node.envelopes()
     expect(signed?.body).toMatchObject({ kind: 'answer', target: PROPOSAL, payload: { text: 'Can we start in December instead?' } })
     expect(signed?.body.payload).not.toHaveProperty('choice')
@@ -62,8 +61,7 @@ describe('deciding with the device key', () => {
     await screen.findByRole('radio', { name: /Approve/ })
     node.restart()
     await approve(user)
-    await screen.findByText(/Alice approved this/)
-    expect(node.envelopes()).toHaveLength(1)
+    await waitFor(() => expect(node.envelopes()).toHaveLength(1))
   })
 
   it('shows the signed decision in the log with the title and the label of its choice', async () => {
@@ -113,8 +111,7 @@ describe('deciding with the device key', () => {
     await enrol(node, keyStore)
     window.dispatchEvent(new Event('visibilitychange'))
     await user.click(await screen.findByRole('button', { name: 'Approve with “Approve”' }))
-    expect(await screen.findByText(/Alice approved this/)).toBeInTheDocument()
-    expect(node.envelopes()).toHaveLength(1)
+    await waitFor(() => expect(node.envelopes()).toHaveLength(1))
   })
 
   it('says the browser cannot sign when it cannot make keys, with no way to add a device', async () => {
@@ -133,15 +130,14 @@ describe('deciding with the device key', () => {
     }
   })
 
-  it('does not fall back when the node refuses the signed decision, and keeps the draft', async () => {
+  it('does not fall back when the node refuses the signed decision: it stays in the tray with the node’s words, and nothing is accepted', async () => {
     const user = userEvent.setup()
     const node = createMockNode({ refuseDecisionsWith: 'The team’s node says no.' })
     const keyStore = memoryKeyStore()
     await enrol(node, keyStore)
     renderApp({ node, keyStore })
     await approve(user)
-    expect(await screen.findByText('The team’s node refused the decision: The team’s node says no.')).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: /^Notes/ })).toHaveValue('Start next week.')
-    await waitFor(() => expect(node.envelopes()).toHaveLength(0))
+    expect(await screen.findByText('Not sent: The team’s node says no.')).toBeInTheDocument()
+    expect(node.envelopes()).toHaveLength(0)
   })
 })

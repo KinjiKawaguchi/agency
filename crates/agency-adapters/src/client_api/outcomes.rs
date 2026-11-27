@@ -34,15 +34,23 @@ async fn require_owner(
     next.run(request).await
 }
 
+/// The routes below, by method and path, for the tests that walk every route.
+pub(super) const ROUTES: &[(&str, &str)] = &[
+    ("GET", OUTCOMES),
+    ("GET", OBSERVATIONS),
+    ("POST", OBSERVATIONS),
+    ("GET", READINGS),
+];
+const OUTCOMES: &str = "/api/orgs/{org}/outcomes";
+const OBSERVATIONS: &str = "/api/orgs/{org}/outcomes/observations";
+const READINGS: &str = "/api/orgs/{org}/outcomes/readings";
+
 /// The routes of the numbers and of the readings of them, every one behind `require_owner`.
 pub(super) fn routes(api: Arc<ClientApi>) -> Router<Arc<ClientApi>> {
     Router::new()
-        .route("/api/orgs/{org}/outcomes", get(get_outcomes))
-        .route(
-            "/api/orgs/{org}/outcomes/observations",
-            get(get_history).post(post_observation),
-        )
-        .route("/api/orgs/{org}/outcomes/readings", get(get_readings))
+        .route(OUTCOMES, get(get_outcomes))
+        .route(OBSERVATIONS, get(get_history).post(post_observation))
+        .route(READINGS, get(get_readings))
         .route_layer(middleware::from_fn_with_state(api, require_owner))
 }
 

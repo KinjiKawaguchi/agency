@@ -4,7 +4,8 @@ import { ApiError, type ApiClient } from './client'
 import { useApi } from './context'
 import type { Me, OrgRef, TeamRef } from './clientApi'
 import { isRetryable, RETRY_DELAYS_MS, withRetry } from './retry'
-import { toTeam, type Team } from './teams'
+import { toTeam, withoutDecided, type Team } from './teams'
+import { useOutbox } from '../outbox/OutboxProvider'
 
 export const POLL_MS = 30_000
 
@@ -104,13 +105,15 @@ export interface Teams {
 /** The viewer and every team they can reach, loaded together. A team that could not be read is left out and named in `error`. */
 export function useTeams(): Teams {
   const api = useApi()
+  const { hiddenKeys } = useOutbox()
   const me = useQuery(meQuery(api))
   const refs = (me.data?.orgs ?? [] /* stand-in-ok(routing): the list of team reads to make once the viewer is read; the loading flag of the hook says they are not there yet */).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
   const results = useQueries({ queries: refs.map(({ org, team }) => teamQuery(api, org, team)) })
   const failed = results.find((result) => result.data?.status === 'failed')?.data
   return {
     me: me.data,
-    teams: results.flatMap((result) => (result.data?.status === 'ready' ? [result.data.team] : [])),
+    // What the owner decided and the node has not finished with is not waiting on anyone: it is off the pile, and off every count.
+    teams: results.flatMap((result) => (result.data?.status === 'ready' ? [withoutDecided(result.data.team, hiddenKeys)] : [])),
     isLoading: me.isPending || results.some((result) => result.isPending),
     error: me.error ?? results.find((result) => result.error !== null)?.error ?? (failed?.status === 'failed' ? failed.error : null),
   }
@@ -130,10 +133,12 @@ export interface TeamStates {
 
 const refsOf = (me: Me | undefined): Array<{ org: string; team: string }> => (me?.orgs ?? [] /* stand-in-ok(routing): the list of team reads to make once the viewer is read; what is shown comes with its own loading state */).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
 
-function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult | undefined; error: Error | null }>): readonly OrgStates[] {
+function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult | undefined; error: Error | null }>, decided: ReadonlySet<string>): readonly OrgStates[] {
   const refs = refsOf(me)
   const stateOf = (org: string, team: string): TeamState => {
     const result = results[refs.findIndex((ref) => ref.org === org && ref.team === team)]
+    // What the owner decided and the node has not finished with is not waiting on anyone: every reading of the teams leaves it out.
+    if (result?.data?.status === 'ready') return { ...result.data, team: withoutDecided(result.data.team, decided) }
     if (result?.data !== undefined) return result.data
     return result?.error ? { status: 'failed', error: result.error, at: Date.now() } : { status: 'loading' }
   }
@@ -148,8 +153,9 @@ function statesOf(me: Me | undefined, results: ReadonlyArray<{ data: TeamResult 
 export function useTeamStates({ inBackground = false }: { inBackground?: boolean } = {}): TeamStates {
   const api = useApi()
   const me = useQuery(meQuery(api))
+  const { hiddenKeys } = useOutbox()
   const results = useQueries({ queries: refsOf(me.data).map(({ org, team }) => ({ ...teamQuery(api, org, team), refetchIntervalInBackground: inBackground })) })
-  return { me: me.data, orgs: statesOf(me.data, results), error: me.error }
+  return { me: me.data, orgs: statesOf(me.data, results, hiddenKeys), error: me.error }
 }
 
 /**
@@ -161,8 +167,9 @@ export function useTeamStates({ inBackground = false }: { inBackground?: boolean
 export function useSuspenseTeamStates(): { me: Me; orgs: readonly OrgStates[]; teams: readonly Team[]; loading: ReadonlySet<string> } {
   const api = useApi()
   const { data: me } = useSuspenseQuery(meQuery(api))
+  const { hiddenKeys } = useOutbox()
   const results = useQueries({ queries: refsOf(me).map(({ org, team }) => teamQuery(api, org, team)) })
-  const orgs = statesOf(me, results)
+  const orgs = statesOf(me, results, hiddenKeys)
   const loading = new Set(orgs.flatMap(({ org, teams }) => teams.flatMap(({ ref, state }) => (state.status === 'loading' ? [`${org.id}/${ref.id}`] : []))))
   return { me, orgs, teams: orgs.flatMap(({ teams }) => teams.flatMap(({ state }) => (state.status === 'ready' ? [state.team] : []))), loading }
 }

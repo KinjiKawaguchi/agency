@@ -78,6 +78,19 @@ public protocol DeviceSigner: Sendable {
     /// Signs `text`. `reason` is what the person is shown when they are asked to confirm.
     /// - Returns: the 64 raw bytes of the signature.
     func sign(_ text: Data, reason: String) async throws -> Data
+
+    /// Signs each of `texts` for one confirmation: a change that is sent to several orgs asks the person once, not once for each. The
+    /// default signs them one by one, which is right for a signer that does not ask.
+    /// - Returns: the signatures, in the order of `texts`.
+    func signEach(_ texts: [Data], reason: String) async throws -> [Data]
+}
+
+extension DeviceSigner {
+    public func signEach(_ texts: [Data], reason: String) async throws -> [Data] {
+        var signatures: [Data] = []
+        for text in texts { signatures.append(try await sign(text, reason: reason)) }
+        return signatures
+    }
 }
 
 /// A P-256 key held in memory, for tests and for checking the Swift signatures against the node. It

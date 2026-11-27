@@ -301,6 +301,10 @@ impl Opened {
             .layer(axum::middleware::from_fn_with_state(
                 self.recorder.clone(),
                 record_request,
+            ))
+            // Outermost, so no route, guard or measurement sees a path that could be read as another.
+            .layer(axum::middleware::from_fn(
+                agency_adapters::raw_path::refuse_ambiguous_paths,
             ));
         Ok(if is_public {
             app.layer(axum::middleware::map_response(strict_transport))

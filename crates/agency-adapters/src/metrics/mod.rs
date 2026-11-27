@@ -381,6 +381,7 @@ fn series_of(
                         count: counts.count,
                         errors: counts.errors,
                         p95_ms: percentile(&counts.buckets, 95),
+                        buckets: Some(counts.buckets.to_vec()),
                     })
                     .collect(),
             }

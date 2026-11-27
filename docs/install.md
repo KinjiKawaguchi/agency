@@ -272,7 +272,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 }
 ```
 
-- `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
+- `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
@@ -500,7 +500,7 @@ curl -s 'http://127.0.0.1:4400/api/metrics?days=1' | python3 -m json.tool | head
 curl -s http://127.0.0.1:4400/metrics            # the text a Prometheus scrape reads, since the node started
 ```
 
-- `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days. A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
+- `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days (add `hourBuckets=1` to get each hour's buckets too, so that a screen can add the hours of several series and read the percentile of the whole; the answer is about 1.7 times larger). A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
 - To hold the node to your own numbers, set objectives in `config.json`, then restart the node: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`. A `group` is one of `desk`, `teams`, `usage`, `evaluation`, `outcomes`, `devices`, `push`, `federation`, `metrics`, or `other` (the answer names the group of each series), and `p95Ms` is 1 to 30 000; a value outside these stops the node at start and says which. `GET /api/metrics` then says, for each, over the days asked for: `met` (the 95th percentile is within it), `notMet` (every duration in the bucket of the 95th percentile is over it), `undetermined` (the objective falls inside that bucket: the measurement cannot say), or `unknown` (no calls in the range), with the upper bound of that bucket, for the whole group and not for an answer narrowed to a kind or a name.
 - `agency metrics [--days n] [--kind serve|call|client] [--name <name>] [--json]` prints the same as a table, from the files, so it works while the node is stopped and needs no key. `<=100` means at most 100 ms (the upper bound of the bucket), `>30000` is slower than the last bound, and the BUDGET column says `ok` or `OVER` for the reads the performance budget applies to. A running node writes its numbers once a minute, so the last minute is only in `GET /api/metrics`.
 - It is the owner's alone: the direct local request, or Access signed in as the owner. Another person Access lets in gets 403. `/metrics` is read only on the node's own machine, so a Prometheus scrapes it there (not through the tunnel).
@@ -586,6 +586,7 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
 | `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token. |
 
 ## The team runtime
 

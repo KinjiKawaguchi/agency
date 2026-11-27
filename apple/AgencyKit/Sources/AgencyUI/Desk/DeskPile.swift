@@ -8,7 +8,6 @@ import SwiftUI
 struct DeskPile: View {
     let items: [DeskItem]
     let situation: Situation
-    let sent: Set<String>
     let now: Date
     /// Draws the rows without links, for renderings made outside a navigation stack.
     var isStatic = false
@@ -32,7 +31,7 @@ struct DeskPile: View {
                         .padding(.top, 8)
                         .wrapping()
                     ForEach(inGroup) { item in
-                        let row = RequestRow(item: item, now: now, isSent: sent.contains(item.id))
+                        let row = RequestRow(item: item, now: now)
                         if isStatic {
                             row
                         } else {

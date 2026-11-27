@@ -7,12 +7,16 @@ private final class FakePoster: PushTokenPoster, @unchecked Sendable {
     private let lock = NSLock()
     private var answers: [Result<Void, Error>]
     private(set) var calls: [[String]?] = []
+    private(set) var devices: [String?] = []
 
     init(_ answers: [Result<Void, Error>]) { self.answers = answers }
 
-    func registerPushToken(token: String, environment: String, label: String, events: [String]?) async throws -> RegisteredPushToken {
+    func registerPushToken(
+        token: String, environment: String, label: String, events: [String]?, device: String?
+    ) async throws -> RegisteredPushToken {
         try lock.withLock {
             calls.append(events)
+            devices.append(device)
             try answers.removeFirst().get()
         }
         let answer = #"{"environment":"sandbox","label":"iPhone","registeredAt":"2026-11-24T12:00:00Z","token":"ab12"}"#
@@ -22,8 +26,8 @@ private final class FakePoster: PushTokenPoster, @unchecked Sendable {
 
 @Suite("PushRegistrar")
 struct PushRegistrarTests {
-    private func register(_ poster: FakePoster, events: [String] = ["request", "device"]) async throws -> PushRegistrar.Outcome {
-        try await PushRegistrar(poster: poster).register(token: "ab12", environment: "sandbox", label: "iPhone", events: events)
+    private func register(_ poster: FakePoster, events: [String] = ["request", "device"], device: String? = nil) async throws -> PushRegistrar.Outcome {
+        try await PushRegistrar(poster: poster).register(token: "ab12", environment: "sandbox", label: "iPhone", events: events, device: device)
     }
 
     @Test("a node that knows kinds takes them, in one registration")
@@ -61,5 +65,26 @@ struct PushRegistrarTests {
         let poster = FakePoster([.failure(NodeError.http(status: 400, message: "a")), .failure(NodeError.http(status: 400, message: "b"))])
         await #expect(throws: NodeError.self) { try await register(poster) }
         #expect(poster.calls.count == 2)
+    }
+
+    @Test("a registration names its device when it is given one")
+    func namesDevice() async throws {
+        let poster = FakePoster([.success(())])
+        #expect(try await register(poster, device: "d-abc") == .withKinds)
+        #expect(poster.devices == ["d-abc"] && poster.calls == [["request", "device"]])
+    }
+
+    @Test("a 400 for a registration that names a device is the answer: it is not made again without the device, or without the kinds")
+    func deviceRefused() async {
+        let poster = FakePoster([.failure(NodeError.http(status: 400, message: "the device is not one of this account's devices")), .success(())])
+        await #expect(throws: NodeError.self) { try await register(poster, device: "d-abc") }
+        #expect(poster.devices == ["d-abc"], "a registration that went through without the device would not be tied to it")
+    }
+
+    @Test("a registration that names no device is as before, and still falls back for a node that does not know kinds")
+    func noDevice() async throws {
+        let poster = FakePoster([.failure(NodeError.http(status: 400, message: "x")), .success(())])
+        #expect(try await register(poster) == .requestsOnly)
+        #expect(poster.devices == [nil, nil])
     }
 }
