@@ -5,7 +5,7 @@ const ICON = '/icons/icon-192.png'
 
 /** The page a target opens, as the router is told it: one request is opened on the desk by its key. */
 export const navigationOf = (target: NoticeTarget): { to: '/desk'; search: { item: string } } | { to: '/desk' | '/people' | '/devices' } =>
-  target.to === '/desk' && target.item !== undefined ? { to: '/desk', search: { item: target.item } } : { to: target.to }
+  target.to === '/desk' && target.item !== undefined ? { to: '/desk', search: { item: target.item } } : { to: target.to /* shown-ok(route): a path */ }
 
 /** Whether a notice should reach the operating system now: the viewer asked for it, and the page is not in front of them. */
 export const shouldTellOs = (): boolean => isOsNoticeOn() && document.visibilityState === 'hidden'

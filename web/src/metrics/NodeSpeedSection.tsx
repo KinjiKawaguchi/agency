@@ -57,7 +57,7 @@ function Report({ metrics }: { metrics: Metrics }) {
       <Objectives objectives={metrics.objectives} />
       <GroupTable series={metrics.series} kind="serve" title={t.metrics.groups.title} />
       <GroupTable series={metrics.series} kind="call" title={t.metrics.groups.callsTitle} />
-      <TrendCard series={metrics.series} from={metrics.from} until={metrics.until} budgetMs={metrics.budgetInNodeReadP95Ms} />
+      <TrendCard series={metrics.series} from={metrics.from /* shown-ok(period): the first time of the range of the series */} until={metrics.until} budgetMs={metrics.budgetInNodeReadP95Ms} />
     </>
   )
 }

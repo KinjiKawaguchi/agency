@@ -27,7 +27,7 @@ function eventOf(raw: unknown): ActivityEvent | undefined {
       return ref === undefined || title === undefined ? undefined : { ...base, kind: 'itemAdded', ref, title, ...maybe('assignee', given.assignee), ...maybe('epic', given.epic) }
     }
     case 'statusChanged': {
-      const [ref, title, from, to] = [text(given.ref), text(given.title), status(given.from), status(given.to)]
+      const [ref, title, from, to] = [text(given.ref), text(given.title), status(given.from), status(given.to)] // shown-ok(status): the two states of a work item, not names
       return ref === undefined || title === undefined || from === undefined || to === undefined ? undefined : { ...base, kind: 'statusChanged', ref, title, from, to, ...maybe('epic', given.epic) }
     }
     case 'prOpened': {
@@ -43,7 +43,7 @@ function eventOf(raw: unknown): ActivityEvent | undefined {
       return { ...base, kind: 'prMerged', ref, title, ...maybe('by', given.by), ...maybe('issue', given.issue), ...maybe('epic', given.epic), ...lead }
     }
     case 'message': {
-      const [from, to] = [text(given.from), text(given.to)]
+      const [from, to] = [text(given.from), text(given.to)] // shown-ok(passed): kept as the runtime names them, drawn through `printable` where it is drawn
       return from === undefined || to === undefined ? undefined : { ...base, kind: 'message', from, to, summary: typeof given.summary === 'string' ? given.summary.slice(0, 120) : '' }
     }
     default:
