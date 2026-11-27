@@ -30,6 +30,9 @@ pub fn read_headers(auth: &ReadAuth) -> Vec<(&'static str, String)> {
     headers
 }
 
+/// How long one request to another node is waited for.
+pub const TIMEOUT: Duration = Duration::from_secs(8);
+
 pub struct HttpPeers {
     http: reqwest::Client,
 }
@@ -42,7 +45,7 @@ impl HttpPeers {
                 // Others choose where this node sends (team places, invite links, team domains); a
                 // redirect would send its requests, and their headers, somewhere else.
                 .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(8))
+                .timeout(TIMEOUT)
                 .build()?,
         })
     }

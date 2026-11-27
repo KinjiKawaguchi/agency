@@ -22,7 +22,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const TIMEOUT: Duration = Duration::from_secs(20);
+/// How long one run of a team's runtime command is waited for.
+pub const TIMEOUT: Duration = Duration::from_secs(20);
 
 fn unavailable(message: impl Into<String>) -> RuntimeError {
     RuntimeError {
