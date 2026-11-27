@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { useApi } from '../api/context'
 import type { Device, DeviceList } from '../api/clientApi'
-import { DEVICES_KEY, meQuery } from '../api/queries'
+import { DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
+import { useOutbox } from '../outbox/OutboxProvider'
 import { answerOf } from '../rootchange/changes'
 import { useToast } from '../shared/Toasts'
 import { signChange } from './changes'
@@ -31,6 +32,8 @@ export function RemoveDevice({ device, list, ownKey }: Props) {
   const plan = removalPlanOf(list, device.publicKey, ownKey.publicKey)
   const [isAsking, setAsking] = useState(false)
   const [told, setTold] = useState<readonly string[]>([]) /* stand-in-ok(device): what this click was told by the node, kept in this row */
+  const kept = keptBy(plan, useOutbox().entries)
+  if (kept > 0) return <p className="muted device-remove-note">{words.keptFirst(kept)}</p>
   if (plan.lastIn.length > 0) return <p className="muted device-remove-note">{words.last(device.label, plan.lastIn.join(', '))}</p>
   if (!isRemovable(plan)) return null
   return (
@@ -49,6 +52,13 @@ export function RemoveDevice({ device, list, ownKey }: Props) {
   )
 }
 
+/**
+ * How many decisions kept in this browser for sending were signed by the device being removed (only this browser's own device ever signed
+ * one here): its key is revoked by the removal, so they could never be taken (docs/protocol.md, "Devices": a removal takes effect for envelopes still waiting too).
+ */
+export const keptBy = (plan: RemovalPlan, entries: ReadonlyArray<{ envelope: { signer: string } }>): number =>
+  entries.filter((entry) => plan.orgs.some((one) => one.deviceId === entry.envelope.signer)).length
+
 function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'device' | 'ownKey'> & { plan: RemovalPlan; onDone: (messages: readonly string[]) => void; onCancel: () => void }) {
   const { t } = useI18n()
   const words = t.devices.remove
@@ -63,8 +73,16 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
   const remove = useMutation({
     mutationFn: async () => {
       if (me.data === undefined) throw new Error(t.devices.accountUnknown)
+      const fresh = removalPlanOf(await queryClient.fetchQuery({ ...devicesQuery(api), staleTime: 0 }), device.publicKey, ownKey.publicKey)
+      // Already gone from every org that listed it: nothing is left to sign.
+      if (fresh.orgs.length === 0) {
+        isRemoved.current = true
+        if (fresh.isThisDevice) await replaceKey()
+        return []
+      }
+      if (!isRemovable(fresh)) throw new Error(fresh.lastIn.length > 0 ? words.last(device.label, fresh.lastIn.join(', ')) : words.stillIn(fresh.unsignedIn.join(', ')))
       const waiting: string[] = []
-      for (const { org, deviceId, signerId } of plan.signedIn) {
+      for (const { org, deviceId, signerId } of fresh.signedIn) {
         if (signerId === undefined) continue
         const result = await api.submitDeviceChange(await signChange(ownKey, signerId, removeChangeFor(org, me.data.account.id, deviceId, new Date())))
         const answer = answerOf(result)
@@ -73,7 +91,7 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
       isRemoved.current = waiting.length === 0
       // The org has revoked this browser's key once the removal is done (not while it is only held): it makes a new one, and the
       // screen offers to add that, never the revoked one.
-      if (plan.isThisDevice && waiting.length === 0) await replaceKey()
+      if (fresh.isThisDevice && waiting.length === 0) await replaceKey()
       return waiting
     },
     onSuccess: (waiting) => {

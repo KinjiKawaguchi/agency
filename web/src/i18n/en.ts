@@ -355,6 +355,7 @@ export const en = {
       removing: 'Removing…',
       removed: (label: string) => `${label} is removed. It can never sign again.`,
       stillIn: (orgs: string) => `It is still listed in ${orgs}: this device is not added there, so it cannot sign the removal.`,
+      keptFirst: (count: number) => `${count === 1 ? '1 decision has' : `${count} decisions have`} not been sent yet, and removing this device would stop ${count === 1 ? 'it' : 'them'} for good. Send or discard ${count === 1 ? 'it' : 'them'} in the tray first.`,
       last: (label: string, orgs: string) => `${label} is your only device in ${orgs}, so it cannot be removed here: no device there could sign after it. Add another device first. On the machine that runs this node, agency device-add adds one.`,
       failed: (reason: string) => `Could not remove the device: ${reason}`,
       pendingRoot: ['Removal sent here; it takes effect once the root key’s node signs it: run ', ' there.'] satisfies Around,

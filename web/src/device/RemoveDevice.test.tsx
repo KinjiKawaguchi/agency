@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { renderApp } from '../test/render'
-import { createTestNode, testKeyStore } from '../test/testDevice'
+import { createTestNode, TEST_DEVICE_ID, testKeyStore } from '../test/testDevice'
 import { deviceKeyOf, generateKeyPair } from './deviceKey'
 import { deviceIdOf } from './fingerprint'
 
@@ -134,6 +134,73 @@ describe('removing one of the account’s devices', () => {
     await user.click(await screen.findByRole('button', { name: 'Remove this device' }))
     expect(await screen.findByText('Could not remove the device: The root refused it.')).toBeInTheDocument()
     expect(await listedBy(node)).toEqual([['acme', ['Browser', 'Work laptop']]])
+  })
+
+  it('reads the devices again before it signs, so that the rule of the last device is the node’s now, not a few seconds ago', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop()
+    let isReduced = false
+    let changes = 0
+    // After the person has been asked, the other device goes: the list the node gives is now one device.
+    const client = createApiClient(async (request) => {
+      const path = new URL(request.url, 'http://mock.local').pathname
+      if (path === '/api/devices/changes') changes += 1
+      const reply = await node.handle(request)
+      if (!isReduced || path !== '/api/devices' || request.method !== 'GET') return reply
+      const list = (await reply.json()) as { orgs: Array<{ devices: Array<{ id: string }> }> }
+      return new Response(JSON.stringify({ ...list, orgs: list.orgs.map((org) => ({ ...org, devices: org.devices.filter((one) => one.id !== OTHER_ID) })) }), { headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/devices', node, client, enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Browser' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Browser?' })
+    isReduced = true
+    await user.click(within(panel).getByRole('button', { name: 'Remove this device' }))
+    expect(await screen.findByText(/Could not remove the device: Browser is your only device in acme/)).toBeInTheDocument()
+    expect(changes).toBe(0)
+    expect(await listedBy(node)).toEqual([['acme', ['Browser', 'Work laptop']]])
+  })
+
+  it('signs the removal for the orgs the node lists now, not those it listed when the person was asked', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop({ deviceOrgs: ['acme', 'club'] })
+    let isFull = false
+    // When the person is asked the list has one org; by the time they confirm, the node lists the device in two.
+    const client = createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      if (isFull || new URL(request.url, 'http://mock.local').pathname !== '/api/devices' || request.method !== 'GET') return reply
+      const list = (await reply.json()) as { orgs: Array<{ org: string }> }
+      return new Response(JSON.stringify({ ...list, orgs: list.orgs.filter((one) => one.org === 'acme') }), { headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/devices', node, client, enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Work laptop?' })
+    isFull = true
+    await user.click(within(panel).getByRole('button', { name: 'Remove this device' }))
+    await screen.findByText('Work laptop is removed. It can never sign again.')
+    expect((await listedBy(node)).every(([, labels]) => !labels.includes('Work laptop'))).toBe(true)
+  })
+
+  describe('while decisions are kept in this browser for sending', () => {
+    const kept = (signer: string) => ({
+      id: 'e-1', org: 'acme', team: 'app', itemKey: 'acme:app:r-1', itemTitle: 'Add a second frontend agent', text: '', draft: { text: '', choice: null },
+      envelope: { body: { id: 'e-1' }, signer, signature: 'c2ln' }, createdAt: '2026-11-27T10:00:00Z', attempts: 1, phase: 'failed', reason: 'The node is busy.',
+    })
+    afterEach(() => window.localStorage.removeItem('agency.outbox'))
+
+    it('does not offer to remove this device, whose key signed them, and says to send or discard them first', async () => {
+      window.localStorage.setItem('agency.outbox', JSON.stringify([kept(TEST_DEVICE_ID)]))
+      renderApp({ path: '/devices', node: withLaptop(), enrolled: true })
+      expect(await screen.findByText('1 decision has not been sent yet, and removing this device would stop it for good. Send or discard it in the tray first.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Remove Browser' })).not.toBeInTheDocument()
+      // Another device's removal is not touched by them.
+      expect(await screen.findByRole('button', { name: 'Remove Work laptop' })).toBeInTheDocument()
+    })
+
+    it('offers it when what is kept was signed by another device', async () => {
+      window.localStorage.setItem('agency.outbox', JSON.stringify([kept(OTHER_ID)]))
+      renderApp({ path: '/devices', node: withLaptop(), enrolled: true })
+      expect(await screen.findByRole('button', { name: 'Remove Browser' })).toBeInTheDocument()
+    })
   })
 
   it('says it in Japanese', async () => {
