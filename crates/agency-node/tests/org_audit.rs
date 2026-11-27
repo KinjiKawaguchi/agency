@@ -63,7 +63,7 @@ async fn every_version_is_listed_with_its_signer_and_every_change() {
         "add member bob",
         "add device",
         "add seat dan",
-        "change member bob",
+        "bob takes seat dan",
         "remove seat dan",
         "change team app",
     ] {

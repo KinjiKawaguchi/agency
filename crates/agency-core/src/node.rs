@@ -2,14 +2,14 @@
 use crate::config::{HostedTeam, NodeConfig};
 use crate::error::Result;
 use crate::ports::{
-    Clock, DeliverySource, FundingSource, Journal, Notifier, Peers, Random, RootKeys, Store,
-    TeamRuntime, WriteLock,
+    Clock, DeliverySource, FundingSource, Journal, Notifier, OutboxBell, Peers, Random, RootKeys,
+    Store, TeamRuntime, WriteLock,
 };
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 
 pub struct Ports {
     pub store: Arc<dyn Store>,
@@ -31,6 +31,11 @@ pub struct Node {
     config: RwLock<NodeConfig>,
     /// The signed reads accepted recently, with when they were signed (see `accept_read_once`).
     reads: Mutex<HashMap<String, OffsetDateTime>>,
+    /// Rung when a parcel is queued for the background (see `set_outbox_bell`).
+    bell: OnceLock<Arc<dyn OutboxBell>>,
+    /// Held while a decision is checked against what the node already kept and queued, so that two sends
+    /// of one envelope keep one parcel. Never held across an await.
+    intake: Mutex<()>,
     /// Serializes the writes of the accounts that read bound (`change_bound_readers`).
     bound_readers_lock: Mutex<()>,
     /// Whether the owner has been told that the file of those accounts cannot be read.
@@ -57,9 +62,28 @@ impl Node {
             key,
             config: RwLock::new(config),
             reads: Mutex::default(),
+            bell: OnceLock::new(),
+            intake: Mutex::new(()),
             bound_readers_lock: Mutex::default(),
             is_unreadable_said: AtomicBool::new(false),
         })
+    }
+
+    /// Sets what is rung when a parcel is queued. Set once, by the process that delivers the outbox.
+    pub fn set_outbox_bell(&self, bell: Arc<dyn OutboxBell>) {
+        let _ = self.bell.set(bell);
+    }
+
+    pub(crate) fn ring_outbox_bell(&self) {
+        if let Some(bell) = self.bell.get() {
+            bell.ring();
+        }
+    }
+
+    pub(crate) fn intake(&self) -> MutexGuard<'_, ()> {
+        self.intake
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Accepts a valid signed read once. A signed read is good for `SKEW_SECONDS` either way of its
