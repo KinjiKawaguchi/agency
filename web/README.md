@@ -10,6 +10,10 @@ npm run build    # type-check and production build
 npm run e2e      # build, then drive the built client in headless Chromium against the mock node
 ```
 
+## Deciding without waiting (`src/outbox/`)
+
+Deciding on the desk signs the envelope (`useSignDecision`), keeps it in the browser (`localStorage`, written at the moment it is made, before the desk moves on), takes the request off the pile and opens the next one at once. `OutboxProvider` sends what is kept (one try for each, three at once; a lost connection, 408, 425, 429 and 5xx are tried again after 5 s, 15 s, 1 min, 5 min and every 5 min, a 503's `Retry-After` honoured; the other 4xx stop as failed with the node's words; an ended sign-in pauses all sending): always the same envelope with the same id, which the node keeps once. Any 2xx is "the node took it". `SendingTray` (a small list in a corner that never blocks the desk, nothing drawn while nothing is kept) shows what is on its way, with "Send again" and, for a failure, "Discard", which gives the request back with what was written. A request stays off the pile and out of every count (`useTeams`) while its decision is kept here, failed, or queued at the node (the node's log). The shared contract is on #446; the words are in the glossary.
+
 ## Screens
 
 - **Decisions** (`/desk`): what the teams wait on you for.

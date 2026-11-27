@@ -4,7 +4,8 @@ import type { ApiClient } from './client'
 import { useApi } from './context'
 import type { Me, OrgRef, TeamRef } from './clientApi'
 import { isRetryable, RETRY_DELAYS_MS, withRetry } from './retry'
-import { toTeam, type Team } from './teams'
+import { toTeam, withoutDecided, type Team } from './teams'
+import { useOutbox } from '../outbox/OutboxProvider'
 
 export const POLL_MS = 30_000
 
@@ -104,13 +105,15 @@ export interface Teams {
 /** The viewer and every team they can reach, loaded together. A team that could not be read is left out and named in `error`. */
 export function useTeams(): Teams {
   const api = useApi()
+  const { hiddenKeys } = useOutbox()
   const me = useQuery(meQuery(api))
   const refs = (me.data?.orgs ?? [] /* stand-in-ok(routing): the list of team reads to make once the viewer is read; the loading flag of the hook says they are not there yet */).flatMap((org) => org.teams.map((team) => ({ org: org.id, team: team.id })))
   const results = useQueries({ queries: refs.map(({ org, team }) => teamQuery(api, org, team)) })
   const failed = results.find((result) => result.data?.status === 'failed')?.data
   return {
     me: me.data,
-    teams: results.flatMap((result) => (result.data?.status === 'ready' ? [result.data.team] : [])),
+    // What the owner decided and the node has not finished with is not waiting on anyone: it is off the pile, and off every count.
+    teams: results.flatMap((result) => (result.data?.status === 'ready' ? [withoutDecided(result.data.team, hiddenKeys)] : [])),
     isLoading: me.isPending || results.some((result) => result.isPending),
     error: me.error ?? results.find((result) => result.error !== null)?.error ?? (failed?.status === 'failed' ? failed.error : null),
   }

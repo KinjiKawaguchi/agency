@@ -26,3 +26,12 @@ export const toTeam = (snapshot: TeamSnapshot): Team => ({
 })
 
 export const teamKey = (team: Team): string => `${team.view.org}/${team.view.team}`
+
+/** The key of one request among all the teams': what the desk opens by, and what a decision made on it is kept under until the node has it. */
+export const requestKey = (view: Pick<TeamView, 'org' | 'team'>, request: { id: string }): string => `${view.org}:${view.team}:${request.id}`
+
+/** The team without the requests that were decided and are not yet done with (kept in the browser or queued at the node): they are not waiting on anyone any more. The same team when none of them is in it. */
+export function withoutDecided(team: Team, decided: ReadonlySet<string>): Team {
+  if (decided.size === 0 || !team.view.requests.some((request) => decided.has(requestKey(team.view, request)))) return team
+  return { ...team, view: { ...team.view, requests: team.view.requests.filter((request) => !decided.has(requestKey(team.view, request))) } }
+}
