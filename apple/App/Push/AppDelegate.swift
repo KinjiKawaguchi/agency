@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        OutboxBackground.register()
         push.start()
         return true
     }
@@ -27,6 +28,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     /// result. The app reads nothing when it is in front, where the screens read for themselves.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         guard DeskWake.isWake(userInfo), application.applicationState != .active else { return .noData }
+        // What the owner decided and the node has not taken yet is sent first (the wake is a chance to), then the desk is read without it.
+        if let retryAt = await BackgroundOutbox.flush(within: .seconds(10)) { OutboxBackground.schedule(at: retryAt) }
         switch await BackgroundDeskRefresh.run(node: NotificationTap.nodeID(in: userInfo)) {
         case .written?: return .newData
         case .notRead?: return .failed
