@@ -45,6 +45,10 @@ extension Ja {
             public static let thisDevice = "いま使っている端末です。削除すると、この端末はこの鍵では署名できなくなり、この鍵をもう一度追加することもできません。そのあと端末は新しい鍵を作り、それは新しい端末として追加する必要があります。"
             /// Said after this device's own removal took effect and it made a new key: the removed key cannot sign, and the new one is not added yet.
             public static let thisDeviceRemoved = "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加を依頼してください。"
+            /// Said instead of the confirmation when this device is the one to remove and decisions signed with its key wait to be sent.
+            public static let keptDecisions = "まだ送れていない決定がこの端末に残っています。この端末を削除すると、この鍵で署名したそれらの決定はすべて無効になります。送り終えてから削除してください。"
+            /// Said when the list the node gave just before the removal is not the one the person confirmed.
+            public static let listChanged = "端末の一覧が、確認したときと変わっていました。一覧を読み直したので、もう一度確認してください。"
             public static func keyNotMade(_ reason: String) -> String { "端末は削除しましたが、この端末は新しい鍵を作れませんでした: \(reason)" }
             public static let confirm = "この端末を削除する"
             public static let cancel = "キャンセル"
@@ -62,6 +66,15 @@ extension Ja {
                 "ここでは削除を依頼しました。ルート鍵のノードが署名すると有効になります。そのノードで \(command) を実行してください。"
             }
             public static func faceIDReason(_ label: String) -> String { "端末を削除する: \(label)" }
+        }
+
+        /// An outcome the app does not know, with no message of the node's: never a success, so it says what is known and where the result is.
+        public static let unknownOutcome = "ノードが、このアプリの知らない答えを返しました。結果は端末の一覧で確かめてください。"
+
+        /// What is said for an outcome the app does not know: the node's own message when it has one, and else that it is not known.
+        public static func unknownOutcome(_ message: String?) -> String {
+            guard let message, !message.isEmpty else { return unknownOutcome }
+            return message
         }
 
         public static func queued(_ message: String?) -> String {

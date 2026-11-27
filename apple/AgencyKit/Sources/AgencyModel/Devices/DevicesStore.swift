@@ -60,6 +60,7 @@ public final class DevicesStore {
     @ObservationIgnored private let adder: any DeviceAdder
     @ObservationIgnored private let ownKey: String
     @ObservationIgnored private let remover: (any DeviceRemover)?
+    @ObservationIgnored private let hasKeptDecisions: @MainActor () -> Bool
     /// The node's list as last read, which a removal is worked out from.
     @ObservationIgnored private var list: DeviceList?
 
@@ -73,10 +74,18 @@ public final class DevicesStore {
         self.adder = adder
         self.ownKey = ownKey?.string ?? ""
         remover = nil
+        hasKeptDecisions = { false }
     }
 
-    /// - Parameter remover: removes a device of the person's; `nil` where this build has no way to (the removal is then not offered).
-    public init(source: any DevicesSource, adder: any DeviceAdder, ownKey: DevicePublicKey, remover: (any DeviceRemover)? = nil) {
+    /// - Parameters:
+    ///   - remover: removes a device of the person's; `nil` where this build has no way to (the removal is then not offered).
+    ///   - hasKeptDecisions: whether decisions signed with this device's key are kept on it, waiting to be sent. This device is not
+    ///     removed while they are, since removing its key would make each of them fail for good.
+    public init(
+        source: any DevicesSource, adder: any DeviceAdder, ownKey: DevicePublicKey, remover: (any DeviceRemover)? = nil,
+        hasKeptDecisions: @escaping @MainActor () -> Bool = { false }
+    ) {
+        self.hasKeptDecisions = hasKeptDecisions
         self.source = source
         self.adder = adder
         self.ownKey = ownKey.string
@@ -111,7 +120,7 @@ public final class DevicesStore {
 
     /// What removing this device comes to, from the node's list as last read.
     public func removalPlan(for row: DeviceFacts.Row) -> DeviceRemovalPlan? {
-        list.map { DeviceRemovalPlan(for: row, in: $0, ownKey: ownKey) }
+        list.map { DeviceRemovalPlan(for: row, in: $0, ownKey: ownKey, hasKeptDecisions: hasKeptDecisions()) }
     }
 
     /// Removes the device, after the person has confirmed. The device leaves the list when the node stops listing it: not before, and not
@@ -125,12 +134,19 @@ public final class DevicesStore {
         }
         removing.insert(row.id)
         defer { removing.remove(row.id) }
+        // The list the person confirmed may be old, and the rule about the last device is the client's: it is read again, and the plan
+        // is made again from it, before anything is signed. A plan that is not what was confirmed is not carried out.
+        await refresh()
+        guard loadFailure == nil, let current = removalPlan(for: row), current == plan else {
+            removalFailures[row.id] = loadFailure.map(Ja.Devices.Remove.failed) ?? Ja.Devices.Remove.listChanged
+            return
+        }
         do {
             let results = try await remover.remove(plan)
-            say(results, of: plan, row: row)
+            say(results, of: plan, row: row, isComplete: true)
             await refresh()
         } catch let partly as DeviceChangePartlyAnswered {
-            say(partly.answered, of: plan, row: row)
+            say(partly.answered, of: plan, row: row, isComplete: false)
             removalFailures[row.id] = Ja.Devices.Remove.failed(DeskStore.reason(partly.cause))
         } catch {
             removalFailures[row.id] = Ja.Devices.Remove.failed(DeskStore.reason(error))
@@ -139,11 +155,11 @@ public final class DevicesStore {
 
     /// What the node answered, said for the removal. A removal the root's node holds, or an outcome this app does not know that the node
     /// explains, is said as it is and kept on the device's row; anything else that came back took effect, and a node that was asleep says so.
-    private func say(_ results: [DeviceChangeResult], of plan: DeviceRemovalPlan, row: DeviceFacts.Row) {
+    private func say(_ results: [DeviceChangeResult], of plan: DeviceRemovalPlan, row: DeviceFacts.Row, isComplete: Bool) {
         let held = results.compactMap { result -> String? in
             switch result.outcome {
             case .pending: Ja.Devices.Remove.pendingRoot(command: RootChangeNotice.command)
-            case .unknown: result.message
+            case .unknown: Ja.Devices.unknownOutcome(result.message)
             case .applied, .delivered, .queued: nil
             }
         }
@@ -154,7 +170,8 @@ public final class DevicesStore {
             removalNotes[row.id] = lines.joined(separator: "\n")
             return
         }
-        if plan.isThisDevice { didRemoveThisDevice = true }
+        // A new key is made only when every org took the removal: with one that failed, the key still signs there and can be tried again.
+        if plan.isThisDevice && isComplete { didRemoveThisDevice = true }
         var notice = [Ja.Devices.Remove.removed(plan.label)] + lines
         if !plan.stillIn.isEmpty { notice.append(Ja.Devices.Remove.stillIn(plan.stillIn.joined(separator: "、"))) }
         removedNotice = notice.joined(separator: "\n")
@@ -202,7 +219,7 @@ public final class DevicesStore {
         let heldWords = results.compactMap { result -> String? in
             switch result.outcome {
             case .pending: RootChangeNotice.approvedHere
-            case .unknown: result.message
+            case .unknown: Ja.Devices.unknownOutcome(result.message)
             case .applied, .delivered, .queued: nil
             }
         }

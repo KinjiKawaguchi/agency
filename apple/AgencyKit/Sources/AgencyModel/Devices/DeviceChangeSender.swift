@@ -91,14 +91,19 @@ public struct DeviceChangeSender: Sendable {
         guard !plan.isBlocked else { throw DeviceChangeSenderError.nowhereToRemove }
         _ = try await poster.refreshSession()
         let me = try await poster.me()
-        var results: [DeviceChangeResult] = []
+        var changes: [DeviceChange] = []
         for target in plan.targets {
             let now = Timestamp.string(from: await poster.nodeNow())
             let change = DeviceChange(org: target.org, account: me.account.id, operation: .remove(target.deviceID), at: now)
             try change.validate()
-            let text = try signedText(kind: .device, body: change.json)
-            let signature = try await signer.sign(text, reason: Ja.Devices.Remove.faceIDReason(plan.label))
-            let signed = SignedDeviceChange(change: change, signer: target.signer, signature: signature.base64EncodedString())
+            changes.append(change)
+        }
+        // All of them are signed on one confirmation, before the first is sent: the person is asked once for what the confirmation listed.
+        let texts = try changes.map { try signedText(kind: .device, body: $0.json) }
+        let signatures = try await signer.signEach(texts, reason: Ja.Devices.Remove.faceIDReason(plan.label))
+        var results: [DeviceChangeResult] = []
+        for (index, target) in plan.targets.enumerated() {
+            let signed = SignedDeviceChange(change: changes[index], signer: target.signer, signature: signatures[index].base64EncodedString())
             do {
                 results.append(try await poster.submitDeviceChange(signed))
             } catch where !results.isEmpty {

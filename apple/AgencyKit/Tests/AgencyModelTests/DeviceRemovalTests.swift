@@ -116,6 +116,11 @@ private final class ReasonSigner: DeviceSigner, @unchecked Sendable {
         lock.withLock { _reasons.append(reason) }
         return try await Keys.own.sign(text, reason: reason)
     }
+    /// Asks once for all of them, as the app's signer does.
+    func signEach(_ texts: [Data], reason: String) async throws -> [Data] {
+        lock.withLock { _reasons.append(reason) }
+        return try await texts.asyncMap { try await Keys.own.sign($0, reason: reason) }
+    }
 }
 
 @Suite("Device removal sender")
@@ -136,7 +141,7 @@ struct DeviceRemovalSenderTests {
             let text = try signedText(kind: .device, body: sent.change.json)
             #expect(Keys.own.publicKey.verifies(try #require(Data(base64Encoded: sent.signature)), over: text))
         }
-        #expect(signer.reasons == ["端末を削除する: Old phone", "端末を削除する: Old phone"])
+        #expect(signer.reasons == ["端末を削除する: Old phone"], "one confirmation for what the confirmation listed, not one for each org")
     }
 
     @Test("a removal that cannot be made signs nothing and asks for nothing")
@@ -168,13 +173,18 @@ struct DeviceRemovalSenderTests {
 private final class ListSource: DevicesSource, @unchecked Sendable {
     private let lock = NSLock()
     private var _list: DeviceList
-    private var fails = false
+    private var reads = 0
+    private var failsFrom = Int.max
     init(_ list: DeviceList) { _list = list }
     func set(_ list: DeviceList) { lock.withLock { _list = list } }
-    /// From now on the node cannot be asked.
-    func fail() { lock.withLock { fails = true } }
+    /// The node cannot be asked from the `read`th time on (the first read is 1).
+    func fail(from read: Int) { lock.withLock { failsFrom = read } }
     func devices() async throws -> DeviceList {
-        try lock.withLock { if fails { throw NodeError.http(status: 502, message: nil) }; return _list }
+        try lock.withLock {
+            reads += 1
+            if reads >= failsFrom { throw NodeError.http(status: 502, message: nil) }
+            return _list
+        }
     }
     func heldChanges() async throws -> [RootChangeRef] { [] }
 }
@@ -252,9 +262,57 @@ struct DeviceRemovalStoreTests {
         let store = store(source, remover)
         await store.refresh()
         let target = try row(store, Keys.phone)
-        source.fail()
+        source.fail(from: 3)
         await store.remove(target)
         #expect(store.removedNotice != nil && store.rows.contains { $0.id == target.id } && store.loadFailure != nil)
+    }
+
+    @Test("the list is read again before anything is signed: one that cannot be read, or that is not the one confirmed, signs nothing")
+    func staleList() async throws {
+        let source = ListSource(list([("acme", both), ("beta", both)]))
+        let remover = ScriptedRemover()
+        let store = store(source, remover)
+        await store.refresh()
+        let target = try row(store, Keys.phone)
+        source.set(list([("acme", both), ("beta", [device(Keys.phone, "Old phone")])]))
+        await store.remove(target)
+        #expect(remover.plans.isEmpty && store.removalFailures[target.id] == Ja.Devices.Remove.listChanged, "the last device rule is applied to the list as it is now")
+        #expect(store.removalPlan(for: try row(store, Keys.phone))?.lastIn == ["beta"], "and the list is read again for the person to confirm again")
+        source.fail(from: 1)
+        await store.remove(target)
+        #expect(remover.plans.isEmpty && store.removalFailures[target.id]?.hasPrefix("端末を削除できませんでした") == true)
+    }
+
+    @Test("this device is not removed while decisions signed with its key are kept on it; another device is")
+    func keptDecisions() async throws {
+        let source = ListSource(list([("acme", both)]))
+        let remover = ScriptedRemover()
+        let store = DevicesStore(source: source, adder: NoAdd(), ownKey: Keys.own.publicKey, remover: remover, hasKeptDecisions: { true })
+        await store.refresh()
+        let own = try row(store, Keys.own)
+        #expect(store.removalPlan(for: own)?.canConfirm == false && store.removalPlan(for: own)?.message == Ja.Devices.Remove.keptDecisions)
+        await store.remove(own)
+        #expect(remover.plans.isEmpty && store.removalFailures[own.id]?.contains("送れていない決定") == true)
+        #expect(store.removalPlan(for: try row(store, Keys.phone))?.canConfirm == true)
+        await store.remove(try row(store, Keys.phone))
+        #expect(remover.plans.count == 1)
+    }
+
+    @Test("a new key is made only when this device was removed in every org: not while one holds it, and not when one failed")
+    func newKeyOnlyWhenComplete() async throws {
+        let twoOrgs = list([("acme", both), ("beta", both)])
+        let held = ScriptedRemover()
+        held.set(.success([DeviceChangeResult(outcome: .applied, message: nil), DeviceChangeResult(outcome: .pending, message: nil)]))
+        let heldStore = store(ListSource(twoOrgs), held)
+        await heldStore.refresh()
+        await heldStore.remove(try row(heldStore, Keys.own))
+        #expect(!heldStore.didRemoveThisDevice)
+        let failed = ScriptedRemover()
+        failed.set(.failure(DeviceChangePartlyAnswered(answered: [DeviceChangeResult(outcome: .applied, message: nil)], cause: NodeError.http(status: 500, message: "no"))))
+        let failedStore = store(ListSource(twoOrgs), failed)
+        await failedStore.refresh()
+        await failedStore.remove(try row(failedStore, Keys.own))
+        #expect(!failedStore.didRemoveThisDevice && failedStore.removalFailures.count == 1)
     }
 
     @Test("a removal the root's node holds is said as asked and kept on the device's row, and is not asked for again")
@@ -275,7 +333,7 @@ struct DeviceRemovalStoreTests {
         #expect(store.removalNotes.isEmpty, "the note goes with the device")
     }
 
-    @Test("an outcome the app does not know is said with the node's message and is not a removal; with no message it is taken as done")
+    @Test("an outcome the app does not know is never a removal: said with the node's message, or without one that it is not known and the list shows the result")
     func unknown() async throws {
         let source = ListSource(list([("acme", both)]))
         let remover = ScriptedRemover()
@@ -285,12 +343,23 @@ struct DeviceRemovalStoreTests {
         let target = try row(store, Keys.phone)
         await store.remove(target)
         #expect(store.removalNotes[target.id] == "It will take a while." && store.removedNotice == nil)
+        #expect(Ja.Devices.unknownOutcome == "ノードが、このアプリの知らない答えを返しました。結果は端末の一覧で確かめてください。")
         let silent = ScriptedRemover()
         silent.set(.success([DeviceChangeResult(outcome: .unknown("later"), message: nil)]))
         let other = self.store(source, silent)
         await other.refresh()
-        await other.remove(try row(other, Keys.phone))
-        #expect(other.removalNotes.isEmpty && other.removedNotice != nil)
+        let silentTarget = try row(other, Keys.phone)
+        await other.remove(silentTarget)
+        #expect(other.removalNotes[silentTarget.id] == Ja.Devices.unknownOutcome && other.removedNotice == nil && !other.didRemoveThisDevice)
+        source.set(list([("acme", [device(Keys.own, "This phone")])]))
+        await other.refresh()
+        #expect(other.rows.count == 1 && other.removalNotes.isEmpty, "the list is read again and shows the result")
+        let own = ScriptedRemover()
+        own.set(.success([DeviceChangeResult(outcome: .unknown("later"), message: nil)]))
+        let ownStore = self.store(ListSource(list([("acme", both)])), own)
+        await ownStore.refresh()
+        await ownStore.remove(try row(ownStore, Keys.own))
+        #expect(!ownStore.didRemoveThisDevice, "no new key is made for an answer that is not known")
     }
 
     @Test("a refusal says why, can be tried again, and a later org's failure keeps what an earlier one held")
@@ -352,5 +421,13 @@ struct DeviceRemovalStoreTests {
         remover.release()
         await first.value
         #expect(store.removing.isEmpty)
+    }
+}
+
+private extension Array {
+    func asyncMap<T>(_ transform: (Element) async throws -> T) async rethrows -> [T] {
+        var result: [T] = []
+        for element in self { result.append(try await transform(element)) }
+        return result
     }
 }
