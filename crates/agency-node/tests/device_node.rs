@@ -36,10 +36,15 @@ async fn through_access_only_the_owner_is_given_the_command() {
     let owner = devices_through_access(&running, "alice@example.com").await;
     assert_eq!(owner["node"], expected_node(&running.url()), "{owner}");
 
-    let other = devices_through_access(&running, "carol@example.com").await;
-    assert!(
-        other.get("node").is_none(),
-        "a signed-in email that is not the owner's reads the list without the node: {other}"
+    let request = get(&running, "/api/devices")
+        .header("host", PUBLIC_HOST)
+        .header(
+            "cf-access-jwt-assertion",
+            access_token("carol@example.com", |_| {}),
+        );
+    let (status, other) = body(request.send().await.unwrap()).await;
+    assert_eq!(
+        status, 403,
+        "a sign-in that is neither the owner nor a guest reads nothing: {other}"
     );
-    assert!(other["orgs"].is_array() && other["requests"].is_array());
 }

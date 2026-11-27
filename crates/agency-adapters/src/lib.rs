@@ -19,6 +19,7 @@ pub mod memory;
 pub mod metrics;
 pub mod peers;
 mod push_facts;
+pub mod raw_path;
 pub mod refusal_log;
 pub mod root_keys;
 pub mod runtime;
