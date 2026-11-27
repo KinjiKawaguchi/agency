@@ -8,19 +8,21 @@ use agency_adapters::memory::{CountingRandom, ManualClock, MemoryRuntime, NoNoti
 use agency_adapters::peers::HttpPeers;
 use agency_core::config::{Account, NodeConfig};
 use agency_core::devices::accept_device_change;
-use agency_core::invites::{accept_join, invite};
+use agency_core::invites::{accept_join, invite, InviteRecord};
 use agency_core::orgs::{self, receive};
 use agency_core::ports::{ConfigStore, WriteLock};
 use agency_core::{ErrorKind, Node, Ports};
 use agency_proto::device::{DeviceChange, DeviceOp};
-use agency_proto::invite::Invite;
+use agency_proto::invite::{code_digest, Invite};
 use agency_proto::org::{Root, SignedOrg};
 use agency_proto::{
     AccountKey, Device, Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed, Timestamp,
 };
 use async_trait::async_trait;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
 
 const T0: &str = "2026-11-24T12:00:00Z";
@@ -270,4 +272,128 @@ async fn a_join_that_is_forged_stale_or_without_an_open_invite_is_refused_withou
         1,
         "a join with an open invite waits its turn"
     );
+}
+
+/// Runs `request` while the test holds the node's write lock, waits until it is queued behind it (it has made
+/// the checks it makes before the lock), lets `change` alter what the node keeps, and then lets the lock go.
+/// Returns what the request answered once it got its turn: the state it checked before the lock is gone by then.
+async fn answered_after_a_change<T, F>(
+    fixture: &Arc<Fixture>,
+    request: F,
+    change: impl FnOnce(&Fixture),
+) -> T
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let guard = fixture.lock.lock().await;
+    let held = fixture.takers();
+    let task = tokio::spawn(request);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while fixture.takers() == held {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the request queues for the lock");
+    change(fixture);
+    drop(guard);
+    task.await.unwrap()
+}
+
+#[tokio::test]
+async fn a_join_whose_invite_was_used_while_it_waited_for_the_lock_is_refused() {
+    let alice = Arc::new(alice());
+    let code = Invite::parse(&invite(&alice.node, &id("acme"), None, Role::Member).unwrap())
+        .unwrap()
+        .code;
+    let bob = AccountKey::generate();
+    let request = join_request(&code, &bob, &bob, T0);
+    let queued = alice.clone();
+    let answer = answered_after_a_change(
+        &alice,
+        async move { accept_join(&queued.node, &id("acme"), request).await },
+        |fixture| {
+            let digest = code_digest(&code);
+            let record = fixture.node.store().load_invite(&digest).unwrap();
+            let used = InviteRecord {
+                used_by: Some(id("carol")),
+                ..record
+            };
+            fixture.node.store().save_invite(&digest, &used).unwrap();
+        },
+    )
+    .await;
+    assert_eq!(
+        answer.unwrap_err().kind,
+        ErrorKind::Forbidden,
+        "the invite was open when the join arrived and used when it got its turn"
+    );
+    let org = alice.node.store().load_org(&id("acme")).unwrap();
+    assert!(org.body.member(&id("bob")).is_none(), "bob did not get in");
+}
+
+#[tokio::test]
+async fn a_device_change_whose_key_was_removed_while_it_waited_for_the_lock_is_refused() {
+    let alice = Arc::new(alice());
+    let change = device_change("alice", &laptop());
+    let queued = alice.clone();
+    let answer = answered_after_a_change(
+        &alice,
+        async move { accept_device_change(&queued.node, &id("acme"), change).await },
+        |fixture| {
+            orgs::amend(&fixture.node, &id("acme"), |body| {
+                body.people[0].devices.clear();
+                body.revoked.push(laptop().public());
+                Ok(())
+            })
+            .unwrap();
+        },
+    )
+    .await;
+    assert_eq!(
+        answer.unwrap_err().kind,
+        ErrorKind::NotFound,
+        "the key signed for a device the org had when the change arrived and no longer has"
+    );
+    let org = alice.node.store().load_org(&id("acme")).unwrap();
+    assert!(org.body.people[0].devices.is_empty(), "no device was added");
+}
+
+#[tokio::test]
+async fn a_definition_checked_against_a_root_that_changed_while_it_waited_is_refused() {
+    let carol = Arc::new(node_of("carol"));
+    let (root, other) = (AccountKey::generate(), AccountKey::generate());
+    carol
+        .node
+        .update_config(|config| config.trust(id("acme"), root.public().fingerprint()))
+        .unwrap();
+    receive(&carol.node, definition(&root, &root))
+        .await
+        .unwrap();
+    let current = carol.node.store().load_org(&id("acme")).unwrap();
+    let mut body = OrgDefinition::successor_of(&current, T0.into());
+    body.label = "Acme again".into();
+    let next = Signed::sign(Kind::Org, body, id("alice"), &root).unwrap();
+
+    let queued = carol.clone();
+    let answer = answered_after_a_change(
+        &carol,
+        async move { receive(&queued.node, next).await },
+        |fixture| {
+            fixture
+                .node
+                .store()
+                .save_org(&definition(&other, &other))
+                .unwrap();
+        },
+    )
+    .await;
+    assert_eq!(
+        answer.unwrap_err().kind,
+        ErrorKind::NotFound,
+        "signed by the root the copy had when it arrived, and not the one it has when it gets its turn"
+    );
+    let kept = carol.node.store().load_org(&id("acme")).unwrap();
+    assert_eq!(kept.body.label, "Acme", "the version was not taken");
 }
