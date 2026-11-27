@@ -125,16 +125,20 @@ mod tests {
 
     fn org(teams: &[(&str, Option<u32>)]) -> OrgDefinition {
         let root = Root::new(id("alice"), AccountKey::from_seed([1; 32]).public());
-        OrgDefinition::new(id("acme"), "Acme".into(), root, "2026-11-24T12:00:00Z".into())
-            .with_teams(
-                teams
-                    .iter()
-                    .map(|(name, cap)| {
-                        TeamPlace::new(id(name), *name, "https://node.example")
-                            .with_plan(cap.map(plan))
-                    })
-                    .collect(),
-            )
+        OrgDefinition::new(
+            id("acme"),
+            "Acme".into(),
+            root,
+            "2026-11-24T12:00:00Z".into(),
+        )
+        .with_teams(
+            teams
+                .iter()
+                .map(|(name, cap)| {
+                    TeamPlace::new(id(name), *name, "https://node.example").with_plan(cap.map(plan))
+                })
+                .collect(),
+        )
     }
 
     fn start() -> Date {
@@ -142,7 +146,10 @@ mod tests {
     }
 
     fn spends(entries: &[(&str, Option<f64>)]) -> BTreeMap<Id, Option<f64>> {
-        entries.iter().map(|(team, spent)| (id(team), *spent)).collect()
+        entries
+            .iter()
+            .map(|(team, spent)| (id(team), *spent))
+            .collect()
     }
     #[test]
     fn monday_in_nodes_offset() {
@@ -177,7 +184,10 @@ mod tests {
         )
         .unwrap();
         assert!(report.team.partial);
-        assert!(report.org.partial, "the selected team counts toward partial");
+        assert!(
+            report.org.partial,
+            "the selected team counts toward partial"
+        );
         assert_eq!(report.team.cap_usd, None);
     }
 
