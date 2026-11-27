@@ -23,6 +23,7 @@ fn merged(title: &str, merged_at: &str) -> MergedPullRequest {
         has_issue: false,
         issue_started_at: None,
         closes_incident: false,
+        work_type: None,
     }
 }
 
@@ -225,4 +226,20 @@ fn a_fix_of_an_issue_labeled_incident_is_incident_and_only_a_fix_is() {
     assert_eq!(team.by_day[0].cost_usd.incident, 2.0);
     assert_eq!(team.by_day[0].cost_usd.new_feature, 2.0);
     assert_eq!(team.by_day[0].cost_usd.maintenance, 0.0);
+}
+
+#[test]
+fn the_boards_work_type_decides_before_the_title() {
+    let mut improvement = merged("feat(web): a screen", "2026-11-24T01:00:00Z");
+    improvement.work_type = Some(agency_proto::view::WorkType::Improvement);
+    let mut debt = merged("fix(web): a crash", "2026-11-24T02:00:00Z");
+    debt.work_type = Some(agency_proto::view::WorkType::Debt);
+    debt.closes_incident = true;
+    let team = run(&[improvement, debt], &[("2026-11-24", 4.0)]);
+    let cost = team.by_day[0].cost_usd;
+    assert_eq!((cost.improvement, cost.debt), (2.0, 2.0));
+    assert_eq!(
+        (cost.new_feature, cost.maintenance, cost.incident),
+        (0.0, 0.0, 0.0)
+    );
 }
