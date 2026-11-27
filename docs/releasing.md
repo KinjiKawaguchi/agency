@@ -32,6 +32,8 @@ The script refuses a tree that is not at the tag, builds the web client and the 
 
 The macOS binaries are not signed and not notarized. A browser download is quarantined by macOS and will not open until `xattr -d com.apple.quarantine agency` (`gh release download` and `curl` do not quarantine).
 
+6. Keep what the release wrote: `scripts/release/snapshot-data.sh vX.Y.Z`, in a pull request of its own (see "Keeping what the release wrote" below).
+
 ## Keeping what the release wrote
 
 Upgrades are forward-only, so every later build must read the data an earlier release wrote ([compatibility.md](compatibility.md), "Checks in CI"). After a release is tagged, on any machine with the repository and Rust, keep its data:
@@ -43,7 +45,7 @@ scripts/release/snapshot-data.sh vX.Y.Z
 
 The script builds the tag in a temporary worktree and runs two nodes of that build through a fixed sequence: alice makes the org `acme` and the team `app`, adds a device and serves; bob joins and reads alice's team once; alice answers the team's one request. It writes the two data directories to `testdata/releases/vX.Y.Z/data/alice` and `.../bob`, without their logs and without local paths. The keys in them are test keys made by that run; the org's root key is kept outside a data directory and is not written. Commit the directory in a pull request of its own (`test: keep the data of vX.Y.Z`).
 
-`crates/agency-node/tests/earlier_releases.rs` starts today's node on a copy of every kept data directory and reads everything in it, so the pull request's checks say whether the new release still reads the old one's data. Keep the last two minor releases, which is as far as the 90-day overlaps of the policy reach: when a third minor release is snapshotted, remove the oldest `testdata/releases/` directory in the same pull request.
+`crates/agency-node/tests/earlier_releases.rs` starts today's node on a copy of every kept data directory and reads everything in it, so the pull request's checks say whether the new release still reads the old one's data. Each release adds its snapshot and drops the one of the minor release three back, so `testdata/releases/` holds the release just made and the two minor releases before it, which is as far as the 90-day overlaps of the policy reach (for 0.5.0: 0.5, 0.4 and 0.3; the snapshot of 0.2 is removed in the same pull request).
 
 ## Tags: one artifact, one prefix
 
