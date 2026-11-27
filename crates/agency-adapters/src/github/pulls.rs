@@ -1,6 +1,7 @@
 //! The merged pull requests of a repository, with their first commit and the board moves of the issues
 //! they close, in one GraphQL query for each page of 50.
 use super::gh::{Gh, GhError};
+use super::Repo;
 use agency_core::delivery::{board_work_type, MergedPullRequest};
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::view::WorkType;
@@ -201,8 +202,7 @@ fn read_page(
 /// The pull requests of `owner/name` merged since `since`.
 pub async fn merged_since(
     gh: &dyn Gh,
-    owner: &str,
-    name: &str,
+    repo: &Repo<'_>,
     since: OffsetDateTime,
 ) -> Result<Vec<MergedPullRequest>, GhError> {
     let mut all = vec![];
@@ -214,16 +214,17 @@ pub async fn merged_since(
             "-f",
             &format!("query={QUERY}"),
             "-f",
-            &format!("owner={owner}"),
+            &format!("owner={}", repo.owner),
             "-f",
-            &format!("name={name}"),
+            &format!("name={}", repo.name),
         ]
         .map(String::from)
         .to_vec();
+        args.splice(2..2, repo.host_args());
         if let Some(cursor) = &after {
             args.extend(["-f".into(), format!("after={cursor}")]);
         }
-        let (found, next) = read_page(&format!("{owner}/{name}"), &gh.run(&args).await?, since)?;
+        let (found, next) = read_page(&repo.full_name(), &gh.run(&args).await?, since)?;
         all.extend(found);
         match next {
             Some(cursor) => after = Some(cursor),

@@ -4,6 +4,7 @@ mod gh;
 mod pulls;
 mod runs;
 
+use agency_core::config::DeliveryConfig;
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{DeliveryError, DeliverySource};
 use agency_proto::clock::OffsetDateTime;
@@ -43,26 +44,65 @@ fn split_repo(repo: &str) -> Option<(&str, &str)> {
     (valid(owner) && valid(name)).then_some((owner, name))
 }
 
+/// A GitHub host name: dot-separated labels of letters, digits and hyphens, none starting or ending with a
+/// hyphen. It goes to `gh` as the value of `--hostname`, so nothing else is let in.
+fn is_host_name(host: &str) -> bool {
+    let is_label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    host.len() <= 253 && host.split('.').all(is_label)
+}
+
+/// A repository to read: `owner/name` on a host that `gh` is told, unless it is github.com.
+pub(super) struct Repo<'a> {
+    host: Option<&'a str>,
+    owner: &'a str,
+    name: &'a str,
+}
+
+impl Repo<'_> {
+    fn full_name(&self) -> String {
+        format!("{}/{}", self.owner, self.name)
+    }
+
+    /// What tells `gh` which host to ask: nothing for github.com, so that its call is the same as ever.
+    fn host_args(&self) -> Vec<String> {
+        self.host
+            .map(|host| vec!["--hostname".to_owned(), host.to_owned()])
+            .unwrap_or_default()
+    }
+}
+
 #[async_trait]
 impl DeliverySource for GithubDelivery {
     async fn facts(
         &self,
-        repos: &[String],
+        source: &DeliveryConfig,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError> {
+        let host = source.custom_host();
+        if host.is_some_and(|host| !is_host_name(host)) {
+            return Err(DeliveryError(
+                "the GitHub host the team names is not a host name".into(),
+            ));
+        }
         let mut facts = DeliveryFacts::default();
-        for repo in repos {
+        for repo in &source.repos {
             let (owner, name) = split_repo(repo).ok_or_else(|| {
                 DeliveryError("a repository of the team is not written owner/name".into())
             })?;
-            let fail = |error: GhError| DeliveryError(error.reason().into());
+            let repo = Repo { host, owner, name };
+            let fail = |error: GhError| DeliveryError(error.reason(host.is_some()).into());
             facts.pull_requests.extend(
-                pulls::merged_since(self.gh.as_ref(), owner, name, since)
+                pulls::merged_since(self.gh.as_ref(), &repo, since)
                     .await
                     .map_err(fail)?,
             );
             facts.runs.extend(
-                runs::main_runs(self.gh.as_ref(), owner, name, since)
+                runs::main_runs(self.gh.as_ref(), &repo, since)
                     .await
                     .map_err(fail)?,
             );

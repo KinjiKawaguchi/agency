@@ -480,6 +480,13 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
+- リポジトリが GitHub Enterprise Server にあるチームは、`delivery.host` にそのホスト名を書きます。スキーム、パス、ポートのないホスト名で、書かなければ `github.com` です。
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  このとき `owner/name` は、そのホスト名の GitHub にあるリポジトリです。ノードは `gh` にホスト名を伝え（`gh api --hostname`。`GH_HOST` より優先されます）、github.com と同じ問い合わせをするので、そのホスト名の GitHub が答えられる必要があります（ボードのプロジェクトのイベントに対応していない古い Server は、エラーで答えます）。ノードに必要なログインは、そのホスト名のものです。ノードを動かすアカウントで `gh auth login --hostname git.example.com` を実行します。下の助言も同じです。ホスト名を書かないチームと `github.com` のチームは、これまでどおりに読みます。下の表の「the GitHub host the team names」で始まる理由は、そのホスト名を出しません。理由は、そのチームを読むすべての人に届くからです。
 - ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
@@ -495,6 +502,10 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | the GitHub CLI (gh) on the team's node is not logged in | そのノードを動かすアカウントで `gh auth login` を実行します。 |
 | GitHub's rate limit is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | そのノードを動かすアカウントで `gh auth login --hostname <ホスト名>` を実行します。 |
+| the rate limit of the GitHub host the team names is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
+| the GitHub host the team names did not answer in time, or did not answer the request | そのマシンからそのホスト名へのネットワークと、ログインがリポジトリを読めること、github.com と同じ問い合わせにそのホスト名が答えられることを確かめます。 |
+| the GitHub host the team names is not a host name | チームが動いているノードの設定の `delivery.host` を直します。`git.example.com` のようなホスト名で、スキーム、パス、ポートは付けません。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |

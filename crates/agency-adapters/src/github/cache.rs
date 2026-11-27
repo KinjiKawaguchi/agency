@@ -1,5 +1,6 @@
 //! Keeps what GitHub said for a short while, so that a screen that is read often does not spend the rate
 //! limit of the machine's `gh` login. Nothing is written to disk.
+use agency_core::config::DeliveryConfig;
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{DeliveryError, DeliverySource};
 use agency_proto::clock::OffsetDateTime;
@@ -8,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-type Key = (Vec<String>, i64);
+type Key = (DeliveryConfig, i64);
 
 pub struct CachedDelivery<D> {
     inner: D,
@@ -36,16 +37,16 @@ impl<D> CachedDelivery<D> {
 impl<D: DeliverySource> DeliverySource for CachedDelivery<D> {
     async fn facts(
         &self,
-        repos: &[String],
+        source: &DeliveryConfig,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError> {
-        let key = (repos.to_vec(), since.unix_timestamp());
+        let key = (source.clone(), since.unix_timestamp());
         if let Some((at, facts)) = self.lock().get(&key) {
             if at.elapsed() < self.kept_for {
                 return Ok(facts.clone());
             }
         }
-        let facts = self.inner.facts(repos, since).await?;
+        let facts = self.inner.facts(source, since).await?;
         let mut kept = self.lock();
         kept.retain(|_, (at, _)| at.elapsed() < self.kept_for);
         kept.insert(key, (Instant::now(), facts.clone()));
@@ -69,6 +70,13 @@ mod tests {
         (CachedDelivery::new(memory.clone(), kept_for), memory)
     }
 
+    fn source(host: Option<&str>, repos: &[&str]) -> DeliveryConfig {
+        DeliveryConfig {
+            repos: repos.iter().map(|repo| repo.to_string()).collect(),
+            host: host.map(str::to_owned),
+        }
+    }
+
     fn asked(memory: &MemoryDelivery) -> usize {
         memory.0.lock().unwrap().asked.len()
     }
@@ -76,7 +84,7 @@ mod tests {
     #[tokio::test]
     async fn answers_the_same_question_from_memory_for_a_while() {
         let (delivery, memory) = cached(Duration::from_secs(60));
-        let repos = vec!["acme/app".to_string()];
+        let repos = source(None, &["acme/app"]);
         let since = at("2026-11-10T00:00:00Z");
         delivery.facts(&repos, since).await.unwrap();
         delivery.facts(&repos, since).await.unwrap();
@@ -84,9 +92,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn another_repository_or_period_is_another_question() {
+    async fn another_repository_host_or_period_is_another_question() {
         let (delivery, memory) = cached(Duration::from_secs(60));
-        let (app, web) = (vec!["acme/app".to_string()], vec!["acme/web".to_string()]);
+        let app = source(None, &["acme/app"]);
+        let web = source(None, &["acme/web"]);
+        let enterprise = source(Some("git.example.test"), &["acme/app"]);
         delivery
             .facts(&app, at("2026-11-10T00:00:00Z"))
             .await
@@ -99,13 +109,17 @@ mod tests {
             .facts(&app, at("2026-11-11T00:00:00Z"))
             .await
             .unwrap();
-        assert_eq!(asked(&memory), 3);
+        delivery
+            .facts(&enterprise, at("2026-11-10T00:00:00Z"))
+            .await
+            .unwrap();
+        assert_eq!(asked(&memory), 4, "the same repository on another host too");
     }
 
     #[tokio::test]
     async fn asks_again_when_what_it_kept_is_too_old_and_never_keeps_a_failure() {
         let (delivery, memory) = cached(Duration::from_millis(30));
-        let repos = vec!["acme/app".to_string()];
+        let repos = source(None, &["acme/app"]);
         let since = at("2026-11-10T00:00:00Z");
         delivery.facts(&repos, since).await.unwrap();
         tokio::time::sleep(Duration::from_millis(60)).await;

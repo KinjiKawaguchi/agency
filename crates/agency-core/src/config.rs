@@ -53,12 +53,32 @@ impl HostedTeam {
         Self { people, ..self }
     }
 
-    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`).
+    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`)
+    /// on github.com.
     pub fn with_delivery(self, repos: Vec<String>) -> Self {
         Self {
-            delivery: Some(DeliveryConfig { repos }),
+            delivery: Some(DeliveryConfig { repos, host: None }),
             ..self
         }
+    }
+
+    /// The same team, whose delivery numbers are worked out from these repositories (`owner/name`) on
+    /// the GitHub host `host` (a host name, for a GitHub Enterprise Server).
+    pub fn with_delivery_on(self, host: impl Into<String>, repos: Vec<String>) -> Self {
+        Self {
+            delivery: Some(DeliveryConfig {
+                repos,
+                host: Some(host.into()),
+            }),
+            ..self
+        }
+    }
+
+    /// Where the team's delivery numbers come from, when the configuration names at least one repository.
+    pub fn delivery_source(&self) -> Option<&DeliveryConfig> {
+        self.delivery
+            .as_ref()
+            .filter(|delivery| !delivery.repos.is_empty())
     }
 
     /// The same team run by another command.
@@ -256,10 +276,27 @@ pub struct WebPushConfig {
 /// The GitHub repositories (`owner/name`) a hosted team's delivery numbers are worked out from: its
 /// merged pull requests, the issues they close, and the CI runs on their default branches. GitHub is
 /// read with the machine's own `gh` login, read-only; the configuration holds no token.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
+    /// The host the repositories are on: a host name, for a GitHub Enterprise Server. Without it,
+    /// github.com. `gh` is told the host, and its login for that host is the one used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+/// The host that is read when a team names none.
+const GITHUB_COM: &str = "github.com";
+
+impl DeliveryConfig {
+    /// The host `gh` has to be told: the one the team names, unless it is github.com, which `gh` reads
+    /// without being told.
+    pub fn custom_host(&self) -> Option<&str> {
+        self.host
+            .as_deref()
+            .filter(|host| !host.eq_ignore_ascii_case(GITHUB_COM))
+    }
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -558,6 +595,65 @@ mod tests {
             serde_json::from_str::<HostedTeam>(&unknown).is_err(),
             "no other key, a token least of all"
         );
+    }
+
+    #[test]
+    fn a_team_may_name_the_github_host_its_repositories_are_on() {
+        let team = HostedTeam::new(
+            Id::parse("acme").unwrap(),
+            Id::parse("app").unwrap(),
+            Id::parse("owner").unwrap(),
+            RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
+        );
+        let on_github = team.clone().with_delivery(vec!["acme/app".into()]);
+        let source = on_github.delivery_source().unwrap();
+        assert_eq!(source.custom_host(), None, "no host is github.com");
+        assert!(
+            !serde_json::to_string(&on_github).unwrap().contains("host"),
+            "and is written without one"
+        );
+
+        let enterprise = team
+            .clone()
+            .with_delivery_on("git.example.test", vec!["acme/app".into()]);
+        let text = serde_json::to_string(&enterprise).unwrap();
+        assert!(
+            text.contains(r#""delivery":{"repos":["acme/app"],"host":"git.example.test"}"#),
+            "{text}"
+        );
+        let again: HostedTeam = serde_json::from_str(&text).unwrap();
+        assert_eq!(again.delivery, enterprise.delivery);
+        assert_eq!(
+            again.delivery_source().unwrap().custom_host(),
+            Some("git.example.test")
+        );
+
+        let named = team.with_delivery_on("GitHub.com", vec!["acme/app".into()]);
+        assert_eq!(
+            named.delivery_source().unwrap().custom_host(),
+            None,
+            "github.com named is github.com, in any case"
+        );
+    }
+
+    #[test]
+    fn a_team_with_no_repository_has_no_delivery_source() {
+        let team = HostedTeam::new(
+            Id::parse("acme").unwrap(),
+            Id::parse("app").unwrap(),
+            Id::parse("owner").unwrap(),
+            RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
+        );
+        assert!(team.delivery_source().is_none());
+        assert!(team
+            .clone()
+            .with_delivery(vec![])
+            .delivery_source()
+            .is_none());
+        assert!(team
+            .with_delivery(vec!["acme/app".into()])
+            .delivery_source()
+            .is_some());
     }
 
     #[test]

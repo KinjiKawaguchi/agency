@@ -445,6 +445,13 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
+- A team whose repositories are on a GitHub Enterprise Server names its host in `delivery.host`: a host name with no scheme, path or port, and `github.com` when it is left out.
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  `owner/name` is then a repository on that host. The node tells `gh` the host (`gh api --hostname`, which wins over `GH_HOST`) and asks the same questions as for github.com, so the host has to be able to answer them (a Server too old for the board's project events answers with an error). The login the node needs is the host's own: run `gh auth login --hostname git.example.com` as the account that runs the node, with the same advice as below. A team that names no host, or `github.com`, is read exactly as before. The reasons below that say "the GitHub host the team names" never name it, since they go to everyone who reads the team.
 - The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
@@ -460,6 +467,10 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
 | GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
 | GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | Run `gh auth login --hostname <host>` as the account that runs that node. |
+| the rate limit of the GitHub host the team names is used up for now | Wait; the node asks again after ten minutes. |
+| the GitHub host the team names did not answer in time, or did not answer the request | Check that machine's network to the host, that the login can read the repositories, and that the host can answer the same questions as github.com. |
+| the GitHub host the team names is not a host name | Fix `delivery.host` on the node the team runs on: a host name such as `git.example.com`, with no scheme, path or port. |
 | the team's node does not give delivery numbers | That node is older than this feature: update it. |
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
 | the team's runtime does not report token usage | Use a runtime that lists `tokenUsage`; until then the team's effort is not shown. |
