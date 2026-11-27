@@ -237,6 +237,16 @@ struct NodeClientTests {
         #expect(transport.requests.first?.headers["x-agency-token"] == nil)
     }
 
+    @Test("the node's measurements are asked for with the buckets of each hour only when the reader wants them")
+    func metricsQuery() async throws {
+        let answer = #"{"from":"2026-11-24T10:00:00Z","until":"2026-11-24T12:00:00Z","generatedAt":"2026-11-24T11:30:00Z","series":[]}"#
+        let transport = ScriptedTransport([("GET /api/metrics?days=7&hourBuckets=1", json(answer)), ("GET /api/metrics?days=30", json(answer))])
+        let node = client(transport)
+        _ = try await node.metrics(days: 7, hourBuckets: true)
+        _ = try await node.metrics(days: 30)
+        #expect(transport.requests.map(\.path) == ["/api/metrics?days=7&hourBuckets=1", "/api/metrics?days=30"])
+    }
+
     @Test("registering a push token is a write with the token, environment and label")
     func pushToken() async throws {
         let transport = ScriptedTransport([

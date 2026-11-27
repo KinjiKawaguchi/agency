@@ -97,9 +97,10 @@ public actor NodeClient {
     }
 
     /// The node's own response times over the last `days` days (1 to 30). Owner only: anyone else is told 403, and a node that does
-    /// not measure 404.
-    public func metrics(days: Int) async throws -> Metrics {
-        try await get("/api/metrics?days=\(days)")
+    /// not measure 404. `hourBuckets` asks for the buckets of each hour too (`hourBuckets=1`), so that the hours of several series can be
+    /// added and the percentile of their whole read: only for a range with hours (up to 7 days), which is what the trend draws from.
+    public func metrics(days: Int, hourBuckets: Bool = false) async throws -> Metrics {
+        try await get("/api/metrics?days=\(days)" + (hourBuckets ? "&hourBuckets=1" : ""))
     }
 
     /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
