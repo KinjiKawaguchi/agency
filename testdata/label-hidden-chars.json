@@ -1,5 +1,5 @@
 {
-  "about": "The characters a label from the node may hold that reorder or hide how a line reads, as the node's `is_hidden_char` (crates/agency-proto/src/org.rs) has them: every one is printed as `mark`. Ranges are inclusive code points in hex. U+200C, U+200D and the emoji tag characters are not in it. Swift, the web client and the node read this one file.",
+  "about": "The characters a label from the node may hold that reorder or hide how a line reads, as the node's `is_hidden_char` (crates/agency-proto/src/org.rs) has them: every one is printed as `mark`. Ranges are inclusive code points in hex. U+200C, U+200D and the emoji tag characters are not in it. Swift, the web client and the node read this one file. A text an agent or a person wrote with lines (a context, a document, a thread message, a decision's text) hides exactly `hidden` minus `textKeeps` (a tab, a line feed, a carriage return stay: they cannot reorder a line); `textCases` are such texts and what each prints as. Labels and titles use `cases`.",
   "mark": "?",
   "hidden": [
     [
@@ -231,6 +231,133 @@
     {
       "text": "a\u2029b",
       "printable": "a\u2029b"
+    }
+  ],
+  "textKeeps": [
+    "0009",
+    "000A",
+    "000D"
+  ],
+  "textCases": [
+    {
+      "text": "Ship the release",
+      "printable": "Ship the release"
+    },
+    {
+      "text": "Ship\u202e the release",
+      "printable": "Ship? the release"
+    },
+    {
+      "text": "line one\nline two",
+      "printable": "line one\nline two"
+    },
+    {
+      "text": "line one\r\nline two\tindented",
+      "printable": "line one\r\nline two\tindented"
+    },
+    {
+      "text": "a\u200bb\ufeffc",
+      "printable": "a?b?c"
+    },
+    {
+      "text": "Bob\u202acat\nBob\u2066cat",
+      "printable": "Bob?cat\nBob?cat"
+    },
+    {
+      "text": "",
+      "printable": ""
+    },
+    {
+      "text": "\u202e",
+      "printable": "?"
+    },
+    {
+      "text": "\n\n",
+      "printable": "\n\n"
+    },
+    {
+      "text": "\u0001x\u001f\n\u007fy\u009f",
+      "printable": "?x?\n?y?"
+    },
+    {
+      "text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\n\u0915\u094d\u200d\u0937",
+      "printable": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\n\u0915\u094d\u200d\u0937"
+    },
+    {
+      "text": "\ud83d\udc69\u200d\ud83d\udcbb\n\ud83c\udff4\udb40\udc67\udb40\udc7f",
+      "printable": "\ud83d\udc69\u200d\ud83d\udcbb\n\ud83c\udff4\udb40\udc67\udb40\udc7f"
+    },
+    {
+      "text": "# Title\n\n- a\n- b\u202e\n\n```\ncode\n```",
+      "printable": "# Title\n\n- a\n- b?\n\n```\ncode\n```"
+    },
+    {
+      "text": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629 text \u05e2\u05d1\u05e8\u05d9\u05ea",
+      "printable": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629 text \u05e2\u05d1\u05e8\u05d9\u05ea"
+    },
+    {
+      "text": "first line\nsecond line",
+      "printable": "first line\nsecond line"
+    },
+    {
+      "text": "a\tb",
+      "printable": "a\tb"
+    },
+    {
+      "text": "a\r\nb",
+      "printable": "a\r\nb"
+    },
+    {
+      "text": "one\ntwo\u202e\nthree",
+      "printable": "one\ntwo?\nthree"
+    },
+    {
+      "text": "x\u200by\u2066z\ufeffw",
+      "printable": "x?y?z?w"
+    },
+    {
+      "text": "nul\u0000and\u0085nel\nstays",
+      "printable": "nul?and?nel\nstays"
+    },
+    {
+      "text": "\u65e5\u672c\u8a9e\u306e\u884c\n\u3053\u308c\u306f\u4e8c\u884c\u76ee\u3067\u3059\u3002\u202e\n\u4e09\u884c\u76ee",
+      "printable": "\u65e5\u672c\u8a9e\u306e\u884c\n\u3053\u308c\u306f\u4e8c\u884c\u76ee\u3067\u3059\u3002?\n\u4e09\u884c\u76ee"
+    },
+    {
+      "text": "Line one\nLine two",
+      "printable": "Line one\nLine two"
+    },
+    {
+      "text": "col1\tcol2",
+      "printable": "col1\tcol2"
+    },
+    {
+      "text": "Ship\u202e it?\nsecond line",
+      "printable": "Ship? it?\nsecond line"
+    },
+    {
+      "text": "zero\u200bwidth\n\u2066isolate\u2069",
+      "printable": "zero?width\n?isolate?"
+    },
+    {
+      "text": "\ufeffbom\nline",
+      "printable": "?bom\nline"
+    },
+    {
+      "text": "nul\u0000 and next-line\u0085 are hidden",
+      "printable": "nul? and next-line? are hidden"
+    },
+    {
+      "text": "del\u007f and c1\u009f too\n",
+      "printable": "del? and c1? too\n"
+    },
+    {
+      "text": "\u55b6\u696d\u90e8\u306e\u4f9d\u983c\n\u4e8c\u884c\u76ee\u202e",
+      "printable": "\u55b6\u696d\u90e8\u306e\u4f9d\u983c\n\u4e8c\u884c\u76ee?"
+    },
+    {
+      "text": "\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\nok",
+      "printable": "\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\nok"
     }
   ]
 }

@@ -14,8 +14,8 @@ public struct DecisionEntry: Decodable, Equatable, Sendable {
     public let kind: DecisionEnvelope.Kind
     /// The request id or work item ref it answered.
     public let target: String
-    public let title: String?
-    public let text: String
+    @ShownIfPresent public private(set) var title: String?
+    @ShownText public private(set) var text: String
     public let choice: String?
     @ShownIfPresent public private(set) var choiceLabel: String?
     /// The seat or external party the decision answered for, when it did: the node worked it out when it applied the decision, and
@@ -79,5 +79,5 @@ public struct DecisionResult: Decodable, Equatable, Sendable {
 
     public let outcome: Outcome
     /// Why a decision was queued.
-    public let message: String?
+    @ShownTextIfPresent public private(set) var message: String?
 }

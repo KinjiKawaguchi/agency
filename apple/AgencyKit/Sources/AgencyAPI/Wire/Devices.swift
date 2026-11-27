@@ -42,4 +42,7 @@ public struct DeviceRequest: Decodable, Equatable, Sendable {
     public let pairingCode: String
     public let publicKey: String
     public let requestedAt: Instant
+
+    /// The label as the node wrote it, for what is signed and sent back (the change that adds the device): never the shown one.
+    public var rawLabel: String { $label }
 }

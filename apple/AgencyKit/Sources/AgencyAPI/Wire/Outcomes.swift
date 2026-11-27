@@ -96,7 +96,7 @@ public struct KpiObservation: Decodable, Equatable, Sendable {
     public let source: Source
     public let enteredAt: Instant
     public let enteredBy: String
-    public let note: String?
+    @ShownIfPresent public private(set) var note: String?
 
     private enum Keys: String, CodingKey { case kpi, date, value, source, enteredAt, enteredBy, note }
     private enum SourceKeys: String, CodingKey { case kind, name }

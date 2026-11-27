@@ -26,7 +26,7 @@ public struct PersonStatus: Decodable, Equatable, Sendable {
     public let state: State
     public let since: Instant?
     public let waitingOn: WaitingOn?
-    public let status: String
+    @Shown public private(set) var status: String
     public let holding: [String]
 }
 
@@ -55,11 +55,14 @@ public struct Request: Decodable, Equatable, Sendable {
 
     public let id: String
     public let kind: Kind
-    public let title: String
+    @Shown public private(set) var title: String
     /// Plain text: the background needed to decide.
-    public let context: String
+    @ShownText public private(set) var context: String
     /// Markdown body of a proposal.
-    public let document: String?
+    @ShownTextIfPresent public private(set) var document: String?
+
+    /// The title as the runtime wrote it, for what is sent back to the node (the decision log's title): never the shown one.
+    public var rawTitle: String { $title }
     @Shown public private(set) var from: String
     /// The addressee by the team runtime's name; absent means the team's owner.
     @ShownIfPresent public private(set) var to: String?
@@ -75,14 +78,17 @@ public struct Request: Decodable, Equatable, Sendable {
 
 public struct RequestOption: Decodable, Equatable, Sendable {
     public let key: String
-    public let text: String
+    @ShownText public private(set) var text: String
     public let isRecommended: Bool
-    public let detail: String?
+    @ShownTextIfPresent public private(set) var detail: String?
+
+    /// The text as the runtime wrote it, for what is sent back to the node (the option's label in the decision log): never the shown one.
+    public var rawText: String { $text }
 }
 
 public struct ThreadMessage: Decodable, Equatable, Sendable {
     @Shown public private(set) var from: String
-    public let text: String
+    @ShownText public private(set) var text: String
     public let choice: String?
     public let at: Instant
 }
@@ -102,7 +108,7 @@ public struct WorkItem: Decodable, Equatable, Sendable {
 
     /// The work item's item reference: an opaque string the team's harness chooses.
     public let ref: String
-    public let title: String
+    @Shown public private(set) var title: String
     public let status: Status
     public let assignee: String?
     public let blocked: Blocked?
@@ -132,7 +138,7 @@ public struct Eta: Decodable, Equatable, Sendable {
 
 public struct EpicForecast: Decodable, Equatable, Sendable {
     public let ref: String
-    public let title: String
+    @Shown public private(set) var title: String
     public let total: Int
     public let done: Int
     public let doing: Int

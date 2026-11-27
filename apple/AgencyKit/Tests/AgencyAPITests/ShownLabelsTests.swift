@@ -76,5 +76,31 @@ struct ShownLabelsTests {
         #expect(try read(ReportedTime.self, #""later\u202E""#).text == "later?")
         #expect(try read(ReportedTime.self, #""2026-11-26T09:00:00Z""#).date != nil)
     }
+
+    @Test("the titles, contexts, documents, options, messages and statuses an agent writes, with the lines of a paragraph kept")
+    func agentText() throws {
+        let person = #"{"id":"p","label":"P","kind":"agent","role":"member","state":"working","status":"asking\u202E now","holding":[]}"#
+        let request = #"{"id":"r-1","kind":"question","title":"Ship\u202E it?","context":"Line one\u202E\nLine two\tend\u200B","document":"Plan\r\n\u2066text\u2069","from":"p","createdAt":"2026-11-24T11:00:00Z","blocks":[],"options":[{"key":"a","text":"Yes\u202E","isRecommended":true,"detail":"why\u200B\nbecause"}],"thread":[{"from":"p","text":"first\u202E\nsecond","at":"2026-11-24T11:10:00Z"}],"answerWith":{"kind":"answer","target":"r-1"}}"#
+        let view = try read(TeamView.self, #"{"org":"acme","team":"app","label":"A","generatedAt":"2026-11-26T09:00:00Z","people":[\#(person)],"requests":[\#(request)],"work":[{"ref":"app#1","title":"Fix\u202E","status":"next","blocked":null,"epic":null,"points":null,"eta":null}],"epics":[{"ref":"e1","title":"Epic\u200B","total":3,"done":1,"doing":1,"remainingPoints":4,"blocked":[],"basis":"b"}]}"#)
+        #expect(view.people[0].status == "asking? now")
+        let found = view.requests[0]
+        #expect(found.title == "Ship? it?")
+        #expect(found.context == "Line one?\nLine two\tend?", "the line break and the tab stay")
+        #expect(found.document == "Plan\r\n?text?")
+        #expect(found.options[0].text == "Yes?" && found.options[0].detail == "why?\nbecause")
+        #expect(found.thread?.first?.text == "first?\nsecond")
+        #expect(view.work[0].title == "Fix?" && view.epics[0].title == "Epic?")
+    }
+
+    @Test("a decision's title, text and message, a device change's message, and a number's note")
+    func decisionText() throws {
+        let entry = try read(DecisionEntry.self, #"{"id":"e1","org":"acme","team":"app","kind":"answer","target":"r-1","title":"Ship\u202E","text":"a\u200B\nb","decidedAt":"2026-11-26T09:00:00Z","state":{"kind":"applied"}}"#)
+        #expect(entry.title == "Ship?" && entry.text == "a?\nb")
+        #expect(try read(DecisionResult.self, #"{"outcome":"queued","message":"asleep\u202E\nretry"}"#).message == "asleep?\nretry")
+        #expect(try read(DeviceChangeResult.self, #"{"outcome":"queued","message":"asleep\u202E"}"#).message == "asleep?")
+        #expect(try read(DecisionResult.self, #"{"outcome":"applied"}"#).message == nil)
+        let observation = try read(KpiObservation.self, #"{"kpi":"k","date":"2026-11-20","value":1,"source":{"kind":"manual"},"enteredAt":"2026-11-24T12:00:00Z","enteredBy":"owner","note":"n\u202E"}"#)
+        #expect(observation.note == "n?")
+    }
 }
 
