@@ -3,7 +3,10 @@ import { defineConfig, devices } from '@playwright/test'
 // Runs the built client against the mock node served by `vite preview`. In CI the browser comes from
 // `playwright install`. On a machine that already has a headless Chromium, AGENCY_CHROMIUM_PATH points at it.
 const executablePath = process.env.AGENCY_CHROMIUM_PATH
-const port = 4173
+// AGENCY_E2E_PORT gives a run its own preview server (and so its own mock node): on a machine where several people run the
+// suite, the default port is shared, and a run that finds another's server uses it and its node, which the other's tests reset.
+const ownPort = process.env.AGENCY_E2E_PORT
+const port = ownPort === undefined ? 4173 : Number(ownPort)
 
 export default defineConfig({
   testDir: 'e2e',
@@ -21,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: `npx vite preview --host 127.0.0.1 --port ${port} --strictPort`,
     url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && ownPort === undefined,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

@@ -248,5 +248,21 @@ describe('deciding without waiting for the node', () => {
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
     release()
   })
+
+  it('tries what waits at once when the page is opened again, not at the time its backoff had set', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    // The node asked to wait an hour: the next try is an hour away.
+    const first = clientWith(node, () => json(503, { error: 'the node cannot keep it' }, { 'retry-after': '3600' }))
+    const shown = renderApp({ node, client: first.client, enrolled: true })
+    await approve(user)
+    await waitFor(() => expect(loadOutbox()[0]?.phase).toBe('retrying'))
+    expect(Date.parse(loadOutbox()[0]?.nextAt ?? '') - Date.now()).toBeGreaterThan(3_000_000)
+    shown.unmount()
+    const second = clientWith(node, () => undefined)
+    renderApp({ node, client: second.client, enrolled: true })
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(loadOutbox()).toEqual([]))
+  })
 })
 

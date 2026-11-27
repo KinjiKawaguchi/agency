@@ -290,7 +290,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 }
 ```
 
-- `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
+- `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ノードが受け入れるのは、このアドレスと、ゲスト（このノードにつながる、ノードを持たないメンバー）のアドレスだけです。ほかのサインインは、Access のポリシーが通していても 403 になります。オーナーとして書き込める（決定する、端末を追加する）のは `ownerEmail` だけです。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
@@ -622,6 +622,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
 | `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
 
 ## チームランタイム
 

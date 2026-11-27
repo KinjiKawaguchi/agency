@@ -60,6 +60,15 @@ public struct NodeSpeed: Equatable, Sendable {
     public let callGroups: [Latency.Group]
     /// The routes that are in-node reads, so that a route row can say so.
     public let inNodeReadRoutes: Set<String>
+    /// The p95 hour by hour.
+    public let trend: Trend
+
+    /// What the trend says: that the range has no hours (more than 7 days: the node gives totals only), or its charts, which are none when
+    /// no hour had a call.
+    public enum Trend: Equatable, Sendable {
+        case onlyShort
+        case charts([HourChart])
+    }
 
     public init(_ metrics: Metrics) {
         hasNoSeries = metrics.series.isEmpty
@@ -81,5 +90,7 @@ public struct NodeSpeed: Equatable, Sendable {
         routeGroups = Latency.groups(of: metrics.series, kind: .serve)
         callGroups = Latency.groups(of: metrics.series, kind: .call)
         inNodeReadRoutes = Set(metrics.series.filter(\.isInNodeRead).map(\.name))
+        let hours = HourTrend.hours(from: metrics.from, until: metrics.until)
+        trend = hours.isEmpty ? .onlyShort : .charts(HourTrend.charts(of: metrics.series, budgetMs: metrics.budget?.inNodeReadP95Ms, hours: hours))
     }
 }

@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { enrolBrowser, resetNode, trackErrors } from './helpers'
+import { decisionsTaken, enrolBrowser, resetNode, trackErrors } from './helpers'
 
 const DIRECTORY = 'e2e-screenshots'
 const PROPOSAL = 'Add a second frontend agent'
@@ -39,7 +39,7 @@ test('moves to the next request at once while a slow node has not answered, and 
   await expect(page.getByRole('region', { name: TRAY })).toContainText('Sending…')
   expect(((await (await request.get('/__mock/envelopes')).json()) as unknown[]).length).toBe(0)
   release()
-  await expect(page.getByRole('region', { name: TRAY })).toHaveCount(0, { timeout: 10_000 })
+  await decisionsTaken(page, request)
   expect(((await (await request.get('/__mock/envelopes')).json()) as unknown[]).length).toBe(1)
   await expect(page.getByRole('listbox').getByText(PROPOSAL)).toHaveCount(0)
   expect(errors()).toEqual([])
@@ -56,7 +56,7 @@ test('keeps a decision the node did not take, survives a reload, and sends the s
   await expect(page.getByRole('listbox').getByText(PROPOSAL)).toHaveCount(0)
   await page.unroute(ENVELOPES)
   await tray.getByRole('button', { name: `Send again: ${PROPOSAL}` }).click()
-  await expect(tray).toHaveCount(0, { timeout: 10_000 })
+  await decisionsTaken(page, request)
   const accepted = (await (await request.get('/__mock/envelopes')).json()) as Array<{ body: { id: string } }>
   expect(accepted).toHaveLength(1)
 })
