@@ -336,6 +336,9 @@ pub enum DefinitionAccess {
 }
 
 /// Other nodes, over the federation routes (`/fed/v1`). `node` is the other node's origin.
+///
+/// The decorator that times these calls (`TimedPeers` in `agency-adapters`) must forward every method, so a
+/// method added here is added there too.
 #[async_trait]
 pub trait Peers: Send + Sync {
     async fn get_view(
@@ -416,6 +419,9 @@ pub trait Peers: Send + Sync {
 }
 
 /// The runtimes of the teams this node hosts (agency-runtime/1).
+///
+/// The decorator that times these calls (`TimedRuntime` in `agency-adapters`) must forward every method,
+/// those with a default body too, or the node would run the default instead of the adapter.
 #[async_trait]
 pub trait TeamRuntime: Send + Sync {
     async fn view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError>;
@@ -486,6 +492,9 @@ pub trait Journal: Send + Sync {
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push
 /// service. Without a configured key, it sends nothing.
+///
+/// The decorator that times these sends (`TimedNotifier` in `agency-adapters`) must forward every method,
+/// those with a default body too, or the node would run the default instead of the adapter.
 #[async_trait]
 pub trait Notifier: Send + Sync {
     async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError>;
