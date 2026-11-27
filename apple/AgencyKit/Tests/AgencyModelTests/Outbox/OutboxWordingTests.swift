@@ -15,7 +15,7 @@ struct OutboxWordingTests {
         #expect(Ja.Outbox.sendAgain == "もう一度送る" && Ja.Outbox.discard == "破棄")
         #expect(Ja.Outbox.discardExplain == "破棄すると、書いた内容つきで依頼が山に戻ります。")
         #expect(Ja.Outbox.more(2) == "ほか 2 件" && Ja.Outbox.shown == 4)
-        #expect(Ja.Outbox.notKept == "この端末に決定を保存できなかったため、送っていません。もう一度お試しください。")
+        #expect(Ja.Outbox.notKept == "この端末に決定を残せなかったため、送っていません。もう一度お試しください。")
         #expect(Ja.Outbox.signInEnded == "サインインが切れています。サインインし直すと、続きを送ります。")
         #expect(Ja.Recent.chose("承認する") == "「承認する」を選びました。", "the log's own sentence")
     }

@@ -176,7 +176,6 @@ enum Teams {
     static let p = "r-20261124-113000-c3d4"
     static let d = "app#14"
 }
-#endif
 
 @MainActor
 @Suite("The sending tray", .serialized)
@@ -210,3 +209,4 @@ struct SendingTraySnapshotTests {
         #expect(result.size.height <= 40, "nothing but the rendering's own padding: \(result.size.height)")
     }
 }
+#endif
