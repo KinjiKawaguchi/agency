@@ -7,8 +7,8 @@ use crate::error::{Error, ErrorKind, Result};
 /// number too, since every earlier release wrote the same layout.
 pub const CURRENT: u32 = 1;
 
-/// Refuses data of a layout newer than this release reads. The message holds no path and no value from the
-/// directory.
+/// Refuses data of a layout newer than this release reads. A number below the first (0) is read as the first.
+/// The message holds no path and no value from the directory.
 pub fn check(found: u32) -> Result<()> {
     if found <= CURRENT {
         return Ok(());
@@ -24,10 +24,19 @@ pub fn check(found: u32) -> Result<()> {
 }
 
 /// The refusal for a `format` file that holds no number: this node cannot tell which release wrote the data.
-pub fn unreadable() -> Error {
+pub fn not_a_number() -> Error {
     Error::new(
         ErrorKind::Conflict,
         "the data format file does not hold a number, so this node cannot tell which release wrote the data. \
+         Nothing was changed.",
+    )
+}
+
+/// The refusal for a `format` file that is there and cannot be read (no permission, not a file).
+pub fn cannot_read_file() -> Error {
+    Error::new(
+        ErrorKind::Conflict,
+        "the data format file cannot be read, so this node cannot tell which release wrote the data. \
          Nothing was changed.",
     )
 }
@@ -39,7 +48,8 @@ pub fn is_unknown_setting(reading_error: &str) -> bool {
 }
 
 /// The refusal for a `config.json` with a setting this release does not know. `reading_error` names the
-/// setting, never its value.
+/// setting; for an unknown variant it also holds the word that was given, which is an enum word and not a
+/// value that could be secret.
 pub fn unknown_setting(reading_error: &str) -> Error {
     Error::new(
         ErrorKind::Conflict,

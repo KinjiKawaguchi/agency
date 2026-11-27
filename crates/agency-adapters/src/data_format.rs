@@ -2,7 +2,7 @@
 //! `agency_core::data_format`). A node reads it before it touches anything else and writes nothing into a
 //! directory of a newer layout.
 use crate::files::{write_json, DataDir};
-use agency_core::data_format::{check, unreadable, CURRENT};
+use agency_core::data_format::{cannot_read_file, check, not_a_number, CURRENT};
 use agency_core::Result;
 use std::fs;
 use std::path::PathBuf;
@@ -15,9 +15,9 @@ impl DataDir {
     /// The layout number the directory says it holds, `None` when it has no `format` file.
     fn stored_format(&self) -> Result<Option<u32>> {
         match fs::read_to_string(self.format_path()) {
-            Ok(text) => text.trim().parse().map(Some).map_err(|_| unreadable()),
+            Ok(text) => text.trim().parse().map(Some).map_err(|_| not_a_number()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(_) => Err(unreadable()),
+            Err(_) => Err(cannot_read_file()),
         }
     }
 

@@ -97,6 +97,20 @@ fn a_format_file_that_holds_no_number_stops_the_node_and_nothing_is_written() {
 }
 
 #[test]
+fn a_format_file_that_cannot_be_read_stops_the_node_and_says_so() {
+    let root = TempDir::new().unwrap();
+    let data = data_dir_of(root.path());
+    std::fs::create_dir(data.root().join("format")).unwrap();
+    let before = contents(data.root());
+
+    let message = refusal(data.clone());
+
+    assert!(message.contains("cannot be read"), "{message}");
+    assert!(!message.contains("does not hold a number"), "{message}");
+    assert_eq!(contents(data.root()), before);
+}
+
+#[test]
 fn a_directory_without_a_format_file_starts_and_gets_format_1() {
     let root = TempDir::new().unwrap();
     let data = data_dir_of(root.path());
