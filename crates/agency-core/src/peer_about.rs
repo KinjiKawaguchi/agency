@@ -139,6 +139,21 @@ pub fn peers_of(node: &Node, org: &Id) -> BTreeMap<String, PeerAbout> {
     node.store().peer_abouts(org)
 }
 
+/// Whether `origin`, a node of `org`, listed `capability` in the `about` this node last kept of it. A node never
+/// read lists nothing.
+pub(crate) fn lists(
+    node: &Node,
+    org: &Id,
+    origin: &str,
+    capability: agency_proto::about::Capability,
+) -> bool {
+    node.store()
+        .peer_abouts(org)
+        .get(origin)
+        .and_then(|kept| kept.about.as_ref())
+        .is_some_and(|about| about.lists(capability))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

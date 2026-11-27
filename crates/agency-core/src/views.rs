@@ -4,10 +4,11 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
 use crate::peer_about;
-use crate::ports::{DefinitionAccess, PeerError};
+use crate::ports::{DefinitionAccess, PeerError, ViewRead};
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
+use agency_proto::about::Capability;
 use agency_proto::clock::{self, Duration, OffsetDateTime};
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{AnswersFor, FederatedView, Request, WaitingOn};
@@ -36,6 +37,10 @@ pub struct Replica {
     /// When the first of those failed reads was made.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failing_since: Option<String>,
+    /// The tag the team's node gave the answer this replica holds (`FederatedView::tag`), sent back to a node that
+    /// lists `viewUnchanged` so that it answers `304` while nothing changed. Left out when the node gave none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -324,16 +329,24 @@ struct FetchFailure {
     is_not_found: bool,
 }
 
+/// What a read of a team's view came to: the answer, checked, and the tag the node gave it; or that the answer this
+/// node holds is still the one.
+enum Fetched {
+    Changed(Box<FederatedView>, Option<String>),
+    Unchanged,
+}
+
 async fn fetch_view(
     node: &Node,
     org: &Id,
     place: &TeamPlace,
-) -> Result<FederatedView, FetchFailure> {
+    have: Option<&str>,
+) -> Result<Fetched, FetchFailure> {
     let path = routes::view(org, &place.id);
     let auth = sign_for_peer(node, org, &place.node, &path);
-    let fetched = node
+    let read = node
         .peers()
-        .get_view(&place.node, &path, &auth)
+        .get_view(&place.node, &path, &auth, have)
         .await
         .map_err(|error| FetchFailure {
             is_not_found: matches!(error, PeerError::Status { status: 404, .. }),
@@ -343,15 +356,27 @@ async fn fetch_view(
         message,
         is_not_found: false,
     };
+    let (fetched, tag) = match read {
+        ViewRead::Unchanged if have.is_some() => return Ok(Fetched::Unchanged),
+        ViewRead::Unchanged => {
+            return Err(other(
+                "answered that the view is unchanged to a read that held none".into(),
+            ))
+        }
+        ViewRead::Answer { answer, tag } => (answer, tag),
+    };
     fetched
         .check_answers_for()
         .map_err(|over| other(format!("sent an answer beyond the limits: {over}")))?;
     let view = check_view(fetched.view, org, &place.id).map_err(other)?;
-    Ok(FederatedView {
-        view,
-        viewer: fetched.viewer,
-        answers_for: fetched.answers_for,
-    })
+    Ok(Fetched::Changed(
+        Box::new(FederatedView {
+            view,
+            viewer: fetched.viewer,
+            answers_for: fetched.answers_for,
+        }),
+        tag,
+    ))
 }
 
 async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()> {
@@ -360,8 +385,13 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
         .load_replica(org, &place.id)
         .unwrap_or_default();
     let now = node.now_text();
-    let next = match fetch_view(node, org, place).await {
-        Ok(fetched) => Replica {
+    // The tag is sent only for a view this node holds, to a node that lists `viewUnchanged`.
+    let have = previous.tag.as_deref().filter(|_| {
+        previous.view.is_some()
+            && peer_about::lists(node, org, &place.node, Capability::ViewUnchanged)
+    });
+    let next = match fetch_view(node, org, place, have).await {
+        Ok(Fetched::Changed(fetched, tag)) => Replica {
             fetched_at: Some(now.clone()),
             tried_at: now,
             error: None,
@@ -370,6 +400,17 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
             answers_for: fetched.answers_for,
             failures: 0,
             failing_since: None,
+            tag,
+        },
+        // The view this node holds is still the answer: nothing to keep but that it was read just now, and that the
+        // team's node answered (which ends a wait).
+        Ok(Fetched::Unchanged) => Replica {
+            fetched_at: Some(now.clone()),
+            tried_at: now,
+            error: None,
+            failures: 0,
+            failing_since: None,
+            ..previous
         },
         Err(failure) => {
             if failure.is_not_found {

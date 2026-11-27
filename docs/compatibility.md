@@ -162,6 +162,7 @@ Names start at what came after the first release: every node has what the first 
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
+| `viewUnchanged` | feature | A team's view read with a tag: the answer's `ETag`, and `304` with no body for a read whose `If-None-Match` is the tag of the answer (see "TeamView" in protocol.md). A reader sends the tag only to a node that lists it. |
 
 ## Checks in CI
 
