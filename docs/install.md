@@ -86,6 +86,8 @@ The macOS builds are not signed and not notarized. A file downloaded with a brow
 A local-only node runs on one machine by itself.
 It listens on `127.0.0.1` only, so the web client works only on that machine, and the node lets in only requests from that machine.
 No other node reaches it and it reaches no other node: there is no tunnel, no Cloudflare, and no push notifications.
+
+[What a node keeps](data.md) lists every file a node writes, what it holds, for how long, and how to delete it, then its keys and what leaves the machine.
 Everything it stores stays in its data directory.
 
 ### Create the node, the org, and the team
