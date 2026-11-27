@@ -73,6 +73,12 @@ impl Envelope {
             .ok_or_else(|| "malformed time".into())
     }
 
+    /// Whether it is older than it can be accepted: more than 7 days old. One that is too far ahead is not expired
+    /// (it may become fresh), and a time that does not parse is not either.
+    pub fn is_expired(&self, now: time::OffsetDateTime) -> bool {
+        clock::parse(&self.at).is_some_and(|at| (now - at).whole_seconds() > MAX_AGE_SECONDS)
+    }
+
     /// Whether it is within its acceptance period: at most 7 days old, and at most 5 minutes ahead (clock skew).
     pub fn is_fresh(&self, now: time::OffsetDateTime) -> bool {
         is_fresh_at(&self.at, now)

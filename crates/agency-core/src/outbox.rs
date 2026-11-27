@@ -148,6 +148,52 @@ pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<
     Ok(())
 }
 
+/// Why an envelope that stayed in the outbox past its acceptance period is refused.
+pub const EXPIRED_REASON: &str = "expired before it was delivered";
+
+/// Whether a parcel can no longer be of use, and so is not retried any more. An envelope more than 7 days old
+/// is refused by every node, so it moves to the refused box with `EXPIRED_REASON` (the decision log and the desk
+/// show it as refused, as for any refusal). A version of an org is of no use to a node that a newer version this
+/// node holds places no team on: the node leaves the org, and is not told of the versions after the one that
+/// removed it, so the earlier one (whose delivery may be all that holds the later ones back) is dropped. The
+/// newest version stays, even for a node it places no team on: that is the one that tells the node it was removed.
+enum Stale {
+    Expired,
+    Superseded,
+}
+
+fn staleness(node: &Node, parcel: &Parcel) -> Option<Stale> {
+    match &parcel.body {
+        ParcelBody::Envelope(signed) => {
+            signed.body.is_expired(node.now()).then_some(Stale::Expired)
+        }
+        ParcelBody::Org(doc) => {
+            let latest = node.store().load_org(&doc.body.org)?;
+            let is_newer = latest.body.version > doc.body.version;
+            let is_placed = latest.body.teams.iter().any(|team| team.node == parcel.to);
+            (is_newer && !is_placed).then_some(Stale::Superseded)
+        }
+        ParcelBody::Device(_) => None,
+    }
+}
+
+/// Settles the parcels that are of no use any more, and answers the others, and the refusals made.
+fn sweep(node: &Node, parcels: Vec<Parcel>) -> Result<(Vec<Parcel>, Vec<Outcome>)> {
+    let (mut kept, mut refused) = (vec![], vec![]);
+    for parcel in parcels {
+        match staleness(node, &parcel) {
+            Some(Stale::Expired) => {
+                let outcome = Outcome::Refused(EXPIRED_REASON.to_owned());
+                settle(node, &parcel, &outcome)?;
+                refused.push(outcome);
+            }
+            Some(Stale::Superseded) => node.store().remove_parcel(&parcel.id)?,
+            None => kept.push(parcel),
+        }
+    }
+    Ok((kept, refused))
+}
+
 /// How many receiving nodes are delivered to at once. A node that does not answer holds one of these for its
 /// timeout, not the whole outbox.
 pub const NODES_AT_ONCE: usize = 8;
@@ -184,7 +230,8 @@ fn org_of(parcel: &Parcel) -> Option<&agency_proto::Id> {
 
 /// The parcels for one node, oldest first: each that is due is delivered, until one finds the node unreachable.
 /// A version that is not due yet holds back the later versions of its org, which the node could take only after it.
-async fn deliver_in_order(node: &Node, mut parcels: Vec<Parcel>) -> Result<Vec<Outcome>> {
+async fn deliver_in_order(node: &Node, parcels: Vec<Parcel>) -> Result<Vec<Outcome>> {
+    let (mut parcels, mut outcomes) = sweep(node, parcels)?;
     // Two versions of an org queued in the same second go in version order: a node takes only the next one.
     let version = |parcel: &Parcel| match &parcel.body {
         ParcelBody::Org(doc) => doc.body.version,
@@ -195,7 +242,6 @@ async fn deliver_in_order(node: &Node, mut parcels: Vec<Parcel>) -> Result<Vec<O
     });
     let now = node.now();
     let mut waiting_orgs: Vec<agency_proto::Id> = vec![];
-    let mut outcomes = vec![];
     for parcel in &parcels {
         let org = org_of(parcel);
         if org.is_some_and(|org| waiting_orgs.contains(org)) {
