@@ -52,6 +52,11 @@ pub struct Me {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub root_changes: Option<Vec<crate::root_change::RootChangeRef>>,
+    /// Present only when the caller is a guest: a member this node hosts, signed in as itself. A client then
+    /// shows no funding, home nodes or owner settings, which are not the guest's to see.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub guest: Option<GuestRef>,
 }
 
 /// Another home node of the same human: the home node of another of their accounts (for example a work
@@ -150,6 +155,15 @@ pub struct AccountRef {
     pub label: String,
     /// The account key's fingerprint.
     pub fingerprint: String,
+}
+
+/// Which hosted member a guest is, and of which org.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GuestRef {
+    pub member: Id,
+    pub org: Id,
 }
 
 /// An org the account belongs to.

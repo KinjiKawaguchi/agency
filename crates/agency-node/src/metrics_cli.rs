@@ -132,7 +132,12 @@ fn lines(data: &DataDir, args: &MetricsArgs, clock: Arc<dyn Clock>) -> Result<Ve
     }
     let kind = args.kind.as_deref().map(kind_of).transpose()?;
     let recorder = Recorder::new(data.root().join("metrics"), clock);
-    let metrics = recorder.read(args.days, kind, args.name.as_deref());
+    let mut metrics = recorder.read(args.days, kind, args.name.as_deref());
+    metrics.series = metrics
+        .series
+        .into_iter()
+        .map(Series::without_hour_buckets)
+        .collect();
     if args.json {
         return Ok(vec![serde_json::to_string_pretty(&metrics)?]);
     }
