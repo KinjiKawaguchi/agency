@@ -132,6 +132,18 @@ final class ShellModel {
         }
     }
 
+    /// Sends what was decided and the node has not yet taken, while the app is in front: now, and again whenever a failed send is due, at
+    /// the latest every 30 seconds.
+    func watchOutbox() async {
+        guard let outbox = session?.desk.outbox else { return }
+        while !Task.isCancelled {
+            await outbox.flush()
+            var seconds = 30.0
+            if let due = outbox.nextDue { seconds = min(max(1, due.timeIntervalSinceNow), 30) }
+            try? await Task.sleep(for: .seconds(seconds))
+        }
+    }
+
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
     func dismissBannersSoon() async {
         guard let session, !session.news.banners.isEmpty else { return }
