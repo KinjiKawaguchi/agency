@@ -26,16 +26,16 @@ pub struct Input<'a> {
 
 /// One calendar day, as it is added up.
 #[derive(Default)]
-struct Day {
-    merged: MergedCounts,
-    reverts: u32,
-    red_seconds: u64,
-    cost_usd: f64,
-    pr_leads: Vec<u64>,
+pub(super) struct Day {
+    pub(super) merged: MergedCounts,
+    pub(super) reverts: u32,
+    pub(super) red_seconds: u64,
+    pub(super) cost_usd: f64,
+    pub(super) pr_leads: Vec<u64>,
     issue_leads: Vec<u64>,
     /// The new features merged this day and their lead times: a part of the counts above, not more.
-    features_merged: u32,
-    feature_pr_leads: Vec<u64>,
+    pub(super) features_merged: u32,
+    pub(super) feature_pr_leads: Vec<u64>,
     feature_issue_leads: Vec<u64>,
 }
 
@@ -175,13 +175,20 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
     }
 }
 
-/// The team's delivery numbers over the last `input.days` calendar days.
-pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
+/// Each calendar day of the period as it is added up (days with nothing in them have no entry), and the
+/// longest single span main was red inside the period.
+pub(super) fn tally(input: &Input) -> (Period, BTreeMap<String, Day>, u64) {
     let period = Period::new(input.now, input.offset, input.days);
     let mut days = BTreeMap::new();
     add_pull_requests(&mut days, &period, input);
     let longest = add_red(&mut days, &period, input);
     add_costs(&mut days, &period, input);
+    (period, days, longest)
+}
+
+/// The team's delivery numbers over the last `input.days` calendar days.
+pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
+    let (period, days, longest) = tally(input);
     let summary = summarize(&days, longest);
     let by_day = days
         .into_iter()
