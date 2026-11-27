@@ -20,13 +20,6 @@ private struct ShellChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.keyProtection, .platform)
-            .overlay {
-                // A key that is stored and cannot be used is never replaced by the app: the person is told, and chooses.
-                if let problem = model.session?.keyUnusable {
-                    KeyUnusableScreen(problem: problem, onTryAgain: model.retryKey, onMakeNew: model.resetKey)
-                        .background(.background)
-                }
-            }
             .overlay(alignment: .top) {
                 if let session = model.session {
                     NewsBannerStack(
@@ -77,10 +70,24 @@ private struct ShellChrome: ViewModifier {
                 }
             }
             .linkNoticeAlert(model)
+            .keyResetFailureAlert(model)
     }
 }
 
 private extension View {
+    /// Said when the Keychain would not delete the key the person chose to make again: the key is still there.
+    func keyResetFailureAlert(_ model: ShellModel) -> some View {
+        alert(
+            Ja.Device.reset,
+            isPresented: Binding(get: { model.keyResetFailure != nil }, set: { if !$0 { model.keyResetFailure = nil } }),
+            presenting: model.keyResetFailure
+        ) { _ in
+            Button(Ja.Desk.close) {}
+        } message: { reason in
+            Text(Ja.Key.Unusable.resetFailed(reason))
+        }
+    }
+
     /// Said once when a tapped notification belongs to a home node this device does not have.
     func linkNoticeAlert(_ model: ShellModel) -> some View {
         alert(

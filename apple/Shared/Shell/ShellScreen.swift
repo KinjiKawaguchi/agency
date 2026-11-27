@@ -27,7 +27,8 @@ struct ShellScreen: View {
         case .devices:
             DevicesScreen(
                 store: session.devices, pairing: session.pairing, notice: devicesNotice,
-                noticeIsFailure: !(model.hasRenewedKeyAfterRemoval && session.keyProblem == nil), pushDelivery: session.pushDelivery
+                noticeIsFailure: !(model.hasRenewedKeyAfterRemoval && session.keyProblem == nil), pushDelivery: session.pushDelivery,
+                keyUnusable: session.keyUnusable.map { KeyUnusableSupport(problem: $0, onTryAgain: model.retryKey, onMakeNew: model.resetKey) }
             )
         }
     }
@@ -38,6 +39,7 @@ struct ShellScreen: View {
         if model.hasRenewedKeyAfterRemoval {
             return session.keyProblem.map { _ in Ja.Devices.Remove.keyNotMade(Ja.Key.noKey(.platform)) } ?? Ja.Devices.Remove.thisDeviceRemoved
         }
+        // A stored key that cannot be used is said by its own card, above.
         return session.keyProblem.map { _ in Ja.Key.noKey(.platform) }
     }
 

@@ -83,7 +83,12 @@ enum HomeNodeSecrets {
     @MainActor
     static func forget(host: String) {
         AccessTokenStore(host: host).clear()
-        SecureEnclaveSigner.deleteKey(host: host)
+        do {
+            try SecureEnclaveSigner.deleteKey(host: host)
+        } catch {
+            // The key stays in the Keychain for this host: forgetting the node goes on, and adding it again finds the same key.
+            SecureEnclaveVault.logger.error("The device key could not be deleted when the node was forgotten: \("\(error)", privacy: .public)")
+        }
         DraftDefaultsStorage.forget(host: host)
         FileOutboxStorage.forget(host: host)
         NotificationDefaultsStorage.forget(host: host)

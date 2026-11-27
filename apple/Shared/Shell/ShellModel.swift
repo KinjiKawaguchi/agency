@@ -37,21 +37,31 @@ final class ShellModel {
     /// What the desk says is wrong with this device's key or with the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
+        let key = session.keyUnusable.map { _ in Ja.Key.Unusable.cannotDecide } ?? session.keyProblem.map { _ in Ja.Key.noKey(.platform) }
+        return [key, session.signInProblem].compactMap { $0 }.first
     }
 
     // MARK: Start
 
     /// - Parameter standing: what the node said the viewer is, when this session replaces one of the same node and account.
     func start(standing: Standing = .loading) {
-        guard session == nil else { return }
+        guard session == nil, !isLoadingKey else { return }
+        isLoadingKey = true
         let tokens = AccessTokenStore(host: homeNode.host)
         let flow = AccessSignInFlow(homeNode: homeNode, tokens: tokens)
         self.flow = flow
-        let key = SecureEnclaveVault.loader.load(host: homeNode.host)
-        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key, standing: standing)
-        takeLink()
+        Task {
+            // The key is read, and read again if the store was busy, without holding the main actor while it waits.
+            let key = await SecureEnclaveVault.loader.load(host: homeNode.host)
+            isLoadingKey = false
+            guard session == nil else { return }
+            session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key, standing: standing)
+            takeLink()
+        }
     }
+
+    /// The key is being read for a session that is not made yet: a second start waits for it.
+    @ObservationIgnored private var isLoadingKey = false
 
     /// The desk was read, or could not be.
     func deskLoaded(_ loading: DeskStore.Loading) {
@@ -166,8 +176,7 @@ final class ShellModel {
 
     /// The removed key can never sign again: a new one is made, and it has to be added as a new device.
     func renewKeyAfterRemoval() {
-        hasRenewedKeyAfterRemoval = true
-        replaceKey()
+        if replaceKey() { hasRenewedKeyAfterRemoval = true }
     }
 
     /// Reads the stored key again, for when it could not be used and may be now (the phone was locked, the store was busy). It keeps the
@@ -180,12 +189,22 @@ final class ShellModel {
 
     /// Makes this device's key again, for when the biometrics were changed and the old key can no longer sign.
     func resetKey() {
-        hasRenewedKeyAfterRemoval = false
-        replaceKey()
+        if replaceKey() { hasRenewedKeyAfterRemoval = false }
     }
 
-    private func replaceKey() {
-        SecureEnclaveSigner.deleteKey(host: homeNode.host)
+    /// Why the Keychain would not delete the key when the person chose to make it again: said in an alert, since the key is still there.
+    var keyResetFailure: String?
+
+    /// Deletes the key and starts a session that makes a new one. When the Keychain refuses, nothing else happens: the key is still there,
+    /// the person is told, and nothing is made. `false` then.
+    private func replaceKey() -> Bool {
+        do {
+            try SecureEnclaveSigner.deleteKey(host: homeNode.host)
+        } catch {
+            SecureEnclaveVault.logger.error("The device key could not be deleted: \("\(error)", privacy: .public)")
+            keyResetFailure = "\(error)"
+            return false
+        }
         showsSettings = false
         // This device is no longer trusted with the home node: nothing of its desk stays on a widget.
         session?.widgets.clear()
@@ -194,6 +213,7 @@ final class ShellModel {
         let standing = session?.desk.standing ?? .loading
         session = nil
         start(standing: standing)
+        return true
     }
 
     /// Asks the node to stop sending to this device's push token, before the sign-in goes: the node's alerts would otherwise

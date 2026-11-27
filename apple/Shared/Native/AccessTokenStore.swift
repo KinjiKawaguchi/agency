@@ -26,6 +26,7 @@ struct AccessTokenStore: Sendable {
     }
 
     func clear() {
-        keychain.delete(account: host)
+        // The next sign-in replaces the token, so a delete that fails leaves nothing to say.
+        try? keychain.delete(account: host)
     }
 }
