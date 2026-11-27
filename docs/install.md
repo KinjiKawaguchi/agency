@@ -283,6 +283,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 ```
 
 - `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
+- A member this node hosts reads and answers only the requests of teams that run on this node; a team on another node does not show them its requests.
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
