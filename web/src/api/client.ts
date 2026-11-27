@@ -81,7 +81,7 @@ export interface ApiClient {
   /** Enters a number of a KPI for a day (the node sets who and when); a second one for the same day wins and the first stays in the history. Owner only. */
   enterNumber: (org: string, input: NumberInput) => Promise<NumberEntry>
   /** What the node measured of its own response times over the last `days` days (1 to 30): owner only (403 for anyone else, which is "nothing to show"), and 404 from a node that does not measure. */
-  metrics: (days: number) => Promise<Metrics>
+  metrics: (days: number, hourBuckets?: boolean) => Promise<Metrics>
   /** What happened in a team after `since` (an RFC 3339 time): board events and messages between its agents, oldest first. */
   activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
@@ -222,7 +222,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
     usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
     evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
-    metrics: (days) => get<unknown>(`/api/metrics?days=${days}`).then(checked(readMetrics)),
+    metrics: (days, hourBuckets = false) => get<unknown>(`/api/metrics?days=${days}${hourBuckets ? '&hourBuckets=1' : ''}`).then(checked(readMetrics)),
     activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
     outcomes: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/outcomes?days=${days}`).then(checked(readOutcomes)),
     readings: (org) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/readings`).then(checked(readReadings)),
