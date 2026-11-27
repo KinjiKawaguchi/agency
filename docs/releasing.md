@@ -66,7 +66,28 @@ Each build says which source it was made from, in its `Info.plist`: `AgencyBuild
 
 For each of macOS (arm64, x86_64) and Linux (x86_64, arm64): `agency-<version>-<os>-<arch>.tar.gz` and `agency-<version>-<os>-<arch>.tar.gz.sha256`. Each Linux build also has `agency_<version>_<amd64|arm64>.deb` and its `.sha256`. The tarball holds the `agency` binary (with the web client inside), the script that runs it as a service (`systemd-unit.sh` or `launchd-plist.sh` and `deploy-macos.sh`), the install guides, and the licenses. The Debian package installs the binary, the guides, licenses, and its user-unit script, but not a system service. [install.md](install.md) says how to install it.
 
+The release workflow also writes the lists of what the node is made of, as CycloneDX (JSON), one for the node's Rust crates (`agency-<version>-sbom-rust.cdx.json`, from `Cargo.lock`, for every platform the node is built for, so it may name a crate that one build does not contain) and one for the npm packages the web client embeds (`agency-<version>-sbom-web.cdx.json`, from `web/package-lock.json`, without the tools that only test and build). Last, it writes `SHA256SUMS`, the SHA-256 of every file above (the builds, the Debian packages and the lists, not the per-file `.sha256` files), and signs it: `SHA256SUMS.sigstore.json` is the signature, made by Sigstore's keyless signing with the workflow's own identity, so no signing key is kept anywhere. The macOS builds are made on a Mac after this and are in neither the list nor the signature.
+
 Builds that are not of a release (a manual run of the `release` workflow, or a pull request that changes it) are workflow artifacts, named with the short commit.
+
+## Checking a release
+
+To check that a download is what the release workflow built, with [cosign](https://docs.sigstore.dev/cosign/) and `sha256sum` (`<owner>/<repo>` is this repository, and `<tag>` the release):
+
+```sh
+gh release download <tag> --repo <owner>/<repo> --pattern 'SHA256SUMS*' --pattern 'agency-*-linux-x86_64.tar.gz'
+cosign verify-blob SHA256SUMS \
+  --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/<owner>/<repo>/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+The first command takes the signed list and the files you want, the second checks that the list was signed by this repository's release workflow, and the third that your files are the ones in it. A file that is not in the list, such as a macOS build, has only its own `.sha256`, which tells you the download is whole but not who made it.
+
+The lists of materials are ordinary CycloneDX files, to be read by any tool that reads them; they are in the same list of checksums. Each is the list of what went into the build, as it is in `Cargo.lock` and `web/package-lock.json` at the tag, so a newly reported vulnerability in a dependency can be matched against a release you run.
+
+CI fails a change that takes the lists, the checksums, or the signature out of the release workflow (`scripts/ci/check-release-workflow.sh`). The release workflow itself runs on a pull request that changes it, up to the signing, which needs a tag.
 
 ## Settings it needs
 

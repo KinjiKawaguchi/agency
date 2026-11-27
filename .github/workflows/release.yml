@@ -1,7 +1,8 @@
 name: release
 
 # Release builds of the node for Linux. Each build is a workflow artifact: a tarball and a Debian package
-# with the binary and documentation, each with a SHA-256. Run it by hand from the
+# with the binary and documentation, each with a SHA-256, and the lists of what the node is made of (SBOMs).
+# A tagged release also gets SHA256SUMS over all of them, signed. Run it by hand from the
 # Actions tab; a pull request that changes this file or the unit script runs it too, so the file is tested
 # before it is merged. For a tagged release it is called by release-please.yml with the tag, and then
 # attaches the builds to that release. The macOS builds are made on a Mac, by scripts/release-macos.sh.
@@ -20,6 +21,8 @@ on:
       - scripts/release/**
       - docs/install.md
       - docs/install.ja.md
+      - Cargo.lock
+      - web/package-lock.json
       - LICENSE-MIT
       - LICENSE-APACHE
 
@@ -89,18 +92,59 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Attaches the builds to the release that was just made.
+  # What the node is made of: its Rust crates and the npm packages of the web client it embeds, as CycloneDX
+  # lists (SBOMs). The script fails on a list with no components.
+  sbom:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-cyclonedx@0.5.10
+      - name: Write the SBOMs
+        env:
+          RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
+        run: |
+          args=()
+          [ -z "$RELEASE_FLAG" ] || args+=(--release)
+          scripts/release/sbom.sh dist "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  # Attaches the builds and the SBOMs to the release that was just made, with SHA256SUMS over all of them,
+  # signed with this workflow's identity (Sigstore keyless signing: no key is kept anywhere).
   attach:
     if: inputs.tag != ''
-    needs: linux
+    needs: [linux, sbom]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      id-token: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Sign the checksums
+        run: |
+          scripts/release/checksums.sh dist
+          cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
       - name: Attach the builds to the release
         env:
           GH_TOKEN: ${{ github.token }}
