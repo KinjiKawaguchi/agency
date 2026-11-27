@@ -476,3 +476,63 @@ async fn a_held_confirmation_waits_for_every_team_node_to_read_hosted_members() 
     );
     assert_eq!(version(&alice), before);
 }
+
+#[tokio::test]
+async fn two_claims_for_one_address_signed_in_one_run_make_one_member_with_it() {
+    let alice = with_a_waiting_claim().await;
+    // A second seat whose link is for the same address, redeemed by another browser.
+    let erin = Seat {
+        id: id("erin"),
+        label: "Erin (legal)".into(),
+        department: None,
+        ask_about: vec![],
+        relays: vec![id("alice")],
+    };
+    seats::add_seat(&alice.node, &id("acme"), erin).unwrap();
+    let invite = claims::seat_invite(&alice.node, &id("acme"), id("erin"), DAVE).unwrap();
+    let code = invite.link.split("code=").nth(1).unwrap().to_owned();
+    let tablet = AccountKey::from_seed([0x72; 32]);
+    claims::redeem(
+        &alice.node,
+        &code,
+        DAVE,
+        &tablet.public().encoded(),
+        "Tablet",
+    )
+    .await
+    .unwrap();
+    alice.root_keys.ask_presence(true);
+    confirm(&alice, &phone().public().pairing_code()).await;
+    let body = json!({ "pairingCode": tablet.public().pairing_code() });
+    let (status, answer) = owner(
+        &alice,
+        Method::POST,
+        "/api/claims/acme.erin/confirm",
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, 202, "{answer}");
+    assert_eq!(held(&alice).len(), 2);
+
+    let run = pending_root::sign_held(&alice.node, &id("acme"), &held(&alice))
+        .await
+        .unwrap();
+    assert_eq!(run.signed.len(), 1, "{:?}", run.dropped);
+    assert_eq!(run.dropped.len(), 1);
+    assert!(
+        run.dropped[0].1.contains("another member"),
+        "{:?}",
+        run.dropped
+    );
+    let guest = guests::admit(&alice.node, DAVE).unwrap();
+    assert_eq!(
+        guest.member,
+        id("dave"),
+        "the address is the first member's sign-in"
+    );
+    let doc = alice.node.store().load_org(&id("acme")).unwrap();
+    assert!(
+        doc.body.member(&id("erin")).is_none(),
+        "erin is still a seat"
+    );
+}

@@ -477,37 +477,47 @@ async fn hold_confirmation(
 }
 
 /// Whether `seat`'s claim still waits, redeemed with `key`, and its address can still become the member's sign-in:
-/// what a held confirmation is checked against again when it is signed.
-pub(crate) fn can_host(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
-    let (_, record) = claim_of(
-        node,
-        org,
-        seat,
-        |state| matches!(state, ClaimState::Redeemed(redemption) if &redemption.public_key == key),
-    )
-    .ok_or_else(|| Error::bad_request("the claim no longer waits with that device's key"))?;
+/// what a held confirmation is checked against again when it is signed. Answers that address.
+pub(crate) fn can_host(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<String> {
+    let (_, record) = waiting_with(node, org, seat, key)?;
     let email = crate::seats::check_email(&record.email)?;
-    crate::seats::check_email_is_free(node, &email, org, seat)
+    crate::seats::check_email_is_free(node, &email, org, seat)?;
+    Ok(email)
 }
 
-/// Once the root has signed a held confirmation, and before the version is published: the person's address becomes
-/// the member's sign-in, and the claim is confirmed.
-pub(crate) fn confirm_held(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
-    let (digest, mut record) = claim_of(
+/// `seat`'s claim, while it waits redeemed with `key`, and the digest it is kept under.
+fn waiting_with(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    key: &PublicKey,
+) -> Result<(String, ClaimRecord)> {
+    claim_of(
         node,
         org,
         seat,
         |state| matches!(state, ClaimState::Redeemed(redemption) if &redemption.public_key == key),
     )
-    .ok_or_else(|| Error::bad_request("the claim no longer waits with that device's key"))?;
-    let ClaimState::Redeemed(redemption) = record.state.clone() else {
-        return Err(unknown());
-    };
+    .ok_or_else(|| Error::bad_request("the claim no longer waits with that device's key"))
+}
+
+/// Once the root has signed a held confirmation, before the version is published: the person's address becomes the
+/// member's sign-in.
+pub(crate) fn keep_sign_in(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
+    let (_, record) = waiting_with(node, org, seat, key)?;
     let email = crate::seats::check_email(&record.email)?;
     crate::guests::keep(
         node,
         &crate::guests::Guest::new(&email, org.clone(), seat.clone()),
-    )?;
+    )
+}
+
+/// Once a held confirmation's version is published: the claim is confirmed.
+pub(crate) fn mark_confirmed(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
+    let (digest, mut record) = waiting_with(node, org, seat, key)?;
+    let ClaimState::Redeemed(redemption) = record.state.clone() else {
+        return Err(unknown());
+    };
     record.state = ClaimState::Confirmed(redemption);
     node.store().save_claim(&digest, &record)
 }
