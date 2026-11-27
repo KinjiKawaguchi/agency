@@ -30,6 +30,8 @@ enum BackgroundDeskRefresh {
         let key = "\(lastRunKey).\(book.nodeID(of: homeNode))"
         guard DeskWake.isDue(lastRun: defaults.object(forKey: key) as? Date, now: now) else { return nil }
         let tokens = AccessTokenStore(host: homeNode.host)
+        // What the owner decided and the node has not taken yet is not on the desk: the icon and the widgets leave it out, as the app does.
+        let decided = BackgroundOutbox.decidedItemIDs(host: homeNode.host)
         // Nobody signed in is not a failed read: there is nothing to refresh, as with no home node.
         guard tokens.current() != nil else { return nil }
         defaults.set(now, forKey: key)
@@ -38,29 +40,33 @@ enum BackgroundDeskRefresh {
         )
         let outcome: DeskBackgroundRefresh.Outcome
         if case .current = target {
-            outcome = await readOpenNode(homeNode, client: client, now: now)
+            outcome = await readOpenNode(homeNode, client: client, now: now, excluding: decided)
         } else {
             // The widgets show the open node: another node's wake keeps only its count.
-            outcome = await withTimeLimit { await DeskWaitingCount(source: client).run() }.flatMap { $0 }
+            outcome = await withTimeLimit { await DeskWaitingCount(source: client).run(excluding: decided) }.flatMap { $0 }
                 .map { .written(waiting: $0) } ?? .notRead
         }
         if case .written(let waiting) = outcome { BadgeKeeper().record(waiting, for: book.nodeID(of: homeNode)) }
         return outcome
     }
 
-    private static func readOpenNode(_ homeNode: HomeNodeURL, client: NodeClient, now: Date) async -> DeskBackgroundRefresh.Outcome {
+    private static func readOpenNode(
+        _ homeNode: HomeNodeURL, client: NodeClient, now: Date, excluding decided: Set<String>
+    ) async -> DeskBackgroundRefresh.Outcome {
         let preferences = WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host))
         let publisher = WidgetPublisher(host: homeNode.host, preferences: preferences, sink: WidgetAppGroupSink())
         let refresh = DeskBackgroundRefresh(source: client, publisher: publisher)
-        return await withTimeLimit { await refresh.run(now: now) } ?? .notRead
+        return await withTimeLimit { await refresh.run(now: now, excluding: decided) } ?? .notRead
     }
 
     /// The result of `work`, or `nil` when it did not finish in `timeLimit`.
-    private static func withTimeLimit<Value: Sendable>(_ work: @escaping @MainActor @Sendable () async -> Value) async -> Value? {
+    static func withTimeLimit<Value: Sendable>(
+        within limit: Duration = timeLimit, _ work: @escaping @MainActor @Sendable () async -> Value
+    ) async -> Value? {
         await withTaskGroup(of: Value?.self) { group in
             group.addTask { await work() }
             group.addTask {
-                try? await Task.sleep(for: timeLimit)
+                try? await Task.sleep(for: limit)
                 return nil
             }
             let first = await group.next() ?? nil

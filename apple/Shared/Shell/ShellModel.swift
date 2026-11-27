@@ -136,12 +136,20 @@ final class ShellModel {
     /// the latest every 30 seconds.
     func watchOutbox() async {
         guard let outbox = session?.desk.outbox else { return }
+        // Another run (a wake that sent some while the app was suspended) may have changed what is kept.
+        outbox.reload()
         while !Task.isCancelled {
             await outbox.flush()
             var seconds = 30.0
             if let due = outbox.nextDue { seconds = min(max(1, due.timeIntervalSinceNow), 30) }
             try? await Task.sleep(for: .seconds(seconds))
         }
+    }
+
+    /// The app has left the screen: what is due is sent in the time the system gives, and a later run is asked for what still waits.
+    func keepSending() async {
+        guard let outbox = session?.desk.outbox else { return }
+        await OutboxBackground.finish(outbox)
     }
 
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
