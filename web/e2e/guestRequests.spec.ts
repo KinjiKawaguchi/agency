@@ -19,7 +19,7 @@ const ALLOWED: ReadonlyArray<readonly [method: string, path: RegExp]> = [
 ]
 
 /** Every page of the app that is the owner's, by the path a person could type or a link could lead to. */
-const OWNER_PAGES = ['/', '/overview', '/people', '/org', '/costs', '/evaluation', '/outcomes', '/live'] as const
+const OWNER_PAGES = ['/', '/overview', '/people', '/org', '/members', '/costs', '/evaluation', '/outcomes', '/live'] as const
 
 const isApi = (request: Request): boolean => new URL(request.url()).pathname.startsWith('/api/')
 

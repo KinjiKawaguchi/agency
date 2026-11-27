@@ -14,6 +14,7 @@ import { answererView, isRefusedToGuest, type MockGuest } from './guest.ts'
 import type { MeWithGuest } from '../guest/provisional.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
 import { effortReport, withPlans } from './effort.ts'
+import { membersOf } from './members.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
 
@@ -102,6 +103,8 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node that ties a push registration to the device it names (the capability `pushDevice`): it takes `device` on a registration and drops the registrations of a device that is removed. Otherwise a registration that names one is refused as an unknown field, as an older node does. */
   pushDevice?: boolean
+  /** A node that serves the org's members, devices and open seats to its owner (`GET /api/orgs/{org}/members`) and lists the `members` capability; otherwise the route answers 404. */
+  members?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
   /** With `webPush`: every browser's push service has refused the last notice it was sent. */
@@ -166,12 +169,13 @@ const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
+const MEMBERS_PATH = /^\/api\/orgs\/([^/]+)\/members$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean }): About => ({
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; members?: boolean }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...(options.members === true ? ['members'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -325,6 +329,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   /** The owner's measurements of the node itself: 1 to 30 days, and nothing for anyone else. */
+  const handleMembers = (org: string): Response => {
+    if (options.members !== true) return failure(404, 'No such route.')
+    const members = membersOf(org)
+    return members === undefined ? failure(404, 'No such organization.') : json(members)
+  }
+
   const handleMetrics = (url: URL): Response => {
     if (options.metrics === 'absent') return failure(404, 'No such route.')
     if (options.metricsFailWith !== undefined) return failure(options.metricsFailWith, 'The measurements could not be read.')
@@ -432,6 +442,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (answered !== undefined) return answered
     }
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
+    const membersMatch = MEMBERS_PATH.exec(url.pathname)
+    if (membersMatch !== null && request.method === 'GET') return handleMembers(membersMatch[1] ?? '')
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) {
       const extra = options.moreOrgs === true ? MORE_ORGS.find((org) => org.id === orgMatch[1]) : undefined

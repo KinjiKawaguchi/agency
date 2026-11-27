@@ -40,6 +40,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
+    members: query?.get('members') === '1',
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',
