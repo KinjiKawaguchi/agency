@@ -3,7 +3,7 @@
 use agency_core::directory::directory;
 use agency_core::Node;
 use agency_proto::directory::{Directory, DirectoryParty, RuntimeNames};
-use agency_proto::org::printable;
+use agency_proto::org::{printable, printable_text};
 use agency_proto::Id;
 use anyhow::Result;
 use clap::Args;
@@ -25,7 +25,7 @@ fn names(runtime_names: &[RuntimeNames]) -> String {
     }
     let teams: Vec<String> = runtime_names
         .iter()
-        .map(|one| format!("{}: {}", one.team, one.names.join(", ")))
+        .map(|one| format!("{}: {}", one.team, printable(&one.names.join(", "))))
         .collect();
     teams.join("; ")
 }
@@ -44,7 +44,7 @@ fn party_line(kind: &str, party: &DirectoryParty) -> String {
         "  {kind} {} ({}), ask about: {}; answered by: {}; names in this node's teams: {}",
         party.id,
         printable(&party.label),
-        printable(&list(&party.ask_about)),
+        printable_text(&list(&party.ask_about)),
         if answered_by.is_empty() {
             "the team's owner".to_owned()
         } else {
@@ -61,7 +61,7 @@ pub fn directory_lines(directory: &Directory) -> Vec<String> {
         let ask_about = if member.ask_about.is_empty() {
             String::new()
         } else {
-            format!(", ask about: {}", list(&member.ask_about))
+            format!(", ask about: {}", printable_text(&list(&member.ask_about)))
         };
         lines.push(format!(
             "  Member {} ({}), {}{ask_about}, names in this node's teams: {}",
@@ -149,5 +149,41 @@ mod tests {
                 "  Seat carol (Carol (finance)), ask about: invoices; answered by: the team's owner; names in this node's teams: none",
             ]
         );
+    }
+
+    #[test]
+    fn text_someone_else_wrote_is_printed_without_what_hides_or_reorders_a_line() {
+        let directory = Directory {
+            org: id("acme"),
+            departments: vec![],
+            members: vec![DirectoryMember {
+                id: id("dave"),
+                label: "Da\u{202E}ve".into(),
+                department: None,
+                role: "member".into(),
+                ask_about: vec!["pay\u{202E}roll\tdesk\nsecond line".into()],
+                runtime_names: vec![RuntimeNames {
+                    team: id("app"),
+                    names: vec!["ow\u{202E}ner".into(), "re\nviewer".into()],
+                }],
+            }],
+            seats: vec![DirectoryParty {
+                id: id("carol"),
+                label: "Carol".into(),
+                department: None,
+                ask_about: vec!["in\u{1b}[2Jvoices\tand more".into()],
+                answered_by: vec![],
+                runtime_names: vec![],
+            }],
+            externals: vec![],
+        };
+        let lines = directory_lines(&directory).join("\n");
+        // A name is one word of a line: a line break in it is a mark. A topic is text: its tab and line break stay.
+        assert!(lines.contains("Member dave (Da?ve), member, ask about: pay?roll\tdesk\nsecond line, names in this node's teams: app: ow?ner, re?viewer"), "{lines}");
+        assert!(
+            lines.contains("ask about: in?[2Jvoices\tand more;"),
+            "{lines}"
+        );
+        assert!(!lines.contains('\u{202E}') && !lines.contains('\u{1b}'));
     }
 }

@@ -2,7 +2,8 @@
 //! on the node's terminal. The numbers are business data kept only on this node; these commands go through
 //! the same use cases as the owner-only routes, so the limits are the same.
 use agency_core::{outcomes, Node};
-use agency_proto::observation::ObservationInput;
+use agency_proto::observation::{Observation, ObservationInput, Source};
+use agency_proto::org::{printable, printable_text};
 use agency_proto::{Date, Id};
 use anyhow::Result;
 use clap::Args;
@@ -61,23 +62,72 @@ pub async fn outcome_add(node: &Node, args: OutcomeAdd) -> Result<()> {
     Ok(())
 }
 
+/// One number of the history as a line: where it came from and its note are text someone else wrote, printed as such.
+fn entry_line(one: Observation) -> String {
+    let source = match one.source {
+        Source::Manual => "by hand".to_owned(),
+        Source::Connector { name } => format!("from {}", printable(&name)),
+    };
+    let note = one
+        .note
+        .map_or_else(String::new, |note| format!(" ({})", printable_text(&note)));
+    format!(
+        "{}  {}  entered {} by {} {source}{note}",
+        one.date.as_str(),
+        one.value,
+        one.entered_at,
+        one.entered_by
+    )
+}
+
 pub fn outcome_list(node: &Node, args: OutcomeList) -> Result<()> {
     let entries = outcomes::history(node, &id(&args.org)?, &id(&args.kpi)?, args.limit)?;
     for one in entries {
-        let source = match one.source {
-            agency_proto::observation::Source::Manual => "by hand".to_owned(),
-            agency_proto::observation::Source::Connector { name } => format!("from {name}"),
-        };
-        let note = one
-            .note
-            .map_or_else(String::new, |note| format!(" ({note})"));
-        println!(
-            "{}  {}  entered {} by {} {source}{note}",
-            one.date.as_str(),
-            one.value,
-            one.entered_at,
-            one.entered_by
-        );
+        println!("{}", entry_line(one));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agency_proto::Timestamp;
+
+    fn entry(source: Source, note: Option<&str>) -> Observation {
+        Observation {
+            kpi: Id::parse("revenue").unwrap(),
+            date: Date::parse("2026-11-24").unwrap(),
+            value: 120.0,
+            source,
+            entered_at: Timestamp::parse("2026-11-25T09:00:00Z").unwrap(),
+            entered_by: Id::parse("alice").unwrap(),
+            note: note.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_number_says_where_it_came_from_and_its_note() {
+        assert_eq!(
+            entry_line(entry(Source::Manual, Some("restated"))),
+            "2026-11-24  120  entered 2026-11-25T09:00:00Z by alice by hand (restated)"
+        );
+        assert_eq!(
+            entry_line(entry(Source::Manual, None)),
+            "2026-11-24  120  entered 2026-11-25T09:00:00Z by alice by hand"
+        );
+    }
+
+    #[test]
+    fn what_someone_else_wrote_is_printed_without_what_hides_or_reorders_a_line() {
+        let line = entry_line(entry(
+            Source::Connector {
+                name: "bi\u{202E}lling\n[signed]".into(),
+            },
+            Some("see\u{202E}this\tnote\nsecond line\u{1b}[2J"),
+        ));
+        // A name is one word of a line: a line break in it is a mark. A note is text: its tab and line break stay.
+        assert!(line.contains("from bi?lling?[signed]"), "{line}");
+        assert!(line.contains("(see?this\tnote\nsecond line?[2J)"), "{line}");
+        assert!(!line.contains('\u{202E}') && !line.contains('\u{1b}'));
+    }
 }

@@ -408,6 +408,21 @@ pub fn printable(text: &str) -> String {
         .collect()
 }
 
+/// Text an agent or a person wrote, with more in it than a name (a request's title, a note, the words of a change), made safe to
+/// print on a terminal: `printable`, except that a tab and a line break are the text's own and stay. Each other control
+/// character, and each that reorders or hides how a line reads, becomes `?`.
+pub fn printable_text(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if is_hidden_char(c) && !matches!(c, '\t' | '\n' | '\r') {
+                '?'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn unique<'a>(ids: impl Iterator<Item = &'a Id>) -> bool {
     let mut seen = HashSet::new();
     ids.into_iter().all(|id| seen.insert(id))
