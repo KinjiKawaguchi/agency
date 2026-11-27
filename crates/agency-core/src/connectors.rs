@@ -33,6 +33,26 @@ pub struct Pass {
     pub refused: Vec<String>,
 }
 
+/// The day a pass last finished on, which decides whether the node looks again before the day changes: a pass
+/// that could not read what it needed is not finished, so the next look is due; one that finished (nothing to
+/// retry, though it may have refused a setting) settles the day. What a refusal says is said once, not retried.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Settled(Option<Date>);
+
+impl Settled {
+    /// Whether a pass is due on `today`.
+    pub fn is_due(&self, today: &Date) -> bool {
+        self.0.as_ref() != Some(today)
+    }
+
+    /// Takes in what a pass on `today` came to.
+    pub fn after(&mut self, pass: &Pass, today: &Date) {
+        if pass.failures.is_empty() {
+            self.0 = Some(today.clone());
+        }
+    }
+}
+
 /// Why a KPI cannot take `connector`'s metric, when the org's definition lists the KPI and its unit does not
 /// fit. A KPI the definition does not list (yet) is no problem: the number waits for it.
 fn unit_mismatch(node: &Node, index: usize, connector: &Connector) -> Option<String> {
@@ -206,5 +226,56 @@ async fn enter(
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn day(raw: &str) -> Date {
+        Date::parse(raw).unwrap()
+    }
+
+    fn pass(failures: &[&str], refused: &[&str]) -> Pass {
+        Pass {
+            written: 0,
+            failures: failures.iter().map(|one| (*one).to_owned()).collect(),
+            refused: refused.iter().map(|one| (*one).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_pass_is_due_until_one_has_finished_on_the_day() {
+        let (today, tomorrow) = (day("2026-11-24"), day("2026-11-25"));
+        let mut settled = Settled::default();
+        assert!(settled.is_due(&today), "none has run");
+
+        settled.after(&pass(&["GitHub did not answer"], &[]), &today);
+        assert!(
+            settled.is_due(&today),
+            "a pass that could not read is tried again"
+        );
+
+        settled.after(&pass(&[], &[]), &today);
+        assert!(!settled.is_due(&today), "a finished one settles the day");
+        assert!(settled.is_due(&tomorrow), "and the next day is another");
+
+        settled.after(&pass(&["late failure"], &[]), &tomorrow);
+        assert!(
+            settled.is_due(&tomorrow),
+            "a failure on a new day is not a settled day"
+        );
+    }
+
+    #[test]
+    fn a_refusal_is_not_a_failure_so_it_settles_the_day_too() {
+        let today = day("2026-11-24");
+        let mut settled = Settled::default();
+        settled.after(&pass(&[], &["a unit that does not fit"]), &today);
+        assert!(!settled.is_due(&today), "nothing a later look would change");
+        let mut both = Settled::default();
+        both.after(&pass(&["not read"], &["a unit that does not fit"]), &today);
+        assert!(both.is_due(&today), "a failure beside it still retries");
     }
 }

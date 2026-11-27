@@ -600,7 +600,7 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
 | `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |

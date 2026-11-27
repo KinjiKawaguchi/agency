@@ -134,6 +134,7 @@ fn identified(mut agency: Value, key: &str, reference: &str) -> Value {
 /// a `title` (the team's label) and a `body` (its title); a device or a refused decision has a `detail`
 /// (the device's label, the decision's title), which the worker puts after wording of its own.
 pub fn payload(notice: &Notice) -> Value {
+    let notice = &notice.printable();
     let (agency, text) = match &notice.kind {
         NoticeKind::Request {
             org,

@@ -181,9 +181,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
-            Arc::new(CommandRuntime::with_log(
-                logger.sink(LogLevel::Warn, "runtime"),
-            ))
+            Arc::new(
+                CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
+                    .recording(recorder.clone()),
+            )
         }),
         clock: clock.clone(),
         random: random.clone(),
@@ -269,19 +270,17 @@ impl Opened {
         let log = self.logger.sink(LogLevel::Warn, "outcomes");
         tokio::spawn(async move {
             let mut said = std::collections::HashSet::new();
-            let mut settled = None;
+            let mut settled = agency_core::connectors::Settled::default();
             loop {
                 let today = Period::new(node.now(), node.utc_offset(), 1).last();
-                if settled.as_ref() != Some(&today) {
+                if settled.is_due(&today) {
                     let pass = agency_core::connectors::write_finished_days(&node).await;
                     for line in pass.refused.iter().chain(&pass.failures) {
                         if said.insert(line.clone()) {
                             log(line);
                         }
                     }
-                    if pass.failures.is_empty() {
-                        settled = Some(today);
-                    }
+                    settled.after(&pass, &today);
                 }
                 tokio::time::sleep(CONNECTOR_RETRY).await;
             }

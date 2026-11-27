@@ -108,7 +108,8 @@ pub async fn team_snapshot(
     })
 }
 
-/// The guest's own devices in its org, and nothing to approve and no command: those are the owner's.
+/// The guest's own devices in its org and the devices that ask to be added for its member, and no command:
+/// that is the owner's.
 pub fn device_list(node: &Node, guest: &Guest) -> Result<DeviceList> {
     let caller = Caller::Guest(guest.clone());
     let (doc, _) = membership_of(node, &caller, &guest.org)?;
@@ -117,7 +118,13 @@ pub fn device_list(node: &Node, guest: &Guest) -> Result<DeviceList> {
             devices: my_devices(&doc.body, &guest.member).to_vec(),
             org: doc.body.org,
         }],
-        requests: vec![],
+        requests: crate::devices::guest_requests(
+            node,
+            &GuestRef {
+                member: guest.member.clone(),
+                org: guest.org.clone(),
+            },
+        )?,
         node: None,
     })
 }

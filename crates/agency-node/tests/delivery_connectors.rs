@@ -421,3 +421,58 @@ async fn a_team_that_shares_its_repository_is_read_for_its_own_pull_requests_onl
         "neither of the day's pull requests closes an issue of the team Keel"
     );
 }
+
+#[tokio::test]
+async fn the_oldest_day_read_is_never_entered_since_its_red_time_can_be_cut() {
+    let (alice, _) = alice_with_connectors().await;
+    let mut older = facts();
+    // 2026-10-24 is 31 days before today: the first day of the 32 read, one more than the 30 that are entered.
+    older.pull_requests.push(pull_request(
+        9,
+        "feat: long ago",
+        "2026-10-24T08:00:00Z",
+        "2026-10-24T09:00:00Z",
+    ));
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(older));
+    write_finished_days(&alice.node).await;
+    for kpi in ["features", "lead", "red", "cost"] {
+        assert!(on(&alice, kpi, "2026-10-24").is_none(), "{kpi}");
+    }
+    assert_eq!(
+        on(&alice, "features", "2026-10-25").map(|one| one.value),
+        Some(0.0)
+    );
+    assert_eq!(
+        of(&alice, "features")
+            .iter()
+            .map(|one| one.date.as_str())
+            .min(),
+        Some("2026-10-25")
+    );
+}
+
+#[tokio::test]
+async fn a_node_whose_connector_does_not_fit_its_kpis_unit_does_not_start() {
+    let (alice, _) = alice().await;
+    kpis::add(&alice.node, &id("acme"), kpi("shipped", KpiUnit::Percent)).unwrap();
+    alice
+        .node
+        .update_config(|config| {
+            let team = config
+                .teams
+                .remove(0)
+                .with_delivery(vec!["acme/app".into()]);
+            config.teams.insert(0, team);
+            config.outcomes.connectors = vec![connector("shipped", Metric::NewFeaturesMerged)];
+        })
+        .unwrap();
+    let data = agency_adapters::files::DataDir::new(alice.data_dir());
+    let error = match agency_node::open(data, agency_node::Overrides::default()) {
+        Ok(_) => panic!("the node started"),
+        Err(error) => error.to_string(),
+    };
+    assert!(
+        error.contains("outcomes.connectors[0].metric: newFeaturesMerged is a number of count"),
+        "{error}"
+    );
+}
