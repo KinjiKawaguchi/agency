@@ -9,7 +9,7 @@ use ts_rs::TS;
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum BudgetState {
-    /// Below 80% of the cap, or there is no cap.
+    /// Below 80% of the cap, or there is no cap (and the org is not over).
     Ok,
     /// At or past 80% of the cap and below it.
     Warning,
@@ -46,8 +46,8 @@ pub struct OrgBudget {
     /// What those teams spent this week, the ones whose usage was read.
     pub spent_usd: f64,
     pub state: BudgetState,
-    /// The usage of a planned team could not be read, so `spentUsd` is a lower bound and `state` can only
-    /// be too low. Left out when false.
+    /// The usage of a planned team, or of the team asked about (which may have no plan), could not be read,
+    /// so `spentUsd` is a lower bound and `state` can only be too low. Left out when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(optional, type = "boolean")]
     pub partial: bool,

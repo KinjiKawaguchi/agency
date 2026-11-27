@@ -14,7 +14,7 @@ capUsd?: number,
  */
 spentUsd: number, state: BudgetState, 
 /**
- * The usage of a planned team could not be read, so `spentUsd` is a lower bound and `state` can only
- * be too low. Left out when false.
+ * The usage of a planned team, or of the team asked about (which may have no plan), could not be read,
+ * so `spentUsd` is a lower bound and `state` can only be too low. Left out when false.
  */
 partial?: boolean, };
