@@ -25,7 +25,7 @@ fn names(runtime_names: &[RuntimeNames]) -> String {
     }
     let teams: Vec<String> = runtime_names
         .iter()
-        .map(|one| format!("{}: {}", one.team, one.names.join(", ")))
+        .map(|one| format!("{}: {}", one.team, printable(&one.names.join(", "))))
         .collect();
     teams.join("; ")
 }
@@ -61,7 +61,7 @@ pub fn directory_lines(directory: &Directory) -> Vec<String> {
         let ask_about = if member.ask_about.is_empty() {
             String::new()
         } else {
-            format!(", ask about: {}", list(&member.ask_about))
+            format!(", ask about: {}", printable(&list(&member.ask_about)))
         };
         lines.push(format!(
             "  Member {} ({}), {}{ask_about}, names in this node's teams: {}",
@@ -149,5 +149,91 @@ mod tests {
                 "  Seat carol (Carol (finance)), ask about: invoices; answered by: the team's owner; names in this node's teams: none",
             ]
         );
+    }
+
+    #[test]
+    fn what_someone_else_wrote_is_printed_without_what_hides_or_reorders_a_line() {
+        let directory = Directory {
+            org: id("acme"),
+            departments: vec![],
+            members: vec![DirectoryMember {
+                id: id("dave"),
+                label: "Da\u{202E}ve".into(),
+                department: None,
+                role: "member".into(),
+                ask_about: vec!["pay\u{202E}roll\tdesk".into()],
+                runtime_names: vec![RuntimeNames {
+                    team: id("app"),
+                    names: vec!["ow\u{202E}ner".into(), "re\nviewer".into()],
+                }],
+            }],
+            seats: vec![DirectoryParty {
+                id: id("carol"),
+                label: "Carol".into(),
+                department: None,
+                ask_about: vec!["in\u{1b}[2Jvoices".into()],
+                answered_by: vec![],
+                runtime_names: vec![],
+            }],
+            externals: vec![],
+        };
+        let lines = directory_lines(&directory);
+        assert_eq!(
+            lines.len(),
+            3,
+            "one line for the org, and one for each member and seat: {lines:?}"
+        );
+        assert_eq!(lines[1], "  Member dave (Da?ve), member, ask about: pay?roll?desk, names in this node's teams: app: ow?ner, re?viewer");
+        assert!(
+            lines[2].contains("ask about: in?[2Jvoices;"),
+            "{}",
+            lines[2]
+        );
+        assert!(lines
+            .iter()
+            .all(|line| !line.contains('\u{202E}') && !line.contains('\u{1b}')));
+    }
+
+    #[test]
+    fn a_topic_with_a_line_break_or_a_carriage_return_forges_no_second_record_and_cannot_overwrite_the_line(
+    ) {
+        let directory = Directory {
+            org: id("acme"),
+            departments: vec![],
+            members: vec![DirectoryMember {
+                id: id("dave"),
+                label: "Dave".into(),
+                department: None,
+                role: "member".into(),
+                ask_about: vec![
+                    "x\n  Member mallory (Mallory), admin, names in this node's teams: none\ry"
+                        .into(),
+                ],
+                runtime_names: vec![],
+            }],
+            seats: vec![DirectoryParty {
+                id: id("carol"),
+                label: "Carol".into(),
+                department: None,
+                ask_about: vec!["y\n  Seat mallory (Mallory), ask about: nothing\rz".into()],
+                answered_by: vec![],
+                runtime_names: vec![],
+            }],
+            externals: vec![],
+        };
+        let lines = directory_lines(&directory);
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains('\n') && !line.contains('\r')),
+            "{lines:?}"
+        );
+        assert!(
+            lines[2].contains("ask about: y?  Seat mallory (Mallory), ask about: nothing?z;"),
+            "{}",
+            lines[2]
+        );
+        assert!(lines[1].contains("ask about: x?  Member mallory (Mallory), admin, names in this node's teams: none?y"), "{}", lines[1]);
     }
 }

@@ -22,7 +22,7 @@ extension Ja {
             switch state {
             case "applied": return "\(named)が反映されました"
             case "delivered": return "\(named)が届きました"
-            case "queued": return "\(named)は送信待ちです"
+            case "queued": return "\(named)は保存済みですが、まだ届いていません"
             case "refused": return "\(named)は断られました" + (reason.map { ": \($0)" } ?? "")
             default: return "\(named)に動きがありました"
             }

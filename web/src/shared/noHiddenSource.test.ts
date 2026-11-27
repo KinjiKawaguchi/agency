@@ -1,9 +1,15 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { hiddenRanges, sharedHidden } from '../test/hiddenChars'
 
-// A character that reorders or hides how a line reads (the set the screens print as `?`, src/shared/printable.ts) must never be in
-// the source as itself, where a reader cannot see it and an editor may draw the code in another order: it is written `\uXXXX`.
-const HIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/
+// A character that reorders or hides how a line reads (the set the screens print as `?`: testdata/label-hidden-chars.json) must never be in
+// the source as itself, where a reader cannot see it and an editor may draw the code in another order: it is written `\uXXXX`. A tab and
+// the line breaks are the shared file's `textKeeps`: source has them.
+const KEPT = new Set(sharedHidden.textKeeps.map((one) => Number.parseInt(one, 16)))
+const isHidden = (character: string): boolean => {
+  const code = character.codePointAt(0) ?? 0
+  return !KEPT.has(code) && hiddenRanges.some(([from, to]) => code >= from && code <= to)
+}
 const ROOTS = ['src', 'e2e', 'public', 'scripts', 'vite']
 
 function files(dir: string): string[] {
@@ -18,7 +24,7 @@ describe('the source of the client', () => {
   it('has no character that hides or reorders a line, as itself', () => {
     const found = ROOTS.flatMap((root) => files(join(process.cwd(), root))).flatMap((file) => {
       const text = readFileSync(file, 'utf8')
-      return text.split('\n').flatMap((line, index) => (HIDDEN.test(line) ? [`${file.replace(process.cwd() + '/', '')}:${index + 1}`] : []))
+      return text.split('\n').flatMap((line, index) => ([...line].some(isHidden) ? [`${file.replace(process.cwd() + '/', '')}:${index + 1}`] : []))
     })
     expect(found).toEqual([])
   })

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useApi } from '../api/context'
+import { useThisDeviceId } from '../device/useThisDeviceId'
 import { registerHeldSubscription } from './useWebPush'
 import { useWebPushBrowser } from './WebPushBrowserContext'
 
@@ -10,10 +11,12 @@ import { useWebPushBrowser } from './WebPushBrowserContext'
 export function WebPushRegistration() {
   const api = useApi()
   const browser = useWebPushBrowser()
+  // Once this browser is added, the node is told which device the subscription belongs to, so that removing the device stops its notices.
+  const device = useThisDeviceId()
   useEffect(() => {
-    const register = (): void => void registerHeldSubscription(api, browser).catch(() => undefined)
+    const register = (): void => void registerHeldSubscription(api, browser, device).catch(() => undefined)
     register()
     return browser.support().hasServiceWorker ? browser.onSubscriptionChanged(register) : undefined
-  }, [api, browser])
+  }, [api, browser, device])
   return null
 }

@@ -61,6 +61,9 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Item reference**. The opaque string that names a work item, chosen by the team's harness: `WorkItem.ref` on the wire, and the same string in an epic's `ref`, a request's `issue`, and a participant's `holding`. Nothing in Agency parses it. The one that decides a pending decision (`answerWith.target`) must be 1 to 120 bytes of letters, digits, and `._#-`, so a runtime maps a tracker's id that does not fit into one that does (see "Item references" in the protocol). Not shown to people as a term.
 - **Envelope**. The signed document that carries a decision to the team's node (`kind` `answer` or `judge`). Not shown to people.
 - **Decision** (決定). A member's answer to a request, sent as an envelope signed by one of the member's devices. It is also what the log lists ("Recently decided" / 最近の決定).
+- **Kept decision** (送信中の決定, the name of the list). A decision signed on a client that the node has not **taken** yet. The client keeps the signed envelope on the device (a reload, a closed tab or a killed app loses nothing) and sends it as often as it takes: always the same envelope with the same id, which the node keeps once. The request it answers stays off the pile and off every count while the decision is kept. The list of them is the **sending tray**: EN "Sending decisions", JA 「送信中の決定」. A kept decision is `sending` (EN "Sending…", JA 「送信中…」), `retrying` (EN "Not sent yet. Next try …", JA 「まだ送れていません。次の再送は … です。」) or `failed` (EN "Not sent: <reason>", JA 「送れませんでした: <理由>」); `expired` (the node refuses an envelope older than 7 days) is a reason, not a state. **Send again** (もう一度送る) is on every kept decision that did not get through: the same envelope, at once. **Discard** (破棄) is only on a failed one: the request returns to the pile with what was typed and chosen. These states belong to the client and are not the decision log's. To keep a decision on the device is JA 「この端末に残す」 (for example 「この端末に決定を残せなかったため、送っていません。」 when it cannot be written); never 「保存」, which is the node's word for `queued` (保存済み・未配達).
+- **Taken** (受け取った). The node answered a kept decision with any 2xx (`applied`, `delivered` or `queued`). The decision then leaves the tray, and what becomes of it is the decision log's state. Taken is not a state a screen shows.
+- **Queued** (`queued`, 送信待ち). The decision log's state for a decision that the **node** holds and has not yet passed on to the team's node or runtime, which it tries again by itself. While the log says `queued`, the request also stays off the pile and off the counts. It is never a state of a kept decision on a client.
 - **Approval** (決裁). The decision on a proposal, and only on a proposal: the verb is 決裁する, the stamp 決裁. A question is answered (答える, 回答), and a pending decision is judged (判断を送る).
 - **Comment** (コメント). Text sent with no option picked, on a request that has options. The turn goes back to the team and nothing is decided. In the protocol it is an `answer` envelope with text and no `choice`; the protocol and the node do not name it, and a request without options takes its text as the answer, so the word belongs to the clients.
 - **Mine** and **waiting on the viewer**. Two lists the home node computes for a viewer (`TeamSnapshot.mine`, `TeamSnapshot.waitingOnViewer`); clients show them and never work them out.
@@ -68,7 +71,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 ## How data moves
 
 - **Replica** (写し). A copy of a team's view, or of an org definition, that a node keeps of what another node writes. It is never edited, and says when it was read.
-- **Outbox**. A node's queue of envelopes, device changes, and org versions that could not be delivered yet; it retries with backoff. No UI name; if one is needed, 送信待ち.
+- **Outbox**. A node's queue of envelopes, device changes, and org versions that could not be delivered yet; it retries with backoff. No UI name of its own; the decision log shows a decision it holds as `queued` (送信待ち). It is not the client's list of kept decisions (see **Kept decision**).
 - **Federation** (連合). Nodes reading and writing each other's data through the `/fed/v1` routes, authenticated by signatures.
 - **Agent** (エージェント). A participant that is not a human: an AI that works in a team.
 - **Harness**. The program that runs a team's agents and keeps its work (for example the scrum harness). One team is one harness.
@@ -127,6 +130,9 @@ What a node measures of itself, kept on the node and read only by its owner (`/a
 | relay, for answering on someone's behalf | answer for (代理で答える) | A node relays changes to another node; a person answers for someone. |
 | person, for a participant; 人 for a participant or a count of them | participant (参加者) | A participant may be an agent. |
 | device, for a push token | push token | A device is a signing key. |
+| queue, outbox, or 送信待ち, for a decision a client keeps | sending decisions (送信中の決定), or `sending`, `retrying`, `failed` | `queued` and 送信待ち are the node's word for a decision it kept and has not delivered yet (the log's state), and the outbox is the node's. A client's own list is the sending tray. |
+| pending, for a kept decision | `sending`, `retrying`, `failed` | `pending` is already the outcome of a device change held for the root key, and `pendingDecision` (判断待ち) a kind of request. |
+| sent (送った), for a decision the node has not taken | not sent yet (まだ送れていません) | A decision is sent when the node has taken it; until then the screen says it has not been. |
 
 "Host" is also fine as the verb of a node that runs a team's runtime (a *hosted team*), and in the `Host` header.
 
