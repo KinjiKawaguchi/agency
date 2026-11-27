@@ -1,4 +1,5 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod claim_cli;
 mod dept_cli;
 mod device_cli;
 mod directory_cli;
@@ -117,6 +118,10 @@ enum Command {
         #[arg(long)]
         email: String,
     },
+    /// Lists the claims of seats that a person's browser redeemed and that wait for you to confirm
+    Claims,
+    ClaimConfirm(claim_cli::ClaimConfirm),
+    ClaimReject(claim_cli::ClaimReject),
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -305,6 +310,10 @@ fn status(node: &Node) {
     println!("This node: {} (listening on {})", config.url, config.listen);
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
+    }
+    let waiting = agency_core::claims::pending(node).len();
+    if waiting > 0 {
+        println!("Claims waiting for you: {waiting} (agency claims)");
     }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
@@ -689,6 +698,9 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::Claims => claim_cli::list(&node),
+        Command::ClaimConfirm(args) => claim_cli::confirm(&node, args).await?,
+        Command::ClaimReject(args) => claim_cli::reject(&node, args).await?,
         Command::SeatInvite { org, seat, email } => {
             let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
             println!("{}", invite.link);
