@@ -1,5 +1,8 @@
 import { hiddenRanges, sharedHidden } from '../test/hiddenChars'
-import { labelsMadePrintable, printable, printableText } from './printable'
+import { asGiven, labelsMadePrintable, printable, printableText } from './printable'
+
+/** What is drawn: the answer without the `asGiven` it keeps of what the node wrote (tested on its own below). */
+const shownOf = (value: unknown): unknown => JSON.parse(JSON.stringify(value, (key, inside) => (key === 'asGiven' ? undefined : inside)))
 
 // The set and the cases are in one file that the other clients and the node read too (testdata/label-hidden-chars.json), so that
 // no one of them can drift from the others.
@@ -43,7 +46,7 @@ describe('the labels of an answer, made printable wherever they lie', () => {
   const dirty = `Al${String.fromCodePoint(0x202e)}ce`
   it('turns a label, a label of a choice, and each label of a list and of what lies in it', () => {
     const answer = { account: { id: 'alice', label: dirty }, orgs: [{ id: 'acme', label: dirty, teams: [{ id: 'app', label: dirty }] }], entries: [{ choiceLabel: dirty, relayedFor: { id: 'finance', label: dirty } }] }
-    expect(labelsMadePrintable(answer)).toEqual({ account: { id: 'alice', label: 'Al?ce' }, orgs: [{ id: 'acme', label: 'Al?ce', teams: [{ id: 'app', label: 'Al?ce' }] }], entries: [{ choiceLabel: 'Al?ce', relayedFor: { id: 'finance', label: 'Al?ce' } }] })
+    expect(shownOf(labelsMadePrintable(answer))).toEqual({ account: { id: 'alice', label: 'Al?ce' }, orgs: [{ id: 'acme', label: 'Al?ce', teams: [{ id: 'app', label: 'Al?ce' }] }], entries: [{ choiceLabel: 'Al?ce', relayedFor: { id: 'finance', label: 'Al?ce' } }] })
   })
 
   it('turns the labels of a snapshot’s map of whom a request is for, which are its values', () => {
@@ -111,7 +114,7 @@ describe('the texts of an answer, made printable wherever they lie', () => {
       },
       events: [{ kind: 'message', summary: dirty }, { kind: 'itemAdded', title: dirty }],
     }
-    expect(labelsMadePrintable(answer)).toEqual({
+    expect(shownOf(labelsMadePrintable(answer))).toEqual({
       view: {
         requests: [{ id: 'r', title: 'Ship? it?now', context: shown, document: shown, options: [{ key: 'a', text: shown, detail: shown }], thread: [{ from: 'x', text: shown }] }],
         work: [{ ref: 'a#1', title: 'Ship? it?now' }],
@@ -124,5 +127,23 @@ describe('the texts of an answer, made printable wherever they lie', () => {
   it('leaves a name alone (an id is looked for by it), and a text that is not text', () => {
     const answer = { from: dirty, to: dirty, id: dirty, text: 7, title: null, summary: ['x'] }
     expect(labelsMadePrintable(answer)).toEqual(answer)
+  })
+})
+
+describe('what the node gave, kept for what is sent back', () => {
+  const dirty = `Ship${String.fromCodePoint(0x202e)} it\nnow`
+
+  it('keeps what a label and a text were before they were made printable, and gives them back by key', () => {
+    const request = (labelsMadePrintable([{ title: dirty, context: dirty, id: 'r-1' }]) as Array<{ title: string; context: string }>)[0] as { title: string; context: string }
+    expect(request.title).toBe('Ship? it?now')
+    expect(asGiven(request, 'title')).toBe(dirty)
+    expect(asGiven(request, 'context')).toBe(dirty)
+  })
+
+  it('has nothing to give back for what was not changed, and says the value as it is then', () => {
+    const request = (labelsMadePrintable([{ title: 'Plain', id: 'r-1' }]) as Array<{ title: string }>)[0] as { title: string }
+    expect(request).not.toHaveProperty('asGiven')
+    expect(asGiven(request, 'title')).toBe('Plain')
+    expect(asGiven(request, 'missing')).toBeUndefined()
   })
 })
