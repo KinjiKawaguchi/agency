@@ -32,6 +32,19 @@ The script refuses a tree that is not at the tag, builds the web client and the 
 
 The macOS binaries are not signed and not notarized. A browser download is quarantined by macOS and will not open until `xattr -d com.apple.quarantine agency` (`gh release download` and `curl` do not quarantine).
 
+## Keeping what the release wrote
+
+Upgrades are forward-only, so every later build must read the data an earlier release wrote ([compatibility.md](compatibility.md), "Checks in CI"). After a release is tagged, on any machine with the repository and Rust, keep its data:
+
+```sh
+git fetch --tags
+scripts/release/snapshot-data.sh vX.Y.Z
+```
+
+The script builds the tag in a temporary worktree and runs two nodes of that build through a fixed sequence: alice makes the org `acme` and the team `app`, adds a device and serves; bob joins and reads alice's team once; alice answers the team's one request. It writes the two data directories to `testdata/releases/vX.Y.Z/data/alice` and `.../bob`, without their logs and without local paths. The keys in them are test keys made by that run; the org's root key is kept outside a data directory and is not written. Commit the directory in a pull request of its own (`test: keep the data of vX.Y.Z`).
+
+`crates/agency-node/tests/earlier_releases.rs` starts today's node on a copy of every kept data directory and reads everything in it, so the pull request's checks say whether the new release still reads the old one's data. Keep the last two minor releases, which is as far as the 90-day overlaps of the policy reach: when a third minor release is snapshotted, remove the oldest `testdata/releases/` directory in the same pull request.
+
 ## Tags: one artifact, one prefix
 
 The repository makes more than one artifact. The node is its main one, and its tags are plain: `vX.Y.Z`. A release is never tagged again once it exists. Every other artifact has a component prefix, so that tags of different artifacts never look alike:
