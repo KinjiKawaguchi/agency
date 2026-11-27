@@ -12,4 +12,10 @@ hour: Timestamp, count: number, errors: number,
 /**
  * The 95th percentile of the hour, as above.
  */
-p95Ms?: number, };
+p95Ms?: number, 
+/**
+ * How many durations of the hour fell in each bucket, as `Series.buckets` (`BUCKETS` of them, adding up
+ * to the hour's `count`), so that a reader can add the hours of several series and read the percentile of
+ * the whole. Only in an answer asked for it (`hourBuckets=1`).
+ */
+buckets?: Array<number>, };
