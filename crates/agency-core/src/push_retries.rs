@@ -48,7 +48,10 @@ async fn send_again(
                 .store()
                 .push_tokens()
                 .into_iter()
-                .find(|one| &one.token == token && notice.is_wanted_by(&one.events))
+                // Retries are the owner's notices: a guest's app is never sent one.
+                .find(|one| {
+                    &one.token == token && one.guest.is_none() && notice.is_wanted_by(&one.events)
+                })
             else {
                 return Ok(None);
             };
@@ -60,7 +63,10 @@ async fn send_again(
             Ok(Some(answer))
         }
         Destination::Browser(id) => {
-            let Some(found) = wanting(node, notice).into_iter().find(|one| &one.id == id) else {
+            let Some(found) = wanting(node, notice, None)
+                .into_iter()
+                .find(|one| &one.id == id)
+            else {
                 return Ok(None);
             };
             let answer = node.notifier().send_web(&found, notice).await;

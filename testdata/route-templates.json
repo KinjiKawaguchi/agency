@@ -9,6 +9,7 @@
     "POST /api/devices/changes",
     "GET /api/metrics",
     "GET /api/orgs/{org}",
+    "GET /api/orgs/{org}/effort",
     "GET /api/orgs/{org}/evaluation",
     "GET /api/orgs/{org}/outcomes",
     "GET /api/orgs/{org}/outcomes/observations",

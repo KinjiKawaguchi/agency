@@ -155,6 +155,7 @@ Names start at what came after the first release: every node has what the first 
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
+| `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
 
 ## Checks in CI

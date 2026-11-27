@@ -20,6 +20,13 @@ private struct ShellChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.keyProtection, .platform)
+            .overlay {
+                // A key that is stored and cannot be used is never replaced by the app: the person is told, and chooses.
+                if let problem = model.session?.keyUnusable {
+                    KeyUnusableScreen(problem: problem, onTryAgain: model.retryKey, onMakeNew: model.resetKey)
+                        .background(.background)
+                }
+            }
             .overlay(alignment: .top) {
                 if let session = model.session {
                     NewsBannerStack(
@@ -48,6 +55,8 @@ private struct ShellChrome: ViewModifier {
             .onChange(of: model.session?.devices?.didRemoveThisDevice) { _, removed in if removed == true { model.renewKeyAfterRemoval() } }
             .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
+            // A key that could not be read while the phone was locked is read again once the app is in front.
+            .onChange(of: scenePhase) { _, phase in if phase == .active, model.session?.keyUnusable?.isTransient == true { model.retryKey() } }
             .onChange(of: model.push.registration) { model.registerPush() }
             // This phone is added to the node's devices: its registration then names it.
             .onChange(of: model.session?.devices?.thisDeviceID) { model.registerPush() }
