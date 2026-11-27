@@ -1,5 +1,6 @@
 //! What a merged pull request is, from its title: the Conventional Commits type, or a revert.
 use agency_proto::evaluation::MergedCounts;
+use agency_proto::view::WorkType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -83,6 +84,25 @@ pub fn classify(title: &str, body: &str) -> Kind {
         Some("test") => Kind::Test,
         Some("chore") => Kind::Chore,
         _ => Kind::Other,
+    }
+}
+
+/// The work type a board's "Work type" option names, or `None` for an option that names none of the five
+/// (the board has no value for the item then, and nothing is guessed). Case, spaces, hyphens, and
+/// underscores do not matter: `Tech debt` and `tech-debt` are both debt.
+pub fn board_work_type(option: &str) -> Option<WorkType> {
+    let name: String = option
+        .chars()
+        .filter(|one| !matches!(one, ' ' | '-' | '_'))
+        .flat_map(char::to_lowercase)
+        .collect();
+    match name.as_str() {
+        "newfeature" => Some(WorkType::NewFeature),
+        "improvement" => Some(WorkType::Improvement),
+        "maintenance" => Some(WorkType::Maintenance),
+        "debt" | "techdebt" => Some(WorkType::Debt),
+        "incident" => Some(WorkType::Incident),
+        _ => None,
     }
 }
 

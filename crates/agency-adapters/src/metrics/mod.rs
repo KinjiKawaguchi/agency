@@ -133,11 +133,11 @@ impl Counts {
     }
 
     pub(crate) fn merge(&mut self, other: &Counts) {
-        self.count += other.count;
-        self.errors += other.errors;
+        self.count = self.count.saturating_add(other.count);
+        self.errors = self.errors.saturating_add(other.errors);
         self.sum_ms = self.sum_ms.saturating_add(other.sum_ms);
         for (mine, theirs) in self.buckets.iter_mut().zip(other.buckets) {
-            *mine += theirs;
+            *mine = mine.saturating_add(theirs);
         }
     }
 }

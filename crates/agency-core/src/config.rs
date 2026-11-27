@@ -1,4 +1,5 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
 use agency_proto::client::FundingKind;
@@ -166,6 +167,9 @@ pub struct NodeConfig {
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
+    /// How the node takes the signed reads of other nodes.
+    #[serde(default, skip_serializing_if = "FederationConfig::is_default")]
+    pub federation: FederationConfig,
     /// Whether the Client API and the web client admit direct local requests (loopback, a local `Host`).
     /// `false` refuses every one of them with 403, for a machine that other accounts log in to: each of them
     /// reaches the loopback address as well. The federation routes answer either way.
@@ -384,6 +388,12 @@ pub struct AccessConfig {
     /// no app association file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
+    /// Whether the app may sign in through its custom scheme (`via=scheme`), for a host that is not in the app
+    /// build's associated domains. Off by default: the scheme is delivered to the app that starts the sign-in,
+    /// whatever app that is, so an app of someone else's on the owner's device could start it and redeem the
+    /// owner's token; the universal link of `via=link` reaches only the app the association file names.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_scheme_sign_in: bool,
 }
 
 impl NodeConfig {
@@ -411,6 +421,7 @@ impl NodeConfig {
             logging: LoggingConfig::default(),
             metrics: MetricsConfig::default(),
             root_keys: RootKeyStore::Files,
+            federation: FederationConfig::default(),
             local_clients: true,
         }
     }
@@ -421,6 +432,11 @@ impl NodeConfig {
             local_clients,
             ..self
         }
+    }
+
+    /// How the node takes the signed reads of other nodes (`federation`).
+    pub fn with_federation(self, federation: FederationConfig) -> Self {
+        Self { federation, ..self }
     }
 
     /// The owner's other home nodes (`homeNodes`).
@@ -493,6 +509,25 @@ mod tests {
 
     fn id(raw: &str) -> Id {
         Id::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn the_apps_scheme_sign_in_is_off_unless_the_access_setting_turns_it_on() {
+        let base = r#""publicHost":"agency.example.com","teamDomain":"acme.cloudflareaccess.com","audience":"a","ownerEmail":"alice@example.com""#;
+        let without: AccessConfig = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(
+            !without.allow_scheme_sign_in,
+            "a configuration from before keeps the scheme off"
+        );
+        assert!(!serde_json::to_string(&without)
+            .unwrap()
+            .contains("allowSchemeSignIn"));
+        let with: AccessConfig =
+            serde_json::from_str(&format!("{{{base},\"allowSchemeSignIn\":true}}")).unwrap();
+        assert!(with.allow_scheme_sign_in);
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .contains("\"allowSchemeSignIn\":true"));
     }
 
     #[test]

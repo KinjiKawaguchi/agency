@@ -191,7 +191,8 @@ async fn refused_decision(is_hidden: bool) -> (Vec<Notice>, Running) {
     let envelope = sign_answer(&bob, &key, "r-404", payload);
     let input = json!({ "envelope": envelope, "title": "Unknown" });
     let (status, _) = write(&bob, ENVELOPES, &input).await;
-    assert_eq!(status, 409, "the team's node refused it");
+    assert_eq!(status, 202, "kept; the team's node refuses it when sent");
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
     assert_eq!(notify_waiting(&bob.node).await.unwrap().sent, 1);
     assert_eq!(notify_waiting(&bob.node).await.unwrap().sent, 0, "once");
     let notices = sent(&bob).into_iter().map(|(_, notice)| notice).collect();
