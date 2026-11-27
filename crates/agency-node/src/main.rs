@@ -522,8 +522,8 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
 }
 
 /// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
-/// report becomes `partial` when that team has a plan, as calculated by `agency_core::budget::status`.
-async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
+/// report becomes `partial`, as calculated by `agency_core::budget::status`.
+async fn budget_status(node: std::sync::Arc<Node>, org: Id, team: Id) -> Result<()> {
     let definition = agency_core::client::org_definition(node, &org)?;
     if definition.team(&team).is_none() {
         bail!("not found");
@@ -540,19 +540,27 @@ async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
         .map(|place| place.id.clone())
         .collect::<BTreeSet<_>>();
     teams.insert(team.clone());
-    let reads = teams.into_iter().map(|id| async {
-        let spend = tokio::time::timeout(
-            Duration::from_secs(8),
-            agency_core::usage::team_usage(node, &org, &id, Some(7)),
-        )
-        .await
-        .ok()
-        .and_then(|answer| answer.ok())
-        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
-        (id, spend)
-    });
+    let mut reads = tokio::task::JoinSet::new();
+    for id in teams {
+        let node = node.clone();
+        let org = org.clone();
+        let start = start.clone();
+        let today = today.clone();
+        reads.spawn(async move {
+            let spend = tokio::time::timeout(
+                Duration::from_secs(8),
+                agency_core::usage::team_usage(&node, &org, &id, Some(7)),
+            )
+            .await
+            .ok()
+            .and_then(|answer| answer.ok())
+            .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
+            (id, spend)
+        });
+    }
     let mut spends = BTreeMap::new();
-    for (id, spend) in futures_util::future::join_all(reads).await {
+    while let Some(read) = reads.join_next().await {
+        let (id, spend) = read.context("reading team usage task failed")?;
         spends.insert(id, spend);
     }
     let report = agency_core::budget::status(&definition, start, &team, &spends)
@@ -592,7 +600,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Budget { command } => match command {
             BudgetCommand::Status { org, team } => {
-                budget_status(&node, id(&org)?, id(&team)?).await?
+                budget_status(node.clone(), id(&org)?, id(&team)?).await?
             }
         },
         Command::OrgCreate { org, label } => {
