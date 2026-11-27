@@ -757,6 +757,7 @@ export const en = {
         partial: 'This team’s usage could not be read, so what it spent this week is not known.',
         org: (state: 'warning' | 'over', spent: string, cap: string) => `The org is ${state === 'over' ? 'over' : 'close to'} its weekly budget: ${spent} of ${cap}.`,
         orgPartial: 'Some usage could not be read, so it is at least this much.',
+        orgNoneRead: 'Some of the org’s usage could not be read, so what it spent this week is not known.',
         orgPartialOk: (spent: string, cap: string) => `Some of the org’s usage could not be read: at least ${spent} of ${cap} this week.`,
         plain: (cap: string) => `Weekly budget ${cap}. This node does not report the week’s spend yet.`,
       },

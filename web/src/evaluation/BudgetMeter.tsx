@@ -46,11 +46,12 @@ function OrgLine({ org }: { org: BudgetPart }) {
   const money = useMoney()
   const text = t.evaluation.effort.budget
   if (org.capUsd === undefined) return null
-  if (org.state === 'ok') return org.partial === true ? <p className="ev-budget-note">{text.orgPartialOk(money(org.spentUsd), money(org.capUsd))}</p> : null
+  // A floor of nothing says nothing: when no usage of the org was read at all, it is said that some could not be, with no amount.
+  if (org.state === 'ok') return org.partial === true ? <p className="ev-budget-note">{org.spentUsd === 0 ? text.orgNoneRead : text.orgPartialOk(money(org.spentUsd), money(org.capUsd))}</p> : null
   return (
     <p className="ev-budget-note">
       {text.org(org.state, money(org.spentUsd), money(org.capUsd))}
-      {org.partial === true ? ` ${text.orgPartial}` : ''}
+      {org.partial === true ? ` ${org.spentUsd === 0 ? text.orgNoneRead : text.orgPartial}` : ''}
     </p>
   )
 }

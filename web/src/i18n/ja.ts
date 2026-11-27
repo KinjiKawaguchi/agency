@@ -751,6 +751,7 @@ export const ja: Messages = {
         partial: 'このチームの使用量を読めなかったため、今週の使用額は分かりません。',
         org: (state, spent, cap) => `組織は週の予算${state === 'over' ? 'を超えています' : 'に近づいています'}: ${cap} のうち ${spent}。`,
         orgPartial: '読めなかった使用量があるため、少なくともこれだけです。',
+        orgNoneRead: '組織の使用量に読めなかったものがあるため、今週の使用額は分かりません。',
         orgPartialOk: (spent, cap) => `組織の使用量に読めなかったものがあります: 今週は ${cap} のうち、少なくとも ${spent}。`,
         plain: (cap) => `週の予算は ${cap} です。このノードは、今週の使用額をまだ返しません。`,
       },

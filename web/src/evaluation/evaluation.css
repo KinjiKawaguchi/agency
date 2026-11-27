@@ -413,6 +413,7 @@
 
 .ev-budget {
   padding-top: 12px;
+  padding-bottom: 16px;
   border-top: 1px solid var(--border);
 }
 

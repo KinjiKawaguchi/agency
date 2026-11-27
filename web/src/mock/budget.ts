@@ -20,3 +20,16 @@ export function budgetOf(team: string, now: Date): BudgetStatus {
   if (team === 'app') return { weekStart, team: { capUsd: 100, spentUsd: 86.4, state: 'warning' }, org }
   return { weekStart, team: { spentUsd: 147.8, state: 'ok' }, org }
 }
+
+/** The states a screenshot of the meter is made of, by name: what the node would answer for the `app` team (the only one with a plan). */
+const STATES: Readonly<Record<string, BudgetStatus>> = {
+  ok: { weekStart: '2026-11-23', team: { capUsd: 100, spentUsd: 41.5, state: 'ok' }, org: { capUsd: 100, spentUsd: 41.5, state: 'ok' } },
+  over: { weekStart: '2026-11-23', team: { capUsd: 100, spentUsd: 127.9, state: 'over' }, org: { capUsd: 100, spentUsd: 127.9, state: 'over' } },
+  partial: { weekStart: '2026-11-23', team: { capUsd: 100, spentUsd: 0, state: 'ok', partial: true }, org: { capUsd: 100, spentUsd: 0, state: 'ok', partial: true } },
+}
+
+/** The `budget` option of the mock node: its default figures, or the named state for the `app` team (`ok`, `over`, `partial`). */
+export function budgetFor(name: string | null | undefined): true | Readonly<Record<string, BudgetStatus>> {
+  const state = name === undefined || name === null ? undefined : STATES[name]
+  return state === undefined ? true : { app: state }
+}

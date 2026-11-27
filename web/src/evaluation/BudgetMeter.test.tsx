@@ -81,6 +81,18 @@ describe('the weekly budget, as the node computed it', () => {
     expect(screen.getByText('Within the budget')).toBeInTheDocument()
   })
 
+  it('says only that some usage could not be read, never "at least $0", when none of the org’s usage was read', () => {
+    draw({ capUsd: 100, spentUsd: 0, state: 'ok', partial: true }, { capUsd: 100, spentUsd: 0, state: 'ok', partial: true })
+    expect(screen.getByText('Some of the org’s usage could not be read, so what it spent this week is not known.')).toBeInTheDocument()
+    expect(screen.queryByText(/at least \$0/)).not.toBeInTheDocument()
+  })
+
+  it('does not say an amount that is nothing is at least anything, for an org that is not ok either', () => {
+    draw(ok, { capUsd: 100, spentUsd: 0, state: 'warning', partial: true })
+    expect(screen.getByText('The org is close to its weekly budget: $0 of $100. Some of the org’s usage could not be read, so what it spent this week is not known.')).toBeInTheDocument()
+    expect(screen.queryByText(/so it is at least this much/)).not.toBeInTheDocument()
+  })
+
   it('says the org is over its budget with the amount as a lower bound when part of it was not read', () => {
     draw(ok, { capUsd: 500, spentUsd: 640, state: 'over', partial: true })
     expect(screen.getByText('The org is over its weekly budget: $640 of $500. Some usage could not be read, so it is at least this much.')).toBeInTheDocument()
