@@ -1,5 +1,5 @@
 //! `docs/data.md` names everything a node keeps in its data directory. Every name the file store writes under it
-//! (each `.dir("…")`, however rustfmt splits the call, and `self.0.join("…")` in `files.rs`), and the few other adapters write there, must be in that
+//! (each `.dir("…")`, however rustfmt splits the call, and `self.0.join("…")` or `self.root().join("…")` in `files.rs`), and the few other adapters write there, must be in that
 //! document, so a new store cannot land without saying what it holds, for how long, and how to delete it.
 use std::path::Path;
 
@@ -26,7 +26,9 @@ fn every_name_the_store_writes_under_the_data_directory_is_in_the_document() {
     let directories = literals_after(&store, ".dir(\"")
         .into_iter()
         .map(|name| format!("{name}/"));
-    let files = literals_after(&store, "self.0.join(\"");
+    let files = literals_after(&store, "self.0.join(\"")
+        .into_iter()
+        .chain(literals_after(&store, "self.root().join(\""));
     let names: Vec<String> = directories
         .chain(files)
         .chain(ELSEWHERE.iter().map(|name| (*name).to_owned()))

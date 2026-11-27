@@ -17,6 +17,7 @@ text of a decision or a request.
 
 | Path | What it holds | Personal data | Kept for | How to delete it |
 |---|---|---|---|---|
+| `format` | The number of the data directory's format, so a node of an older release refuses to start on a newer directory instead of misreading it | No | For the directory's life | Only with the rest of the data |
 | `config.json` | The node's settings: its address, its account's id and label, the teams it runs (their `people` maps, and each runtime's command and `env`, which may hold a credential the runtime needs), funding sources (whose `usageFile` may name a file outside the data directory), the Access owner's email, push and Web Push settings | The account's label, the owner's email; a credential if a runtime's `env` holds one | Until changed | Edit the file |
 | `account.key` | The account's private key: it signs reads, join requests, and the account's first device | No | For the node's life | Only with the node: it cannot be replaced (see "Keys") |
 | `cli-device.key` | The private key of the node's own device (`agency decide`) | No | For the node's life | Remove the device from a client's Devices screen, then the file |
