@@ -180,6 +180,16 @@ loginctl show-user "$USER" --property=Linger
 The second command must print `Linger=yes`. Without it, logging out of your last session stops the node.
 Run `systemctl --user` in a login session (a terminal or an SSH login). From `su` or `sudo -u`, it cannot reach your services and says `Failed to connect to bus`.
 
+### A machine that other accounts log in to
+
+The node admits a direct local request (from `127.0.0.1` or `localhost`) as its owner, which fits a machine only you log in to. On a machine that other people also log in to, every local account reaches `127.0.0.1` the same way, so turn local clients off there. Put this at the top level of `~/.agency/config.json` and restart the node, or pass `--no-local-clients` to `agency init` when you create it:
+
+```json
+"localClients": false
+```
+
+The Client API and the web client then refuse every local request with 403, `/metrics` included, and federation keeps working on the same port. A node that only hosts teams needs no local client: you reach it from your home node through federation, the `agency` commands on it (`status`, `funding`, `metrics`) read the data directory directly, and the team runtime talks to the node over stdin and stdout, not the Client API. `agency status` prints `Local clients: refused` while the setting is on.
+
 ### Add your browser as the first device
 
 Decisions are signed by your devices, never by the node.

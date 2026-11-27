@@ -9,7 +9,7 @@ import { type BrowserSupport, type PushDelivery, browserLabel, deliveryOf, isMad
  * this page), `off`, `stale` (subscribed with a key the node no longer has: subscribe again), `on` (with what the node knows of how its push
  * service took the notices sent so far).
  */
-export type WebPushState = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'unavailable' } | { kind: 'denied' } | { kind: 'off' } | { kind: 'stale' } | { kind: 'on'; delivery: PushDelivery } | { kind: 'failed'; message: string }
+export type WebPushState = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'unavailable' } | { kind: 'denied' } | { kind: 'off' } | { kind: 'stale' } | { kind: 'on'; id: string; delivery: PushDelivery } | { kind: 'failed'; message: string }
 
 /** What the hook needs of the browser, so that a test stands in for it. */
 export interface WebPushBrowser {
@@ -64,7 +64,9 @@ async function stateWithSubscription(api: Api, browser: WebPushBrowser, subscrip
   if (!isMadeWith(subscription.options.applicationServerKey, key)) return { kind: 'stale' }
   const input = subscriptionInput(subscription.toJSON(), browserLabel(browser.support().userAgent), await deviceToName(api, device))
   if (input === undefined) return { kind: 'stale' }
-  return { kind: 'on', delivery: deliveryOf(await api.registerPushSubscription(input)) }
+  const registered = await api.registerPushSubscription(input)
+  // `id` is the node's name for this browser's registration: the list of where notices are sent says which row is this browser's by it.
+  return { kind: 'on', id: registered.id, delivery: deliveryOf(registered) }
 }
 
 async function read(api: Api, browser: WebPushBrowser, device: string | undefined): Promise<WebPushState> {
@@ -145,3 +147,6 @@ export function useWebPush(api: Api, browser: WebPushBrowser = realBrowser, devi
     turnOff: () => run(() => unsubscribe(api, browser)),
   }
 }
+
+/** What the hook gives: the state of Web Push in this browser, and the ways to turn it on and off. */
+export type WebPushControl = ReturnType<typeof useWebPush>
