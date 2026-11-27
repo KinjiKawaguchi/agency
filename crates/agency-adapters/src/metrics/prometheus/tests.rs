@@ -114,3 +114,31 @@ fn nothing_recorded_is_only_the_headers() {
     assert_eq!(text.lines().count(), 4);
     assert!(text.lines().all(|l| l.starts_with('#')));
 }
+
+#[test]
+fn a_cumulative_bucket_stops_at_what_a_count_holds_and_never_wraps_around() {
+    let mut buckets = [0; BUCKETS];
+    buckets[0] = u64::MAX;
+    buckets[1] = 5;
+    buckets[2] = 7;
+    let totals = [(
+        SeriesKey::new(Serve, "GET /api/me", "2xx"),
+        Counts {
+            count: u64::MAX,
+            errors: 0,
+            sum_ms: 0,
+            buckets,
+        },
+    )];
+    let text = text(&totals);
+    let largest = u64::MAX.to_string();
+    let second = text
+        .lines()
+        .filter(|line| line.starts_with("agency_duration_milliseconds_bucket"))
+        .nth(2)
+        .unwrap();
+    assert!(
+        second.ends_with(&format!("}} {largest}")),
+        "a wrapped sum would have been 4: {second}"
+    );
+}
