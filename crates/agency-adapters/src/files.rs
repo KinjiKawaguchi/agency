@@ -319,6 +319,12 @@ impl AppliedLog for DataDir {
 
     fn record_applied(&self, id: &EnvelopeId, at: &str) -> Result<()> {
         let mut applied = self.applied();
+        // What was applied longer ago than an envelope can be sent again is dropped as a new one is written, so
+        // the file (read and written for each decision) holds the ids of the window and not of every decision.
+        if let Some(now) = agency_proto::clock::parse(at) {
+            applied
+                .retain(|_, recorded| agency_proto::envelope::is_still_replayable(recorded, now));
+        }
         applied.insert(id.as_str().to_owned(), at.to_owned());
         write_json(&self.applied_path(), &applied)
     }
@@ -364,6 +370,11 @@ impl GuestStore for DataDir {
 
     fn remove_guest(&self, email: &str) -> Result<()> {
         remove(&self.guest_path(email))
+    }
+
+    /// The records in `guests/`, one file each (the notified lists are in a directory of their own).
+    fn guests(&self) -> Vec<Guest> {
+        read_all(&self.dir("guests"))
     }
 
     /// `guests/notified/<sha256 of org/member>.json`.
