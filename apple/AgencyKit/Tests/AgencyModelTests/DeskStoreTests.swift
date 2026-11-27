@@ -107,8 +107,8 @@ struct DeskStoreTests {
     private let storage = MemoryStorage()
     private let first = "acme:app:r-1"
 
-    private func makeStore(storage: MemoryStorage? = nil) -> DeskStore {
-        DeskStore(source: source, sender: sender, storage: storage ?? self.storage, retry: .never)
+    private func makeStore(storage: MemoryStorage? = nil, standing: Standing = .loading) -> DeskStore {
+        DeskStore(source: source, sender: sender, storage: storage ?? self.storage, retry: .never, standing: standing)
     }
 
     // MARK: Reading
@@ -300,6 +300,23 @@ struct DeskStoreTests {
         source.set(me: .success(try me("")))
         await owner.refresh()
         #expect(owner.standing == .member)
+    }
+
+    @Test("a store that replaces one of the same node and account starts from what was known, until the node says it again; a read that fails does not take it away")
+    func standingSeeded() async throws {
+        func me(_ extra: String) throws -> Me {
+            let json = #"{"account":{"fingerprint":"x","id":"alice","label":"A"},"funding":[],"orgs":[]\#(extra)}"#
+            return try JSONDecoder().decode(Me.self, from: Data(json.utf8))
+        }
+        let seeded = makeStore(standing: .member)
+        #expect(seeded.standing == .member, "the owner's open screen is not closed while the node is asked again")
+        source.set(me: .failure(NodeError.http(status: 503, message: "down")))
+        await seeded.refresh()
+        #expect(seeded.standing == .member)
+        source.set(me: .success(try me(#","guest":{"member":"erin","org":"acme"}"#)))
+        await seeded.refresh()
+        #expect(seeded.standing.isGuest, "what the node says now is what counts")
+        #expect(makeStore().standing == .loading, "a store with nothing before it has not been told")
     }
 
     @Test("a read that fails with nothing earlier to go by counts as anyone else, and an ended sign-in says nothing of who is asking")

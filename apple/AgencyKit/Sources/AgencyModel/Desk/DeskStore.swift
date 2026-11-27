@@ -55,7 +55,9 @@ public final class DeskStore {
     public private(set) var recoveries: [RecoveryNotice] = []
     /// What waits for the root key's owner to sign, once the node has said; `nil` when nothing waits or before it answered.
     public private(set) var rootChanges: RootChangeNotice?
-    /// What the node says the viewer is (a member it hosts, or anyone else), once it has said: it decides which screens are offered.
+    /// What the node says the viewer is (a member it hosts, or anyone else), once it has said: it decides which screens are offered. A
+    /// store made for the same node and account as one that had been told (after a key reset) starts from what that one knew, until the
+    /// node says it again; otherwise it starts as `loading`.
     public private(set) var standing: Standing = .loading
     public private(set) var recentFailure: String?
     public private(set) var loading: Loading = .idle
@@ -82,8 +84,9 @@ public final class DeskStore {
     /// - Parameter retry: how a team whose view is not ready is asked again, while the others are shown.
     public init(
         source: any DeskSource, sender: any DeskSender, storage: any DraftStorage,
-        afterSend: @escaping @Sendable () async -> Void = {}, retry: RetryPolicy = .standard
+        afterSend: @escaping @Sendable () async -> Void = {}, retry: RetryPolicy = .standard, standing: Standing = .loading
     ) {
+        self.standing = standing
         self.source = source
         self.sender = sender
         self.storage = storage
