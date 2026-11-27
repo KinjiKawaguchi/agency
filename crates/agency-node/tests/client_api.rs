@@ -359,7 +359,7 @@ async fn reports_funding_usage_from_the_usage_file() {
 }
 
 #[tokio::test]
-async fn through_access_only_valid_tokens_read_and_only_the_owner_writes() {
+async fn through_access_only_valid_tokens_of_a_known_identity_read_and_only_the_owner_writes() {
     let running = behind_access(None).await;
     let via_access = |token: String| {
         get(&running, "/api/me")
@@ -380,8 +380,8 @@ async fn through_access_only_valid_tokens_read_and_only_the_owner_writes() {
             .await
             .unwrap()
             .status(),
-        200,
-        "Access decides who may read"
+        403,
+        "Access says who it is; the node admits only the owner or a guest"
     );
     let refused: [(&str, EditClaims); 4] = [
         (
@@ -578,8 +578,14 @@ async fn through_access_the_session_needs_a_sign_in_and_its_token_writes_only_fo
     };
     assert_eq!(session(None).send().await.unwrap().status(), 403);
     let carol = access_token("carol@example.com", |_| {});
-    let (status, read) = body(session(Some(carol.clone())).send().await.unwrap()).await;
-    assert_eq!(status, 200, "any reader Access lets in, as for the page");
+    let (status, _) = body(session(Some(carol.clone())).send().await.unwrap()).await;
+    assert_eq!(
+        status, 403,
+        "a sign-in that is neither the owner nor a guest"
+    );
+    let alice = access_token("alice@example.com", |_| {});
+    let (status, read) = body(session(Some(alice.clone())).send().await.unwrap()).await;
+    assert_eq!(status, 200);
     let token = json!({ "token": "ab12".repeat(16), "environment": "sandbox", "label": "iPhone" });
     let write = |jwt: String| {
         post(&running, "/api/push/tokens", &token)
@@ -592,7 +598,6 @@ async fn through_access_the_session_needs_a_sign_in_and_its_token_writes_only_fo
         403,
         "not the owner"
     );
-    let alice = access_token("alice@example.com", |_| {});
     assert_eq!(write(alice).send().await.unwrap().status(), 200);
 }
 

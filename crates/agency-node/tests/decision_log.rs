@@ -19,6 +19,26 @@ fn titled(running: &Running, key: &AccountKey, target: &str, title: &str) -> Val
     json!({ "envelope": envelope, "title": title, "choiceLabel": " Option A " })
 }
 
+/// A second device of the account, added by the first: only a first device is added with the account key.
+async fn second_device(running: &Running, first: &AccountKey) -> AccountKey {
+    let key = AccountKey::generate();
+    let id = first.public().device_id();
+    let signer = agency_core::devices::DeviceSigner {
+        id: &id,
+        key: first,
+    };
+    let added =
+        agency_core::devices::add_device(&running.node, "Second", &key.public(), Some(&signer))
+            .await;
+    assert!(
+        added
+            .iter()
+            .all(|(_, outcome)| matches!(outcome, agency_core::devices::Added::Done(_))),
+        "{added:?}"
+    );
+    key
+}
+
 async fn decisions(running: &Running, query: &str) -> Value {
     body(
         get(running, &format!("/api/decisions{query}"))
@@ -104,6 +124,7 @@ async fn logs_local_decisions_as_applied() {
         at: "2026-11-24T12:00:00Z".into(),
         is_local: false,
         by: None,
+        signer: None,
     };
     alice.node.store().append_decision(&elsewhere).unwrap();
     let targets: Vec<Value> = decisions(&alice, "").await["entries"]
@@ -237,4 +258,122 @@ async fn refuses_long_notes_and_malformed_limits() {
         json!([]),
         "nothing decided yet"
     );
+}
+
+#[tokio::test]
+async fn logs_the_device_that_signed_each_decision() {
+    let (alice, memory) = alice().await;
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-2".into(), "Second".into()));
+    let laptop = device(&alice).await;
+    let phone = second_device(&alice, &laptop).await;
+    for (target, key) in [("r-1", &laptop), ("r-2", &phone)] {
+        let sent = post(&alice, ENVELOPES, &titled(&alice, key, target, "A title"))
+            .header("x-agency-token", TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(sent.status(), 200, "{target}");
+    }
+    let log = decisions(&alice, "").await;
+    let signer_of = |target: &str| {
+        log["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["target"] == target)
+            .map(|entry| entry["signer"].clone())
+    };
+    assert_eq!(
+        signer_of("r-1"),
+        Some(json!(laptop.public().device_id().as_str()))
+    );
+    assert_eq!(
+        signer_of("r-2"),
+        Some(json!(phone.public().device_id().as_str()))
+    );
+}
+
+#[tokio::test]
+async fn logs_the_device_of_a_decision_that_waits_to_be_sent() {
+    let (mut alice, memory) = alice().await;
+    let bob = joined_bob(&alice).await;
+    common::for_bob(&alice, &memory, "r-1");
+    let key = device(&bob).await;
+    alice.stop().await;
+    let sent = post(&bob, ENVELOPES, &titled(&bob, &key, "r-1", "First"))
+        .header("x-agency-token", TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sent.status(), 200);
+    let entry = decisions(&bob, "").await["entries"][0].clone();
+    assert_eq!(entry["state"]["kind"], "queued");
+    assert_eq!(entry["signer"], json!(key.public().device_id().as_str()));
+}
+
+#[tokio::test]
+async fn takes_the_device_from_the_verified_envelope_and_from_nothing_a_client_says() {
+    let (alice, _) = alice().await;
+    let laptop = device(&alice).await;
+    let phone = second_device(&alice, &laptop).await;
+
+    // A body that names a signer beside the envelope is refused: it has no such field.
+    let mut with_a_signer = titled(&alice, &laptop, "r-1", "A title");
+    with_a_signer["signer"] = json!(phone.public().device_id().as_str());
+    let refused = post(&alice, ENVELOPES, &with_a_signer)
+        .header("x-agency-token", TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+
+    // An envelope signed by the laptop that names the phone as its signer does not verify, so it is not logged.
+    let mut forged = titled(&alice, &laptop, "r-1", "A title");
+    forged["envelope"]["signer"] = json!(phone.public().device_id().as_str());
+    let refused = post(&alice, ENVELOPES, &forged)
+        .header("x-agency-token", TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    assert!(decisions(&alice, "").await["entries"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn an_entry_made_before_the_device_was_kept_has_no_signer() {
+    let (alice, _) = alice().await;
+    let old = agency_core::decisions::DecisionRecord {
+        id: agency_proto::EnvelopeId::from_bytes([8; 16]),
+        org: id("acme"),
+        team: id("app"),
+        kind: agency_proto::EnvelopeKind::Answer,
+        target: "r-1".into(),
+        title: None,
+        choice_label: None,
+        relayed_for: None,
+        payload: Payload {
+            text: "x".into(),
+            choice: None,
+        },
+        at: "2026-11-24T12:00:00Z".into(),
+        is_local: true,
+        by: None,
+        signer: None,
+    };
+    alice.node.store().append_decision(&old).unwrap();
+    let entry = decisions(&alice, "").await["entries"][0].clone();
+    assert_eq!(entry["target"], "r-1");
+    assert!(
+        entry.get("signer").is_none(),
+        "left out, never null: {entry}"
+    );
+    let stored = std::fs::read_to_string(alice.data_dir().join("decisions.json")).unwrap();
+    assert!(!stored.contains("signer"), "{stored}");
 }

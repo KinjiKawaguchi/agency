@@ -126,7 +126,7 @@ describe('deciding without waiting for the node', () => {
     await waitFor(() => expect(node.decisions()).toHaveLength(1))
     await waitFor(() => expect(tray()).not.toBeInTheDocument())
     // The node's log says it is queued, and the request is not on the pile.
-    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Saved, not delivered')).length).toBeGreaterThan(0)
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
@@ -203,7 +203,7 @@ describe('deciding without waiting for the node', () => {
     await approve(user)
     await waitFor(() => expect(node.decisions()).toHaveLength(1))
     await waitFor(() => expect(tray()).not.toBeInTheDocument())
-    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Saved, not delivered')).length).toBeGreaterThan(0)
     // The view lists the request again, and the log says it is queued: it stays off the pile and out of the count.
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
@@ -247,6 +247,22 @@ describe('deciding without waiting for the node', () => {
     await waitFor(() => expect(tray()).not.toBeInTheDocument())
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
     release()
+  })
+
+  it('tries what waits at once when the page is opened again, not at the time its backoff had set', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    // The node asked to wait an hour: the next try is an hour away.
+    const first = clientWith(node, () => json(503, { error: 'the node cannot keep it' }, { 'retry-after': '3600' }))
+    const shown = renderApp({ node, client: first.client, enrolled: true })
+    await approve(user)
+    await waitFor(() => expect(loadOutbox()[0]?.phase).toBe('retrying'))
+    expect(Date.parse(loadOutbox()[0]?.nextAt ?? '') - Date.now()).toBeGreaterThan(3_000_000)
+    shown.unmount()
+    const second = clientWith(node, () => undefined)
+    renderApp({ node, client: second.client, enrolled: true })
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(loadOutbox()).toEqual([]))
   })
 })
 

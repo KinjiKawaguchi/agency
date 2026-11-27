@@ -13,6 +13,8 @@ pub enum Kind {
     Org,
     Join,
     Read,
+    /// A read bound to the node it is made for (`read_text_for`): a new signed-text version of `Read`.
+    ReadFor,
     Device,
 }
 
@@ -23,6 +25,7 @@ impl Kind {
             Self::Org => "agency/v1/org\n",
             Self::Join => "agency/v1/join\n",
             Self::Read => "agency/v1/read\n",
+            Self::ReadFor => "agency/v2/read\n",
             Self::Device => "agency/v1/device\n",
         }
     }
@@ -90,4 +93,16 @@ impl<T: Serialize + DeserializeOwned> Signed<T> {
 /// The text signed for a signed read (a GET without a body).
 pub fn read_text(method: &str, path: &str, date: &str, account: &Id) -> String {
     format!("{method}\n{path}\n{date}\n{account}")
+}
+
+/// The text signed for a signed read that names the node it is made for (kind `ReadFor`): the text of
+/// `read_text` and a line with `audience`, the id of that node (`client::node_id`). A signature made over one
+/// of the two texts is no signature over the other, since the kind lines differ.
+pub fn read_text_for(method: &str, path: &str, date: &str, account: &Id, audience: &str) -> String {
+    format!("{}\n{audience}", read_text(method, path, date, account))
+}
+
+/// Whether `text` is written as a node id: 32 lowercase hex characters (`client::node_id`).
+pub fn is_node_id(text: &str) -> bool {
+    text.len() == 32 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }

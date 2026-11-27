@@ -6,12 +6,13 @@ use crate::orgs::{is_root, load, publish, sign};
 use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
 use crate::push_devices::keep_org;
-use crate::read_auth::sign_read;
+use crate::read_auth::sign_for_peer;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
 use agency_proto::org::{verify_root_successor, SignedOrg};
 use agency_proto::root_change::RootAnswer;
+use agency_proto::runtime::is_reserved_name;
 use agency_proto::seat::Seat;
 use agency_proto::{Id, JoinRequest, Kind, OrgDefinition, Person, Role, Signed};
 use serde::{Deserialize, Serialize};
@@ -112,6 +113,13 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
     if !is_label_valid || !is_fresh {
         return Err(Error::bad_request("malformed name or time"));
     }
+    // Refused here as well as when the version is signed, so that such a join is never held for the root.
+    if is_reserved_name(&request.account) {
+        return Err(Error::bad_request(format!(
+            "{} is a name a team runtime reserves; join with another account id",
+            request.account
+        )));
+    }
     let record = open_invite(node, org, &request.code).ok_or_else(|| {
         Error::new(
             ErrorKind::Forbidden,
@@ -132,19 +140,30 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
     }
     // Built before the invite is used, so that a seat that is gone leaves the invite as it was.
     let body = joined_body(node, &current, request, &record)?;
-    // The invite is used from here on, whether the root signs now or holds the join for the owner.
-    node.store().save_invite(
-        &code_digest(&request.code),
-        &InviteRecord {
-            used_by: Some(request.account.clone()),
-            ..record.clone()
-        },
-    )?;
+    let use_invite = || {
+        node.store().save_invite(
+            &code_digest(&request.code),
+            &InviteRecord {
+                used_by: Some(request.account.clone()),
+                ..record.clone()
+            },
+        )
+    };
+    // A held join uses the invite at once: it waits for the owner, and no other join may take it meanwhile.
+    // A join the node does not hold (too many wait already) gives the invite back.
     if must_hold(node, &current) {
-        let request = Box::new(signed.clone());
-        return hold(node, org, RootChange::Join { request });
+        use_invite()?;
+        let held = Box::new(signed.clone());
+        return hold(node, org, RootChange::Join { request: held }).or_else(|refused| {
+            node.store()
+                .save_invite(&code_digest(&request.code), &record)?;
+            Err(refused)
+        });
     }
+    // Otherwise the invite is used only once the root has signed, so a join refused at signing keeps it. The
+    // write lock is held throughout, so no other join with the same invite comes in between.
     let doc = sign(node, body)?;
+    use_invite()?;
     publish(node, &doc)?;
     Ok(RootAnswer::Signed(Box::new(doc)))
 }
@@ -376,7 +395,7 @@ async fn chain_to(
     let mut last = current.clone();
     while last.body.version + 1 < joined.body.version {
         let path = routes::versions(&current.body.org, last.body.version);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, &current.body.org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

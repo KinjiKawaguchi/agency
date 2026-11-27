@@ -2,9 +2,10 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Dependency updates for this repository (Cargo, npm, GitHub Actions, Swift packages, XcodeGen packages).",
-    "Ordinary updates wait 2 days after a release, come grouped by ecosystem, and merge by themselves when CI is green if they are patch or minor. A major update needs a person.",
-    "A security fix skips the wait and merges when CI is green.",
-    "Every GitHub Action stays pinned to a commit SHA with its tag in a comment."
+    "Ordinary updates wait 2 days after a release and come grouped by ecosystem. For Cargo and npm an update whose registry gives no release time waits to be offered, instead of skipping the wait.",
+    "Only what does not reach the shipped node, the web client, or the release builds merges by itself when CI is green: dev-only npm packages that only test and check (not the ones that build the page) and the GitHub Actions that only the CI workflows use, patch and minor, each in a group of its own. Every other update, and the weekly lock file refresh, is a pull request for a person to read.",
+    "A security fix skips the wait and is labeled security, but a person reads it before it merges; none merges by itself.",
+    "Every GitHub Action stays pinned to a commit SHA with its tag in a comment. A branch is rebased when it falls behind main, so an up-to-date rule does not leave it behind."
   ],
   "extends": [
     "config:recommended",
@@ -20,6 +21,7 @@
   "minimumReleaseAge": "2 days",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "automergeStrategy": "squash",
+  "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 6,
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
@@ -27,24 +29,26 @@
       "dependencies",
       "security"
     ],
-    "automerge": true
+    "automerge": false
   },
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
       "before 6am on monday"
     ],
-    "automerge": true
+    "automerge": false
   },
   "packageRules": [
     {
-      "description": "Patch and minor updates: one pull request for each ecosystem, merged when CI is green.",
+      "description": "GitHub Actions that only CI uses: patch, minor, and pin updates merge when CI is green. A digest update (a tag that moved to another commit) is never merged by itself. The ones a release workflow uses are in a rule below.",
+      "matchManagers": [
+        "github-actions"
+      ],
       "matchUpdateTypes": [
         "minor",
         "patch",
         "pin",
-        "pinDigest",
-        "digest"
+        "pinDigest"
       ],
       "automerge": true
     },
@@ -68,7 +72,40 @@
         "patch"
       ],
       "groupName": "web client dependencies",
-      "groupSlug": "web"
+      "groupSlug": "web",
+      "matchDepTypes": [
+        "dependencies"
+      ],
+      "description": "Production npm packages (the page imports them): patch and minor updates in one pull request for a person."
+    },
+    {
+      "description": "Dev-only npm packages that only test and check (vitest, jsdom, the testing libraries, Playwright, the type packages): patch and minor merge when CI is green, in a group of their own so a production update does not hold them back. The page does not import them.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "web dev tools",
+      "groupSlug": "web-dev",
+      "automerge": true
+    },
+    {
+      "description": "vite and its React plugin are dev-only by type but write the page that signs with the device keys: a person reads their updates, in a group of their own.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchPackageNames": [
+        "vite",
+        "@vitejs/plugin-react"
+      ],
+      "groupName": "web build tools",
+      "groupSlug": "web-build",
+      "automerge": false
     },
     {
       "matchManagers": [
@@ -128,6 +165,29 @@
       "matchPackageNames": [
         "dtolnay/rust-toolchain"
       ],
+      "automerge": false,
+      "groupName": "rust-toolchain action",
+      "groupSlug": "rust-toolchain"
+    },
+    {
+      "description": "Only crates.io and npm are held back for a release time they do not give: a Swift package or an action pinned to a branch comes from git tags and digests, which may give none, and would never be offered.",
+      "matchManagers": [
+        "cargo",
+        "npm"
+      ],
+      "minimumReleaseAgeBehaviour": "timestamp-required"
+    },
+    {
+      "description": "The GitHub Actions that the release workflows use run with the release's permissions and build what people install: a person reads their updates, as one pull request.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchFileNames": [
+        ".github/workflows/release.yml",
+        ".github/workflows/release-please.yml"
+      ],
+      "groupName": "GitHub Actions used by releases",
+      "groupSlug": "github-actions-release",
       "automerge": false
     }
   ]

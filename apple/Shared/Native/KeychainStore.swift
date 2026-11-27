@@ -5,7 +5,7 @@ struct KeychainError: Error, CustomStringConvertible {
     let status: OSStatus
 
     var description: String {
-        (SecCopyErrorMessageString(status, nil) as String?) ?? "Keychain error \(status)"
+        ((SecCopyErrorMessageString(status, nil) as String?) ?? "Keychain error") + " (\(status))"
     }
 }
 
@@ -23,6 +23,29 @@ struct KeychainStore: Sendable {
         item[kSecAttrAccessible] = accessible
         let added = SecItemAdd(item as CFDictionary, nil)
         guard added == errSecSuccess else { throw KeychainError(status: added) }
+    }
+
+    /// Stores `data` only when nothing is stored under `account`: it throws (`errSecDuplicateItem`) when something is, so that a stored
+    /// item is never replaced by it. `save` is for what may be replaced.
+    func add(_ data: Data, account: String, accessible: CFString) throws {
+        var item = query(account)
+        item[kSecValueData] = data
+        item[kSecAttrAccessible] = accessible
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
+    }
+
+    /// What is stored under `account`: `nil` only when there is nothing (`errSecItemNotFound`). Any other failure throws, since a failure
+    /// to read (a locked phone, a busy store) says nothing of whether something is there.
+    func read(account: String) throws -> Data? {
+        var request = query(account)
+        request[kSecReturnData] = true
+        request[kSecMatchLimit] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else { throw KeychainError(status: status == errSecSuccess ? errSecDecode : status) }
+        return data
     }
 
     func load(account: String) -> Data? {

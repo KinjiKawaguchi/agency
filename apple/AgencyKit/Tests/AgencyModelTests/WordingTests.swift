@@ -53,7 +53,7 @@ struct WordingTests {
 
     @Test("a queued decision says how often it was tried and when it goes next")
     func queued() {
-        #expect(Ja.Recent.queuedDetail(attempts: 0, retry: nil) == "まだ送れていません。まもなく再送します。")
+        #expect(Ja.Recent.queuedDetail(attempts: 0, retry: nil) == "まだ届いていません。まもなく再送します。")
         #expect(Ja.Recent.queuedDetail(attempts: 2, retry: "3 分後") == "2 回試しました。次の再送は 3 分後 です。")
     }
 

@@ -51,7 +51,7 @@ pub fn keep_signed(
         relayed_for: (!is_local && account == &node.account())
             .then(|| remote_relayed_for(node, &doc.body, org, team, envelope))
             .flatten(),
-        ..DecisionRecord::of(envelope, note, is_local)
+        ..DecisionRecord::of(&signed, note, is_local)
     };
     let _intake = node.intake();
     if let Some(kept) = already_kept(node, &record, envelope)? {

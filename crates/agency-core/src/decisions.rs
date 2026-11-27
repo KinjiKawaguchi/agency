@@ -38,6 +38,10 @@ pub struct DecisionRecord {
     /// made before guests, which were all the node's own account's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by: Option<Id>,
+    /// The device that signed the envelope: its `signer`, which the node had checked against the member's
+    /// devices and the signature before it kept the record. Absent in records made before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<Id>,
 }
 
 impl DecisionRecord {
@@ -78,7 +82,10 @@ impl DecisionRecord {
             )
     }
 
-    pub(crate) fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
+    /// The record of a decision whose envelope this node has verified: the signing device is the one the signed
+    /// document names, never a value a client sends beside it.
+    pub(crate) fn of(signed: &Signed<Envelope>, note: DecisionNote, is_local: bool) -> Self {
+        let envelope = &signed.body;
         Self {
             id: envelope.id.clone(),
             org: envelope.org.clone(),
@@ -92,6 +99,7 @@ impl DecisionRecord {
             at: envelope.at.clone(),
             is_local,
             by: Some(envelope.account.clone()),
+            signer: Some(signed.signer.clone()),
         }
     }
 }

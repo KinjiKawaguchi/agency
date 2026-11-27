@@ -19,6 +19,8 @@ pub struct BudgetPart {
     pub cap_usd: Option<u32>,
     pub spent_usd: f64,
     pub state: BudgetState,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,9 +69,11 @@ pub fn status(
             .map(|t| t.plan.as_ref().unwrap().weekly_budget_usd)
             .sum()
     });
-    let partial = planned
-        .iter()
-        .any(|t| matches!(spends.get(&t.id), Some(None) | None));
+    let team_partial = !matches!(spends.get(team), Some(Some(_)));
+    let partial = team_partial
+        || planned
+            .iter()
+            .any(|t| matches!(spends.get(&t.id), Some(None) | None));
     let org_spent = planned
         .iter()
         .filter_map(|t| spends.get(&t.id).and_then(|v| *v))
@@ -85,6 +89,7 @@ pub fn status(
             cap_usd: cap,
             spent_usd: team_spent,
             state: team_state,
+            partial: team_partial,
         },
         org: OrgBudget {
             cap_usd: org_cap,
@@ -98,6 +103,54 @@ pub fn status(
 mod tests {
     use super::*;
     use agency_proto::clock;
+    use agency_proto::org::{Allocation, Root, TeamPlace, TeamPlan};
+    use agency_proto::AccountKey;
+
+    fn id(raw: &str) -> Id {
+        Id::parse(raw).unwrap()
+    }
+
+    fn plan(cap: u32) -> TeamPlan {
+        TeamPlan::new(
+            Allocation {
+                new_feature: 100,
+                improvement: 0,
+                maintenance: 0,
+                debt: 0,
+                incident: 0,
+            },
+            cap,
+        )
+    }
+
+    fn org(teams: &[(&str, Option<u32>)]) -> OrgDefinition {
+        let root = Root::new(id("alice"), AccountKey::from_seed([1; 32]).public());
+        OrgDefinition::new(
+            id("acme"),
+            "Acme".into(),
+            root,
+            "2026-11-24T12:00:00Z".into(),
+        )
+        .with_teams(
+            teams
+                .iter()
+                .map(|(name, cap)| {
+                    TeamPlace::new(id(name), *name, "https://node.example").with_plan(cap.map(plan))
+                })
+                .collect(),
+        )
+    }
+
+    fn start() -> Date {
+        Date::parse("2026-11-23").unwrap()
+    }
+
+    fn spends(entries: &[(&str, Option<f64>)]) -> BTreeMap<Id, Option<f64>> {
+        entries
+            .iter()
+            .map(|(team, spent)| (id(team), *spent))
+            .collect()
+    }
     #[test]
     fn monday_in_nodes_offset() {
         let n = clock::parse("2026-11-22T15:00:00Z").unwrap();
@@ -105,5 +158,86 @@ mod tests {
             week_start(n, UtcOffset::from_hms(9, 0, 0).unwrap()).as_str(),
             "2026-11-23"
         );
+    }
+
+    #[test]
+    fn unavailable_selected_team_is_partial_even_without_a_plan() {
+        let planned = org(&[("app", Some(200)), ("ops", Some(300))]);
+        let report = status(
+            &planned,
+            start(),
+            &id("app"),
+            &spends(&[("app", None), ("ops", Some(100.0))]),
+        )
+        .unwrap();
+        assert!(report.team.partial);
+        assert!(report.org.partial);
+        assert_eq!(report.team.spent_usd, 0.0);
+        assert_eq!(report.org.spent_usd, 100.0);
+
+        let unplanned = org(&[("app", Some(200)), ("ops", None)]);
+        let report = status(
+            &unplanned,
+            start(),
+            &id("ops"),
+            &spends(&[("app", Some(20.0)), ("ops", None)]),
+        )
+        .unwrap();
+        assert!(report.team.partial);
+        assert!(
+            report.org.partial,
+            "the selected team counts toward partial"
+        );
+        assert_eq!(report.team.cap_usd, None);
+    }
+
+    #[test]
+    fn team_is_over_when_its_org_is_over() {
+        let report = status(
+            &org(&[("app", Some(200)), ("ops", Some(300))]),
+            start(),
+            &id("app"),
+            &spends(&[("app", Some(50.0)), ("ops", Some(470.0))]),
+        )
+        .unwrap();
+        assert_eq!(report.org.state, BudgetState::Over);
+        assert_eq!(report.team.state, BudgetState::Over);
+    }
+
+    #[test]
+    fn budget_threshold_edges_are_inclusive() {
+        for (spent, expected) in [
+            (79.99, BudgetState::Ok),
+            (80.0, BudgetState::Warning),
+            (80.01, BudgetState::Warning),
+            (99.99, BudgetState::Warning),
+            (100.0, BudgetState::Over),
+            (100.01, BudgetState::Over),
+        ] {
+            let report = status(
+                &org(&[("app", Some(100))]),
+                start(),
+                &id("app"),
+                &spends(&[("app", Some(spent))]),
+            )
+            .unwrap();
+            assert_eq!(report.team.state, expected, "spent {spent}");
+            assert_eq!(report.org.state, expected, "spent {spent}");
+        }
+    }
+
+    #[test]
+    fn a_team_without_a_plan_has_no_cap_and_is_ok() {
+        let report = status(
+            &org(&[("app", None)]),
+            start(),
+            &id("app"),
+            &spends(&[("app", Some(1_000.0))]),
+        )
+        .unwrap();
+        assert_eq!(report.team.cap_usd, None);
+        assert_eq!(report.team.state, BudgetState::Ok);
+        assert_eq!(report.org.cap_usd, None);
+        assert_eq!(report.org.state, BudgetState::Ok);
     }
 }

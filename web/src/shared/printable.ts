@@ -1,17 +1,19 @@
 // A label comes from the node, and an older one may hold a character that reorders or hides how a line reads: a bidirectional
 // override turns "Alice" into "ecilA" in a browser as it does on a terminal. The node refuses to write such a label now and
 // prints each of them as `?` (`is_hidden_char` and `printable` in agency-proto); the screens say it the same way, here, once.
-// The set: a control character (Unicode Cc), the bidirectional controls U+061C, U+200E, U+200F, U+202A to U+202E and U+2066 to
-// U+2069, the zero-width space U+200B, the word joiner U+2060, and the byte-order mark U+FEFF. The joiners U+200C and U+200D
-// (Persian, Indic scripts, emoji) and the emoji tag characters stay: none of them can reorder text.
-const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+// The set (`testdata/label-hidden-chars.json`, which the node and the Apple apps read too): a control character (Unicode Cc), the line
+// and paragraph separators U+2028 and U+2029, the bidirectional controls, and the format characters (Cf) that are invisible or change
+// how a line is laid out: the soft hyphen, U+180E, U+2060 to U+206F, the zero-width space, the byte-order mark, U+FFF9 to U+FFFB and
+// the language tag U+E0001. The joiners U+200C and U+200D (Persian, Indic scripts, emoji), the emoji tag characters and the format
+// characters of a script's own text stay: none of them hides or reorders a line. The `u` flag reads U+E0001 as one character.
+const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u206F\uFEFF\uFFF9-\uFFFB\u{E0001}]/gu
 
 /** The text with each hidden character as `?`. */
 export const printable = (text: string): string => text.replace(HIDDEN, '?')
 
 // Text that an agent or a person wrote (a title, a note, a summary) has line breaks and tabs, which are controls too and cannot reorder
 // a line the way the rest of the set can: the same set, without U+0009, U+000A, and U+000D.
-const HIDDEN_IN_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+const HIDDEN_IN_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u206F\uFEFF\uFFF9-\uFFFB\u{E0001}]/gu
 
 /** A text with each hidden character as `?`, its line breaks and tabs kept. */
 export const printableText = (text: string): string => text.replace(HIDDEN_IN_TEXT, '?')

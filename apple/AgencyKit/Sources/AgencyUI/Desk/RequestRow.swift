@@ -7,7 +7,6 @@ import SwiftUI
 struct RequestRow: View {
     let item: DeskItem
     let now: Date
-    let isSent: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,10 +14,6 @@ struct RequestRow: View {
                 Tag(text: Ja.Desk.kind(item.request.kind), color: item.isMine ? .accentColor : .secondary)
                 if item.blockedPeople.count > 0 {
                     Tag(text: Ja.Desk.blocking(item.blockedPeople.count), color: Theme.warning)
-                }
-                Spacer(minLength: 0)
-                if isSent {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 }
             }
             Text(item.request.title)

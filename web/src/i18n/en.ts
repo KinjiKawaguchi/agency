@@ -115,7 +115,7 @@ export const en = {
     decision: (state: string, count: number, title: string, reason: string | undefined) => {
       const named = count === 1 && title !== '' ? ` “${title}”` : ''
       if (state === 'refused') return count === 1 ? `A decision${named} was refused${reason === undefined ? '' : `: ${reason}`}` : `${count} decisions were refused.`
-      if (state === 'queued') return count === 1 ? `A decision${named} is queued: its node cannot be reached yet.` : `${count} decisions are queued.`
+      if (state === 'queued') return count === 1 ? `A decision${named} is saved, not delivered: its node cannot be reached yet.` : `${count} decisions are saved, not delivered.`
       return count === 1 ? `A decision${named} was ${state}.` : `${count} decisions were ${state}.`
     },
     more: (count: number) => `${count} more things are new.`,
@@ -128,6 +128,29 @@ export const en = {
       decisionRefused: 'A decision was refused',
     },
     devicesMark: (count: number) => `${count} waiting to be approved`,
+    destinations: {
+      title: 'Where notices are sent',
+      lead: 'Every browser and app this node sends notices to. When a device is removed, the notices to it stop by themselves; a registration that names no device stays until you stop it here, or until notices are turned off in that browser or app.',
+      thisBrowser: 'this browser',
+      turnOffHere: 'Turn off notices in this browser',
+      loading: 'Asking the node…',
+      failed: (reason: string) => `Could not read where notices are sent: ${reason}`,
+      none: 'This node sends notices nowhere.',
+      kinds: { browser: 'Browser', app: 'iPhone or Mac app' },
+      registered: (when: string) => `registered ${when}`,
+      tiedTo: (label: string) => `Tied to ${label}.`,
+      tiedToNone: 'Tied to no device. It stays until you stop it.',
+      tiedToGone: (id: string) => `Tied to a device that is not yours any more (${id}).`,
+      stopFor: (label: string) => `Stop notices to ${label}`,
+      stop: 'Stop notices',
+      confirmTitle: (label: string) => `Stop notices to ${label}?`,
+      confirmBody: (label: string, when: string) => `${label} (registered ${when}) will no longer get notices from this node. It registers itself again the next time that browser or app opens Agency with notices on. To stop them for good, turn notices off there, or remove its device on this screen.`,
+      confirm: 'Stop notices',
+      cancel: 'Cancel',
+      stopping: 'Stopping…',
+      stopped: (label: string) => `${label} no longer gets notices.`,
+      stopFailed: (reason: string) => `Could not stop the notices: ${reason}`,
+    },
     os: {
       title: 'Notifications in this browser',
       lead: 'Show what is new as a notification of the operating system while this page is hidden. It says what the page says, and stays in this browser.',
@@ -341,6 +364,28 @@ export const en = {
       },
     },
     confirmFailed: (reason: string) => `Could not add the device: ${reason}`,
+    remove: {
+      button: 'Remove',
+      buttonFor: (label: string) => `Remove ${label}`,
+      title: (label: string) => `Remove ${label}?`,
+      body: (label: string, code: string) => `${label} (pairing code ${code}) can never sign again.`,
+      fromOrgs: (orgs: string) => `It is removed from ${orgs}.`,
+      thisDevice: 'This is the device you are using. After it is removed, this browser can no longer sign with this key, and the key cannot be added again. The browser then makes a new key, which has to be added as a new device.',
+      removedThis: 'This device is removed. This browser made a new key, which is not added yet: ask to add it on this screen to decide from this browser again.',
+      newKeyFailed: (reason: string) => `The device is removed, but this browser could not make a new key: ${reason}`,
+      confirm: 'Remove this device',
+      cancel: 'Cancel',
+      removing: 'Removing…',
+      removed: (label: string) => `${label} is removed. It can never sign again.`,
+      stillIn: (orgs: string) => `It is still listed in ${orgs}: this device is not added there, so it cannot sign the removal.`,
+      queuedOther: (count: number, label: string) => `${count === 1 ? '1 decision is' : `${count} decisions are`} saved, not delivered. Any that ${label} signed will be refused once it is removed.`,
+      queuedHere: (count: number) => `${count === 1 ? '1 decision is' : `${count} decisions are`} saved, not delivered. The ones made in this browser will be refused once it is removed.`,
+      removedFrom: (label: string, orgs: string) => `${label} is removed from ${orgs}. It can never sign there again.`,
+      keptFirst: (count: number) => `${count === 1 ? '1 decision has' : `${count} decisions have`} not been sent yet, and removing this device would stop ${count === 1 ? 'it' : 'them'} for good. Send or discard ${count === 1 ? 'it' : 'them'} in the tray first.`,
+      last: (label: string, orgs: string) => `${label} is your only device in ${orgs}, so it cannot be removed here: no device there could sign after it. Add another device first. On the machine that runs this node, agency device-add adds one.`,
+      failed: (reason: string) => `Could not remove the device: ${reason}`,
+      pendingRoot: ['Removal sent here; it takes effect once the root key’s node signs it: run ', ' there.'] satisfies Around,
+    },
     pendingRoot: ['Approved here; it takes effect once the root key’s node signs it: run ', ' there.'] satisfies Around,
   },
   desk: {
@@ -408,11 +453,11 @@ export const en = {
     },
     recent: {
       head: 'Recently decided',
-      states: { applied: 'Applied', delivered: 'Delivered', queued: 'Waiting to send', refused: 'Refused' },
+      states: { applied: 'Applied', delivered: 'Delivered', queued: 'Saved, not delivered', refused: 'Refused' },
       chose: (choice: string) => `Chose “${choice}”.`,
       answeredFor: (label: string) => `Answered for ${label}.`,
       queuedDetail: (attempts: number, retry: string | null) =>
-        `${attempts === 0 ? 'Not sent yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
+        `${attempts === 0 ? 'Not delivered yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
       underMinute: 'in under a minute',
       lastError: (reason: string) => `Last error: ${reason}`,
       refusedDetail: (reason: string) => `The team’s node refused it: ${reason}`,

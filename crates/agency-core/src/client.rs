@@ -390,6 +390,7 @@ fn entry_of(
         choice: record.payload.choice,
         choice_label: record.choice_label,
         relayed_for: record.relayed_for,
+        signer: record.signer,
         decided_at,
         state,
     })

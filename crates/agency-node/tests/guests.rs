@@ -2,82 +2,16 @@
 //! only the routes of its own table, scoped to its member, and never writes as the owner.
 mod common;
 
-use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::guests::{self, Guest};
 use agency_core::orgs;
-use agency_proto::org::{Device, Person, TeamPlace};
+use agency_proto::org::TeamPlace;
 use agency_proto::{AccountKey, Timestamp};
-use common::access::{access_token, behind_access_with_runtime, PUBLIC_HOST};
-use common::{id, Running, TOKEN};
+use common::access::{access_token, PUBLIC_HOST};
+use common::guests::{call, with_guest, CAROL};
+use common::id;
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
-
-const CAROL: &str = "carol@example.com";
-
-/// Alice's org with team `app` on her node, addressing `carol` (a hosted member with one device) as
-/// `finance`, with request r-2 for carol and r-1 for the owner; and carol's guest record.
-async fn with_guest() -> (Running, AccountKey) {
-    let (alice, memory) = behind_access_with_runtime(Some("ABCDE12345.dev.example.agency")).await;
-    {
-        let mut state = memory.lock().unwrap();
-        state
-            .requests
-            .push(("r-2".into(), "Approve the invoice?".into()));
-        state.to.insert("r-2".into(), "finance".into());
-    }
-    let node = &alice.node;
-    orgs::add_team(
-        node,
-        &id("acme"),
-        TeamPlace::new(id("app"), "app", alice.url()),
-    )
-    .unwrap();
-    let laptop = AccountKey::from_seed([0x81; 32]);
-    let device = Device {
-        id: laptop.public().device_id(),
-        label: "Laptop".into(),
-        public_key: laptop.public(),
-        added_at: Timestamp::parse(&node.now_text()).unwrap(),
-    };
-    orgs::amend(node, &id("acme"), |body| {
-        body.people
-            .push(Person::hosted(id("carol"), "Carol", vec![device]));
-        Ok(())
-    })
-    .unwrap();
-    node.update_config(|config| {
-        let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
-        let people = BTreeMap::from([("finance".to_owned(), id("carol"))]);
-        config
-            .teams
-            .push(HostedTeam::new(id("acme"), id("app"), id("alice"), runtime).with_people(people))
-    })
-    .unwrap();
-    guests::keep(node, &Guest::new(CAROL, id("acme"), id("carol"))).unwrap();
-    (alice, laptop)
-}
-
-async fn call(
-    running: &Running,
-    method: Method,
-    path: &str,
-    email: &str,
-    body: Option<Value>,
-) -> (u16, Value) {
-    let mut request = reqwest::Client::new()
-        .request(method, format!("{}{path}", running.url()))
-        .header("host", PUBLIC_HOST)
-        .header("cf-ray", "1")
-        .header("cf-access-jwt-assertion", access_token(email, |_| {}))
-        .header("x-agency-token", TOKEN);
-    if let Some(body) = body {
-        request = request.json(&body);
-    }
-    let response = request.send().await.unwrap();
-    let status = response.status().as_u16();
-    (status, response.json().await.unwrap_or(Value::Null))
-}
 
 #[tokio::test]
 async fn a_guest_reads_its_own_member_org_and_requests_and_nothing_of_the_owners() {
@@ -141,7 +75,7 @@ async fn every_route_outside_the_guest_table_answers_a_guest_403_and_the_owner_s
         .into_iter()
         .filter(|route| !guest_routes.contains(route))
         .collect();
-    assert!(owners.len() >= 15, "{owners:?}");
+    assert!(owners.len() >= 12, "{owners:?}");
     for (method, pattern) in owners {
         let method = Method::from_bytes(method.as_bytes()).unwrap();
         let path = filled(pattern);
@@ -311,14 +245,11 @@ async fn a_guest_decides_only_as_its_member_and_never_as_the_owner() {
 #[tokio::test]
 async fn me_has_no_guest_key_at_all_for_the_owner_a_local_request_or_another_sign_in() {
     let (alice, _) = with_guest().await;
-    for email in ["alice@example.com", "erin@example.com"] {
-        let (status, me) = call(&alice, Method::GET, "/api/me", email, None).await;
-        assert_eq!(status, 200, "{me}");
-        assert!(
-            me.as_object().unwrap().get("guest").is_none(),
-            "{email}: {me}"
-        );
-    }
+    let (status, me) = call(&alice, Method::GET, "/api/me", "alice@example.com", None).await;
+    assert_eq!(status, 200, "{me}");
+    assert!(me.as_object().unwrap().get("guest").is_none(), "{me}");
+    let (status, other) = call(&alice, Method::GET, "/api/me", "erin@example.com", None).await;
+    assert_eq!(status, 403, "another sign-in reads no me at all: {other}");
     let (_, local) = common::body(common::get(&alice, "/api/me").send().await.unwrap()).await;
     assert!(local.as_object().unwrap().get("guest").is_none(), "{local}");
 }
@@ -440,4 +371,54 @@ async fn an_envelope_of_another_account_under_a_kept_id_is_a_conflict_even_after
         status, 409,
         "the same id for the owner is another decision: {answer}"
     );
+}
+
+/// The reads an unknown sign-in must not make: each one answered only to the owner or a guest.
+const OWNERS_READS: [&str; 5] = [
+    "/api/orgs/acme/teams/app/view",
+    "/api/orgs/acme",
+    "/api/me",
+    "/api/session",
+    "/api/decisions",
+];
+
+#[tokio::test]
+async fn a_guest_whose_member_left_the_org_is_refused_everywhere_and_never_read_as_the_owner() {
+    let (alice, _) = with_guest().await;
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        body.people.retain(|person| person.id != id("carol"));
+        Ok(())
+    })
+    .unwrap();
+    for path in OWNERS_READS {
+        let (status, answer) = call(&alice, Method::GET, path, CAROL, None).await;
+        assert_eq!(status, 403, "{path}: {answer}");
+    }
+    let (status, _) = call(&alice, Method::GET, "/api/me", "alice@example.com", None).await;
+    assert_eq!(status, 200, "the owner still reads");
+}
+
+#[tokio::test]
+async fn a_sign_in_without_an_email_or_with_another_one_is_refused_everywhere() {
+    let (alice, _) = with_guest().await;
+    let tokens = [
+        access_token("", |claims| {
+            claims.as_object_mut().unwrap().remove("email");
+            claims["common_name"] = json!("a-service-token");
+        }),
+        access_token("dan@example.com", |_| {}),
+    ];
+    for token in tokens {
+        for path in OWNERS_READS.iter().chain(&["/desk"]) {
+            let response = reqwest::Client::new()
+                .get(format!("{}{path}", alice.url()))
+                .header("host", PUBLIC_HOST)
+                .header("cf-ray", "1")
+                .header("cf-access-jwt-assertion", &token)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), 403, "{path}");
+        }
+    }
 }

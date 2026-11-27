@@ -65,6 +65,28 @@ extension Ja {
             public static func name(_ group: String) -> String { names[group] ?? group }
         }
 
+        /// The hour-by-hour trend, in the web's words (`metrics.trend` in `ja.ts`).
+        public enum Trend {
+            public static let title = "時間ごとの推移"
+            public static let lead = "ルートの区分ごとの、各時間の p95 です。p95 は区間の上限なので「以下」です。目盛りは 1 つで、単位はミリ秒（0.5 ミリ秒から 30 秒）、対数目盛りです。呼び出しがなかった時間は 0 ではなく、線の切れ目になります。"
+            public static let approximateNote = "1 点は、いちばん遅いルートの p95 です（このノードは時間ごとの区間の数を返しません）。その区分自身の p95 は、その時間についてこれ以下です。"
+            public static let budgetNote = "予算の線より上にある点は、予算を破ったことを言いません。ノード内の読み取りすべてをまとめた p95 は、その点以下です。"
+            public static let onlyShort = "ノードが時間ごとの数字を返すのは、7 日までの期間です。もっと短い期間を選ぶと見られます。"
+            public static let inNodeReads = "ノード内の読み取り"
+            public static func callGroup(_ group: String) -> String { "呼び出し: \(group)" }
+            public static func budget(_ value: String) -> String { "予算 \(value)" }
+            public static func summary(_ title: String, _ hours: String, _ latest: String) -> String {
+                "\(title): ルートをまとめた各時間の p95。呼び出しのあった時間は \(hours) 時間で、直近は \(latest)。"
+            }
+            public static func summaryApproximate(_ title: String, _ hours: String, _ latest: String) -> String {
+                "\(title): 各時間でいちばん遅いルートの p95。呼び出しのあった時間は \(hours) 時間で、直近は \(latest)。"
+            }
+            public static let show = "時間ごとの数字を見る"
+            public static func caption(_ title: String) -> String { "\(title): 呼び出しのあった時間（新しい順）" }
+            public static let hour = "時間"
+            public static let calls = "呼び出し"
+        }
+
         public enum Objectives {
             public static let title = "目標"
             public static let lead = "運用者がノードの設定で、ルートの区分ごとに決めた応答時間です。この期間に守れたかどうかは、ノードが答えます。"

@@ -3,10 +3,10 @@
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { metricsAnswer, type MetricsVariant } from './metrics'
-import { createMockWebPush } from './webPush'
+import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { About, PushToken, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
@@ -32,6 +32,8 @@ export interface MockNode {
   claim: { confirm: () => void; state: () => ClaimState | undefined; holdOtherKey: (pairingCode: string) => void }
   /** Push tokens registered so far, one entry per token, as the node keeps them. */
   pushTokens: () => ReadonlyArray<{ token: string; environment: string; label: string }>
+  /** The tokens as the node keeps them: with the id a removal names, when they registered, and the device they name. */
+  pushTokenEntries: () => ReadonlyArray<PushToken>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
   /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
@@ -92,10 +94,14 @@ interface MockNodeOptions {
   activityClock?: () => number
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
+  /** The orgs that list the account's devices, where it is more than the one org (each lists the same devices). */
+  deviceOrgs?: readonly string[]
   /** False to leave out the node's own command for approving a device, as the node does for anyone but its owner. */
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** True for a node that ties a push registration to the device it names (the capability `pushDevice`): it takes `device` on a registration and drops the registrations of a device that is removed. Otherwise a registration that names one is refused as an unknown field, as an older node does. */
+  pushDevice?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
   /** With `webPush`: every browser's push service has refused the last notice it was sent. */
@@ -161,6 +167,13 @@ const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
+/** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean }): About => ({
+  node: '0.4.0',
+  contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
+  capabilities: [...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+})
+
 const DEVICES_PATH = '/api/devices'
 const PUSH_TOKENS_PATH = '/api/push/tokens'
 
@@ -176,7 +189,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   let isSignInExpired = false
   let writeToken = MOCK_TOKEN
   let accepted: readonly Signed<Envelope>[] = []
-  let pushTokens: ReadonlyArray<{ token: string; environment: string; label: string }> = []
+  let pushTokenEntries: ReadonlyArray<PushToken> = []
   let log: readonly DecisionEntry[] = options.earlierDecisions === false || options.guest !== undefined ? [] : earlierDecisions(now)
 
   let recoveries: Readonly<Record<string, StartedRecovery>> = options.recoveries ?? {}
@@ -232,10 +245,10 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
-  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true)
+  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
-  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
+  const devices = createMockDevices(options.deviceOrgs ?? [ORG_DEFINITION.org], me.account.id, options.devices ?? [])
 
   const decideSigned = async (request: Request, view: TeamView): Promise<Response> => {
     const write = await readWrite(request)
@@ -351,11 +364,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.pushTokensFailWith !== undefined) return failure(options.pushTokensFailWith, 'The node does not take push tokens.')
     const write = await readWrite(request)
     if (write instanceof Response) return write
-    const { token, environment, label } = (write.body ?? {}) as Record<string, unknown>
+    const { token, environment, label, device } = (write.body ?? {}) as Record<string, unknown>
     if (typeof token !== 'string' || !/^[0-9a-f]{32,200}$/.test(token)) return failure(400, 'The token is hex of 32 to 200 characters.')
     if (environment !== 'sandbox' && environment !== 'production') return failure(400, 'The environment is sandbox or production.')
     if (typeof label !== 'string' || label.trim() === '') return failure(400, 'The label is missing.')
-    pushTokens = [...pushTokens.filter((one) => one.token !== token), { token, environment, label }]
+    // As for a subscription: a node without `pushDevice` refuses a field it does not know, and one with it takes `device` only for a current device.
+    if (device !== undefined && (typeof device !== 'string' || options.pushDevice !== true || !devices.deviceIds().has(device))) return failure(400, options.pushDevice === true ? 'That is not a device of this account.' : 'Unknown field `device`.')
+    pushTokenEntries = [...pushTokenEntries.filter((one) => one.token !== token), { id: idOf(token), token, environment, label, registeredAt: now.toISOString(), events: ['request'], ...(typeof device === 'string' ? { device } : {}) }]
     return json({})
   }
 
@@ -372,6 +387,14 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (url.pathname === `${DEVICES_PATH}/changes`) {
       if (options.pendingRoot === true) return json({ outcome: 'pending', message: PENDING_ROOT_MESSAGE })
       const refusal = await devices.change(write.body)
+      if (refusal === undefined) {
+        // A node that ties registrations to devices drops the ones that name a device that is no longer the account's.
+        const body = (write.body as { body?: { op?: string } } | null)?.body
+        if (options.pushDevice === true && body?.op === 'remove') {
+          webPush.dropWithoutDevice(devices.deviceIds())
+          pushTokenEntries = pushTokenEntries.filter((one) => one.device === undefined || devices.deviceIds().has(one.device))
+        }
+      }
       return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
     }
     return failure(404, 'No such route.')
@@ -386,6 +409,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
     if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgRef => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
+    if (request.method === 'GET' && url.pathname === '/api/about') return json(aboutOf(options))
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
@@ -394,6 +418,15 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const claimed = claim.handle(request, url, () => readWrite(request))
     if (claimed !== undefined) return claimed
     if (url.pathname === PUSH_TOKENS_PATH && request.method === 'POST') return registerPushToken(request)
+    if (url.pathname === PUSH_TOKENS_PATH && request.method === 'GET') return json({ tokens: pushTokenEntries.map((one) => ({ ...one, token: one.token.slice(-8) })) })
+    const tokenRemoval = /^\/api\/push\/tokens\/([^/]+)$/.exec(url.pathname)
+    if (tokenRemoval !== null && request.method === 'DELETE') {
+      const write = await readWrite(request)
+      if (write instanceof Response) return write
+      const named = decodeURIComponent(tokenRemoval[1] ?? '')
+      pushTokenEntries = pushTokenEntries.filter((one) => one.id !== named && one.token !== named)
+      return new Response(null, { status: 204 })
+    }
     if (options.webPush === true) {
       const answered = webPush.handle(request, url, () => readWrite(request))
       if (answered !== undefined) return answered
@@ -424,7 +457,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     },
     decisions: () => received,
     envelopes: () => accepted,
-    pushTokens: () => pushTokens,
+    pushTokens: () => pushTokenEntries.map(({ token, environment, label }) => ({ token, environment, label })),
+    pushTokenEntries: () => pushTokenEntries,
     pushSubscriptions: () => webPush.subscriptions(),
     recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
