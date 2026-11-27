@@ -1,5 +1,5 @@
 {
-  "about": "The characters a label from the node may hold that reorder or hide how a line reads, as the node's `is_hidden_char` (crates/agency-proto/src/org.rs) has them: every one is printed as `mark`. Ranges are inclusive code points in hex. U+200C, U+200D and the emoji tag characters are not in it. Swift, the web client and the node read this one file. A text an agent or a person wrote with lines (a context, a document, a thread message, a decision's text) hides exactly `hidden` minus `textKeeps` (a tab, a line feed, a carriage return stay: they cannot reorder a line); `textCases` are such texts and what each prints as. Labels and titles use `cases`.",
+  "about": "The characters a label from the node may hold that reorder or hide how a line reads, as the node's `is_hidden_char` (crates/agency-proto/src/org.rs) has them: every one is printed as `mark`. Ranges are inclusive code points in hex. The set is the controls (Cc), the line and paragraph separators (U+2028, U+2029), the bidirectional controls, and the format characters (Cf) that are invisible or change how a line is laid out: the soft hyphen, the Mongolian vowel separator, the word joiner and the invisible operators and deprecated format characters up to U+206F, the interlinear annotation marks, the byte-order mark and the language tag. U+200C, U+200D, the emoji tag characters and the format characters that belong to a script's own text (Arabic, Syriac and Kaithi number and end-of-verse signs, the Egyptian hieroglyph, shorthand and musical format controls) are not in it. Swift, the web client and the node read this one file. A text an agent or a person wrote with lines (a context, a document, a thread message, a decision's text) hides exactly `hidden` minus `textKeeps` (a tab, a line feed, a carriage return stay: they cannot reorder a line); `textCases` are such texts and what each prints as. Labels and titles use `cases`.",
   "mark": "?",
   "hidden": [
     [
@@ -11,8 +11,16 @@
       "009F"
     ],
     [
+      "00AD",
+      "00AD"
+    ],
+    [
       "061C",
       "061C"
+    ],
+    [
+      "180E",
+      "180E"
     ],
     [
       "200B",
@@ -23,20 +31,28 @@
       "200F"
     ],
     [
+      "2028",
+      "2029"
+    ],
+    [
       "202A",
       "202E"
     ],
     [
       "2060",
-      "2060"
-    ],
-    [
-      "2066",
-      "2069"
+      "206F"
     ],
     [
       "FEFF",
       "FEFF"
+    ],
+    [
+      "FFF9",
+      "FFFB"
+    ],
+    [
+      "E0001",
+      "E0001"
     ]
   ],
   "cases": [
@@ -118,7 +134,7 @@
     },
     {
       "text": "Bob\u2029cat",
-      "printable": "Bob\u2029cat"
+      "printable": "Bob?cat"
     },
     {
       "text": "Bob\u202fcat",
@@ -134,7 +150,7 @@
     },
     {
       "text": "Bob\u2061cat",
-      "printable": "Bob\u2061cat"
+      "printable": "Bob?cat"
     },
     {
       "text": "Bob\u2066cat",
@@ -146,11 +162,11 @@
     },
     {
       "text": "Bob\u2065cat",
-      "printable": "Bob\u2065cat"
+      "printable": "Bob?cat"
     },
     {
       "text": "Bob\u206acat",
-      "printable": "Bob\u206acat"
+      "printable": "Bob?cat"
     },
     {
       "text": "Bob\ufeffcat",
@@ -226,11 +242,95 @@
     },
     {
       "text": "a\u2028b",
-      "printable": "a\u2028b"
+      "printable": "a?b"
     },
     {
       "text": "a\u2029b",
-      "printable": "a\u2029b"
+      "printable": "a?b"
+    },
+    {
+      "text": "Bob\u2028cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u00adcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u00accat",
+      "printable": "Bob\u00accat"
+    },
+    {
+      "text": "Bob\u00aecat",
+      "printable": "Bob\u00aecat"
+    },
+    {
+      "text": "Bob\u180ecat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u180dcat",
+      "printable": "Bob\u180dcat"
+    },
+    {
+      "text": "Bob\u180fcat",
+      "printable": "Bob\u180fcat"
+    },
+    {
+      "text": "Bob\u2062cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u206fcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\u2070cat",
+      "printable": "Bob\u2070cat"
+    },
+    {
+      "text": "Bob\u2027cat",
+      "printable": "Bob\u2027cat"
+    },
+    {
+      "text": "Bob\ufff9cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\ufffbcat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\ufff8cat",
+      "printable": "Bob\ufff8cat"
+    },
+    {
+      "text": "Bob\ufffccat",
+      "printable": "Bob\ufffccat"
+    },
+    {
+      "text": "Bob\udb40\udc01cat",
+      "printable": "Bob?cat"
+    },
+    {
+      "text": "Bob\udb40\udc00cat",
+      "printable": "Bob\udb40\udc00cat"
+    },
+    {
+      "text": "Bob\udb40\udc02cat",
+      "printable": "Bob\udb40\udc02cat"
+    },
+    {
+      "text": "Bob\u0600cat",
+      "printable": "Bob\u0600cat"
+    },
+    {
+      "text": "Bob\u070fcat",
+      "printable": "Bob\u070fcat"
+    },
+    {
+      "text": "a\u2028b\u2029c",
+      "printable": "a?b?c"
     }
   ],
   "textKeeps": [
@@ -358,6 +458,26 @@
     {
       "text": "\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\nok",
       "printable": "\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\nok"
+    },
+    {
+      "text": "line one\u2028line two",
+      "printable": "line one?line two"
+    },
+    {
+      "text": "para one\u2029para two",
+      "printable": "para one?para two"
+    },
+    {
+      "text": "pay\u00adroll\nsecond line",
+      "printable": "pay?roll\nsecond line"
+    },
+    {
+      "text": "mark\ufff9ed\nnext\udb40\udc01",
+      "printable": "mark?ed\nnext?"
+    },
+    {
+      "text": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629\u0600 12\nok",
+      "printable": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629\u0600 12\nok"
     }
   ]
 }
