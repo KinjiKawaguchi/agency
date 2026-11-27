@@ -32,7 +32,7 @@ Each artifact states which contract versions it speaks, and a node says so throu
 - **Additive by default.** A change that an older peer can safely ignore or refuse needs no new contract version. It does need a rollout rule when an older peer *refuses* it (see "Signed data").
 - **Readers ignore what they do not know**, except where ignoring would be unsafe. A signed org definition is the exception: a node refuses a version with a field it does not know, because it cannot check what it cannot read (see "Signed data").
 - **A breaking change gets a new contract version, side by side with the old one.** Both are served during an overlap. The old one goes only when the rule for that boundary says nobody needs it any more, and never in the same release that adds the new one.
-- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and a test fails if an existing vector changes.
+- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and CI fails a pull request that changes or removes an existing vector (`scripts/check-vectors-append-only.sh`, which compares the file with the base branch; a new vector is added at the end). A vector that was itself a mistake is corrected only by a line `<entry>: <reason>` in `testdata/vectors-changed.txt`, which the pull request's reviewers read like code.
 
 ## Node and node (`/fed/v1`)
 
