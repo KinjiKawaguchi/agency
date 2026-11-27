@@ -52,6 +52,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
 mod guests;
+mod members;
 mod metrics;
 mod outcomes;
 mod telemetry;
@@ -777,6 +778,7 @@ pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
     let parts = outcomes::ROUTES
         .iter()
+        .chain(members::ROUTES)
         .chain(metrics::ROUTES)
         .chain(telemetry::ROUTES);
     ROUTES.iter().chain(parts).copied().collect()
@@ -819,6 +821,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         router.route(path, method_router(path))
     });
     own.merge(outcomes::routes(api.clone()))
+        .merge(members::routes())
         .merge(metrics::routes(api.clone()))
         .merge(telemetry::routes())
         .fallback(page)
