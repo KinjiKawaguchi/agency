@@ -83,6 +83,11 @@ impl Running {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    /// The node's log, for work a test starts as the running node would.
+    pub fn logger(&self) -> agency_adapters::logging::Logger {
+        self.opened.logger().clone()
+    }
+
     /// The node's data directory.
     pub fn data_dir(&self) -> std::path::PathBuf {
         self._dir.path().join("node")

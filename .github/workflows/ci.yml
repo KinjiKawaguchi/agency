@@ -4,13 +4,18 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The merge queue tests a group of queued pull requests on top of main, and the nine required checks must
+  # report for that group. Only this workflow listens to merge_group: the ones that write (release,
+  # release-please) must not run for a group that has not merged yet.
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A queued group is never cancelled by another run: the queue itself decides which groups to rebuild.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   # Conflict markers in Markdown build and pass every test, so they are checked on their own.

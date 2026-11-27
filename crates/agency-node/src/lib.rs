@@ -1,6 +1,7 @@
 //! Agency's node: wires agency-core to its adapters. One node runs per machine; it serves the teams it
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
+pub mod background;
 pub mod budget;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
@@ -169,9 +170,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
-            Arc::new(CommandRuntime::with_log(
-                logger.sink(LogLevel::Warn, "runtime"),
-            ))
+            Arc::new(
+                CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
+                    .recording(recorder.clone()),
+            )
         }),
         clock: clock.clone(),
         random: random.clone(),

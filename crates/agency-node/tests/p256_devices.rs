@@ -76,9 +76,10 @@ async fn a_phone_with_a_p256_key_is_added_and_decides() {
     let (status, result) = send(&alice, ENVELOPES, &json!({ "envelope": envelope })).await;
     assert_eq!(
         (status, &result["outcome"]),
-        (StatusCode::OK, &json!("applied")),
+        (StatusCode::ACCEPTED, &json!("queued")),
         "{result}"
     );
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     let applied = memory.lock().unwrap().applied.clone();
     assert_eq!(applied.len(), 1);
     assert_eq!(applied[0].by, id("alice"));
