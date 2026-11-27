@@ -90,7 +90,10 @@ fn route_group(template: &str) -> &'static str {
         || starts("/api/orgs/{org}/teams/{team}/budget")
     {
         "usage"
-    } else if template == "/api/orgs/{org}" || starts("/api/orgs/{org}/teams/") {
+    } else if template == "/api/orgs/{org}"
+        || starts("/api/orgs/{org}/history")
+        || starts("/api/orgs/{org}/teams/")
+    {
         "teams"
     } else if ["/api/me", "/api/session", "/api/decisions", "/api/about"].contains(&template) {
         "desk"

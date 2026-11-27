@@ -6,51 +6,9 @@ use crate::error::Result;
 use crate::node::Node;
 use crate::orgs::load;
 use agency_proto::clock::{self, OffsetDateTime};
+pub use agency_proto::history::{HistoryEntry, SignatureCheck};
 use agency_proto::org::SignedOrg;
 use agency_proto::{Id, Kind};
-use serde::Serialize;
-
-/// Whether a version's signature was checked, and what it showed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SignatureCheck {
-    /// Made by the root key or the recovery key of the version just before it (of the version itself, for the first).
-    Valid,
-    /// Made by no key the version just before it names: the version was changed after it was signed, or never signed
-    /// by the org's root.
-    Invalid,
-    /// Not checked: the version just before it is not kept here, so which keys could sign it is not known (the missing
-    /// versions may have moved the root).
-    NotChecked,
-}
-
-/// One version of the org as the history shows it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryEntry {
-    pub version: u64,
-    /// When the root signed it (`at`); absent for a version this node does not keep.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub at: Option<String>,
-    /// What its signature showed; absent for a version this node does not keep.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<SignatureCheck>,
-    /// Which key signed it, by fingerprint (`root key …` or `recovery key …`), when the signature is valid.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_by: Option<String>,
-    /// Whether its `prev` is the digest of the version just before it (a version with another `prev` is a fork of the
-    /// org's history); absent when that version is not kept here.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub follows: Option<bool>,
-    /// The version its changes are counted from, when that is not the one just before it: after versions this node does
-    /// not keep, the changes are those of all of them together.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compared_with: Option<u64>,
-    /// What it changed, in words, from the version it is compared with.
-    pub changes: Vec<String>,
-    /// Whether this node keeps the version. One it does not keep is listed, so that a gap is never silent.
-    pub is_kept: bool,
-}
 
 /// Which key of `before` (or, for the first version, of the version itself) signed `doc`.
 fn signer_of(before: Option<&SignedOrg>, doc: &SignedOrg) -> Option<String> {
