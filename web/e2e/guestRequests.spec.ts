@@ -1,5 +1,5 @@
 import { expect, test, type Request } from '@playwright/test'
-import { enrolBrowser, resetNode, trackErrors } from './helpers'
+import { decisionsTaken, enrolBrowser, resetNode, trackErrors } from './helpers'
 
 // A member the node hosts (a guest of it) may ask the node for their own decisions and their own devices, and nothing else: every other
 // route is the owner's and the node answers it 403 (#201). This follows every request the browser makes while the guest goes through
@@ -62,13 +62,15 @@ test('every page of the owner’s leads a guest to the desk, and no request of t
   expect(refused).toEqual([])
 })
 
-test('a guest decides a request and adds a device, and every request is one of their own', async ({ page, request }) => {
+test('a guest decides a request and moves on, and every request is one of their own', async ({ page, request }) => {
   await enrolBrowser(page, request)
   await page.goto('/desk')
   const paper = page.getByRole('article')
   await paper.locator('label.choice').filter({ hasText: 'Approve' }).click()
   await paper.getByRole('button', { name: 'Approve with “Approve”' }).click()
-  await expect(page.getByText('Sent. Lead will get it.')).toBeVisible()
+  // The request leaves the pile and the next one opens at once; the kept decision is sent from the tray, with the routes a guest has.
+  await expect(page.getByRole('listbox').getByText('Add a second frontend agent')).toHaveCount(0)
+  await decisionsTaken(page, request)
   await page.getByRole('navigation', { name: 'Main menu' }).getByRole('link', { name: /^Devices/ }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Devices' })).toBeVisible()
 
