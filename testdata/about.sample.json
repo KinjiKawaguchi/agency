@@ -6,5 +6,5 @@
     "runtime": [1],
     "clientApi": { "current": 1, "oldest": 1 }
   },
-  "capabilities": ["orgPlan", "orgAims", "orgKpis", "orgRecovery", "orgSeats", "orgExternals", "hostedMembers", "webPush", "activity", "outcomes", "pushDevice", "readAudience"]
+  "capabilities": ["orgPlan", "orgAims", "orgKpis", "orgRecovery", "orgSeats", "orgExternals", "hostedMembers", "webPush", "activity", "outcomes", "pushDevice", "effort", "readAudience"]
 }

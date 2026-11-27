@@ -449,6 +449,7 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
 - What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- The effort screen (where a team's tokens went, by work type, at `/api/orgs/<org>/effort`) is worked out from the same repositories and from the token usage the team's runtime reports (`tokenUsage`). It is an estimate: the runtime reports cost by day, so a day's cost is shared out among the types of the pull requests merged that day, or, on a day nothing merged, among those of the next day that has some ([protocol.md](protocol.md#evaluation) has the rule). A team whose runtime does not report token usage is listed with a reason, never with zero.
 - A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
 
 | Reason on the screen | What to do |
@@ -460,6 +461,9 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
 | the team's node does not give delivery numbers | That node is older than this feature: update it. |
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
+| the team's runtime does not report token usage | Use a runtime that lists `tokenUsage`; until then the team's effort is not shown. |
+| the team's node does not give effort numbers | That node is older than this feature: update it. |
+| the team's node does not give effort numbers to this account | The account is an answerer in the org, who does not read them. |
 | a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
 | the team's node did not answer | That node is down or unreachable. |
 
