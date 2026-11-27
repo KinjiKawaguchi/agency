@@ -69,6 +69,12 @@ fn slot_of(pull_request: &MergedPullRequest) -> Slot {
     }
 }
 
+/// Whether the pull request is a new feature by the rule of "Work type": the one the effort split uses, so
+/// that the lead time of new features and the effort spent on them speak of the same pull requests.
+pub(super) fn is_new_feature(pull_request: &MergedPullRequest) -> bool {
+    slot_of(pull_request) == Slot::NewFeature
+}
+
 /// How many pull requests of each type merged, in the order of `SLOTS`: the weights a cost is shared out by.
 type Weights = [u32; SLOTS.len()];
 

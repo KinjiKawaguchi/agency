@@ -1,4 +1,5 @@
 //! A team's delivery numbers over a period, worked out from facts (docs/protocol.md, "Evaluation").
+use super::effort::is_new_feature;
 use super::facts::{MainRun, MergedPullRequest};
 use super::kinds::{classify, count, Kind};
 use super::participants::round_to_cents;
@@ -6,7 +7,7 @@ use super::period::Period;
 use super::red::red_spans;
 use agency_proto::clock::{OffsetDateTime, UtcOffset};
 use agency_proto::evaluation::{
-    median, p90, DayEvaluation, EvaluationSummary, MergedCounts, TeamEvaluation,
+    median, p90, DayEvaluation, EvaluationSummary, MergedCounts, NewFeatureSummary, TeamEvaluation,
 };
 use agency_proto::{Date, Id};
 use std::collections::BTreeMap;
@@ -32,6 +33,10 @@ struct Day {
     cost_usd: f64,
     pr_leads: Vec<u64>,
     issue_leads: Vec<u64>,
+    /// The new features merged this day and their lead times: a part of the counts above, not more.
+    features_merged: u32,
+    feature_pr_leads: Vec<u64>,
+    feature_issue_leads: Vec<u64>,
 }
 
 impl Day {
@@ -81,15 +86,18 @@ fn add_pull_requests(days: &mut BTreeMap<String, Day>, period: &Period, input: &
             Kind::Revert => day.reverts += 1,
             kind => count(&mut day.merged, kind),
         }
-        day.pr_leads.push(seconds_between(
-            pull_request.opened_at,
-            pull_request.merged_at,
-        ));
-        if pull_request.has_issue {
-            if let Some(started) = issue_started(pull_request) {
-                day.issue_leads
-                    .push(seconds_between(started, pull_request.merged_at));
-            }
+        let pr_lead = seconds_between(pull_request.opened_at, pull_request.merged_at);
+        let issue_lead = pull_request
+            .has_issue
+            .then(|| issue_started(pull_request))
+            .flatten()
+            .map(|started| seconds_between(started, pull_request.merged_at));
+        day.pr_leads.push(pr_lead);
+        day.issue_leads.extend(issue_lead);
+        if is_new_feature(pull_request) {
+            day.features_merged += 1;
+            day.feature_pr_leads.push(pr_lead);
+            day.feature_issue_leads.extend(issue_lead);
         }
     }
 }
@@ -120,6 +128,7 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
     let mut merged = MergedCounts::default();
     let (mut reverts, mut red, mut cost) = (0, 0, 0.0);
     let (mut pr_leads, mut issue_leads) = (vec![], vec![]);
+    let mut features = (0u32, vec![], vec![]);
     for day in days.values() {
         merged.feat += day.merged.feat;
         merged.fix += day.merged.fix;
@@ -133,6 +142,9 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
         cost += day.cost_usd;
         pr_leads.extend(&day.pr_leads);
         issue_leads.extend(&day.issue_leads);
+        features.0 += day.features_merged;
+        features.1.extend(&day.feature_pr_leads);
+        features.2.extend(&day.feature_issue_leads);
     }
     let pull_requests = merged.feat
         + merged.fix
@@ -153,6 +165,13 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
         reverts,
         cost_per_merged_pr_usd: (pull_requests > 0)
             .then(|| round_to_cents(cost / f64::from(pull_requests))),
+        new_feature: (features.0 > 0).then(|| NewFeatureSummary {
+            merged: features.0,
+            pr_lead_median_seconds: median(&features.1),
+            pr_lead_p90_seconds: p90(&features.1),
+            issue_lead_median_seconds: median(&features.2),
+            issue_lead_p90_seconds: p90(&features.2),
+        }),
     }
 }
 

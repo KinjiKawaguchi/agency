@@ -18,7 +18,14 @@
         "mainRedSeconds": 1800,
         "longestRedSeconds": 1800,
         "reverts": 1,
-        "costPerMergedPrUsd": 1.9
+        "costPerMergedPrUsd": 1.9,
+        "newFeature": {
+          "merged": 3,
+          "prLeadMedianSeconds": 5400,
+          "prLeadP90Seconds": 9000,
+          "issueLeadMedianSeconds": 15300,
+          "issueLeadP90Seconds": 21600
+        }
       },
       "byDay": [
         {
