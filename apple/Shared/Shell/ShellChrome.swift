@@ -44,6 +44,8 @@ private struct ShellChrome: ViewModifier {
             .onChange(of: model.session?.desk.items) { model.publishWidgets() }
             .onChange(of: model.router.tab) { model.tabChanged() }
             .onChange(of: model.push.registration) { model.registerPush() }
+            // This phone is added to the node's devices: its registration then names it.
+            .onChange(of: model.session?.devices?.thisDeviceID) { model.registerPush() }
             .onChange(of: model.push.pendingTap) { model.takeLink() }
             .sheet(isPresented: $model.showsSettings) {
                 if let session = model.session {
