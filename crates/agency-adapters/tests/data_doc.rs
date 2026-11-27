@@ -1,6 +1,7 @@
-//! `docs/data.md` names everything a node keeps in its data directory. Every name the file store writes under it
-//! (each `.dir("…")`, however rustfmt splits the call, and `self.0.join("…")` or `self.root().join("…")` in `files.rs`), and the few other adapters write there, must be in that
-//! document, so a new store cannot land without saying what it holds, for how long, and how to delete it.
+//! `docs/data.md` names everything a node keeps in its data directory. Every name an adapter writes under it (each
+//! `.dir("…")`, however rustfmt splits the call, and each `self.0.join("…")` or `self.root().join("…")` in any source
+//! of `agency-adapters`), and the few written there by other paths, must be in that document, so a new store cannot
+//! land without saying what it holds, for how long, and how to delete it.
 use std::path::Path;
 
 /// The string literals that follow `pattern` in `source`, such as the `"orgs"` of `self.dir("orgs")`.
@@ -15,13 +16,31 @@ fn literals_after(source: &str, pattern: &str) -> Vec<String> {
         .collect()
 }
 
-/// What other adapters write directly under the data directory, besides the file store.
+/// Every Rust source under `dir`, one after another: a store may write from any adapter's own `impl DataDir`.
+fn sources(dir: &Path) -> String {
+    let mut text = String::new();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            text.push_str(&sources(&path));
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            text.push_str(&std::fs::read_to_string(&path).unwrap());
+        }
+    }
+    text
+}
+
+/// What other adapters write directly under the data directory through other paths than the ones scanned.
 const ELSEWHERE: [&str; 4] = ["logs/", "metrics/", "usage/", "web-push-vapid.key"];
 
 #[test]
 fn every_name_the_store_writes_under_the_data_directory_is_in_the_document() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let store = std::fs::read_to_string(root.join("crates/agency-adapters/src/files.rs")).unwrap();
+    let store = sources(&root.join("crates/agency-adapters/src"));
     let document = std::fs::read_to_string(root.join("docs/data.md")).unwrap();
     let directories = literals_after(&store, ".dir(\"")
         .into_iter()
