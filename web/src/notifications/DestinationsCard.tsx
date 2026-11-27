@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '../api/context'
 import { aboutQuery, DESTINATIONS_KEY, devicesQuery, pushSubscriptionsQuery, pushTokensQuery } from '../api/queries'
 import { useI18n } from '../i18n'
+import type { WebPushControl } from '../pwa/useWebPush'
 import { useToast } from '../shared/Toasts'
 
 /** One place the node sends notices to: a browser's subscription or an app's token, as the node lists it. */
@@ -22,7 +23,7 @@ const messageOf = (failure: unknown): string => (failure instanceof Error ? fail
  * notices to one. A node that ties registrations to devices drops them when a device is removed; this is the way out for the rest,
  * the old ones that name no device, and for any that should not get notices.
  */
-export function DestinationsCard() {
+export function DestinationsCard({ webPush }: { webPush: WebPushControl }) {
   const { t, fmt } = useI18n()
   const text = t.notices.destinations
   const api = useApi()
@@ -33,6 +34,11 @@ export function DestinationsCard() {
   const devices = useQuery(devicesQuery(api))
   const about = useQuery(aboutQuery(api))
   const [asking, setAsking] = useState<string | undefined>()
+  // This browser turning its notices on or off changes the list: it is read again at once, not at the next poll.
+  const thisBrowserNow = webPush.state.kind === 'on' ? webPush.state.id : webPush.state.kind
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: DESTINATIONS_KEY })
+  }, [queryClient, thisBrowserNow])
   const stop = useMutation({
     mutationFn: (destination: Destination) => (destination.kind === 'browser' ? api.removePushSubscription(destination.id) : api.removePushToken(destination.id)),
     onSuccess: (_done, destination) => {
@@ -58,6 +64,9 @@ export function DestinationsCard() {
     ...browsers.data.subscriptions.map((one): Destination => ({ kind: 'browser', id: one.id, label: one.label, registeredAt: one.registeredAt, device: one.device })),
     ...apps.data.tokens.map((one): Destination => ({ kind: 'app', id: one.id, label: one.label, registeredAt: one.registeredAt, device: one.device })),
   ].sort((first, second) => Date.parse(second.registeredAt) - Date.parse(first.registeredAt))
+  // This browser's own registration is turned off in this browser (its subscription is taken off the browser too), not just forgotten by
+  // the node: it would register itself again the next time the page opens.
+  const isThisBrowser = (destination: Destination): boolean => destination.kind === 'browser' && webPush.state.kind === 'on' && webPush.state.id === destination.id
   const tiedLine = (destination: Destination): string | null => {
     if (!ties) return null
     if (destination.device === undefined) return text.tiedToNone
@@ -93,6 +102,10 @@ export function DestinationsCard() {
                     </button>
                   </div>
                 </div>
+              ) : isThisBrowser(destination) ? (
+                <button className="btn small" type="button" onClick={() => { webPush.turnOff(); void queryClient.invalidateQueries({ queryKey: DESTINATIONS_KEY }) }}>
+                  {text.turnOffHere}
+                </button>
               ) : (
                 <button className="btn small" type="button" aria-label={text.stopFor(destination.label)} onClick={() => setAsking(key)}>
                   {text.stop}

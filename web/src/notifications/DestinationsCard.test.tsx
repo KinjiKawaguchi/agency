@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { createApiClient } from '../api/client'
 import { deviceKeyOf, generateKeyPair } from '../device/deviceKey'
 import { deviceIdOf } from '../device/fingerprint'
+import { installFakeNotification, type FakeNotifications } from '../test/fakeNotification'
+import { fakePushBrowser } from '../test/fakePushBrowser'
 import { renderApp } from '../test/render'
 import { createTestNode, TEST_DEVICE_ID } from '../test/testDevice'
 
@@ -120,6 +122,42 @@ describe('where the node sends notices', () => {
     expect(await screen.findByText('Firefox on Linux no longer gets notices.')).toBeInTheDocument()
     expect(node.pushSubscriptions()).toHaveLength(0)
     expect(node.pushTokenEntries()).toHaveLength(1)
+  })
+
+  it('says in the confirmation that the browser or app registers itself again, and how to stop it for good', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: await nodeWith(['old-ipad']), enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Stop notices to Old iPad' }))
+    const panel = await screen.findByRole('group', { name: 'Stop notices to Old iPad?' })
+    expect(within(panel).getByText(/It registers itself again the next time that browser or app opens Agency with notices on\. To stop them for good, turn notices off there, or remove its device on this screen\./)).toBeInTheDocument()
+  })
+
+  describe('the row of this browser', () => {
+    let fake: FakeNotifications
+    beforeEach(() => {
+      fake = installFakeNotification('default')
+    })
+    afterEach(() => fake.restore())
+
+    it('offers to turn notices off in this browser, which takes its subscription off the node and the browser, and not to stop them at the node', async () => {
+      const user = userEvent.setup()
+      const push = fakePushBrowser({ permission: 'granted' })
+      const node = await nodeWith(['old-ipad'])
+      renderApp({ path: '/devices', node, enrolled: true, webPushBrowser: push.browser })
+      await user.click(await screen.findByRole('button', { name: 'Turn on for a closed app' }))
+      const card = within(await screen.findByRole('region', { name: 'Where notices are sent' }))
+      const own = await card.findByRole('button', { name: 'Turn off notices in this browser' })
+      expect(card.queryByRole('button', { name: /^Stop notices to Chrome/ })).not.toBeInTheDocument()
+      // Another row is stopped at the node, as before.
+      expect(card.getByRole('button', { name: 'Stop notices to Old iPad' })).toBeInTheDocument()
+      await user.click(own)
+      await waitFor(() => expect(node.pushSubscriptions()).toHaveLength(0))
+      expect(push.unsubscribed()).toBe(1)
+      expect(push.subscription()).toBeNull()
+      // The switch above says it is off, too: it is the same reading.
+      expect(await screen.findByRole('button', { name: 'Turn on for a closed app' })).toBeInTheDocument()
+      await waitFor(() => expect(card.queryByRole('button', { name: 'Turn off notices in this browser' })).not.toBeInTheDocument())
+    })
   })
 
   it('says it in Japanese', async () => {

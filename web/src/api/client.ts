@@ -252,7 +252,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     registerPushSubscription: (input) => post<PushSubscription>(at('POST /api/push/subscriptions'), input),
     removePushSubscription: async (id) => void (await remove(at('DELETE /api/push/subscriptions/{id}', { id }))),
     pushTokens: () => get<PushTokenList>(at('GET /api/push/tokens')),
-    removePushToken: async (id) => void (await remove(at('DELETE /api/push/tokens/{id}', { id }))),
+    removePushToken: async (id) => void (await remove(at('DELETE /api/push/tokens/{token}', { token: id }))),
     devices: () => get<DeviceList>(at('GET /api/devices')),
     requestDevice: (input) => post<DeviceRequest>(at('POST /api/devices/requests'), input),
     submitDeviceChange: (change) => post<DeviceChangeResult>(at('POST /api/devices/changes'), change),
