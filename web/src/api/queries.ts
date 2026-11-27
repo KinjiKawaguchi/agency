@@ -65,6 +65,12 @@ export const DECISIONS_KEY = ['decisions'] as const
 
 export const RECENT_DECISIONS = 20
 
+/** The most entries the node gives of its decision log in one read. */
+export const MOST_DECISIONS = 200
+
+/** The whole of what the node gives of the log in one read, for what is counted over it (not polled: read when it is asked for). */
+export const allDecisionsQuery = (api: ApiClient) => queryOptions({ queryKey: [...DECISIONS_KEY, MOST_DECISIONS], queryFn: () => api.decisions(MOST_DECISIONS) })
+
 export const decisionsQuery = (api: ApiClient) =>
   queryOptions({ queryKey: [...DECISIONS_KEY, RECENT_DECISIONS], queryFn: () => api.decisions(RECENT_DECISIONS), refetchInterval: POLL_MS })
 

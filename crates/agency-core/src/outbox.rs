@@ -1,7 +1,9 @@
 //! The outbox. Everything sent to another node (decision envelopes, new org versions, and device changes) is queued here
 //! first and removed once delivered. Unreachable nodes are retried with backoff; a parcel refused with a
-//! 4xx (other than 408 and 429) is not retried and moves to the refused box.
+//! 4xx (other than 408 and 429) is not retried and moves to the refused box. A decision for a team on this
+//! node waits here too, until a background task applies it to the team's runtime (see `kept`).
 use crate::error::Result;
+use crate::kept::apply_here;
 use crate::node::Node;
 use crate::ports::PeerError;
 use crate::routes;
@@ -44,6 +46,14 @@ pub enum Outcome {
 /// Waits before the 1st, 2nd, ... retry; the last one repeats.
 pub const BACKOFF_SECONDS: [i64; 5] = [15, 30, 60, 120, 300];
 
+/// Waits before the 1st, 2nd, ... retry of a decision for a team on this node, whose runtime has to be
+/// reached by this node itself. Shorter than `BACKOFF_SECONDS`: nothing else can be down.
+pub const LOCAL_BACKOFF_SECONDS: [i64; 6] = [2, 5, 15, 30, 60, 120];
+
+/// A decision for a team on this node is tried this many times; after the last the parcel is refused, so
+/// that a runtime that stays down does not keep a decision waiting for ever.
+pub const LOCAL_TRIES: u32 = LOCAL_BACKOFF_SECONDS.len() as u32 + 1;
+
 impl Parcel {
     /// An envelope keeps its id. An org version gets an id from its receiver, org, and version, so
     /// queuing the same version twice for the same node keeps one parcel.
@@ -81,8 +91,17 @@ pub fn is_retryable(status: u16) -> bool {
     status == 408 || status == 429 || (500..600).contains(&status)
 }
 
+/// Whether the parcel is a decision for a team this node runs, which the node applies itself.
+fn is_applied_here(node: &Node, parcel: &Parcel) -> bool {
+    matches!(&parcel.body, ParcelBody::Envelope(signed)
+        if node.runs_here(&signed.body.org, &signed.body.team))
+}
+
 async fn send(node: &Node, parcel: &Parcel) -> Outcome {
     let sent = match &parcel.body {
+        ParcelBody::Envelope(signed) if is_applied_here(node, parcel) => {
+            return apply_here(node, signed).await;
+        }
         ParcelBody::Envelope(signed) => {
             node.peers()
                 .post_envelope(
@@ -118,9 +137,23 @@ pub(crate) fn outcome_of<T>(sent: Result<T, PeerError>) -> Outcome {
 
 /// Delivers one parcel, then removes it, moves it to the refused box, or schedules its next attempt.
 pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
-    let outcome = send(node, parcel).await;
+    let outcome = bounded(node, parcel, send(node, parcel).await);
     settle(node, parcel, &outcome)?;
     Ok(outcome)
+}
+
+/// An attempt that failed for the last time that a decision for a team on this node is tried is a refusal.
+fn bounded(node: &Node, parcel: &Parcel, outcome: Outcome) -> Outcome {
+    match outcome {
+        Outcome::Unreachable(why)
+            if is_applied_here(node, parcel) && parcel.attempts + 1 >= LOCAL_TRIES =>
+        {
+            Outcome::Refused(format!(
+                "the team's runtime did not take it after {LOCAL_TRIES} tries: {why}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// After an attempt: removes a delivered parcel, moves a refused one to the refused box, or schedules
@@ -136,7 +169,12 @@ pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<
             node.store().remove_parcel(&parcel.id)?;
         }
         Outcome::Unreachable(message) => {
-            let wait = BACKOFF_SECONDS[(parcel.attempts as usize).min(BACKOFF_SECONDS.len() - 1)];
+            let schedule: &[i64] = if is_applied_here(node, parcel) {
+                &LOCAL_BACKOFF_SECONDS
+            } else {
+                &BACKOFF_SECONDS
+            };
+            let wait = schedule[(parcel.attempts as usize).min(schedule.len() - 1)];
             let next_at = clock::format(node.now() + Duration::seconds(wait));
             node.store().put_parcel(&Parcel {
                 attempts: parcel.attempts + 1,
@@ -228,7 +266,8 @@ fn sweep(node: &Node, parcels: Vec<Parcel>) -> Result<(Vec<Parcel>, Vec<Outcome>
 /// timeout, not the whole outbox.
 pub const NODES_AT_ONCE: usize = 8;
 
-/// Delivers every parcel whose next attempt is due: to each receiving node in the order the parcels were queued
+/// Delivers every parcel whose next attempt is due: to each receiving node (each team's runtime, for a team on this
+/// node) in the order the parcels were queued
 /// (so that versions of an org arrive in order), and to several nodes at once. Once a node is unreachable, its
 /// other parcels wait for their next attempt instead of each waiting for the same timeout now; and a version that
 /// is waiting for its next attempt holds back the later versions of its org for that node.
@@ -236,7 +275,7 @@ pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
     use futures_util::stream::{self, StreamExt};
     let mut by_node: std::collections::BTreeMap<String, Vec<Parcel>> = Default::default();
     for parcel in pending(node) {
-        by_node.entry(parcel.to.clone()).or_default().push(parcel);
+        by_node.entry(lane(node, &parcel)).or_default().push(parcel);
     }
     let delivered: Vec<Result<Vec<Outcome>>> = stream::iter(by_node.into_values())
         .map(|parcels| deliver_in_order(node, parcels))
@@ -248,6 +287,17 @@ pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
         outcomes.extend(one?);
     }
     Ok(outcomes)
+}
+
+/// The parcels that wait for one another: those for one receiving node, except that a decision for a team on this
+/// node waits only for that team's runtime, so a runtime that does not answer holds back no other team's decisions.
+fn lane(node: &Node, parcel: &Parcel) -> String {
+    match &parcel.body {
+        ParcelBody::Envelope(signed) if is_applied_here(node, parcel) => {
+            format!("{} {}/{}", parcel.to, signed.body.org, signed.body.team)
+        }
+        _ => parcel.to.clone(),
+    }
 }
 
 /// The org whose version a parcel carries, if it carries one.

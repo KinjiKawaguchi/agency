@@ -3,6 +3,7 @@
 //! delivering the outbox. A team node that does not answer slows only the first: notifications and queued
 //! decisions keep their pace.
 use agency_adapters::logging::Logger;
+use agency_adapters::system::OutboxWake;
 use agency_core::invites::finish_joins;
 use agency_core::outbox::deliver_due;
 use agency_core::push::notify_waiting;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// How often each kind of work runs. The pause is counted from the end of a run, so a slow run never overlaps
-/// the next one of its own kind.
+/// the next one of its own kind; the outbox's is the longest it waits for its bell.
 #[derive(Clone, Copy, Debug)]
 pub struct Schedule {
     pub replicas: Duration,
@@ -27,16 +28,25 @@ impl Default for Schedule {
         Self {
             replicas: Duration::from_secs(30),
             push: Duration::from_secs(30),
-            outbox: Duration::from_secs(15),
+            outbox: Duration::from_secs(2),
         }
     }
 }
 
-/// Starts the three schedules; each runs until the process ends.
+/// Starts the three schedules; each runs until the process ends. The outbox also runs as soon as a parcel is queued:
+/// the node rings its bell (`OutboxWake`), so a decision a client sent goes out at once, and `schedule.outbox` is only
+/// how long it waits at most to look for parcels whose retry is due.
 pub fn start(node: Arc<Node>, logger: Logger, schedule: Schedule) {
+    let wake = Arc::new(OutboxWake::default());
+    node.set_outbox_bell(wake.clone());
     every(schedule.replicas, node.clone(), logger.clone(), replicas);
     every(schedule.push, node.clone(), logger.clone(), push);
-    every(schedule.outbox, node, logger, outbox);
+    tokio::spawn(async move {
+        loop {
+            outbox(node.clone(), logger.clone()).await;
+            wake.wait(schedule.outbox).await;
+        }
+    });
 }
 
 fn every<F, Fut>(pause: Duration, node: Arc<Node>, logger: Logger, work: F)
