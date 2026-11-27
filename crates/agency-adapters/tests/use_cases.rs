@@ -102,6 +102,7 @@ fn bare(account: &str) -> Fixture {
         funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
         delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
         notifier: Arc::new(NoNotifier),
+        journal: Arc::new(agency_adapters::memory::NoJournal),
         root_keys: Arc::new(agency_adapters::memory::MemoryRootKeys::default()),
     };
     let node = Node::open(ports, key).unwrap();
