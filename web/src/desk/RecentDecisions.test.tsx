@@ -11,7 +11,7 @@ describe('recently decided', () => {
     renderApp({ path: '/desk' })
     const list = await recent()
     const rows = list.getAllByRole('listitem')
-    expect(rows.map((row) => within(row).getByText(/^(Applied|Delivered|Waiting to send|Refused)$/).textContent)).toEqual(['Waiting to send', 'Refused', 'Applied', 'Delivered'])
+    expect(rows.map((row) => within(row).getByText(/^(Applied|Delivered|Saved, not delivered|Refused)$/).textContent)).toEqual(['Saved, not delivered', 'Refused', 'Applied', 'Delivered'])
     expect(rows[0]).toHaveTextContent('Which hosting plan should the landing page use?')
     expect(rows[0]).toHaveTextContent('Chose “Free plan”.')
     // A decision logged without a label falls back to the option's key.
@@ -66,8 +66,8 @@ describe('recently decided', () => {
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.click(screen.getByRole('button', { name: /^Approve with/ }))
     const [added] = (await recent()).getAllByRole('listitem')
-    await waitFor(() => expect(added).toHaveTextContent('Waiting to send'))
-    expect(added).toHaveTextContent('Not sent yet. Next try in 5 minutes.')
+    await waitFor(() => expect(added).toHaveTextContent('Saved, not delivered'))
+    expect(added).toHaveTextContent('Not delivered yet. Next try in 5 minutes.')
     expect(added).not.toHaveTextContent('Last error')
   })
 

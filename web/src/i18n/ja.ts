@@ -111,7 +111,7 @@ export const ja: Messages = {
       if (count > 1) return `${count} 件の決定に動きがありました`
       const named = title === '' ? '決定' : `「${title}」の決定`
       if (state === 'refused') return `${named}は断られました${reason === undefined ? '' : `: ${reason}`}`
-      if (state === 'queued') return `${named}は送信待ちです`
+      if (state === 'queued') return `${named}は保存済みですが、まだ届いていません`
       return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
@@ -403,11 +403,11 @@ export const ja: Messages = {
     },
     recent: {
       head: '最近決めたもの',
-      states: { applied: '反映済み', delivered: '届きました', queued: '送信待ち', refused: '断られました' },
+      states: { applied: '反映済み', delivered: '届きました', queued: '保存済み・未配達', refused: '断られました' },
       chose: (choice) => `「${choice}」を選びました。`,
       answeredFor: (label) => `${label} の代理で答えました。`,
       queuedDetail: (attempts, retry) =>
-        `${attempts === 0 ? 'まだ送れていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
+        `${attempts === 0 ? 'まだ届いていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
       underMinute: '1 分以内',
       lastError: (reason) => `直近のエラー: ${reason}`,
       refusedDetail: (reason) => `チームのノードが受け付けませんでした: ${reason}`,
