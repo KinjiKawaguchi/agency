@@ -2,6 +2,7 @@
 //! see a half-written file. The account key file and the directory are readable only by their owner.
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
+use agency_core::data_format::{is_unknown_setting, unknown_setting};
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::guests::Guest;
@@ -232,11 +233,20 @@ impl DataDir {
 impl ConfigStore for DataDir {
     fn load_config(&self) -> Result<NodeConfig> {
         let path = self.config_path();
-        read_json(&path).ok_or_else(|| {
+        let cannot_read = || {
             Error::internal(format!(
                 "cannot read {} (create it with agency init)",
                 path.display()
             ))
+        };
+        let text = fs::read_to_string(&path).map_err(|_| cannot_read())?;
+        serde_json::from_str(&text).map_err(|error| {
+            let reading_error = error.to_string();
+            if is_unknown_setting(&reading_error) {
+                unknown_setting(&reading_error)
+            } else {
+                cannot_read()
+            }
         })
     }
 

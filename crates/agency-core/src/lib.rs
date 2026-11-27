@@ -10,6 +10,7 @@ pub mod change_words;
 pub mod client;
 pub mod clients_seen;
 pub mod config;
+pub mod data_format;
 pub mod decisions;
 pub mod delivery;
 pub mod departments;

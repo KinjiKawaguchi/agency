@@ -8,6 +8,7 @@ pub mod access;
 mod activity_window;
 pub mod apns;
 pub mod client_api;
+mod data_format;
 pub mod files;
 pub mod funding;
 pub mod github;

@@ -122,6 +122,10 @@ Rollout:
 ## Node data and configuration
 
 - `config.json` and the data directory are read by one node only. Upgrades are forward-only: a newer node reads what an older one wrote, and migrates it on start if it must. A downgrade is not supported. A newer configuration may be refused by an older node, because the configuration is read strictly so that a typo never passes silently.
+- **The data format.** The data directory holds a file `format` with one number, the layout of the directory: 1 for everything the releases so far write. A node writes it when it opens a directory that has none (a directory without the file is format 1, since every earlier release wrote format 1), and `agency init` writes it.
+  - A node that finds a number higher than it knows stops before it reads or writes anything else, in every command that uses the directory. It says that the data was written by a newer release and that the node must be updated, or the data restored from a copy made before. The message has no path and no value from the directory, and the directory is left as it was. A `format` file that holds no number is refused the same way, since the node cannot tell which release wrote the data.
+  - A `config.json` with a setting the node does not know (an unknown field or an unknown variant) is refused with a message that says it may come from a newer release, or be misspelled. The node does not start with it.
+  - The number goes up only with a release that migrates the layout, and the step that does it (with the copy of what it replaced) comes with the first migration that needs it.
 - A new configuration field is optional and has a default, so an existing `config.json` keeps working unchanged.
 - The release notes name every migration. A migration keeps what it replaced, in the data directory under a dated name, so a failed upgrade can be undone by hand.
 
