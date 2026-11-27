@@ -6,6 +6,7 @@
       "id": "02020202020202020202020202020202",
       "kind": "answer",
       "org": "acme",
+      "signer": "d-fdf72a088f18",
       "state": {
         "attempts": 1,
         "kind": "queued",

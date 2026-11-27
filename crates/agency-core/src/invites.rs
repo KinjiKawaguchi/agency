@@ -97,8 +97,10 @@ pub fn open_invite(node: &Node, org: &Id, code: &str) -> Option<InviteRecord> {
 /// On the root key's node: checks the join request's signature, the invite, and duplicates, then signs
 /// the next version with the new person added and returns it.
 pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> Result<RootAnswer> {
-    let _guard = node.write_lock().lock().await;
     let request = &signed.body;
+    // Anyone can send a join request, and a request is signed by the key it adds, so a signature proves
+    // nothing yet: the checks that need no state, and the invite, come before the write lock, which only a
+    // request with an open invite waits for. The invite is read again under the lock.
     if &request.org != org
         || signed.signer != request.account
         || !signed.verify(Kind::Join, &request.public_key)
@@ -120,12 +122,15 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
             request.account
         )));
     }
-    let record = open_invite(node, org, &request.code).ok_or_else(|| {
+    let no_invite = || {
         Error::new(
             ErrorKind::Forbidden,
             "no such invite, or it expired or was used",
         )
-    })?;
+    };
+    open_invite(node, org, &request.code).ok_or_else(no_invite)?;
+    let _guard = node.write_lock().lock().await;
+    let record = open_invite(node, org, &request.code).ok_or_else(no_invite)?;
     let current = load(node, org)?;
     if current
         .body
@@ -140,19 +145,30 @@ pub async fn accept_join(node: &Node, org: &Id, signed: Signed<JoinRequest>) -> 
     }
     // Built before the invite is used, so that a seat that is gone leaves the invite as it was.
     let body = joined_body(node, &current, request, &record)?;
-    // The invite is used from here on, whether the root signs now or holds the join for the owner.
-    node.store().save_invite(
-        &code_digest(&request.code),
-        &InviteRecord {
-            used_by: Some(request.account.clone()),
-            ..record.clone()
-        },
-    )?;
+    let use_invite = || {
+        node.store().save_invite(
+            &code_digest(&request.code),
+            &InviteRecord {
+                used_by: Some(request.account.clone()),
+                ..record.clone()
+            },
+        )
+    };
+    // A held join uses the invite at once: it waits for the owner, and no other join may take it meanwhile.
+    // A join the node does not hold (too many wait already) gives the invite back.
     if must_hold(node, &current) {
-        let request = Box::new(signed.clone());
-        return hold(node, org, RootChange::Join { request });
+        use_invite()?;
+        let held = Box::new(signed.clone());
+        return hold(node, org, RootChange::Join { request: held }).or_else(|refused| {
+            node.store()
+                .save_invite(&code_digest(&request.code), &record)?;
+            Err(refused)
+        });
     }
+    // Otherwise the invite is used only once the root has signed, so a join refused at signing keeps it. The
+    // write lock is held throughout, so no other join with the same invite comes in between.
     let doc = sign(node, body)?;
+    use_invite()?;
     publish(node, &doc)?;
     Ok(RootAnswer::Signed(Box::new(doc)))
 }
