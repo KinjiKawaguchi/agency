@@ -20,6 +20,8 @@ struct NodeLabelTests {
         #expect(NodeLabel.shown("Erin\u{202E}) 代理で答える") == "Erin?) 代理で答える")
         #expect(NodeLabel.shown("\u{2066}x\u{2069}") == "?x?")
         #expect(NodeLabel.shown("zero\u{200B}width") == "zero?width")
+        #expect(NodeLabel.shown("line\u{2028}one\u{2029}two") == "line?one?two")
+        #expect(NodeLabel.shown("pay\u{00AD}roll") == "pay?roll")
     }
 
     @Test("what is part of how a script or an emoji is written stays: the joiner and non-joiner, tag characters, text in any script")
@@ -27,7 +29,7 @@ struct NodeLabelTests {
         let family = "👨\u{200D}👩\u{200D}👧"
         let flag = "🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}"
         let persian = "می\u{200C}خواهم"
-        for text in [family, flag, persian, "Acme", "営業部 (Sales)", "O’Brien — “quoted”", "a b", "\u{00A0}", "\u{2028}", "é"] {
+        for text in [family, flag, persian, "Acme", "営業部 (Sales)", "O’Brien — “quoted”", "a b", "\u{00A0}", "é", "\u{0600}12"] {
             #expect(NodeLabel.shown(text) == text, Comment(rawValue: text))
         }
     }

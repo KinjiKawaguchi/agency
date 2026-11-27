@@ -187,9 +187,9 @@ struct NewsStoreTests {
         #expect(news.banners.map(\.text) == ["決定は断られました: no"], "an empty title is no title")
     }
 
-    @Test("another state of a decision is worded as the web words it: reflected, arrived, waiting to be sent")
+    @Test("another state of a decision is worded as the web words it: reflected, arrived, saved and not yet delivered")
     func otherStates() async {
-        for (state, text) in [("applied", "「Ship it?」の決定が反映されました"), ("delivered", "「Ship it?」の決定が届きました"), ("queued", "「Ship it?」の決定は送信待ちです")] {
+        for (state, text) in [("applied", "「Ship it?」の決定が反映されました"), ("delivered", "「Ship it?」の決定が届きました"), ("queued", "「Ship it?」の決定は保存済みですが、まだ届いていません")] {
             source.decisions = .success(log([]))
             let news = store()
             await news.poll()

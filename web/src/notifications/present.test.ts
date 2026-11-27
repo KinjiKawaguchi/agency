@@ -39,7 +39,7 @@ describe('what the viewer is told', () => {
 
   it('shows a refused decision as an error with the node’s reason, and a queued one as news', () => {
     expect(noticesFor([e('decision', 'decision:d1:refused')], lookups, en, on)).toEqual([{ tone: 'error', target: { to: '/desk' }, tag: 'decision/d1', message: 'A decision “Add a second frontend agent” was refused: Not the right team.', plain: 'A decision was refused' }])
-    expect(noticesFor([e('decision', 'decision:d2:queued')], lookups, en, on)[0]).toMatchObject({ tone: 'info', message: 'A decision “Rename the export endpoint” is queued: its node cannot be reached yet.' })
+    expect(noticesFor([e('decision', 'decision:d2:queued')], lookups, en, on)[0]).toMatchObject({ tone: 'info', message: 'A decision “Rename the export endpoint” is saved, not delivered: its node cannot be reached yet.' })
   })
 
   it('does not break on an id with a colon, or on what it has no lookup for', () => {
@@ -75,7 +75,7 @@ describe('what the viewer is told', () => {
     expect(at('blocked', 'blocked:acme/app/x', 2)).toEqual(['2 件の仕事が止まりました'])
     expect(at('device', 'device:k1')).toEqual(['端末「Phone」が追加を待っています'])
     expect(at('device', 'device:k', 2)).toEqual(['2 台の端末が追加を待っています'])
-    expect(at('decision', 'decision:d2:queued')).toEqual(['「Rename the export endpoint」の決定は送信待ちです'])
+    expect(at('decision', 'decision:d2:queued')).toEqual(['「Rename the export endpoint」の決定は保存済みですが、まだ届いていません'])
     expect(at('decision', 'decision:z:applied')).toEqual(['決定が反映されました'])
     expect(at('decision', 'decision:z:delivered')).toEqual(['決定が届きました'])
   })

@@ -87,8 +87,10 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
 public enum Desk {
     /// Requests from every team, grouped, with the ones that stop the most people first and the
     /// oldest first within that.
-    public static func openItems(_ teams: [Team]) -> [DeskItem] {
-        let items = teams.flatMap { team in team.view.requests.map { DeskItem(team: team, request: $0) } }
+    /// - Parameter decided: the items the owner has decided and the node has not yet taken (`DecisionOutbox.decidedItemIDs`): they are
+    ///   not waiting for the owner any more, so they are left out until the node's own view agrees.
+    public static func openItems(_ teams: [Team], excluding decided: Set<String> = []) -> [DeskItem] {
+        let items = teams.flatMap { team in team.view.requests.map { DeskItem(team: team, request: $0) } }.filter { !decided.contains($0.id) }
         return items.enumerated().sorted { left, right in
             let (a, b) = (left.element, right.element)
             if a.group != b.group { return a.group < b.group }
@@ -98,8 +100,17 @@ public enum Desk {
         }.map(\.element)
     }
 
+    /// The item to open after `id` was decided: the next of the viewer's own that this app can answer, in the pile's order, and when
+    /// there is none after it, the first from the top; `nil` when nothing else waits for them.
+    public static func next(after id: String, in items: [DeskItem]) -> String? {
+        let answerable = items.filter { $0.isMine && $0.isAnswerableHere && $0.id != id }
+        guard let position = items.firstIndex(where: { $0.id == id }) else { return answerable.first?.id }
+        return answerable.first { candidate in items.firstIndex(where: { $0.id == candidate.id }).map { $0 > position } ?? false }?.id
+            ?? answerable.first?.id
+    }
+
     /// The requests the viewer has to decide, across every team: the number on the desk's tab and on the app icon.
-    public static func waitingCount(_ teams: [Team]) -> Int {
-        openItems(teams).filter(\.isMine).count
+    public static func waitingCount(_ teams: [Team], excluding decided: Set<String> = []) -> Int {
+        openItems(teams, excluding: decided).filter(\.isMine).count
     }
 }
