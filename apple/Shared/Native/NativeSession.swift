@@ -78,7 +78,8 @@ final class NativeSession {
         let cached = CachedSource(cache: cache, client: client)
         desk = DeskStore(
             source: cached,
-            sender: signer.map { DeviceDecisionSender(poster: client, signer: $0, sent: sent) as any DeskSender } ?? NoKeySender(),
+            signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner } ?? NoKeySigner(),
+            outbox: DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client),
             storage: DraftDefaultsStorage(host: homeNode.host),
             afterSend: { await cache.invalidate() }
         )
@@ -107,6 +108,8 @@ final class NativeSession {
         signInProblem = nil
         switch await signIn.signIn() {
         case .signedIn:
+            // What was decided while the sign-in was over goes now.
+            await desk.outbox.signInRan()
             await desk.refresh()
             await pairing?.refresh()
             // A member the node hosts has the desk and the devices: the owner's screens are not offered, and what they read would be refused.
@@ -164,9 +167,9 @@ private struct RegisteredPush: Equatable {
     let events: [String]
 }
 
-/// Stands in for the signer when this phone has no key: the desk can be read and nothing can be sent.
-private struct NoKeySender: DeskSender {
-    func send(_ decision: PreparedDecision) async throws -> DecisionResult {
+/// Stands in for the signer when this phone has no key: the desk can be read and nothing can be decided.
+private struct NoKeySigner: DeskSigner {
+    func sign(_ decision: PreparedDecision) async throws -> SignedDecision {
         throw NoKeyError()
     }
 }

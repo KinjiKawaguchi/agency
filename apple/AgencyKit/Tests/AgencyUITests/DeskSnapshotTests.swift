@@ -1,6 +1,7 @@
 #if canImport(SwiftUI) && os(macOS)
 import AgencyAPI
 import AgencyModel
+import AgencyProtocol
 import SwiftUI
 import Testing
 @testable import AgencyUI
@@ -36,7 +37,7 @@ struct DeskSnapshotTests {
     func pile() {
         let team = pileTeam
         let items = Desk.openItems([team])
-        let view = DeskPile(items: items, situation: Situation(teams: [team], items: items), sent: ["acme:app:r-unbroken"], now: now, isStatic: true)
+        let view = DeskPile(items: items, situation: Situation(teams: [team], items: items), now: now, isStatic: true)
         for scheme in [ColorScheme.light, .dark] {
             expectFits(Snapshot.capture("desk-pile", view, scheme: scheme), "the pile (\(scheme))")
         }
@@ -45,7 +46,7 @@ struct DeskSnapshotTests {
     @Test("an empty desk says there is nothing to decide")
     func emptyPile() {
         let team = UIFixtures.team(extra: [], replacing: true)
-        let view = DeskPile(items: [], situation: Situation(teams: [team], items: []), sent: [], now: now, isStatic: true)
+        let view = DeskPile(items: [], situation: Situation(teams: [team], items: []), now: now, isStatic: true)
         expectFits(Snapshot.capture("desk-empty", view), "the empty desk")
     }
 
@@ -122,14 +123,12 @@ struct DeskSnapshotTests {
         expectFits(Snapshot.capture("detail-answer", detail(item, draft: DeskDraft(text: "旧形式の書き出しは来月で終了します。"))), "an answer in words")
     }
 
-    @Test("sending, sent, queued, and failed")
+    @Test("signing and failed")
     func statuses() {
         let team = UIFixtures.team()
         let item = UIFixtures.item(Teams.q, in: team)
         let draft = DeskDraft(text: "後で連絡します。")
         expectFits(Snapshot.capture("detail-sending", detail(item, draft: draft, status: .sending)), "sending")
-        expectFits(Snapshot.capture("detail-sent-comment", detail(item, status: .sent(SentReply(isComment: true, outcome: .applied, message: nil)))), "sent comment")
-        expectFits(Snapshot.capture("detail-queued", detail(item, status: .sent(SentReply(isComment: false, outcome: .queued, message: "asleep")))), "queued")
         expectFits(Snapshot.capture("detail-failed", detail(item, draft: draft, status: .failed("writes are for the owner"))), "failed")
     }
 
@@ -178,3 +177,36 @@ enum Teams {
     static let d = "app#14"
 }
 #endif
+
+@MainActor
+@Suite("The sending tray", .serialized)
+struct SendingTraySnapshotTests {
+    private let width = Snapshot.phoneWidth
+    private func entry(_ number: Int, title: String = "Pay the invoice?") -> PendingDecision {
+        let envelope = DecisionEnvelope(id: "id-\(number)", kind: .answer, org: "acme", team: "app", target: "r-\(number)", text: "ok", choice: "a", account: "alice", at: "2026-11-27T10:00:00Z")
+        return PendingDecision(
+            itemID: "acme:app:r-\(number)", signed: SignedDecision(envelope: envelope, signer: "d-1", signature: "c2ln", title: title, choiceLabel: nil),
+            isComment: false, createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+    }
+
+    @Test("the tray fits the screen with a send in flight, one waiting to be tried again, and one refused, with a long unbroken reason")
+    func fits() {
+        var retry = entry(2)
+        retry.failedForTest(.init(reason: "HTTP 503", isFinal: false))
+        var refused = entry(3, title: UIFixtures.longJapaneseTitle)
+        refused.failedForTest(.init(reason: "refused: " + UIFixtures.unbrokenID, isFinal: true))
+        let view = SendingTray(entries: [entry(1), retry, refused], sending: ["id-1"], needsSignIn: false, onSendAgain: { _ in }, onDiscard: { _ in })
+        for scheme in [ColorScheme.light, .dark] {
+            let result = Snapshot.capture("sending-tray", view, scheme: scheme)
+            #expect(!result.png.isEmpty && result.size.width == width, "\(scheme): \(result.size.width) wide")
+        }
+    }
+
+    @Test("an empty tray draws nothing")
+    func empty() {
+        let view = SendingTray(entries: [], sending: [], needsSignIn: false, onSendAgain: { _ in }, onDiscard: { _ in })
+        let result = Snapshot.capture("sending-tray-empty", view)
+        #expect(result.size.height <= 40, "nothing but the rendering's own padding: \(result.size.height)")
+    }
+}

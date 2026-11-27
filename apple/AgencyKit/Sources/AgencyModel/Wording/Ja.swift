@@ -147,7 +147,7 @@ public enum Ja {
             switch state {
             case .applied: "反映済み"
             case .delivered: "届きました"
-            case .queued: "送信待ち"
+            case .queued: "保存済み・未配達"
             case .refused: "断られました"
             case .unknown: "状態を読み取れません"
             }
@@ -157,7 +157,7 @@ public enum Ja {
         public static let commented = "コメントしました。"
 
         public static func queuedDetail(attempts: Int, retry: String?) -> String {
-            let tried = attempts == 0 ? "まだ送れていません。" : "\(attempts) 回試しました。"
+            let tried = attempts == 0 ? "まだ届いていません。" : "\(attempts) 回試しました。"
             let next = retry.map { "次の再送は \($0) です。" } ?? "まもなく再送します。"
             return tried + next
         }

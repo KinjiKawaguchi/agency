@@ -249,7 +249,7 @@ struct UnknownKindRequestTests {
         let item = try item(answerKind: "tally")
         #expect(!item.isAnswerableHere)
         #expect(throws: DeskReplyError.cannotAnswerHere) { try item.prepare(.answer("x")) }
-        let controls = ReplyControls(item: item, draft: DeskDraft(text: "x", optionKey: nil), isSending: false, isSent: false, isDeviceReady: true)
+        let controls = ReplyControls(item: item, draft: DeskDraft(text: "x", optionKey: nil), isSending: false, isDeviceReady: true)
         #expect(!controls.canDecide && !controls.canPick)
     }
 }

@@ -10,30 +10,16 @@ public protocol DeskSource: TeamSnapshotSource {
 
 extension NodeClient: DeskSource {}
 
-/// Signs a prepared decision with this device's key and sends it. The app's implementation asks for
-/// Face ID; tests use a stand-in.
-public protocol DeskSender: Sendable {
-    func send(_ decision: PreparedDecision) async throws -> DecisionResult
+/// Signs a prepared decision with this device's key. The app's implementation asks for Face ID; tests use a stand-in. Sending is the
+/// outbox's: a signed decision is kept and sent from there, as often as it takes.
+public protocol DeskSigner: Sendable {
+    func sign(_ decision: PreparedDecision) async throws -> SignedDecision
 }
 
 /// Where unsent drafts are kept between launches.
 public protocol DraftStorage: Sendable {
     func load() -> [String: DeskDraft]
     func save(_ drafts: [String: DeskDraft])
-}
-
-/// What was sent for one request, shown until the request leaves the desk.
-public struct SentReply: Equatable, Sendable {
-    public let isComment: Bool
-    public let outcome: DecisionResult.Outcome
-    /// Why a decision was queued.
-    public let message: String?
-
-    public init(isComment: Bool, outcome: DecisionResult.Outcome, message: String?) {
-        self.isComment = isComment
-        self.outcome = outcome
-        self.message = message
-    }
 }
 
 /// The desk: the pile, the owner's drafts, and what happens when one is sent.
@@ -47,7 +33,24 @@ public final class DeskStore {
         case failed(String)
     }
 
-    public private(set) var items: [DeskItem] = []
+    /// What the node's views hold, before the decisions the owner has made and the node has not yet taken are taken off.
+    private var openItems: [DeskItem] = []
+    /// The pile: what waits for the owner. A decision that is kept and not yet taken is not in it, and does not come back while its
+    /// entry exists (pending, sending or refused), though the node's own view still shows the request.
+    public var items: [DeskItem] {
+        let decided = decidedItemIDs
+        return openItems.filter { !decided.contains($0.id) }
+    }
+
+    /// The items the owner has decided that are not settled yet: kept on this device and not yet taken, or taken by the node and still `queued` in
+    /// its decision log (the node's own view lists the request until the team has applied it, and it must not come back meanwhile).
+    public var decidedItemIDs: Set<String> {
+        var ids = outbox.decidedItemIDs
+        for entry in recent {
+            if case .queued = entry.state { ids.insert(DeskItem.key(org: entry.org, team: entry.team, request: entry.target)) }
+        }
+        return ids
+    }
     public private(set) var teams: [Team] = []
     public private(set) var recent: [DecisionEntry] = []
     /// The recoveries the node says wait, one for each org: shown above the desk until the node stops saying it. What was
@@ -64,13 +67,15 @@ public final class DeskStore {
     /// The Access session ended: the sign-in has to run again before anything else works.
     public private(set) var needsSignIn = false
     public private(set) var drafts: [String: DeskDraft]
+    /// The items being signed now (the owner is confirming with Face ID).
     public private(set) var sending: Set<String> = []
-    public private(set) var sent: [String: SentReply] = [:]
-    /// Why the last send of an item failed. The draft is kept.
+    /// Why the last attempt to decide an item failed (it could not be signed or kept). The draft is kept.
     public private(set) var sendFailures: [String: String] = [:]
 
     @ObservationIgnored private let source: any DeskSource
-    @ObservationIgnored private let sender: any DeskSender
+    @ObservationIgnored private let signer: any DeskSigner
+    /// The decisions kept on this device until the node has taken them.
+    public let outbox: DecisionOutbox
     @ObservationIgnored private let storage: any DraftStorage
     @ObservationIgnored private let afterSend: @Sendable () async -> Void
     @ObservationIgnored private let retry: RetryPolicy
@@ -81,15 +86,21 @@ public final class DeskStore {
     ///   what a shared cache holds from before it.
     /// - Parameter retry: how a team whose view is not ready is asked again, while the others are shown.
     public init(
-        source: any DeskSource, sender: any DeskSender, storage: any DraftStorage,
+        source: any DeskSource, signer: any DeskSigner, outbox: DecisionOutbox, storage: any DraftStorage,
         afterSend: @escaping @Sendable () async -> Void = {}, retry: RetryPolicy = .standard
     ) {
         self.source = source
-        self.sender = sender
+        self.signer = signer
+        self.outbox = outbox
         self.storage = storage
         self.afterSend = afterSend
         self.retry = retry
         drafts = storage.load()
+        // A decision the node took is read again, so that the pile and the counts follow the node's own view.
+        outbox.didTake = { [weak self] in
+            await afterSend()
+            await self?.refresh()
+        }
     }
 
     /// Whether a read has finished at least once. Set once and never reset: a later read under way or a failed one does not
@@ -108,7 +119,7 @@ public final class DeskStore {
 
     /// The number for the tab and the app icon. `0` also before the node has answered: use `knownWaitingCount` where
     /// "not read yet" must not look like "nothing waits".
-    public var waitingCount: Int { Desk.waitingCount(teams) }
+    public var waitingCount: Int { Desk.waitingCount(teams, excluding: decidedItemIDs) }
 
     /// How many requests wait for the owner, or `nil` until a read has finished (then it stays known: a refresh under way
     /// or a failed one keeps the last number).
@@ -183,9 +194,7 @@ public final class DeskStore {
         let loaded = keys.sorted().compactMap { read[$0] }
         teams = loaded
         teamFailures = failures
-        items = Desk.openItems(loaded)
-        let present = Set(items.map(\.id))
-        sent = sent.filter { present.contains($0.key) }
+        openItems = Desk.openItems(loaded)
     }
 
     private func refreshRecent() async {
@@ -220,9 +229,11 @@ public final class DeskStore {
 
     // MARK: Sending
 
-    /// Sends a reply and keeps the draft when it fails. Nothing is sent twice for one item at a time.
+    /// Decides: signs the reply (Face ID), keeps the signed envelope on the device, and is done. The item leaves the pile at once; the node
+    /// is told from the outbox, as often as it takes, and the owner does not wait for it. The draft is kept when the reply cannot be
+    /// signed or kept. Nothing is decided twice for one item.
     public func send(_ reply: DeskReply, for id: String) async {
-        guard let item = item(id), !sending.contains(id), sent[id] == nil else { return }
+        guard let item = item(id), !sending.contains(id) else { return }
         let decision: PreparedDecision
         do { decision = try item.prepare(reply) } catch {
             sendFailures[id] = Self.reason(error)
@@ -232,18 +243,27 @@ public final class DeskStore {
         sendFailures[id] = nil
         defer { sending.remove(id) }
         do {
-            let result = try await sender.send(decision)
+            let signed = try await signer.sign(decision)
+            try outbox.keep(PendingDecision(itemID: id, signed: signed, isComment: decision.isComment, createdAt: Date()))
             drafts[id] = nil
             storage.save(drafts)
-            sent[id] = SentReply(isComment: decision.isComment, outcome: result.outcome, message: result.message)
-            await afterSend()
-            await refresh()
+            // Sent from the outbox, which the owner is not waiting for.
+            Task { await outbox.flush() }
         } catch NodeError.sessionExpired {
             needsSignIn = true
             sendFailures[id] = "The sign-in has ended."
+        } catch OutboxError.notKept {
+            sendFailures[id] = "The decision could not be kept on this device."
         } catch {
             sendFailures[id] = Self.reason(error)
         }
+    }
+
+    /// The owner lets go of a decision the node refused for good: the item returns to the pile with what they typed and picked.
+    public func discardDecision(_ id: String) {
+        guard let entry = outbox.entries.first(where: { $0.id == id }), outbox.discard(id) else { return }
+        drafts[entry.itemID] = DeskDraft(text: entry.text, optionKey: entry.choice)
+        storage.save(drafts)
     }
 
     // MARK: Errors
