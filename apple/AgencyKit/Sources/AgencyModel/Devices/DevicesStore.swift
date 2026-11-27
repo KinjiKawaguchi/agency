@@ -30,6 +30,8 @@ public final class DevicesStore {
     public static let pollSeconds = 4
 
     public private(set) var rows: [DeviceFacts.Row] = []
+    /// This phone's id in the node's list of devices, once the list has been read and holds it: what a push registration names.
+    public var thisDeviceID: String? { rows.first { $0.isThisPhone }?.id }
     /// Requests to add some other device, which this one can confirm.
     public private(set) var requests: [DeviceRequest] = []
     public private(set) var isLoaded = false

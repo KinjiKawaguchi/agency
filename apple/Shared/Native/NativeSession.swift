@@ -27,6 +27,8 @@ final class NativeSession {
     @ObservationIgnored private var registeredPush: RegisteredPush?
     /// This phone's push token, once Apple has given it one: what `pushDelivery` looks for among the node's listed tokens.
     @ObservationIgnored private let ownPushToken = PushTokenBox()
+    /// What the home node said of itself, once it has: whether it takes `device` in a registration.
+    @ObservationIgnored private var nodeAbout: About?
     /// Whether the home node took the kinds of push the owner chose; `false` for a node that sends requests only.
     /// Whether the home node sends the kinds the owner chose, or `nil` until it has answered the registration.
     private(set) var nodeSendsPushKinds: Bool?
@@ -137,19 +139,44 @@ final class NativeSession {
         widgets.publish(items: desk.items)
     }
 
+    /// What the node says of itself, read until it has answered: a node that has no such route (404) has no capabilities, once and for good,
+    /// and any other failure is tried again at the next registration.
+    private func readAbout() async {
+        guard nodeAbout == nil else { return }
+        do {
+            nodeAbout = try await client.about()
+        } catch NodeError.http(let status, _) where status == 404 {
+            nodeAbout = About(capabilities: [])
+        } catch {
+            // Not registered until it has been read.
+        }
+    }
+
     /// Tells the node this phone's push token and the kinds of notification the owner wants, once the desk can be
     /// read. Registering a known token only updates it, so a change of the kinds is told the same way.
     func registerPush(_ registration: PushRegistration) async {
         ownPushToken.value = registration.token
-        let state = RegisteredPush(registration: registration, events: notifications.preferences.pushEventNames)
-        guard state != registeredPush, desk.loading == .loaded else { return }
+        guard desk.loading == .loaded else { return }
+        await readAbout()
+        let device: String?
+        switch PushDeviceChoice.decide(about: nodeAbout, thisDeviceID: devices?.thisDeviceID, registered: registeredPush?.device) {
+        case .notYet: return
+        case .withoutDevice: device = nil
+        case .withDevice(let id): device = id
+        }
+        let state = RegisteredPush(registration: registration, events: notifications.preferences.pushEventNames, device: device)
+        guard state != registeredPush else { return }
         do {
             let outcome = try await PushRegistrar(poster: client).register(
                 token: registration.token, environment: registration.environment.rawValue,
-                label: registration.label, events: state.events
+                label: registration.label, events: state.events, device: device
             )
             registeredPush = state
             nodeSendsPushKinds = outcome == .withKinds
+        } catch NodeError.http(let status, _) where status == 400 && device != nil {
+            // The node refused the device: it is not one of the account's now, and the list is read again. Not registered without it. A 400
+            // for another reason reads the list again at each try, which is a read and nothing more.
+            await devices?.refresh()
         } catch {
             // Tried again at the next change or the next launch.
         }
@@ -165,6 +192,8 @@ private final class PushTokenBox {
 private struct RegisteredPush: Equatable {
     let registration: PushRegistration
     let events: [String]
+    /// The device the registration names, for a node that takes one.
+    let device: String?
 }
 
 /// Stands in for the signer when this phone has no key: the desk can be read and nothing can be sent.
