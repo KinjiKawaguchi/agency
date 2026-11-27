@@ -7,7 +7,7 @@ use crate::delivery::{attribute, evaluate, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use crate::usage::check_days;
@@ -145,7 +145,7 @@ async fn remote_evaluation(
     days: u32,
 ) -> std::result::Result<Evaluation, String> {
     let path = routes::evaluation(org, &place.id, days);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let answer = node
         .peers()
         .get_evaluation(&place.node, &path, &auth)

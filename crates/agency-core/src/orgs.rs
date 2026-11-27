@@ -8,7 +8,7 @@ use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::ports::RootSigner;
 use crate::push_devices::keep_org;
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::clock::{self, Duration, OffsetDateTime};
@@ -335,6 +335,18 @@ pub fn amend(
     org: &Id,
     edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
 ) -> Result<SignedOrg> {
+    amend_with(node, org, edit, |_| Ok(()))
+}
+
+/// `amend`, and `before_publish` runs on the signed version before it is kept and queued: what must go with the
+/// version (a record that belongs to it) is written only once the root has signed, and a refusal of `before_publish`
+/// publishes nothing.
+pub(crate) fn amend_with(
+    node: &Node,
+    org: &Id,
+    edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
+    before_publish: impl FnOnce(&SignedOrg) -> Result<()>,
+) -> Result<SignedOrg> {
     let current = load(node, org)?;
     if !is_root(node, &current) {
         return Err(Error::new(
@@ -346,6 +358,7 @@ pub fn amend(
     edit(&mut body)?;
     capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
+    before_publish(&doc)?;
     publish(node, &doc)?;
     forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;
@@ -634,7 +647,7 @@ pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Resul
             return Ok(());
         }
         let path = routes::versions(org, current);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

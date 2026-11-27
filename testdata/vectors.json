@@ -221,5 +221,16 @@
       "signature": "qStTZPfAETn7ZXgMZFFDs6qzfaWX32PqFB4eO59esLGzHPDgRnaDt1mazn5cu00bXUo8DJ1lZqgwWTjnDnX4BA=="
     }
   },
-  "seed": "0707070707070707070707070707070707070707070707070707070707070707"
+  "seed": "0707070707070707070707070707070707070707070707070707070707070707",
+  "signedRead": {
+    "audience": "02ae509c6b20999646d3c600687ee1bf",
+    "bound": {
+      "signature": "QvwhIQkbLrXW7Im3lvc6Wn91QSu2rhP7/OW8xeBsIkvFO90mzBQtUs64oLgCFKcG9Dphb/WaUzBRndriTxgNBg==",
+      "text": "GET\n/fed/v1/teams/acme/app/view\n2026-11-24T12:00:00.123Z\nalice\n02ae509c6b20999646d3c600687ee1bf"
+    },
+    "unbound": {
+      "signature": "9TKfPWifh8CVPPT+yWEKXZ8+7v4fQr/sdiMP5ju1h7SGrnivxy/16CEkJQqdg0gvVUZRvHr1xu3twYVkVAhhDg==",
+      "text": "GET\n/fed/v1/teams/acme/app/view\n2026-11-24T12:00:00.123Z\nalice"
+    }
+  }
 }

@@ -283,6 +283,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 ```
 
 - `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
+- A member this node hosts reads and answers only the requests of teams that run on this node; a team on another node does not show them its requests.
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
@@ -514,6 +515,20 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
+
+### Signed reads between nodes of different releases
+
+Nodes of one org read each other with signed reads. A node of this release makes a read for one particular node (it signs that node's id with it), once it knows that node lists `readAudience`; a node takes such a read only if it names itself. Update the nodes of an org in any order. A node still reads an older one the old way, and answers an older one the old way too, with two things to know:
+
+- Once a node has taken a read that names it from an account, it takes no older read from that account. If one account has two nodes (for example one on a Mac and one on another machine) and you update one of them, the other one's reads of the updated node are refused (the node answers `404`, like for any read it refuses) until you update it as well. The updated node writes the reason to its log (`agency logs`): `a read signed by alice that names no node; …`.
+- To let the older node through until you update it, add the account to `config.json` of the node that refuses, and restart it:
+
+  ```json
+  "federation": { "unboundReadAccounts": ["alice"] }
+  ```
+
+  Take the line out once both nodes are updated. The same line helps an account whose node you rolled back to a release without `readAudience`. A node keeps the accounts it has taken such a read from in `bound-readers.json` in its data directory, so a restart does not reset anything, and `agency status` lists them.
+- When every node of the org is updated, set `"federation": { "requireReadAudience": true }` on each node to refuse the older reads from every account. Without it, a read that was made the old way and captured before its account first named the node can still be replayed there. `requireReadAudience` needs `url` to be this node's origin as `https://<host>[:<port>]` (or `http://` on a loopback address), and the node refuses to start otherwise.
 
 ### The measurements
 

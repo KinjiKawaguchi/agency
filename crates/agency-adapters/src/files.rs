@@ -11,9 +11,9 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, ClaimStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
-    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
@@ -26,7 +26,7 @@ use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -446,6 +446,23 @@ impl AboutStore for DataDir {
 
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()> {
         write_json(&self.dir("about").join(format!("{org}.json")), abouts)
+    }
+}
+
+impl BoundReaderStore for DataDir {
+    /// `bound-readers.json`: account ids only, no key and no signature. A file that is not there is no accounts;
+    /// one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        let path = self.0.join("bound-readers.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()> {
+        write_json(&self.0.join("bound-readers.json"), accounts)
     }
 }
 
