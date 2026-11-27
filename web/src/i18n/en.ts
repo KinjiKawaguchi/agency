@@ -115,7 +115,7 @@ export const en = {
     decision: (state: string, count: number, title: string, reason: string | undefined) => {
       const named = count === 1 && title !== '' ? ` “${title}”` : ''
       if (state === 'refused') return count === 1 ? `A decision${named} was refused${reason === undefined ? '' : `: ${reason}`}` : `${count} decisions were refused.`
-      if (state === 'queued') return count === 1 ? `A decision${named} is queued: its node cannot be reached yet.` : `${count} decisions are queued.`
+      if (state === 'queued') return count === 1 ? `A decision${named} is saved, not delivered: its node cannot be reached yet.` : `${count} decisions are saved, not delivered.`
       return count === 1 ? `A decision${named} was ${state}.` : `${count} decisions were ${state}.`
     },
     more: (count: number) => `${count} more things are new.`,
@@ -395,11 +395,11 @@ export const en = {
     },
     recent: {
       head: 'Recently decided',
-      states: { applied: 'Applied', delivered: 'Delivered', queued: 'Waiting to send', refused: 'Refused' },
+      states: { applied: 'Applied', delivered: 'Delivered', queued: 'Saved, not delivered', refused: 'Refused' },
       chose: (choice: string) => `Chose “${choice}”.`,
       answeredFor: (label: string) => `Answered for ${label}.`,
       queuedDetail: (attempts: number, retry: string | null) =>
-        `${attempts === 0 ? 'Not sent yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
+        `${attempts === 0 ? 'Not delivered yet.' : attempts === 1 ? 'Tried once.' : `Tried ${attempts} times.`} ${retry === null ? 'Trying again now.' : `Next try ${retry}.`}`,
       underMinute: 'in under a minute',
       lastError: (reason: string) => `Last error: ${reason}`,
       refusedDetail: (reason: string) => `The team’s node refused it: ${reason}`,

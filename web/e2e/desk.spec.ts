@@ -81,7 +81,7 @@ test('reports a decision the node queued for later', async ({ page, request }) =
   await page.getByRole('article').locator('label.choice').filter({ hasText: 'Approve' }).click()
   await page.getByRole('button', { name: 'Approve with “Approve”' }).click()
   await expect(page.getByText('Saved. The team’s node is asleep, so it will be delivered when it wakes.')).toBeVisible()
-  await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Waiting to send')
+  await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Saved, not delivered')
 })
 
 test('answers a pending decision in free text', async ({ page, request }) => {
