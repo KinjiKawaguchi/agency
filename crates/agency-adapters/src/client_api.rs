@@ -17,8 +17,7 @@ use crate::server::status_of;
 use agency_core::about;
 use agency_core::activity::team_activity;
 use agency_core::client::{
-    decision_entry, decision_log, home_nodes, me, org_definition, submit_signed_decision,
-    team_snapshot,
+    decision_entry, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
 };
 use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device};

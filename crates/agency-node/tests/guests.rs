@@ -284,9 +284,15 @@ async fn a_guest_decides_only_as_its_member_and_never_as_the_owner() {
         Some(as_carol),
     )
     .await;
-    assert_eq!(status, 200, "{answer}");
+    assert_eq!(
+        (status, &answer["outcome"]),
+        (202, &json!("queued")),
+        "{answer}"
+    );
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     let (_, log) = call(&alice, Method::GET, "/api/decisions", CAROL, None).await;
     assert_eq!(log["entries"].as_array().unwrap().len(), 1, "{log}");
+    assert_eq!(log["entries"][0]["state"]["kind"], "applied", "{log}");
     let (_, owners) = call(
         &alice,
         Method::GET,
