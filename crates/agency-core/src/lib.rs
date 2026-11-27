@@ -29,6 +29,7 @@ pub mod logging_config;
 pub mod metrics_config;
 pub mod node;
 pub mod notice;
+pub mod org_members;
 pub mod orgs;
 pub mod outbox;
 pub mod outcome_readings;

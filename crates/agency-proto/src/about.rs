@@ -154,10 +154,12 @@ pub enum Capability {
     Effort,
     /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
     ReadAudience,
+    /// The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.
+    Members,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 13] = [
+    pub const ALL: [Capability; 14] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -171,6 +173,7 @@ impl Capability {
         Capability::PushDevice,
         Capability::Effort,
         Capability::ReadAudience,
+        Capability::Members,
     ];
 
     pub fn name(self) -> &'static str {
@@ -188,6 +191,7 @@ impl Capability {
             Capability::PushDevice => "pushDevice",
             Capability::Effort => "effort",
             Capability::ReadAudience => "readAudience",
+            Capability::Members => "members",
         }
     }
 

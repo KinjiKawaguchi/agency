@@ -114,6 +114,30 @@ RuntimeNames      { team, names: string[] }
 - It holds labels, departments, roles and what to ask about: **never a key, a device, an account, an address, an email, or a phone number**, because the definition holds none of them for a seat or an external party and this is not the place to add them for a member.
 - The sample, with made-up names, is `testdata/directory.sample.json`.
 
+## Members, devices, and open seats
+
+An org's owner manages its people through the CLI and the root's signed versions. The node knows all of it, so the owner's client reads it in one place:
+
+```
+GET /api/orgs/<org>/members
+```
+
+It is read-only and the owner's alone (the direct local request, or the Access sign-in of the configured owner). It answers `OrgMembers`:
+
+```
+OrgMembers    { org, members: OrgMember[], seats: OrgParty[], externals: OrgParty[], held?: RootChangeRef[] }
+OrgMember     { id, label, role: "member" | "answerer", department?, isHosted, hasSignIn?, devices: MemberDevice[] }
+MemberDevice  { id, label, keyKind: "ed25519" | "p256", addedAt }
+OrgParty      { id, label, department?, askAbout: string[], answeredBy: Id[] }
+```
+
+- The members, the seats, and the external parties are in the order of the definition. `seats` are the ones no one has taken; a seat that was taken is gone and its member has it in `formerly`. `answeredBy` is as in the directory: the members who answer for the seat or the external party in order of preference, and for a seat with none, the team's owner does.
+- `isHosted` is `true` for a member the root's node hosts (a guest). `hasSignIn` is there for such a member only and says whether this node has a sign-in set for them. **The address is in no answer.**
+- `devices` are the keys of the member's clients as the definition holds them, by `id`, `label`, the kind of key (a browser's is `p256`) and when it was added. A key is never in the answer.
+- `held` is what waits for this node's root key, as `/api/me` gives it to the owner (`RootChangeRef`, see "Pending root changes"), for this org only. It is present only on the root's node and left out when nothing waits.
+- Nothing is changed here: people change by the root's signed versions, as before. The capability `members` says a node has the route.
+- The sample is `testdata/client/org-members.json`.
+
 ## Devices (kind `device`)
 
 A device change adds or removes one of a member's devices:
@@ -525,6 +549,7 @@ The types are in `agency-proto` (`client.rs`) and generated into `bindings/`.
 | POST | `/api/telemetry` | `TelemetryReport { client: "web" \| "ios", samples: [{ route, status, ms }] }` (see "Metrics"): what a client observed of its own calls to this node, answered `200` `TelemetryAnswer { accepted, dropped }`. A write like the others: the write token, a JSON body, and the owner (403 otherwise). 400 for a `client` that is neither, more than 200 samples, or a sample that is not well formed (`ms` is a whole number of at least 0); 413 for a body of more than 16 KiB. Not a federation route |
 | GET | `/metrics` | The measurements since the node started, as the text a Prometheus scrape reads: for each series a histogram `agency_duration_milliseconds` (cumulative buckets `le`, `_sum`, `_count`) and a counter `agency_errors_total`, labeled `kind`, `name`, `status`, and `peer` or `client` where there is one, never a label from the request. **Only a direct request from the node's own machine**: 403 through Cloudflare, whoever is signed in |
 | GET | `/api/orgs/<org>/evaluation?days=<n>` and `/effort?days=<n>` | `Evaluation` and `Effort` for every team of the org (see "Evaluation"; `days` as for `usage`, default 14). A team on this node is worked out here and a team elsewhere is read from its node; one that cannot answer is in `unavailable`. 403 for an answerer of the org. `/effort` is there only on a node that lists the capability `effort`; one that does not answers 404 |
+| GET | `/api/orgs/<org>/members` | `OrgMembers` (see "Members, devices, and open seats"): the org's members with their devices, its open seats, its external parties, and the changes that wait for the root key. Owner only: a guest, and any other sign-in Access lets in, gets 403, and so does an owner who is an answerer of the org; 404 for an org the owner is not in |
 | GET | `/api/orgs/<org>/teams/<team>/activity?since=<time>&limit=<n>` | `Activity` for a team (see "Activity"): the events after `since` (an RFC 3339 UTC time, default an hour ago), at most `limit` (1 to 500, default 200); anything else is 400. 404 when the team's runtime does not report activity (or, for a team on another node, its node does not serve the route), 403 for an answerer, 503 for an answer that is not valid or a team's node that cannot be reached. The activity of a team on this node is read from its runtime and that of a team elsewhere live from its node |
 | POST | `/api/orgs/<org>/outcomes/observations` | Body `ObservationInput`; answers the `Observation` (see "Outcomes"). Owner only (403 otherwise), and the write rules |
 | GET | `/api/orgs/<org>/outcomes?days=<n>` | `Outcomes` for the org's KPIs (see "Outcomes"; `days` as for `usage`, default 14). Owner only: any other signed-in email gets 403 |

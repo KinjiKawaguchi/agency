@@ -241,6 +241,8 @@ pub trait BoundReaderStore {
 /// The guests of this node, by sign-in email (`guests`), kept in its data directory.
 pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
+    /// Every guest the node keeps, in no promised order.
+    fn guests(&self) -> Vec<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
     /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
