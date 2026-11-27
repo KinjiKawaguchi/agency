@@ -7,12 +7,26 @@ import Observation
 @MainActor
 @Observable
 public final class ShellRouter {
-    public var tab: AppTab = .desk
+    public var tab: AppTab = .desk {
+        // A screen the viewer does not have is not opened: a banner or a notification that leads there leads to the desk.
+        didSet { if !availableTabs.contains(tab) { tab = .desk } }
+    }
+
+    /// What the node says the viewer is: a member it hosts has the desk and the devices only.
+    public var standing: Standing {
+        didSet { if !availableTabs.contains(tab) { tab = .desk } }
+    }
+
+    /// The screens of the tab bar and the sidebar.
+    public var availableTabs: [AppTab] { AppTab.tabs(for: standing) }
     public var organizationPage: OrganizationPage = .orgChart
     /// The desk item to open on the desk (`<org>:<team>:<request>`), until the desk has taken it.
     public var openItemID: String?
 
-    public init() {}
+    /// - Parameter standing: what the node says the viewer is; until it has said, the owner's screens are not offered.
+    public init(standing: Standing = .loading) {
+        self.standing = standing
+    }
 
     /// The kinds of news the open screen shows by itself, so they make no banner: the devices screen lists a
     /// device that asks to be added.

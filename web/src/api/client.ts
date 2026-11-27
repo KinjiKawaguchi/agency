@@ -1,5 +1,6 @@
 import type { ClaimInput, ClaimState } from '../claim/provisional'
 import { labelsMadePrintable } from '../shared/printable'
+import { at, type Target } from './routes'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
 import type { DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, Session, VapidKey, Signed, SignedDecisionInput, OrgDefinition, TeamSnapshot, TokenUsage } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
@@ -19,11 +20,14 @@ export type FetchLike = (input: Request) => Promise<Response>
  */
 export class ApiError extends Error {
   readonly status: number
+  /** How many seconds the node asked to wait before trying again (`Retry-After`), when it did. */
+  readonly retryAfterSeconds: number | undefined
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, retryAfterSeconds?: number) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -86,7 +90,6 @@ export interface ApiClient {
   activity: (org: string, team: string, since: string, signal?: AbortSignal) => Promise<Activity>
 }
 
-const segment = encodeURIComponent
 
 /** Reads an answer the node gave; one that is not what the route promises is a 503, "could not answer", not a crash of the screen. */
 const checked =
@@ -124,7 +127,8 @@ async function readJson<T>(response: Response): Promise<T> {
   const body: unknown = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : `HTTP ${response.status}`
-    throw new ApiError(message, response.status)
+    const waited = Number(response.headers.get('retry-after'))
+    throw new ApiError(message, response.status, Number.isInteger(waited) && waited >= 0 && response.headers.get('retry-after') !== null ? waited : undefined)
   }
   // The labels in an answer are drawn as they are printed on a terminal: a hidden character is a `?`.
   return labelsMadePrintable(body) as T
@@ -186,12 +190,12 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     tell('ok')
     return response
   }
-  const get = <T>(path: string, signal?: AbortSignal): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' }, ...(signal === undefined ? {} : { signal }) })).then(readJson<T>)
+  const get = <T>({ path }: Target<`GET ${string}`>, signal?: AbortSignal): Promise<T> => dispatch(new Request(url(path), { headers: { accept: 'application/json' }, ...(signal === undefined ? {} : { signal }) })).then(readJson<T>)
 
   /** The page's token goes stale when the node starts again: a token read from `/api/session` after that is kept for the writes that follow. */
   let renewedToken: string | undefined
 
-  const write = <T>(method: 'POST' | 'DELETE', path: string, body: unknown, token: string): Promise<T> =>
+  const write = <T>(method: 'POST' | 'DELETE', { path }: Target, body: unknown, token: string): Promise<T> =>
     dispatch(new Request(url(path), { method, headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), 'x-agency-token': token }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })).then(readJson<T>)
 
   /**
@@ -199,52 +203,52 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
    * starts, so a page that was open across a start gets 403 "missing or wrong write token": it asks the node for the
    * token once, and sends the write again once (docs/protocol.md, `/api/session`). A second refusal, or any other, is the answer.
    */
-  const submit = async <T>(method: 'POST' | 'DELETE', path: string, body: unknown): Promise<T> => {
+  const submit = async <T>(method: 'POST' | 'DELETE', target: Target, body: unknown): Promise<T> => {
     try {
-      return await write<T>(method, path, body, renewedToken ?? readToken())
+      return await write<T>(method, target, body, renewedToken ?? readToken())
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 403 || !error.message.includes(STALE_TOKEN)) throw error
-      renewedToken = (await get<Session>('/api/session')).writeToken
-      return write<T>(method, path, body, renewedToken)
+      renewedToken = (await get<Session>(at('GET /api/session'))).writeToken
+      return write<T>(method, target, body, renewedToken)
     }
   }
-  const post = <T>(path: string, body: unknown): Promise<T> => submit<T>('POST', path, body)
+  const post = <T>(target: Target<`POST ${string}`>, body: unknown): Promise<T> => submit<T>('POST', target, body)
   /** A DELETE has the write token and no body. */
-  const remove = (path: string): Promise<unknown> => submit<unknown>('DELETE', path, undefined)
+  const remove = (target: Target<`DELETE ${string}`>): Promise<unknown> => submit<unknown>('DELETE', target, undefined)
 
   return {
     onSession: (listener) => {
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    me: () => get<Me>('/api/me'),
-    teamSnapshot: (org, team) => get<TeamSnapshot>(`/api/orgs/${segment(org)}/teams/${segment(team)}/view`),
-    orgDefinition: (org) => get<OrgDefinition>(`/api/orgs/${segment(org)}`),
-    usage: (org, team, days) => get<TokenUsage>(`/api/orgs/${segment(org)}/teams/${segment(team)}/usage?days=${days}`),
-    evaluation: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/evaluation?days=${days}`).then(checked(readEvaluation)),
-    metrics: (days, hourBuckets = false) => get<unknown>(`/api/metrics?days=${days}${hourBuckets ? '&hourBuckets=1' : ''}`).then(checked(readMetrics)),
-    activity: (org, team, since, signal) => get<unknown>(`/api/orgs/${segment(org)}/teams/${segment(team)}/activity?since=${encodeURIComponent(since)}`, signal).then(checked(readActivity)),
-    outcomes: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/outcomes?days=${days}`).then(checked(readOutcomes)),
-    readings: (org) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/readings`).then(checked(readReadings)),
-    numberHistory: (org, kpi, limit) => get<unknown>(`/api/orgs/${segment(org)}/outcomes/observations?kpi=${segment(kpi)}&limit=${limit}`).then(checked(readNumberHistory)),
-    enterNumber: (org, input) => post<unknown>(`/api/orgs/${segment(org)}/outcomes/observations`, input).then(checked(readNumberEntry)),
-    effort: (org, days) => get<unknown>(`/api/orgs/${segment(org)}/effort?days=${days}`).then(checked(readEffort)),
-    decisions: (limit) => get<DecisionLog>(`/api/decisions?limit=${limit}`),
+    me: () => get<Me>(at('GET /api/me')),
+    teamSnapshot: (org, team) => get<TeamSnapshot>(at('GET /api/orgs/{org}/teams/{team}/view', { org, team })),
+    orgDefinition: (org) => get<OrgDefinition>(at('GET /api/orgs/{org}', { org })),
+    usage: (org, team, days) => get<TokenUsage>(at('GET /api/orgs/{org}/teams/{team}/usage', { org, team }, { days })),
+    evaluation: (org, days) => get<unknown>(at('GET /api/orgs/{org}/evaluation', { org }, { days })).then(checked(readEvaluation)),
+    metrics: (days, hourBuckets = false) => get<unknown>(at('GET /api/metrics', {}, { days, hourBuckets: hourBuckets ? 1 : undefined })).then(checked(readMetrics)),
+    activity: (org, team, since, signal) => get<unknown>(at('GET /api/orgs/{org}/teams/{team}/activity', { org, team }, { since }), signal).then(checked(readActivity)),
+    outcomes: (org, days) => get<unknown>(at('GET /api/orgs/{org}/outcomes', { org }, { days })).then(checked(readOutcomes)),
+    readings: (org) => get<unknown>(at('GET /api/orgs/{org}/outcomes/readings', { org })).then(checked(readReadings)),
+    numberHistory: (org, kpi, limit) => get<unknown>(at('GET /api/orgs/{org}/outcomes/observations', { org }, { kpi, limit })).then(checked(readNumberHistory)),
+    enterNumber: (org, input) => post<unknown>(at('POST /api/orgs/{org}/outcomes/observations', { org }), input).then(checked(readNumberEntry)),
+    effort: (org, days) => get<unknown>(at('GET /api/orgs/{org}/effort', { org }, { days })).then(checked(readEffort)),
+    decisions: (limit) => get<DecisionLog>(at('GET /api/decisions', {}, { limit })),
     decideSigned: (org, team, { envelope, title, choiceLabel }) => {
       // The label travels only with a choice, and both notes are trimmed and cut for the log.
       const label = envelope.body.payload.choice === undefined || choiceLabel === undefined || forLog(choiceLabel) === '' ? {} : { choiceLabel: forLog(choiceLabel) }
       const input: SignedDecisionInput = { envelope, ...(title === undefined ? {} : { title: forLog(title) }), ...label }
-      return post<DecisionResult>(`/api/orgs/${segment(org)}/teams/${segment(team)}/envelopes`, input)
+      return post<DecisionResult>(at('POST /api/orgs/{org}/teams/{team}/envelopes', { org, team }), input)
     },
-    registerPushToken: async (input) => void (await post<unknown>('/api/push/tokens', input)),
-    vapidKey: () => get<VapidKey>('/api/push/vapid'),
-    pushSubscriptions: () => get<PushSubscriptionList>('/api/push/subscriptions'),
-    registerPushSubscription: (input) => post<PushSubscription>('/api/push/subscriptions', input),
-    removePushSubscription: async (id) => void (await remove(`/api/push/subscriptions/${segment(id)}`)),
-    devices: () => get<DeviceList>('/api/devices'),
-    requestDevice: (input) => post<DeviceRequest>('/api/devices/requests', input),
-    submitDeviceChange: (change) => post<DeviceChangeResult>('/api/devices/changes', change),
-    redeemClaim: (input) => post<ClaimState>('/api/claim', input),
-    claimState: () => get<ClaimState>('/api/claim'),
+    registerPushToken: async (input) => void (await post<unknown>(at('POST /api/push/tokens'), input)),
+    vapidKey: () => get<VapidKey>(at('GET /api/push/vapid')),
+    pushSubscriptions: () => get<PushSubscriptionList>(at('GET /api/push/subscriptions')),
+    registerPushSubscription: (input) => post<PushSubscription>(at('POST /api/push/subscriptions'), input),
+    removePushSubscription: async (id) => void (await remove(at('DELETE /api/push/subscriptions/{id}', { id }))),
+    devices: () => get<DeviceList>(at('GET /api/devices')),
+    requestDevice: (input) => post<DeviceRequest>(at('POST /api/devices/requests'), input),
+    submitDeviceChange: (change) => post<DeviceChangeResult>(at('POST /api/devices/changes'), change),
+    redeemClaim: (input) => post<ClaimState>(at('POST /api/claim'), input),
+    claimState: () => get<ClaimState>(at('GET /api/claim')),
   }
 }

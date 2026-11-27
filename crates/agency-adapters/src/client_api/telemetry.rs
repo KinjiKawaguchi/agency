@@ -48,8 +48,10 @@ pub const REPORTABLE_ROUTES: [&str; 25] = [
     "GET /api/push/vapid",
 ];
 
+pub(super) const ROUTES: &[(&str, &str)] = &[("POST", "/api/telemetry")];
+
 pub(super) fn routes() -> Router<Arc<ClientApi>> {
-    Router::new().route("/api/telemetry", post(post_telemetry))
+    Router::new().route(ROUTES[0].1, post(post_telemetry))
 }
 
 async fn post_telemetry(State(api): Shared, bytes: Bytes) -> Response {

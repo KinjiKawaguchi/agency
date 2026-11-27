@@ -16,12 +16,11 @@ use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
 use agency_core::activity::team_activity;
-use agency_core::client::{
-    decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
-};
+use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
 use agency_core::clients_seen;
-use agency_core::devices::{device_list, request_device, submit_device_change};
+use agency_core::devices::{device_list, request_device};
 use agency_core::evaluation::org_evaluation;
+use agency_core::guests::{Caller, Guest};
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
@@ -38,7 +37,7 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Reque
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, MethodRouter};
 use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::json;
@@ -47,6 +46,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
+mod guests;
 mod metrics;
 mod outcomes;
 mod telemetry;
@@ -93,6 +93,9 @@ pub(crate) type Shared = State<Arc<ClientApi>>;
 pub(crate) enum Admitted {
     Local,
     Access(Identity),
+    /// A member this node hosts, signed in through Access with the email its record names. It reaches only
+    /// the routes in `guests::GUEST_ROUTES`, scoped to its member.
+    Guest(Guest),
 }
 
 pub(crate) fn refuse(status: StatusCode, message: &str) -> Response {
@@ -146,7 +149,15 @@ async fn admit(
         .as_ref()
         .ok_or((StatusCode::FORBIDDEN, "this node has no Access setting"))?;
     match access.verify(header_text(headers, ACCESS_HEADER)).await {
-        Ok(identity) => Ok(Admitted::Access(identity)),
+        // The owner's email always wins; then a guest's record; then any other sign-in, as before.
+        Ok(identity) if is_owner(api, &identity) => Ok(Admitted::Access(identity)),
+        Ok(identity) => {
+            let guest = identity
+                .email
+                .as_deref()
+                .and_then(|email| agency_core::guests::admit(&api.node, email));
+            Ok(guest.map_or(Admitted::Access(identity), Admitted::Guest))
+        }
         Err(reason) => {
             (api.log)(&format!("refused an Access request ({reason})"));
             Err((
@@ -173,6 +184,7 @@ fn check_write(
     api: &ClientApi,
     admitted: &Admitted,
     method: &Method,
+    path: &str,
     headers: &HeaderMap,
 ) -> Result<(), (StatusCode, &'static str)> {
     let has_token =
@@ -200,6 +212,9 @@ fn check_write(
         Admitted::Local => Ok(()),
         Admitted::Access(identity) if is_owner(api, identity) => Ok(()),
         Admitted::Access(_) => Err((StatusCode::FORBIDDEN, "only the node's owner may decide")),
+        // A guest never writes as the owner: only the writes of its own table, scoped to its member there.
+        Admitted::Guest(guest) if guests::may_write(guest, method, path) => Ok(()),
+        Admitted::Guest(_) => Err((StatusCode::FORBIDDEN, "a guest may not do this")),
     }
 }
 
@@ -227,9 +242,16 @@ async fn guard(
         Err((status, message)) => return refuse(status, message),
     };
     let is_write = !matches!(*request.method(), Method::GET | Method::HEAD);
+    // A guest's reads are checked here against its table; its writes by its own arm of `check_write`.
+    if let Admitted::Guest(guest) = &admitted {
+        if !is_write && !guests::may(guest, request.method(), request.uri().path()) {
+            return refuse(StatusCode::FORBIDDEN, "a guest may not do this");
+        }
+    }
     if is_write {
+        let path = request.uri().path().to_owned();
         if let Err((status, message)) =
-            check_write(&api, &admitted, request.method(), request.headers())
+            check_write(&api, &admitted, request.method(), &path, request.headers())
         {
             return refuse(status, message);
         }
@@ -296,6 +318,9 @@ async fn get_about() -> Response {
 /// The account and what it reaches; to the node's owner, also their other home nodes, which say where
 /// else the owner works and are no one else's to know.
 async fn get_me(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    if let Admitted::Guest(guest) = &admitted {
+        return respond(agency_core::guest_reads::me(&api.node, guest));
+    }
     let mut answer = me(&api.node);
     if is_owner_request(&api, &admitted) {
         let listed = home_nodes(&api.node.config()).0;
@@ -313,6 +338,7 @@ async fn get_me(State(api): Shared, Extension(admitted): Extension<Admitted>) ->
 /// The account's recent decisions. `limit` defaults to 50 and is capped at 200.
 async fn get_decisions(
     State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
     let limit = match query.get("limit").map(|raw| raw.parse::<usize>()) {
@@ -320,15 +346,28 @@ async fn get_decisions(
         Some(Ok(limit)) => Some(limit),
         Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "limit must be a number"),
     };
-    json_response(StatusCode::OK, &decision_log(&api.node, limit))
+    let log = agency_core::client::decision_log_of(&api.node, &caller_of(&admitted), limit);
+    json_response(StatusCode::OK, &log)
 }
 
 async fn get_org(State(api): Shared, Path(org): Path<String>) -> Response {
     respond(parse_id(&org).and_then(|org| org_definition(&api.node, &org)))
 }
 
-async fn get_team(State(api): Shared, Path((org, team)): Path<(String, String)>) -> Response {
-    let result = async { team_snapshot(&api.node, &parse_id(&org)?, &parse_id(&team)?).await };
+async fn get_team(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    Path((org, team)): Path<(String, String)>,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        match &admitted {
+            Admitted::Guest(guest) => {
+                agency_core::guest_reads::team_snapshot(&api.node, guest, &org, &team).await
+            }
+            Admitted::Local | Admitted::Access(_) => team_snapshot(&api.node, &org, &team).await,
+        }
+    };
     respond(result.await)
 }
 
@@ -397,15 +436,24 @@ fn json_body<T: serde::de::DeserializeOwned>(bytes: &Bytes, what: &str) -> Resul
 /// A decision signed by one of the account's devices. The node checks and relays it; it never signs.
 async fn post_envelope(
     State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
     Path((org, team)): Path<(String, String)>,
     bytes: Bytes,
 ) -> Response {
     let result = async {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         let input: SignedDecisionInput = json_body(&bytes, "signed decision")?;
-        submit_signed_decision(&api.node, &org, &team, input).await
+        submit_signed_decision(&api.node, &caller_of(&admitted), &org, &team, input).await
     };
     respond(result.await)
+}
+
+/// Who the request acts as: a guest as its hosted member, anyone else admitted as the node's own account.
+fn caller_of(admitted: &Admitted) -> Caller {
+    match admitted {
+        Admitted::Guest(guest) => Caller::Guest(guest.clone()),
+        Admitted::Local | Admitted::Access(_) => Caller::Owner,
+    }
 }
 
 /// Whether the request is the node's owner's: a direct local one (the machine's own user), or one
@@ -415,6 +463,7 @@ fn is_owner_request(api: &ClientApi, admitted: &Admitted) -> bool {
     match admitted {
         Admitted::Local => true,
         Admitted::Access(identity) => is_owner(api, identity),
+        Admitted::Guest(_) => false,
     }
 }
 
@@ -436,6 +485,9 @@ fn with_node_info(api: &ClientApi, admitted: &Admitted, mut list: DeviceList) ->
 }
 
 async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    if let Admitted::Guest(guest) = &admitted {
+        return respond(agency_core::guest_reads::device_list(&api.node, guest));
+    }
     respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
 }
 
@@ -447,10 +499,15 @@ async fn post_device_request(State(api): Shared, bytes: Bytes) -> Response {
 }
 
 /// A device change signed by one of the account's devices, relayed to the org's root node.
-async fn post_device_change(State(api): Shared, bytes: Bytes) -> Response {
+async fn post_device_change(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
     let result = async {
         let signed: Signed<DeviceChange> = json_body(&bytes, "device change")?;
-        submit_device_change(&api.node, signed).await
+        agency_core::devices::submit_device_change_as(&api.node, &caller_of(&admitted), signed)
+            .await
     };
     respond(result.await)
 }
@@ -589,43 +646,83 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 }
 
 /// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
+/// The routes behind the guard that this module serves itself, by method and path: the one list the router
+/// is built from (`method_router` gives each path its handlers) and that the tests walk.
+const ROUTES: &[(&str, &str)] = &[
+    ("GET", "/api/about"),
+    ("GET", "/api/me"),
+    ("GET", "/api/session"),
+    ("GET", "/api/decisions"),
+    ("GET", "/api/devices"),
+    ("GET", "/api/push/tokens"),
+    ("POST", "/api/push/tokens"),
+    ("DELETE", "/api/push/tokens/{token}"),
+    ("GET", "/api/push/vapid"),
+    ("GET", "/api/push/subscriptions"),
+    ("POST", "/api/push/subscriptions"),
+    ("DELETE", "/api/push/subscriptions/{id}"),
+    ("POST", "/api/devices/requests"),
+    ("POST", "/api/devices/changes"),
+    ("GET", "/api/orgs/{org}"),
+    ("GET", "/api/orgs/{org}/teams/{team}/view"),
+    ("GET", "/api/orgs/{org}/teams/{team}/usage"),
+    ("GET", "/api/orgs/{org}/evaluation"),
+    ("GET", "/api/orgs/{org}/teams/{team}/activity"),
+    ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
+    ("GET", HANDOFF_PATH),
+    ("GET", CALLBACK_PATH),
+];
+
+/// The routes a guest may reach (`guests::GUEST_ROUTES`), by method and path, for the tests.
+pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
+    guests::GUEST_ROUTES.to_vec()
+}
+
+/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
+pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
+    let parts = outcomes::ROUTES
+        .iter()
+        .chain(metrics::ROUTES)
+        .chain(telemetry::ROUTES);
+    ROUTES.iter().chain(parts).copied().collect()
+}
+
+/// The handlers of one path of `ROUTES`, for the methods listed there.
+fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
+    match path {
+        "/api/about" => get(get_about),
+        "/api/me" => get(get_me),
+        "/api/session" => get(get_session),
+        "/api/decisions" => get(get_decisions),
+        "/api/devices" => get(get_devices),
+        "/api/push/tokens" => get(get_push_tokens).post(post_push_token),
+        "/api/push/tokens/{token}" => delete(delete_push_token),
+        "/api/push/vapid" => get(get_vapid_key),
+        "/api/push/subscriptions" => get(get_push_subscriptions).post(post_push_subscription),
+        "/api/push/subscriptions/{id}" => delete(delete_push_subscription),
+        "/api/devices/requests" => post(post_device_request),
+        "/api/devices/changes" => post(post_device_change),
+        "/api/orgs/{org}" => get(get_org),
+        "/api/orgs/{org}/teams/{team}/view" => get(get_team),
+        "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
+        "/api/orgs/{org}/evaluation" => get(get_evaluation),
+        "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
+        "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),
+        HANDOFF_PATH => get(handoff::handoff),
+        CALLBACK_PATH => get(handoff::callback),
+        other => unreachable!("no handlers for {other}, which ROUTES lists"),
+    }
+}
+
 pub fn router(api: Arc<ClientApi>) -> Router {
-    Router::new()
-        .route("/api/about", get(get_about))
-        .route("/api/me", get(get_me))
-        .route("/api/session", get(get_session))
-        .route("/api/decisions", get(get_decisions))
-        .route("/api/devices", get(get_devices))
-        .merge(outcomes::routes(api.clone()))
+    let mut paths: Vec<&str> = ROUTES.iter().map(|(_, path)| *path).collect();
+    paths.dedup();
+    let own = paths.into_iter().fold(Router::new(), |router, path| {
+        router.route(path, method_router(path))
+    });
+    own.merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
         .merge(telemetry::routes())
-        .route(
-            "/api/push/tokens",
-            get(get_push_tokens).post(post_push_token),
-        )
-        .route("/api/push/tokens/{token}", delete(delete_push_token))
-        .route("/api/push/vapid", get(get_vapid_key))
-        .route(
-            "/api/push/subscriptions",
-            get(get_push_subscriptions).post(post_push_subscription),
-        )
-        .route(
-            "/api/push/subscriptions/{id}",
-            delete(delete_push_subscription),
-        )
-        .route("/api/devices/requests", post(post_device_request))
-        .route("/api/devices/changes", post(post_device_change))
-        .route("/api/orgs/{org}", get(get_org))
-        .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
-        .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
-        .route("/api/orgs/{org}/evaluation", get(get_evaluation))
-        .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
-        .route(
-            "/api/orgs/{org}/teams/{team}/envelopes",
-            post(post_envelope),
-        )
-        .route(HANDOFF_PATH, get(handoff::handoff))
-        .route(CALLBACK_PATH, get(handoff::callback))
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))
