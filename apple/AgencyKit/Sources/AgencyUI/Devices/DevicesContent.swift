@@ -47,10 +47,23 @@ struct ThisDeviceCard: View {
     }
 }
 
+/// What the devices list needs to offer the removal of a device: what it comes to for a row, what is under way, and what was said.
+struct RemovalSupport {
+    let plan: (DeviceFacts.Row) -> DeviceRemovalPlan?
+    let removing: Set<String>
+    /// What was said of a removal that is held or that the node explained, by row id.
+    let notes: [String: String]
+    let failures: [String: String]
+    let onRemove: (DeviceFacts.Row) -> Void
+}
+
 /// The person's devices, whatever the number of orgs each is in.
 struct YourDevicesCard: View {
     let rows: [DeviceFacts.Row]
     let now: Date
+    /// `nil` where the removal is not offered.
+    var removal: RemovalSupport?
+    @State private var asking: DeviceFacts.Row?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -64,11 +77,39 @@ struct YourDevicesCard: View {
                     Text("\(Ja.Devices.addedOn(Ago.text(from: row.addedAt.date, now: now))) · \(Ja.Devices.inOrgs(row.orgs.joined(separator: "、")))")
                         .font(.footnote).foregroundStyle(.secondary).wrapping()
                     Text(row.id).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    if let removal { removalLines(for: row, removal) }
                 }
                 if row.id != rows.last?.id { Divider() }
             }
         }
         .card()
+        .sheet(item: $asking) { row in
+            if let plan = removal?.plan(row) {
+                RemovalConfirmation(plan: plan) {
+                    asking = nil
+                    removal?.onRemove(row)
+                } onCancel: {
+                    asking = nil
+                }
+            }
+        }
+    }
+
+    /// The removal of one device: its button, or that it is being removed, or what the node said of it, and why it failed.
+    @ViewBuilder
+    private func removalLines(for row: DeviceFacts.Row, _ removal: RemovalSupport) -> some View {
+        if removal.removing.contains(row.id) {
+            Text(Ja.Devices.Remove.removing).font(.footnote).foregroundStyle(.secondary)
+        } else if let note = removal.notes[row.id] {
+            Label(note, systemImage: "hourglass").font(.footnote).foregroundStyle(.secondary).wrapping()
+        } else {
+            Button(role: .destructive) { asking = row } label: { Text(Ja.Devices.Remove.button).font(.footnote.weight(.semibold)) }
+                .accessibilityLabel(Ja.Devices.Remove.buttonFor(row.label))
+                .padding(.top, 2)
+        }
+        if let failure = removal.failures[row.id] {
+            Label(failure, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(Theme.danger).wrapping()
+        }
     }
 }
 
@@ -134,6 +175,8 @@ struct DevicesContent: View {
     let onAdd: () -> Void
     let onCheck: () -> Void
     let onConfirm: (DeviceRequest) -> Void
+    /// What the removal of a device needs; `nil` where it is not offered.
+    var removal: RemovalSupport?
 
     private var isAdded: Bool { if case .ready = pairing { true } else { false } }
     private var thisDeviceID: String? { rows.first(where: \.isThisPhone)?.id }
@@ -149,7 +192,7 @@ struct DevicesContent: View {
                 Text(Ja.Devices.loadingList).font(.footnote).foregroundStyle(.secondary).wrapping()
             }
             if isAdded {
-                if !rows.isEmpty { YourDevicesCard(rows: rows, now: now) }
+                if !rows.isEmpty { YourDevicesCard(rows: rows, now: now, removal: removal) }
                 Text(Ja.Devices.requests).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8).wrapping()
                 if isLoaded && requests.isEmpty {
                     Text(Ja.Devices.noRequests).font(.footnote).foregroundStyle(.secondary).wrapping()
@@ -170,16 +213,19 @@ public struct DevicesScreen: View {
     private let store: DevicesStore
     private let pairing: PairingStore?
     private let notice: String?
+    private let noticeIsFailure: Bool
     private let pushDelivery: PushDeliveryStore?
 
     /// - Parameters:
     ///   - pairing: this phone's state; `nil` when it has no key.
     ///   - notice: something the app has to say, such as why there is no key.
     ///   - pushDelivery: whether APNs takes the notices the node sends this phone; `nil` for a build that has none to ask.
-    public init(store: DevicesStore?, pairing: PairingStore?, notice: String?, pushDelivery: PushDeliveryStore? = nil) {
+    ///   - noticeIsFailure: whether the notice is a trouble (red), and not only something the person should know (a key made again).
+    public init(store: DevicesStore?, pairing: PairingStore?, notice: String?, noticeIsFailure: Bool = true, pushDelivery: PushDeliveryStore? = nil) {
         self.store = store ?? DevicesStore.empty
         self.pairing = pairing
         self.notice = notice
+        self.noticeIsFailure = noticeIsFailure
         self.pushDelivery = pushDelivery
     }
 
@@ -187,8 +233,15 @@ public struct DevicesScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
-                    if let notice { Text(notice).font(.subheadline).foregroundStyle(Theme.danger).wrapping().card() }
+                    if let notice { Text(notice).font(.subheadline).foregroundStyle(noticeIsFailure ? Theme.danger : Color.primary).wrapping().card() }
                     if let pushDelivery, let lines = pushDelivery.lines { PushDeliveryCard(lines: lines) }
+                    if let removed = store.removedNotice {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label(removed, systemImage: "checkmark.circle.fill").font(.subheadline).foregroundStyle(.green).wrapping()
+                            Button(Ja.Desk.close) { store.dismissRemovedNotice() }.font(.footnote)
+                        }
+                        .card()
+                    }
                     if let pairing {
                         DevicesContent(
                             code: pairing.pairingCode, pairing: pairing.status, isAsking: pairing.isAsking,
@@ -196,7 +249,11 @@ public struct DevicesScreen: View {
                             confirming: store.confirming, confirmed: store.confirmed, held: store.held, confirmFailures: store.confirmFailures, now: Date(),
                             onAdd: { Task { await pairing.requestAdd() } },
                             onCheck: { Task { await refresh(pairing) } },
-                            onConfirm: { request in Task { await store.confirm(request) } }
+                            onConfirm: { request in Task { await store.confirm(request) } },
+                            removal: store.offersRemoval ? RemovalSupport(
+                                plan: { store.removalPlan(for: $0) }, removing: store.removing, notes: store.removalNotes,
+                                failures: store.removalFailures, onRemove: { row in Task { await store.remove(row) } }
+                            ) : nil
                         )
                     }
                 }
@@ -223,6 +280,38 @@ public struct DevicesScreen: View {
     private func refresh(_ pairing: PairingStore) async {
         await pairing.refresh()
         await store.refresh()
+    }
+}
+
+/// What removing a device means, said before it is done, with the way to confirm it (when it can be made) and the way back. The question
+/// names the device, the message says that it can never sign again and where it is removed, and a removal the app does not make says why.
+struct RemovalConfirmation: View {
+    let plan: DeviceRemovalPlan
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.spacing) {
+            Text(plan.title).font(.title3.weight(.semibold)).wrapping()
+            ForEach(Array(plan.lines.enumerated()), id: \.offset) { _, line in
+                Text(line).font(.subheadline).wrapping()
+            }
+            if plan.canConfirm {
+                Button(role: .destructive, action: onConfirm) {
+                    Text(Ja.Devices.Remove.confirm).font(.headline).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(Theme.danger)
+            }
+            Button(action: onCancel) {
+                Text(plan.canConfirm ? Ja.Devices.Remove.cancel : Ja.Desk.close).font(.headline).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+        .padding(Theme.gutter)
+        .presentationDetents([.medium, .large])
     }
 }
 #endif

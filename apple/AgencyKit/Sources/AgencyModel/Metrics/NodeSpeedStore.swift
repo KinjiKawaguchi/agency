@@ -4,7 +4,7 @@ import Observation
 
 /// Where the node's own response times are read from: the home node's Client API. `NodeClient` is the real one.
 public protocol NodeSpeedSource: Sendable {
-    func metrics(days: Int) async throws -> Metrics
+    func metrics(days: Int, hourBuckets: Bool) async throws -> Metrics
 }
 
 extension NodeClient: NodeSpeedSource {}
@@ -59,7 +59,8 @@ public final class NodeSpeedStore {
         let days = days
         let outcome: NodeSpeedAnswer
         do {
-            outcome = .ready(NodeSpeed(try await source.metrics(days: days)))
+            // The hours of a range of up to 7 days are asked for with their buckets, which is what the hourly trend draws from.
+            outcome = .ready(NodeSpeed(try await source.metrics(days: days, hourBuckets: HourTrend.hasHours(days: days))))
         } catch NodeError.http(403, _) {
             isHidden = true
             return

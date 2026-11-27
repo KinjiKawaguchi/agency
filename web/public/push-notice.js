@@ -37,8 +37,9 @@
     },
   }
 
-  // A character that reorders or hides how a line reads becomes `?`, as the node and the page print it (src/shared/printable.ts).
-  const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g
+  // A character that reorders or hides how a line reads becomes `?`, as the node and the page print it (src/shared/printable.ts; the set is
+  // testdata/label-hidden-chars.json, and a test holds this copy to it). The `u` flag reads U+E0001 as one character.
+  const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u206F\uFEFF\uFFF9-\uFFFB\u{E0001}]/gu
   // The mark comes first, then the trim: `trim` takes U+FEFF and the control whitespace off, and the page would have said a mark there.
   const cut = (value, length) => {
     const text = typeof value === 'string' ? value.replace(HIDDEN, '?').trim() : ''

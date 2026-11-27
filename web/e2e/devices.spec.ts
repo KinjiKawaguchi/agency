@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-import { resetNode, trackErrors } from './helpers'
+import { decisionsTaken, resetNode, trackErrors } from './helpers'
 
 const CODE = /^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/
 
@@ -73,7 +73,7 @@ test('asks to be added, is confirmed in the terminal, then signs a decision the 
   await page.getByRole('link', { name: 'Decisions' }).click()
   await page.getByRole('article').locator('label.choice').filter({ hasText: 'Approve' }).click()
   await page.getByRole('button', { name: 'Approve with “Approve”' }).click()
-  await expect(page.getByRole('region', { name: 'Sending decisions' })).toHaveCount(0, { timeout: 10_000 })
+  await decisionsTaken(page, request)
 
   // The mock node checked the signature of the browser's WebCrypto key over the canonical text.
   const accepted = (await (await request.get('/__mock/envelopes')).json()) as Array<{ signer: string; body: { target: string; kind: string } }>

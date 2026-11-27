@@ -3,6 +3,7 @@
 // types defined here are the client's own: the arguments of a decision call.
 import type { AnswerWith } from './teamview'
 
+export type { About } from '../../../bindings/About'
 export type { AccountRef } from '../../../bindings/AccountRef'
 export type { DayCost } from '../../../bindings/DayCost'
 export type { Device } from '../../../bindings/Device'
@@ -16,6 +17,7 @@ export type { Envelope } from '../../../bindings/Envelope'
 export type { Signed } from '../../../bindings/Signed'
 export type { PushEnvironment } from '../../../bindings/PushEnvironment'
 export type { PushToken } from '../../../bindings/PushToken'
+export type { PushTokenList } from '../../../bindings/PushTokenList'
 export type { PushTokenInput } from '../../../bindings/PushTokenInput'
 export type { ObjectiveResult } from '../../../bindings/ObjectiveResult'
 export type { ObjectiveState } from '../../../bindings/ObjectiveState'

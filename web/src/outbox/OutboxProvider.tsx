@@ -73,7 +73,23 @@ export function OutboxProvider({ children, now = Date.now }: { children: ReactNo
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
-  useEffect(() => api.onSession((state) => setIsPaused(state === 'expired')), [api])
+  // The circumstance changed: the page was opened, or the sign-in is back after it was gone. What waits for its next try is tried now, not at the
+  // time its backoff had set (which a reload or a new sign-in says nothing of): the owner is looking at it.
+  const tryWaitingNow = useCallback(() => {
+    if (entriesRef.current.some((entry) => entry.phase === 'retrying')) commit(entriesRef.current.map((entry) => (entry.phase === 'retrying' ? sendAgain(entry) : entry)))
+  }, [commit])
+  useEffect(() => tryWaitingNow(), [tryWaitingNow])
+  const wasExpired = useRef(false)
+  useEffect(
+    () =>
+      api.onSession((state) => {
+        setIsPaused(state === 'expired')
+        // `ok` is told after every call that works: only the first one after an expired sign-in is a change.
+        if (state === 'ok' && wasExpired.current) tryWaitingNow()
+        wasExpired.current = state === 'expired'
+      }),
+    [api, tryWaitingNow],
+  )
 
   const update = useCallback(
     (id: string, change: (entry: OutboxEntry) => OutboxEntry | undefined) => {

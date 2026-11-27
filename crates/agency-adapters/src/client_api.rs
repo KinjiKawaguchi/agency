@@ -19,11 +19,14 @@ use agency_core::activity::team_activity;
 use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
 use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device};
+use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
-use agency_core::push::{push_tokens, register_push_token, remove_push_token};
+use agency_core::push::{push_tokens_of, register_push_token_as, remove_push_token_as};
 use agency_core::usage::team_usage;
-use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
+use agency_core::web_push::{
+    register_subscription_as, remove_subscription_as, subscriptions_of, vapid_key,
+};
 use agency_core::{Error, Node};
 use agency_proto::client::{
     DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
@@ -49,6 +52,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 mod guests;
 mod metrics;
 mod outcomes;
+mod telemetry;
+
+pub use telemetry::REPORTABLE_ROUTES;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -136,6 +142,10 @@ async fn admit(
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
         return match (peer.ip().is_loopback(), is_local_host) {
+            // On a machine other accounts log in to, each of them reaches the loopback address too.
+            (true, true) if !api.node.config().local_clients => {
+                Err((StatusCode::FORBIDDEN, "this node admits no local clients"))
+            }
             (true, true) => Ok(Admitted::Local),
             (true, false) => Err((StatusCode::MISDIRECTED_REQUEST, "wrong host")),
             (false, _) => Err((StatusCode::FORBIDDEN, "the Client API is local only")),
@@ -146,15 +156,21 @@ async fn admit(
         .as_ref()
         .ok_or((StatusCode::FORBIDDEN, "this node has no Access setting"))?;
     match access.verify(header_text(headers, ACCESS_HEADER)).await {
-        // The owner's email always wins; then a guest's record; then any other sign-in, as before.
+        // Only a known identity is admitted: the owner's email, which always wins, or a current guest's.
+        // Any other sign-in, one without an email included, is refused.
         Ok(identity) if is_owner(api, &identity) => Ok(Admitted::Access(identity)),
-        Ok(identity) => {
-            let guest = identity
-                .email
-                .as_deref()
-                .and_then(|email| agency_core::guests::admit(&api.node, email));
-            Ok(guest.map_or(Admitted::Access(identity), Admitted::Guest))
-        }
+        Ok(identity) => identity
+            .email
+            .as_deref()
+            .and_then(|email| agency_core::guests::admit(&api.node, email))
+            .map(Admitted::Guest)
+            .ok_or_else(|| {
+                (api.log)("refused an Access sign-in that is neither the owner nor a guest");
+                (
+                    StatusCode::FORBIDDEN,
+                    "this sign-in is not the node's owner or a guest of it",
+                )
+            }),
         Err(reason) => {
             (api.log)(&format!("refused an Access request ({reason})"));
             Err((
@@ -398,6 +414,22 @@ async fn get_evaluation(
     respond(result.await)
 }
 
+/// Where the tokens of every team of an org went over the last `days` days, by work type (default 14,
+/// at most 90).
+async fn get_effort(
+    State(api): Shared,
+    Path(org): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let days = match query.get("days").map(|raw| raw.parse::<u32>()) {
+        None => None,
+        Some(Ok(days)) => Some(days),
+        Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
+    };
+    let result = async { org_effort(&api.node, &parse_id(&org)?, days).await };
+    respond(result.await)
+}
+
 /// A team's activity: the events after `since` (RFC 3339 UTC, default an hour ago), at most `limit`
 /// (default 200, at most 500), oldest first.
 async fn get_activity(
@@ -509,19 +541,31 @@ async fn post_device_change(
     respond(result.await)
 }
 
-async fn get_push_tokens(State(api): Shared) -> Response {
-    json_response(StatusCode::OK, &push_tokens(&api.node))
+async fn get_push_tokens(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    json_response(
+        StatusCode::OK,
+        &push_tokens_of(&api.node, &caller_of(&admitted)),
+    )
 }
 
 /// Registers an APNs device token for the owner's notifications (or updates its environment and label).
-async fn post_push_token(State(api): Shared, bytes: Bytes) -> Response {
+async fn post_push_token(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
+    let caller = caller_of(&admitted);
     let result = json_body::<PushTokenInput>(&bytes, "push token")
-        .and_then(|input| register_push_token(&api.node, input));
+        .and_then(|input| register_push_token_as(&api.node, &caller, input));
     respond(result)
 }
 
-async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Response {
-    match remove_push_token(&api.node, &token) {
+async fn delete_push_token(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    Path(token): Path<String>,
+) -> Response {
+    match remove_push_token_as(&api.node, &caller_of(&admitted), &token) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }
@@ -532,19 +576,31 @@ async fn get_vapid_key(State(api): Shared) -> Response {
     respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
 }
 
-async fn get_push_subscriptions(State(api): Shared) -> Response {
-    respond(subscriptions(&api.node))
+async fn get_push_subscriptions(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+) -> Response {
+    respond(subscriptions_of(&api.node, &caller_of(&admitted)))
 }
 
 /// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
-async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
+async fn post_push_subscription(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
+    let caller = caller_of(&admitted);
     let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
-        .and_then(|input| register_subscription(&api.node, input));
+        .and_then(|input| register_subscription_as(&api.node, &caller, input));
     respond(result)
 }
 
-async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
-    match remove_subscription(&api.node, &id) {
+async fn delete_push_subscription(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    Path(id): Path<String>,
+) -> Response {
+    match remove_subscription_as(&api.node, &caller_of(&admitted), &id) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }
@@ -664,6 +720,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("GET", "/api/orgs/{org}/teams/{team}/usage"),
     ("GET", "/api/orgs/{org}/evaluation"),
+    ("GET", "/api/orgs/{org}/effort"),
     ("GET", "/api/orgs/{org}/teams/{team}/activity"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
     ("GET", HANDOFF_PATH),
@@ -675,9 +732,12 @@ pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
     guests::GUEST_ROUTES.to_vec()
 }
 
-/// Every route behind the guard, this module's and its parts' (outcomes, metrics), by method and path.
+/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = outcomes::ROUTES.iter().chain(metrics::ROUTES);
+    let parts = outcomes::ROUTES
+        .iter()
+        .chain(metrics::ROUTES)
+        .chain(telemetry::ROUTES);
     ROUTES.iter().chain(parts).copied().collect()
 }
 
@@ -700,6 +760,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
+        "/api/orgs/{org}/effort" => get(get_effort),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
         "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),
         HANDOFF_PATH => get(handoff::handoff),
@@ -716,6 +777,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
     });
     own.merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
+        .merge(telemetry::routes())
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))

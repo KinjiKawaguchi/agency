@@ -111,7 +111,7 @@ export const ja: Messages = {
       if (count > 1) return `${count} 件の決定に動きがありました`
       const named = title === '' ? '決定' : `「${title}」の決定`
       if (state === 'refused') return `${named}は断られました${reason === undefined ? '' : `: ${reason}`}`
-      if (state === 'queued') return `${named}は送信待ちです`
+      if (state === 'queued') return `${named}は保存済みですが、まだ届いていません`
       return `${named}が${state === 'applied' ? '反映されました' : '届きました'}`
     },
     more: (count) => `ほかにも新しいことが ${count} 件あります。`,
@@ -124,6 +124,29 @@ export const ja: Messages = {
       decisionRefused: '決定が断られました',
     },
     devicesMark: (count) => `承認待ち ${count} 件`,
+    destinations: {
+      title: '通知の送り先',
+      lead: 'このノードが通知を送るブラウザとアプリの一覧です。端末を削除すると、その端末への通知は自動で止まります。どの端末にも紐づかない登録は、ここで止めるか、そのブラウザやアプリで通知をオフにするまで残ります。',
+      thisBrowser: 'このブラウザ',
+      turnOffHere: 'このブラウザの通知をオフにする',
+      loading: 'ノードに問い合わせています…',
+      failed: (reason) => `通知の送り先を読めませんでした: ${reason}`,
+      none: 'このノードは、どこにも通知を送っていません。',
+      kinds: { browser: 'ブラウザ', app: 'iPhone / Mac のアプリ' },
+      registered: (when) => `${when}に登録`,
+      tiedTo: (label) => `${label} に紐づいています。`,
+      tiedToNone: 'どの端末にも紐づいていません。止めるまで残ります。',
+      tiedToGone: (id) => `もうあなたのものではない端末(${id})に紐づいています。`,
+      stopFor: (label) => `${label}への通知を止める`,
+      stop: '通知を止める',
+      confirmTitle: (label) => `${label}への通知を止めますか?`,
+      confirmBody: (label, when) => `${label}(${when}に登録)は、このノードからの通知を受け取らなくなります。そのブラウザやアプリで通知がオンのまま Agency をまた開くと、自分でまた登録します。止め続けるには、そちらで通知をオフにするか、この画面でその端末を削除してください。`,
+      confirm: '通知を止める',
+      cancel: 'キャンセル',
+      stopping: '止めています…',
+      stopped: (label) => `${label}への通知を止めました。`,
+      stopFailed: (reason) => `通知を止められませんでした: ${reason}`,
+    },
     os: {
       title: 'このブラウザの通知',
       lead: 'このページが隠れているあいだ、新しいことをオペレーティングシステムの通知で知らせます。言葉はページの通知と同じで、このブラウザの外には出ません。',
@@ -403,11 +426,11 @@ export const ja: Messages = {
     },
     recent: {
       head: '最近決めたもの',
-      states: { applied: '反映済み', delivered: '届きました', queued: '送信待ち', refused: '断られました' },
+      states: { applied: '反映済み', delivered: '届きました', queued: '保存済み・未配達', refused: '断られました' },
       chose: (choice) => `「${choice}」を選びました。`,
       answeredFor: (label) => `${label} の代理で答えました。`,
       queuedDetail: (attempts, retry) =>
-        `${attempts === 0 ? 'まだ送れていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
+        `${attempts === 0 ? 'まだ届いていません。' : `${attempts} 回試しました。`}${retry === null ? 'まもなく再送します。' : `次の再送は ${retry} です。`}`,
       underMinute: '1 分以内',
       lastError: (reason) => `直近のエラー: ${reason}`,
       refusedDetail: (reason) => `チームのノードが受け付けませんでした: ${reason}`,

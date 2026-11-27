@@ -188,6 +188,16 @@ loginctl show-user "$USER" --property=Linger
 2 つ目のコマンドは `Linger=yes` を出力するはずです。有効でないと、最後のセッションからログアウトした時点でノードが止まります。
 `systemctl --user` はログインセッション（ターミナルや SSH のログイン）で実行してください。`su` や `sudo -u` からでは自分のサービスに届かず、`Failed to connect to bus` と表示されます。
 
+### 他のアカウントもログインするマシン
+
+ノードは、直接のローカルのリクエスト（`127.0.0.1` や `localhost` から）をオーナーとして受け入れます。自分だけがログインするマシンなら、それで問題ありません。他の人もログインするマシンでは、どのローカルアカウントも同じように `127.0.0.1` に届くので、ローカルのクライアントを受け入れないようにします。`~/.agency/config.json` の最上位に次を書いてノードを再起動するか、ノードを作るときに `agency init` に `--no-local-clients` を渡します。
+
+```json
+"localClients": false
+```
+
+こうすると、Client API と Web クライアントはすべてのローカルのリクエストを 403 で断ります（`/metrics` も含みます）。連合は同じポートで動き続けます。チームを置くだけのノードには、ローカルのクライアントは要りません。ホームノードから連合を通して届き、そのマシンの `agency` コマンド（`status`、`funding`、`metrics`）はデータディレクトリを直接読みます。チームのランタイムは Client API ではなく、標準入出力でノードとやりとりします。設定が有効なあいだ、`agency status` は `Local clients: refused` と表示します。
+
 ### 最初の端末としてブラウザを追加する
 
 決定に署名するのは自分の端末で、ノードは署名しません。
@@ -290,7 +300,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 }
 ```
 
-- `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ほかのメールアドレスでサインインした人も読むことはできますが、決定や端末の追加といった書き込みができるのは `ownerEmail` だけです。
+- `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ノードが受け入れるのは、このアドレスと、ゲスト（このノードにつながる、ノードを持たないメンバー）のアドレスだけです。ほかのサインインは、Access のポリシーが通していても 403 になります。オーナーとして書き込める（決定する、端末を追加する）のは `ownerEmail` だけです。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
@@ -474,6 +484,7 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- 労力の画面（チームのトークンがどの作業種別に使われたか。`/api/orgs/<org>/effort`）は、同じリポジトリと、チームのランタイムが報告するトークン使用量（`tokenUsage`）から求めます。これは推定です。ランタイムは費用を日ごとに報告するので、1 日の費用は、その日にマージした PR の種別に分けます。マージのない日は、次にマージのある日の種別に分けます（規則は [protocol.md](protocol.md#evaluation) にあります）。ランタイムがトークン使用量を報告しないチームは、0 ではなく理由とともに並びます。
 - `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
 
 | 画面に出る理由 | すること |
@@ -485,6 +496,9 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
+| the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |
+| the team's node does not give effort numbers | そのノードがこの機能より古いので、更新します。 |
+| the team's node does not give effort numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | a repository of the team is not written owner/name | チームが動いているノードの設定の `delivery.repos` を直します。 |
 | the team's node did not answer | そのノードが止まっているか、届きません。 |
 
@@ -538,6 +552,7 @@ curl -s http://127.0.0.1:4400/metrics            # Prometheus が読むテキス
 - `GET /api/metrics?days=<1 から 30>&kind=&name=` は、系列（route、ノードが行う呼び出し、クライアントが報告したもの）ごとに、呼び出しの数、そのうちエラーの数、中央値と 95 パーセンタイルと 99 パーセンタイルをミリ秒で返します。7 日までの範囲では時間ごとにも返します（`hourBuckets=1` を付けると、各時間のバケットも返します。画面が複数の系列の時間を足して全体のパーセンタイルを読むためで、答えは約 1.7 倍の大きさになります）。パーセンタイルは、そのバケットの**上限**です（1、2、5、10、25、50、100、250、500、1000、2500、5000、10 000、30 000 ms）。「p95 100」は、100 ms 以下という意味です。答えには、性能の予算が当てはまる系列（ノード自身の状態から答える読み取り。参照環境で 95 パーセンタイルが 100 ms 以下）と、予算そのものも入ります。
 - ノードを自分の数字で縛るには、`config.json` に objectives を書いて、ノードを再起動します: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`。`group` は `desk`、`teams`、`usage`、`evaluation`、`outcomes`、`devices`、`push`、`federation`、`metrics`、`other` のどれか（答えの各系列に、その group が書かれます）で、`p95Ms` は 1 から 30 000 です。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。`GET /api/metrics` は、それぞれについて、聞かれた日数で `met`（95 パーセンタイルが目標以内）、`notMet`（95 パーセンタイルのバケットの時間がすべて目標を超えている）、`undetermined`（目標がそのバケットの内側にあり、測定からは言えない）、`unknown`（その範囲に呼び出しがない）を、そのバケットの上限とともに返します。group 全体についての答えで、kind や name で絞った答えには付きません。
 - `agency metrics [--days n] [--kind serve|call|client] [--name <名前>] [--json]` は、同じものを表にして、ファイルから出力します。ノードが止まっていても、鍵なしで動きます。`<=100` は 100 ms 以下（バケットの上限）、`>30000` は最後の境界より遅いこと、BUDGET の列は、性能の予算が当てはまる読み取りについて `ok` か `OVER` です。動いているノードは数字を 1 分に 1 回書くので、直近の 1 分は `GET /api/metrics` にだけあります。
+- Web クライアントとアプリは、自分の呼び出しにかかった時間を `POST /api/telemetry` でノードに報告します（1 分ごとにまとめて）。設定は要りません。聞くのはオーナーのクライアントだけで、ノードのものでない route は捨てます。数字は `GET /api/metrics` の `client` 系列に出るので、ノードがかかった時間と並べて、人が待った時間を見られます。
 - オーナーだけが読めます。直接のローカルのリクエスト、またはオーナーとして Access にサインインしたものです。Access が入れた他の人は 403 になります。`/metrics` は、ノードのあるマシンの上でだけ読めるので、Prometheus はそこで取りに来ます（トンネル経由ではありません）。
 - `serve` 以外のコマンドは、データディレクトリに何も記録しません。ディレクトリに書けないノードは、持っているものをメモリに保ち、あとでもう一度試します。
 
@@ -621,6 +636,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
 | `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
 
 ## チームランタイム
 
