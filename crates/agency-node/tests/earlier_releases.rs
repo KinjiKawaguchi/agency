@@ -4,9 +4,10 @@
 //! release kept in it must read. A file today's code cannot parse is skipped by the stores, so the check
 //! counts what is on disk against what the stores give back, and refuses a file it has no check for.
 use agency_adapters::files::DataDir;
-use agency_adapters::memory::{MemoryDelivery, MemoryRootKeys, MemoryRuntime};
+use agency_adapters::memory::{ManualClock, MemoryDelivery, MemoryRootKeys, MemoryRuntime};
+use agency_core::config::NodeConfig;
 use agency_core::ports::{
-    AppliedLog, DecisionLogStore, InviteStore, OrgStore, PushStore, ReplicaStore,
+    AppliedLog, ConfigStore, DecisionLogStore, InviteStore, OrgStore, PushStore, ReplicaStore,
 };
 use agency_node::Overrides;
 use agency_proto::org::{verify_genesis, verify_successor, SignedOrg};
@@ -106,15 +107,37 @@ fn id(raw: &str) -> Result<Id, String> {
     Id::parse(raw).map_err(|error| format!("{raw}: {error}"))
 }
 
+/// A kept version's file name: `<digits>.json`.
+fn version_of(path: &Path) -> Option<u64> {
+    let name = file_name(path);
+    name.strip_suffix(".json")?.parse().ok()
+}
+
+/// The version a `<digits>.recovery-start.json` note belongs to: when this node took a version that starts a
+/// recovery.
+fn recovery_start_of(path: &Path) -> Option<u64> {
+    let name = file_name(path);
+    name.strip_suffix(".recovery-start.json")?.parse().ok()
+}
+
 /// The versions of one org kept in `orgs/<org>.history/` verify as a chain, and the current definition is
-/// the last of them. A node that joined later keeps the chain from the version it joined at.
-fn check_org_chain(store: &dyn OrgStore, data: &Path, org: &Id) -> Result<(), String> {
+/// the last of them. A node that joined later keeps the chain from the version it joined at, and the first
+/// version it kept is checked against its own root key (a snapshot that begins at a version where the root
+/// rotated is signed by the previous root and is not covered). Only the names `<digits>.json` and
+/// `<digits>.recovery-start.json` are known inside the history, and `orgs/*.json` and `replicas/<org>/` are
+/// read as org and team ids: a file of another name there is not read.
+fn check_org_chain(store: &dyn OrgStore, data: &Path, org: &Id) -> Result<SignedOrg, String> {
     let history = data.join("orgs").join(format!("{org}.history"));
     let mut chain: Vec<SignedOrg> = Vec::new();
     for path in json_files(&history) {
-        let version: u64 = stem(&path)
-            .parse()
-            .map_err(|_| format!("{}: not a version number", path.display()))?;
+        if let Some(version) = recovery_start_of(&path) {
+            store.recovery_started(org, version).ok_or_else(|| {
+                format!("the recovery start of {org} version {version} does not read")
+            })?;
+            continue;
+        }
+        let version =
+            version_of(&path).ok_or_else(|| format!("{}: not a version number", path.display()))?;
         let doc = store
             .load_org_version(org, version)
             .ok_or_else(|| format!("version {version} of {org} does not read"))?;
@@ -148,22 +171,42 @@ fn check_org_chain(store: &dyn OrgStore, data: &Path, org: &Id) -> Result<(), St
         .load_org(org)
         .ok_or_else(|| format!("the current definition of {org} does not read"))?;
     match chain.last() {
-        Some(last) if last.digest() == current.digest() => Ok(()),
+        Some(last) if last.digest() == current.digest() => Ok(current),
         _ => Err(format!(
             "the current definition of {org} is not the last version kept"
         )),
     }
 }
 
-fn check_orgs(store: &dyn OrgStore, data: &Path) -> Result<(), String> {
-    let current: Vec<PathBuf> = json_files(&data.join("orgs"));
-    if current.is_empty() {
-        return Err("the node holds no org".into());
-    }
-    for path in current {
-        check_org_chain(store, data, &id(&stem(&path))?)?;
+/// What the node trusts for each org (`trusted` in `config.json`) is the fingerprint of the root key of the
+/// org's current definition: a node that takes a rotation moves it to the new key.
+fn check_trust(config: &NodeConfig, current: &[SignedOrg]) -> Result<(), String> {
+    for doc in current {
+        let org = &doc.body.org;
+        let trusted = config
+            .trusted
+            .iter()
+            .find(|trusted| &trusted.org == org)
+            .ok_or_else(|| format!("the node trusts no root key of {org}"))?;
+        if trusted.root_fingerprint != doc.body.root.public_key.fingerprint() {
+            return Err(format!(
+                "the root key the node trusts for {org} is not the root of its current definition"
+            ));
+        }
     }
     Ok(())
+}
+
+fn check_orgs(store: &dyn OrgStore, data: &Path, config: &NodeConfig) -> Result<(), String> {
+    let files: Vec<PathBuf> = json_files(&data.join("orgs"));
+    if files.is_empty() {
+        return Err("the node holds no org".into());
+    }
+    let mut current = Vec::new();
+    for path in files {
+        current.push(check_org_chain(store, data, &id(&stem(&path))?)?);
+    }
+    check_trust(config, &current)
 }
 
 fn check_replicas(store: &dyn ReplicaStore, data: &Path) -> Result<(), String> {
@@ -259,17 +302,35 @@ fn check_nothing_unread(data: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The day of the snapshot: the time of the latest org version it kept. The node reads it as its clock, so
+/// that nothing it reads depends on how long ago the release was.
+fn snapshot_time(data: &Path) -> Result<String, String> {
+    let mut latest = String::new();
+    for path in json_files(&data.join("orgs")) {
+        let doc = parse_file(&path)?;
+        let at = doc["body"]["at"]
+            .as_str()
+            .ok_or_else(|| format!("{} has no time", path.display()))?;
+        latest = latest.max(at.to_owned());
+    }
+    Ok(latest)
+}
+
 /// Opens today's node on `data` and reads everything in it, through the node's stores and its Client API.
 /// Returns how many decisions it read, or what could not be read.
 async fn read_everything(data: &Path) -> Result<usize, String> {
     check_nothing_unread(data)?;
     let store = DataDir::new(data.to_owned());
+    let config = store
+        .load_config()
+        .map_err(|error| format!("config.json: {error}"))?;
     let opened = agency_node::open(
         store.clone(),
         Overrides {
             runtime: Some(Arc::new(MemoryRuntime::default())),
             delivery: Some(Arc::new(MemoryDelivery::default())),
             root_keys: Some(Arc::new(MemoryRootKeys::default())),
+            clock: Some(Arc::new(ManualClock::at(&snapshot_time(data)?))),
             ..Overrides::default()
         },
     )
@@ -281,7 +342,7 @@ async fn read_everything(data: &Path) -> Result<usize, String> {
     {
         return Err("the CLI device's key does not read".into());
     }
-    check_orgs(&store, data)?;
+    check_orgs(&store, data, &config)?;
     check_replicas(&store, data)?;
     check_invites(&store, data)?;
     check_push_state(&store, data)?;
@@ -497,7 +558,7 @@ fn a_configuration_the_node_cannot_read_fails() {
         });
     })
     .unwrap_err();
-    assert!(error.contains("the node does not open"), "{error}");
+    assert!(error.contains("config.json"), "{error}");
 }
 
 #[test]
@@ -507,4 +568,49 @@ fn a_file_with_no_check_fails() {
     })
     .unwrap_err();
     assert!(error.contains("something-new.json"), "{error}");
+}
+
+#[test]
+fn a_root_key_the_node_does_not_trust_fails() {
+    let error = damaged("bob", |data| {
+        rewrite(&data.join("config.json"), |config| {
+            config["trusted"][0]["rootFingerprint"] = Value::String("0".repeat(32));
+        });
+    })
+    .unwrap_err();
+    assert!(
+        error.contains("the root key the node trusts for acme"),
+        "{error}"
+    );
+}
+
+#[test]
+fn an_org_with_no_trusted_root_key_fails() {
+    let error = damaged("bob", |data| {
+        rewrite(&data.join("config.json"), |config| {
+            config["trusted"] = Value::Array(Vec::new());
+        });
+    })
+    .unwrap_err();
+    assert!(error.contains("trusts no root key of acme"), "{error}");
+}
+
+#[test]
+fn the_note_of_a_recovery_start_is_read_and_is_not_a_version() {
+    let note = |data: &Path, text: &str| {
+        std::fs::write(
+            data.join("orgs/acme.history/000003.recovery-start.json"),
+            text,
+        )
+        .unwrap();
+    };
+    assert_eq!(
+        damaged("alice", |data| note(data, "\"2026-11-24T12:00:00Z\"")),
+        Ok(1)
+    );
+    let error = damaged("alice", |data| note(data, "{}")).unwrap_err();
+    assert!(
+        error.contains("recovery start of acme version 3 does not read"),
+        "{error}"
+    );
 }

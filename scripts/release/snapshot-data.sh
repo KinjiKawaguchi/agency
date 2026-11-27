@@ -69,7 +69,9 @@ invite="$(alice invite --org acme)"
 link="$(printf '%s\n' "$invite" | grep -o 'agency:join[^ ]*' | head -n 1)"
 [ -n "$link" ] || { echo "no invite link in: $invite" >&2; exit 1; }
 
-alice serve >"$work/serve.log" 2>&1 &
+# The node itself is started here, not through the function above: `$!` must be its process, which `kill`
+# stops, and not a subshell that would leave it running.
+HOME="$work/home" XDG_CONFIG_HOME="$work/xdg" "$binary" --dir "$work/alice" serve >"$work/serve.log" 2>&1 &
 serve_pid=$!
 for _ in $(seq 1 50); do
   curl -sf "http://127.0.0.1:$port_alice/api/me" >/dev/null 2>&1 && break
@@ -84,20 +86,26 @@ stop_serving
 
 alice decide --org acme --team app --request r-1 --choice yes >/dev/null
 
-mkdir -p "$destination"
+# Written where the repository does not see it, and moved in once all of it is made: a failure part way
+# leaves nothing behind that the next run would refuse.
+staged="$work/staged"
+mkdir -p "$staged"
 for node in alice bob; do
-  cp -R "$work/$node" "$destination/$node"
-  rm -rf "$destination/$node/logs"
+  cp -R "$work/$node" "$staged/$node"
+  rm -rf "$staged/$node/logs"
   # git keeps no empty directory, so a snapshot has none either.
-  find "$destination/$node" -type d -empty -delete
-  sed -i "s|$fixture|/fixture|g" "$destination/$node/config.json"
+  find "$staged/$node" -type d -empty -delete
+  # `-i.bak` is the form both GNU and BSD sed (macOS) take.
+  sed -i.bak "s|$fixture|/fixture|g" "$staged/$node/config.json"
+  rm "$staged/$node/config.json.bak"
 done
 
 # Nothing of this machine may be left in what is checked in.
-if grep -rIl -e "$work" -e "$HOME" "$destination" >/dev/null; then
+if grep -rIl -e "$work" -e "$HOME" "$staged" >/dev/null; then
   echo "the snapshot still holds a path of this machine:" >&2
-  grep -rIn -e "$work" -e "$HOME" "$destination" >&2
-  rm -rf "$destination"
+  grep -rIn -e "$work" -e "$HOME" "$staged" >&2
   exit 1
 fi
+mkdir -p "$(dirname "$destination")"
+mv "$staged" "$destination"
 echo "snapshot of $tag: $destination"
