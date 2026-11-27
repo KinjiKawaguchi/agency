@@ -34,7 +34,6 @@ use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use device_cli::{device_add, CliDevice};
-use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -562,42 +561,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     Ok(())
 }
 
-/// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
-/// report becomes `partial`, as calculated by `agency_core::budget::status`.
-async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
-    let definition = agency_core::client::org_definition(node, &org)?;
-    if definition.team(&team).is_none() {
-        bail!("not found");
-    }
-    let now = node.now();
-    let offset = node.utc_offset();
-    let start = agency_core::budget::week_start(now, offset);
-    let today = agency_proto::Date::parse(&now.to_offset(offset).date().to_string())
-        .expect("a time date is a valid protocol date");
-    let mut teams = definition
-        .teams
-        .iter()
-        .filter(|place| place.plan.is_some())
-        .map(|place| place.id.clone())
-        .collect::<BTreeSet<_>>();
-    teams.insert(team.clone());
-    let reads = teams.into_iter().map(|id| async {
-        let spend = tokio::time::timeout(
-            Duration::from_secs(8),
-            agency_core::usage::team_usage(node, &org, &id, Some(7)),
-        )
-        .await
-        .ok()
-        .and_then(|answer| answer.ok())
-        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
-        (id, spend)
-    });
-    let mut spends = BTreeMap::new();
-    for (id, spend) in futures_util::future::join_all(reads).await {
-        spends.insert(id, spend);
-    }
-    let report = agency_core::budget::status(&definition, start, &team, &spends)
-        .expect("the selected team was checked in the signed definition");
+/// Prints the budget status, which the Client API answers too: an unavailable team's runtime makes the
+/// report `partial` and does not prevent it.
+async fn print_budget_status(node: &Node, org: &Id, team: &Id) -> Result<()> {
+    let report = agency_adapters::budget::budget_status(node, org, team).await?;
     println!("{}", agency_node::budget::json_line(&report)?);
     Ok(())
 }
@@ -641,7 +608,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Budget { command } => match command {
             BudgetCommand::Status { org, team } => {
-                budget_status(&node, id(&org)?, id(&team)?).await?
+                print_budget_status(&node, &id(&org)?, &id(&team)?).await?
             }
         },
         Command::OrgCreate { org, label } => {
