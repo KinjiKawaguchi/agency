@@ -60,7 +60,8 @@ async fn a_hosted_team_runs_here_even_when_its_place_names_another_origin() {
     )
     .await
     .1;
-    assert_eq!(decided["outcome"], "applied");
+    assert_eq!(decided["outcome"], "queued");
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     assert_eq!(memory.lock().unwrap().applied.len(), 1);
     assert!(
         pending(&alice.node).is_empty(),
