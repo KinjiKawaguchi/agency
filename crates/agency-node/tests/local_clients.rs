@@ -8,6 +8,7 @@ use agency_core::config::NodeConfig;
 use agency_core::ports::ConfigStore;
 use agency_core::read_auth::sign_read;
 use agency_core::routes;
+use common::access::{access_token, behind_access, PUBLIC_HOST};
 use common::{alice, body, get, id, joined_bob, Running, TOKEN};
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
@@ -100,6 +101,28 @@ async fn federation_answers_whether_or_not_local_clients_are_admitted() {
         StatusCode::OK,
         "a signed read from loopback is federation, not a local client"
     );
+}
+
+#[tokio::test]
+async fn the_owner_still_comes_in_through_access_when_local_clients_are_refused() {
+    let running = behind_access(None).await;
+    refuse_local_clients(&running);
+    let (status, answer) = body(get(&running, "/api/me").send().await.unwrap()).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{answer}");
+    let (status, answer) = body(
+        get(&running, "/api/me")
+            .header("host", PUBLIC_HOST)
+            .header("cf-ray", "1")
+            .header(
+                "cf-access-jwt-assertion",
+                access_token("alice@example.com", |_| {}),
+            )
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
 }
 
 #[test]
