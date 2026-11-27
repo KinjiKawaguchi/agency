@@ -38,6 +38,7 @@ Each artifact states which contract versions it speaks, and a node says so throu
 
 May change without a new version:
 - A new route. An older node answers 404, so a caller treats 404 from an older node as "not supported", never as "not found".
+  - A feature that has a capability (the table under "Discovery") is checked before the route is called: when what the caller kept of the node's `about` is no older than 3 days (the age the root's check of signed fields counts) and does not list the capability, the route is not called, and the reason says that the node runs release X, does not have the feature, and needs an update. The reads of a remote team's `activity` and `effort` do this. With nothing kept, or nothing recent, the route is called as before, and a 404 from a node that lists the capability stays "not found" (the team is not there).
 - A new optional field in an answer. Readers ignore unknown fields in answers (TeamView, TokenUsage, and the rest).
 - Stricter limits on what a node keeps from others, as long as no current node sends beyond them.
 

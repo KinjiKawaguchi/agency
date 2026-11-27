@@ -4,10 +4,12 @@ use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
+use crate::peer_features::{lacking_reason, support_of_peer, Support};
 use crate::ports::PeerError;
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
+use agency_proto::about::Capability;
 use agency_proto::activity::{
     valid_limit, Activity, DEFAULT_LIMIT, DEFAULT_SINCE_MINUTES, MAX_LIMIT,
 };
@@ -88,8 +90,10 @@ pub async fn team_activity(
 }
 
 /// The events from the node a team runs on, read live. A node that cannot be reached, or whose answer is
-/// malformed, is unavailable; a node that does not report activity (or does not serve the route) is not found;
-/// a node that refuses the reader (403) is passed through.
+/// malformed, is unavailable, and so is a node that has been read and does not list the `activity`
+/// capability (the route is not called, and the reason names the release it runs); a node that lists it, or
+/// has not been read, and does not report activity or does not serve the route is not found; a node that
+/// refuses the reader (403) is passed through.
 async fn remote_activity(
     node: &Node,
     org: &Id,
@@ -97,6 +101,14 @@ async fn remote_activity(
     since: &Timestamp,
     limit: u32,
 ) -> Result<Activity> {
+    if let Support::Lacking { release } =
+        support_of_peer(node, org, &place.node, Capability::Activity)
+    {
+        return Err(Error::new(
+            ErrorKind::Unavailable,
+            lacking_reason("the team's activity feed", &release),
+        ));
+    }
     let path = routes::activity(org, &place.id, since, limit);
     let auth = sign_for_peer(node, org, &place.node, &path);
     let activity = node
