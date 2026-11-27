@@ -146,8 +146,23 @@ final class ShellModel {
 
     // MARK: Settings
 
+    /// Whether this device's key was replaced because its own removal took effect: the Devices screen then says that the new key is not
+    /// added yet.
+    private(set) var hasRenewedKeyAfterRemoval = false
+
+    /// The removed key can never sign again: a new one is made, and it has to be added as a new device.
+    func renewKeyAfterRemoval() {
+        hasRenewedKeyAfterRemoval = true
+        replaceKey()
+    }
+
     /// Makes this device's key again, for when the biometrics were changed and the old key can no longer sign.
     func resetKey() {
+        hasRenewedKeyAfterRemoval = false
+        replaceKey()
+    }
+
+    private func replaceKey() {
         SecureEnclaveSigner.deleteKey(host: homeNode.host)
         showsSettings = false
         // This device is no longer trusted with the home node: nothing of its desk stays on a widget.

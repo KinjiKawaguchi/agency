@@ -32,6 +32,38 @@ extension Ja {
         public static func confirmFailed(_ reason: String) -> String { "追加できませんでした: \(reason)" }
         public static func listFailed(_ reason: String) -> String { "端末の一覧を読めませんでした: \(reason)" }
         public static func faceIDReason(_ label: String) -> String { "端末を追加する: \(label)" }
+        /// Removing one of the person's devices, in the web's words (`devices.remove` in `ja.ts`, agency#442) with this phone's own sentence for the
+        /// device in use: its key cannot be added again, and the way back is a new key made in the settings.
+        public enum Remove {
+            public static let button = "削除"
+            public static func buttonFor(_ label: String) -> String { "\(label)を削除" }
+            public static func title(_ label: String) -> String { "\(label)を削除しますか?" }
+            public static func body(_ label: String, code: String?) -> String {
+                code.map { "\(label)(照合コード \($0))は、二度と署名できなくなります。" } ?? "\(label)は、二度と署名できなくなります。"
+            }
+            public static func fromOrgs(_ orgs: String) -> String { "\(orgs) から削除されます。" }
+            public static let thisDevice = "いま使っている端末です。削除すると、この端末はこの鍵では署名できなくなり、この鍵をもう一度追加することもできません。そのあと端末は新しい鍵を作り、それは新しい端末として追加する必要があります。"
+            /// Said after this device's own removal took effect and it made a new key: the removed key cannot sign, and the new one is not added yet.
+            public static let thisDeviceRemoved = "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加を依頼してください。"
+            public static func keyNotMade(_ reason: String) -> String { "端末は削除しましたが、この端末は新しい鍵を作れませんでした: \(reason)" }
+            public static let confirm = "この端末を削除する"
+            public static let cancel = "キャンセル"
+            public static let removing = "削除しています…"
+            public static func removed(_ label: String) -> String { "\(label)を削除しました。二度と署名できません。" }
+            public static func stillIn(_ orgs: String) -> String { "\(orgs) にはまだ載っています。この端末はそこに追加されていないため、削除に署名できません。" }
+            public static func last(_ label: String, orgs: String) -> String {
+                "\(label)は、\(orgs)でのただ 1 つの端末です。削除すると、そこでは誰も署名できなくなるため、ここでは削除できません。先に別の端末を追加してください。このノードを動かしているマシンで agency device-add を実行しても、追加できます。"
+            }
+            public static func failed(_ reason: String) -> String { "端末を削除できませんでした: \(reason)" }
+            /// The removal is one the app does not make (it checks first, so this is for a list that changed meanwhile).
+            public static let cannotHere = "この端末は、ここでは削除できません。一覧を読み直してください。"
+            /// Said when the root's node holds the removal for its owner to sign: the same sentence as for an approval, with its own verb.
+            public static func pendingRoot(command: String) -> String {
+                "ここでは削除を依頼しました。ルート鍵のノードが署名すると有効になります。そのノードで \(command) を実行してください。"
+            }
+            public static func faceIDReason(_ label: String) -> String { "端末を削除する: \(label)" }
+        }
+
         public static func queued(_ message: String?) -> String {
             "保存しました。組織のノードが休止中なので、起動したときに届きます。" + (message.map { " (\($0))" } ?? "")
         }
