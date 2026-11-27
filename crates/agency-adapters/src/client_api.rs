@@ -17,7 +17,8 @@ use crate::server::status_of;
 use agency_core::about;
 use agency_core::activity::team_activity;
 use agency_core::client::{
-    decision_log, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
+    decision_entry, decision_log, home_nodes, me, org_definition, submit_signed_decision,
+    team_snapshot,
 };
 use agency_core::clients_seen;
 use agency_core::devices::{device_list, request_device, submit_device_change};
@@ -25,10 +26,10 @@ use agency_core::evaluation::org_evaluation;
 use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
 use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
-use agency_core::{Error, Node};
+use agency_core::{Error, ErrorKind, Node};
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
-    SignedDecisionInput,
+    DecisionOutcome, DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput,
+    PushTokenInput, Session, SignedDecisionInput,
 };
 use agency_proto::client_version::{self, Platform};
 use agency_proto::clock::{Duration, OffsetDateTime};
@@ -320,6 +321,12 @@ async fn get_decisions(
     json_response(StatusCode::OK, &decision_log(&api.node, limit))
 }
 
+/// One decision of the account with where it is now, which a client that sent it reads until it is applied,
+/// delivered, or refused.
+async fn get_decision(State(api): Shared, Path(id): Path<String>) -> Response {
+    respond(decision_entry(&api.node, &id))
+}
+
 async fn get_org(State(api): Shared, Path(org): Path<String>) -> Response {
     respond(parse_id(&org).and_then(|org| org_definition(&api.node, &org)))
 }
@@ -397,13 +404,30 @@ async fn post_envelope(
     Path((org, team)): Path<(String, String)>,
     bytes: Bytes,
 ) -> Response {
-    let result = async {
+    let result = (|| {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         let input: SignedDecisionInput = json_body(&bytes, "signed decision")?;
-        submit_signed_decision(&api.node, &org, &team, input).await
-    };
-    respond(result.await)
+        submit_signed_decision(&api.node, &org, &team, input)
+    })();
+    match result {
+        Ok(result) if result.outcome == DecisionOutcome::Queued => {
+            json_response(StatusCode::ACCEPTED, &result)
+        }
+        Ok(result) => json_response(StatusCode::OK, &result),
+        Err(error) if error.kind == ErrorKind::Unavailable => {
+            let mut response = refuse(StatusCode::SERVICE_UNAVAILABLE, &error.message);
+            response.headers_mut().insert(
+                header::RETRY_AFTER,
+                HeaderValue::from_static(KEEP_RETRY_AFTER_SECONDS),
+            );
+            response
+        }
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
 }
+
+/// What a client is told to wait before it sends a decision again that this node could not keep.
+const KEEP_RETRY_AFTER_SECONDS: &str = "5";
 
 /// Whether the request is the node's owner's: a direct local one (the machine's own user), or one
 /// through Access signed in as the configured owner. Other Access sign-ins may read this node's data
@@ -592,6 +616,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
         .route("/api/me", get(get_me))
         .route("/api/session", get(get_session))
         .route("/api/decisions", get(get_decisions))
+        .route("/api/decisions/{id}", get(get_decision))
         .route("/api/devices", get(get_devices))
         .merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))

@@ -164,9 +164,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
-            Arc::new(CommandRuntime::with_log(
-                logger.sink(LogLevel::Warn, "runtime"),
-            ))
+            Arc::new(
+                CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
+                    .recording(recorder.clone()),
+            )
         }),
         clock: clock.clone(),
         random: random.clone(),

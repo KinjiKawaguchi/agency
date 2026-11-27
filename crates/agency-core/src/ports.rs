@@ -162,6 +162,14 @@ pub trait DecisionLogStore {
     fn append_decision(&self, record: &DecisionRecord) -> Result<()>;
     /// At most `limit` records, newest first.
     fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
+    /// Replaces the record with the same id, if the log still has it.
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()>;
+}
+
+/// Tells the task that delivers the outbox that a parcel is waiting, so that it does not wait for its
+/// next round.
+pub trait OutboxBell: Send + Sync {
+    fn ring(&self);
 }
 
 /// Devices waiting to be added, newest last.

@@ -7,6 +7,7 @@ use agency_adapters::peers::read_headers;
 use agency_core::client::{decision_log, submit_signed_decision, team_snapshot};
 use agency_core::decisions::Decided;
 use agency_core::invites::{invite, join};
+use agency_core::outbox::deliver_due;
 use agency_core::read_auth::sign_read;
 use agency_core::seats;
 use agency_core::views::refresh;
@@ -271,9 +272,8 @@ async fn a_client_cannot_label_a_decision_as_answered_for_someone() {
         serde_json::from_value::<SignedDecisionInput>(claim).is_err(),
         "the node alone says for whom a decision was made"
     );
-    submit_signed_decision(&alice.node, &id("acme"), &id("app"), input)
-        .await
-        .unwrap();
+    submit_signed_decision(&alice.node, &id("acme"), &id("app"), input).unwrap();
+    deliver_due(&alice.node).await.unwrap();
     let log = decision_log(&alice.node, None);
     assert_eq!(
         log.entries[0]

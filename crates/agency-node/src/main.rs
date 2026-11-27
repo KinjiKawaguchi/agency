@@ -15,6 +15,7 @@ mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
+use agency_adapters::system::OutboxWake;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::Decided;
 use agency_core::invites::{finish_joins, join, Joined};
@@ -407,6 +408,9 @@ fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("y")
 }
 
+/// How long the outbox waits for a parcel to be queued before it looks for parcels whose retry is due.
+const OUTBOX_ROUND: Duration = Duration::from_secs(2);
+
 async fn serve(opened: agency_node::Opened) -> Result<()> {
     let node = opened.node.clone();
     let listen = node.config().listen;
@@ -438,6 +442,18 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
+    let wake = std::sync::Arc::new(OutboxWake::default());
+    node.set_outbox_bell(wake.clone());
+    let delivering = node.clone();
+    let delivering_log = logger.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Err(error) = deliver_due(&delivering).await {
+                delivering_log.warn("outbox", &format!("delivering the outbox failed: {error}"));
+            }
+            wake.wait(OUTBOX_ROUND).await;
+        }
+    });
     let background = node.clone();
     let background_log = logger.clone();
     tokio::spawn(async move {
@@ -479,9 +495,6 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
                         &format!("checking for new requests failed: {error}"),
                     ),
                 }
-            }
-            if let Err(error) = deliver_due(&background).await {
-                logger.warn("outbox", &format!("retrying the outbox failed: {error}"));
             }
             tick += 1;
             tokio::time::sleep(Duration::from_secs(15)).await;

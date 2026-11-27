@@ -45,6 +45,27 @@ pub struct DecisionNote {
 }
 
 impl DecisionRecord {
+    /// Whether the record is of this very envelope, so that one sent again is the one that was kept.
+    pub(crate) fn is_of(&self, envelope: &Envelope) -> bool {
+        (
+            &self.id,
+            &self.org,
+            &self.team,
+            self.kind,
+            &self.target,
+            &self.payload,
+            &self.at,
+        ) == (
+            &envelope.id,
+            &envelope.org,
+            &envelope.team,
+            envelope.kind,
+            &envelope.target,
+            &envelope.payload,
+            &envelope.at,
+        )
+    }
+
     pub(crate) fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
         Self {
             id: envelope.id.clone(),

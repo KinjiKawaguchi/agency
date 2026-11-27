@@ -66,7 +66,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 ## How data moves
 
 - **Replica** (写し). A copy of a team's view, or of an org definition, that a node keeps of what another node writes. It is never edited, and says when it was read.
-- **Outbox**. A node's queue of envelopes, device changes, and org versions that could not be delivered yet; it retries with backoff. No UI name; if one is needed, 送信待ち.
+- **Outbox**. A node's queue of envelopes, device changes, and org versions that are not delivered yet; it retries with backoff. A client's decision is put in it before the node answers, also for a team on the node itself, and a background task applies or sends it: the node says `queued` and never waits for a runtime or a peer. No UI name; if one is needed, 送信待ち.
 - **Federation** (連合). Nodes reading and writing each other's data through the `/fed/v1` routes, authenticated by signatures.
 - **Agent** (エージェント). A participant that is not a human: an AI that works in a team.
 - **Harness**. The program that runs a team's agents and keeps its work (for example the scrum harness). One team is one harness.

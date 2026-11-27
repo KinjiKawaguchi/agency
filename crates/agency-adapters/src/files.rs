@@ -405,6 +405,16 @@ impl DecisionLogStore for DataDir {
             read_json(&self.0.join("decisions.json")).unwrap_or_default();
         records.into_iter().rev().take(limit).collect()
     }
+
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()> {
+        let path = self.0.join("decisions.json");
+        let mut records: Vec<DecisionRecord> = read_json(&path).unwrap_or_default();
+        let Some(kept) = records.iter_mut().find(|one| one.id == record.id) else {
+            return Ok(());
+        };
+        *kept = record.clone();
+        write_json(&path, &records)
+    }
 }
 
 impl OutcomeStore for DataDir {

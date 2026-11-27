@@ -1,0 +1,13 @@
+{
+  "choice": "b",
+  "decidedAt": "2026-11-24T12:00:00Z",
+  "id": "01010101010101010101010101010101",
+  "kind": "answer",
+  "org": "acme",
+  "state": {
+    "kind": "applied"
+  },
+  "target": "r-2",
+  "team": "app",
+  "text": ""
+}
