@@ -17,6 +17,7 @@ import { HomeNodesCard } from '../nodes/HomeNodesCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
 import { isHeldFor } from '../rootchange/held'
 import { answerOf } from '../rootchange/changes'
+import { RemoveDevice } from './RemoveDevice'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
@@ -170,6 +171,7 @@ function YourDevices({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLi
             <b>{device.label}</b>
             {device.publicKey === deviceKey.publicKey ? <span className="device-here">{t.devices.thisOne}</span> : null}
             <span className="muted">{t.devices.addedOn(fmt.dateTime(device.addedAt))}</span>
+            <RemoveDevice device={device} list={list} ownKey={deviceKey} />
           </li>
         ))}
       </ul>

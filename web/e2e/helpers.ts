@@ -36,6 +36,8 @@ export interface NodeOptions {
   participants?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
+  /** The account has a second device, Work laptop, which can be removed. */
+  laptop?: boolean
   /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
   guest?: string
 }
@@ -61,6 +63,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.pendingRoot === true) query.set('pendingRoot', '1')
   if (options.relayedFor === true) query.set('relayedFor', '1')
   if (options.guest !== undefined) query.set('guest', options.guest)
+  if (options.laptop === true) query.set('laptop', '1')
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
     if (options.claim.fails !== undefined) query.set('claimFails', options.claim.fails)
