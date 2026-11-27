@@ -29,8 +29,15 @@ describe('the weekly budget against the last seven days', () => {
     expect(screen.getByText(/\$0 left$/)).toBeInTheDocument()
   })
 
-  it('says it in Japanese', () => {
+  it('says it in Japanese: the amount over, and the meter’s label, in the locale’s words', () => {
     draw(120, 100, 'ja')
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('$120'))
+    expect(screen.getByText(/\$20 超過$/)).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('週の予算'))
+    expect(screen.queryByText(/over$/)).not.toBeInTheDocument()
+  })
+
+  it('says what is left in Japanese too', () => {
+    draw(99.3, 100, 'ja')
+    expect(screen.getByText(/残り \$0\.70$/)).toBeInTheDocument()
   })
 })
