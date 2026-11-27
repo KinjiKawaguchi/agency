@@ -26,7 +26,7 @@ struct WordingTests {
         #expect(DeskGroup.allCases.map(Ja.Desk.group) == ["決裁する稟議", "あなたへの質問", "ボードで判断待ちのもの", "このアプリが知らない種類の依頼", "ほかの人の返事待ち"])
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verb) == ["決裁する", "答える", "判断を送る"])
         #expect(Ja.Paper.sendWith("決裁する", choice: "承認") == "「承認」で決裁する")
-        #expect([Request.Kind.proposal, .question, .pendingDecision, .unknown].map(Ja.Paper.type) == ["稟議書", "質問", "判断待ち", "依頼"], "the kind's name is the glossary's: 判断待ち, not 判断のお願い")
+        #expect([Request.Kind.proposal, .question, .pendingDecision, .unknown].map(Ja.Paper.type) == ["稟議", "質問", "判断待ち", "依頼"], "the kinds' names are the glossary's")
         #expect(Ja.Paper.commentExplain(.proposal).hasPrefix("決裁はしません。"))
         #expect(Ja.Paper.commentExplain(.question).hasPrefix("決めません。"))
         #expect(!Ja.Paper.commentExplain(.question).contains("決裁"))

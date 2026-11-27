@@ -82,7 +82,7 @@ public enum Ja {
 
         public static func type(_ kind: Request.Kind) -> String {
             switch kind {
-            case .proposal: "稟議書"
+            case .proposal: "稟議"
             case .question: "質問"
             case .pendingDecision: "判断待ち"
             case .unknown: "依頼"
