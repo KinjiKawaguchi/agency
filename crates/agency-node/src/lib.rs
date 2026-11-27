@@ -8,13 +8,14 @@ use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
 use agency_adapters::funding::UsageFiles;
-use agency_adapters::github::{CachedDelivery, GithubDelivery};
+use agency_adapters::github::{CachedDelivery, GhCli, GithubDelivery};
 use agency_adapters::handoff;
 #[cfg(target_os = "macos")]
 use agency_adapters::keychain_root_keys::KeychainRootKeys;
 use agency_adapters::launch::Launch;
 use agency_adapters::logging::Logger;
 use agency_adapters::memory::NoNotifier;
+use agency_adapters::metrics::calls::{TimedGh, TimedNotifier, TimedPeers, TimedRuntime};
 use agency_adapters::metrics::serve::record_request;
 use agency_adapters::metrics::Recorder;
 use agency_adapters::peers::HttpPeers;
@@ -70,12 +71,16 @@ fn token_notifier(
     config: &NodeConfig,
     clock: Arc<dyn Clock>,
     logger: &Logger,
+    recorder: &Recorder,
 ) -> Arc<dyn Notifier> {
     let Some(push) = config.push.clone() else {
         return Arc::new(NoNotifier);
     };
     match Apns::new(push, ApnsHosts::default(), clock) {
-        Ok(apns) => Arc::new(apns.with_node_id(agency_proto::client::node_id(&config.url))),
+        Ok(apns) => Arc::new(TimedNotifier::apns(
+            apns.with_node_id(agency_proto::client::node_id(&config.url)),
+            recorder.clone(),
+        )),
         Err(error) => {
             logger.warn("push", &format!("push notifications are off: {error}"));
             Arc::new(NoNotifier)
@@ -112,8 +117,9 @@ fn notifier(
     data_dir: &std::path::Path,
     clock: Arc<dyn Clock>,
     logger: &Logger,
+    recorder: &Recorder,
 ) -> Arc<dyn Notifier> {
-    let tokens = token_notifier(config, clock.clone(), logger);
+    let tokens = token_notifier(config, clock.clone(), logger, recorder);
     let Some(web_config) = &config.web_push else {
         return tokens;
     };
@@ -126,7 +132,10 @@ fn notifier(
         logger.warn("push", &warning);
     }
     match WebPush::new(web_config, web_push_subject(config), &key_path, clock) {
-        Ok(web) => Arc::new(WithWebPush { tokens, web }),
+        Ok(web) => Arc::new(TimedNotifier::web_push(
+            WithWebPush { tokens, web },
+            recorder.clone(),
+        )),
         Err(error) => {
             logger.warn("push", &format!("web push is off: {error}"));
             tokens
@@ -166,24 +175,32 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let recorder = Recorder::new(data_dir.join("metrics"), clock.clone());
     let notifier = match overrides.notifier {
         Some(notifier) => notifier,
-        None => notifier(&config, &data_dir, clock.clone(), &logger),
+        None => notifier(&config, &data_dir, clock.clone(), &logger, &recorder),
     };
     let ports = Ports {
         store: Arc::new(data),
-        peers: Arc::new(HttpPeers::new()?),
-        runtime: overrides.runtime.unwrap_or_else(|| {
-            Arc::new(
-                CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
-                    .recording(recorder.clone()),
-            )
-        }),
+        peers: Arc::new(TimedPeers::new(
+            HttpPeers::new()?,
+            recorder.clone(),
+            agency_adapters::peers::TIMEOUT,
+        )),
+        runtime: Arc::new(TimedRuntime::new(
+            overrides.runtime.unwrap_or_else(|| {
+                Arc::new(
+                    CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
+                        .recording(recorder.clone()),
+                )
+            }),
+            recorder.clone(),
+            agency_adapters::runtime::TIMEOUT,
+        )),
         clock: clock.clone(),
         random: random.clone(),
         lock: Arc::new(TokioWriteLock::default()),
         funding: Arc::new(UsageFiles::new(data_dir.clone())),
         delivery: overrides.delivery.unwrap_or_else(|| {
             Arc::new(CachedDelivery::new(
-                GithubDelivery::default(),
+                GithubDelivery::new(Arc::new(TimedGh::new(GhCli::default(), recorder.clone()))),
                 DELIVERY_KEPT,
             ))
         }),

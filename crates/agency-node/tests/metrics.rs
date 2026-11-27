@@ -429,3 +429,67 @@ async fn hour_buckets_is_1_or_left_out_and_over_7_days_there_are_no_hours_to_hav
         .flat_map(|s| &s.by_hour)
         .all(|hour| hour.buckets.is_some()));
 }
+
+// ── The calls the node makes ──
+
+/// The `call` series of a node, as `(name, status, peer, count)`.
+async fn calls_of(running: &Running) -> Vec<(String, String, Option<String>, u64)> {
+    let metrics = metrics_of(get(running, "/api/metrics?kind=call").send().await.unwrap()).await;
+    assert!(metrics.series.iter().all(Series::is_consistent));
+    metrics
+        .series
+        .into_iter()
+        .map(|one| (one.name, one.status, one.peer, one.count))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_call_to_a_team_runtime_and_to_another_node_is_timed_as_its_own_series() {
+    let (alice, memory) = alice().await;
+    memory.lock().unwrap().usage = Some(
+        serde_json::from_str(include_str!("../../../testdata/tokenusage.sample.json")).unwrap(),
+    );
+    let bob = common::joined_bob(&alice).await;
+    let web = agency_proto::org::TeamPlace::new(common::id("web"), "Web", bob.url());
+    agency_core::orgs::add_team(&alice.node, &common::id("acme"), web).unwrap();
+
+    for path in [
+        "/api/orgs/acme/teams/app/usage",
+        "/api/orgs/acme/teams/app/view",
+        "/api/orgs/acme/evaluation",
+    ] {
+        let response = get(&alice, path).send().await.unwrap();
+        assert_eq!(response.status(), 200, "{path}");
+    }
+    let calls = calls_of(&alice).await;
+    let has = |name: &str, status: &str, peer: Option<&str>| {
+        calls
+            .iter()
+            .any(|(n, s, p, count)| n == name && s == status && p.as_deref() == peer && *count >= 1)
+    };
+    assert!(has("runtime usage", "ok", None), "{calls:?}");
+    assert!(has("runtime view", "ok", None), "{calls:?}");
+    assert!(
+        calls
+            .iter()
+            .any(|(name, status, peer, _)| name == "peer get_evaluation"
+                && peer.as_deref() == Some("127.0.0.1")
+                && ["4xx", "5xx"].contains(&status.as_str())),
+        "the host of bob's origin, with no port, and the class of his answer (he runs no team `web`): {calls:?}"
+    );
+    assert!(
+        calls.iter().all(
+            |(name, ..)| ["runtime ", "peer ", "apns ", "webpush ", "github "]
+                .iter()
+                .any(|word| name.starts_with(word))
+        ),
+        "every name is a fixed phrase of a call: {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .all(|(_, _, peer, _)| peer.as_deref().is_none_or(|host| !host.contains(':'))),
+        "a peer is a host and not an origin: {calls:?}"
+    );
+    let _ = bob;
+}
