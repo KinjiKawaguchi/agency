@@ -17,24 +17,29 @@ pub enum GhError {
 }
 
 impl GhError {
-    /// A reason a client may be shown. For a team on a GitHub host of its own (`is_own_host`), the reason
-    /// says that it is that host that could not be read. It never names the host: a reason goes to every
-    /// client that reads the team, and a company's host name is not theirs to be told.
-    pub fn reason(self, is_own_host: bool) -> &'static str {
-        match (self, is_own_host) {
-            (Self::NotInstalled, _) => "the GitHub CLI (gh) is not installed on the team's node",
-            (Self::NotLoggedIn, false) => "the GitHub CLI (gh) on the team's node is not logged in",
-            (Self::NotLoggedIn, true) => {
+    /// A reason a client may be shown.
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::NotInstalled => "the GitHub CLI (gh) is not installed on the team's node",
+            Self::NotLoggedIn => "the GitHub CLI (gh) on the team's node is not logged in",
+            Self::RateLimited => "GitHub's rate limit is used up for now",
+            Self::TimedOut => "GitHub did not answer in time",
+            Self::Failed => "GitHub did not answer the request",
+        }
+    }
+
+    /// A reason for a team on a GitHub host of its own: it says that it is that host that could not be
+    /// read. It never names the host: a reason goes to every client that reads the team, and a company's
+    /// host name is not theirs to be told.
+    pub fn own_host_reason(self) -> &'static str {
+        match self {
+            Self::NotInstalled => self.reason(),
+            Self::NotLoggedIn => {
                 "the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names"
             }
-            (Self::RateLimited, false) => "GitHub's rate limit is used up for now",
-            (Self::RateLimited, true) => {
-                "the rate limit of the GitHub host the team names is used up for now"
-            }
-            (Self::TimedOut, false) => "GitHub did not answer in time",
-            (Self::TimedOut, true) => "the GitHub host the team names did not answer in time",
-            (Self::Failed, false) => "GitHub did not answer the request",
-            (Self::Failed, true) => "the GitHub host the team names did not answer the request",
+            Self::RateLimited => "the rate limit of the GitHub host the team names is used up for now",
+            Self::TimedOut => "the GitHub host the team names did not answer in time",
+            Self::Failed => "the GitHub host the team names did not answer the request",
         }
     }
 }
@@ -157,8 +162,7 @@ mod tests {
             GhError::TimedOut,
             GhError::Failed,
         ] {
-            for is_own_host in [false, true] {
-                let reason = error.reason(is_own_host);
+            for reason in [error.reason(), error.own_host_reason()] {
                 assert!(!reason.contains("http") && !reason.contains('@'));
             }
         }

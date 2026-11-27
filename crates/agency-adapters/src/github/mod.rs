@@ -4,7 +4,7 @@ mod gh;
 mod pulls;
 mod runs;
 
-use agency_core::config::DeliveryConfig;
+use agency_core::config::{is_host_name, DeliverySite};
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{DeliveryError, DeliverySource};
 use agency_proto::clock::OffsetDateTime;
@@ -44,18 +44,6 @@ fn split_repo(repo: &str) -> Option<(&str, &str)> {
     (valid(owner) && valid(name)).then_some((owner, name))
 }
 
-/// A GitHub host name: dot-separated labels of letters, digits and hyphens, none starting or ending with a
-/// hyphen. It goes to `gh` as the value of `--hostname`, so nothing else is let in.
-fn is_host_name(host: &str) -> bool {
-    let is_label = |label: &str| {
-        (1..=63).contains(&label.len())
-            && !label.starts_with('-')
-            && !label.ends_with('-')
-            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-    };
-    host.len() <= 253 && host.split('.').all(is_label)
-}
-
 /// A repository to read: `owner/name` on a host that `gh` is told, unless it is github.com.
 pub(super) struct Repo<'a> {
     host: Option<&'a str>,
@@ -68,11 +56,19 @@ impl Repo<'_> {
         format!("{}/{}", self.owner, self.name)
     }
 
-    /// What tells `gh` which host to ask: nothing for github.com, so that its call is the same as ever.
-    fn host_args(&self) -> Vec<String> {
-        self.host
-            .map(|host| vec!["--hostname".to_owned(), host.to_owned()])
-            .unwrap_or_default()
+    /// The arguments of a `gh api` call for this repository: the host it is told, nothing for github.com
+    /// so that its call is the same as ever, then `rest`, which starts with the endpoint.
+    fn api(&self, rest: Vec<String>) -> Vec<String> {
+        let host = self
+            .host
+            .map(|host| ["--hostname".to_owned(), host.to_owned()])
+            .into_iter()
+            .flatten();
+        ["api".to_owned()]
+            .into_iter()
+            .chain(host)
+            .chain(rest)
+            .collect()
     }
 }
 
@@ -80,22 +76,30 @@ impl Repo<'_> {
 impl DeliverySource for GithubDelivery {
     async fn facts(
         &self,
-        source: &DeliveryConfig,
+        site: &DeliverySite,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError> {
-        let host = source.custom_host();
+        let host = site.host.as_deref();
         if host.is_some_and(|host| !is_host_name(host)) {
             return Err(DeliveryError(
                 "the GitHub host the team names is not a host name".into(),
             ));
         }
         let mut facts = DeliveryFacts::default();
-        for repo in &source.repos {
+        for repo in &site.repos {
             let (owner, name) = split_repo(repo).ok_or_else(|| {
                 DeliveryError("a repository of the team is not written owner/name".into())
             })?;
             let repo = Repo { host, owner, name };
-            let fail = |error: GhError| DeliveryError(error.reason(host.is_some()).into());
+            let fail = |error: GhError| {
+                DeliveryError(
+                    match host {
+                        Some(_) => error.own_host_reason(),
+                        None => error.reason(),
+                    }
+                    .into(),
+                )
+            };
             facts.pull_requests.extend(
                 pulls::merged_since(self.gh.as_ref(), &repo, since)
                     .await

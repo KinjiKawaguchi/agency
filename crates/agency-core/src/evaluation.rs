@@ -93,7 +93,7 @@ pub async fn evaluate_hosted(
         let reason = "no repositories are configured for this team".to_owned();
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(source, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };

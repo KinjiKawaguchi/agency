@@ -52,7 +52,7 @@ pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Ef
         let reason = "no repositories are configured for this team";
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(source, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, &reason),
     };

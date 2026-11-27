@@ -74,11 +74,18 @@ impl HostedTeam {
         }
     }
 
-    /// Where the team's delivery numbers come from, when the configuration names at least one repository.
-    pub fn delivery_source(&self) -> Option<&DeliveryConfig> {
-        self.delivery
-            .as_ref()
-            .filter(|delivery| !delivery.repos.is_empty())
+    /// What a read of the team's delivery numbers depends on, when the configuration names at least one
+    /// repository: no repository, no source.
+    pub fn delivery_source(&self) -> Option<DeliverySite> {
+        let delivery = self.delivery.as_ref()?;
+        if delivery.repos.is_empty() {
+            return None;
+        }
+        let site = DeliverySite::new(delivery.repos.clone());
+        Some(match &delivery.host {
+            Some(host) => site.with_host(host),
+            None => site,
+        })
     }
 
     /// The same team run by another command.
@@ -276,7 +283,7 @@ pub struct WebPushConfig {
 /// The GitHub repositories (`owner/name`) a hosted team's delivery numbers are worked out from: its
 /// merged pull requests, the issues they close, and the CI runs on their default branches. GitHub is
 /// read with the machine's own `gh` login, read-only; the configuration holds no token.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
@@ -289,13 +296,54 @@ pub struct DeliveryConfig {
 /// The host that is read when a team names none.
 const GITHUB_COM: &str = "github.com";
 
+/// A GitHub host name: dot-separated labels of letters, digits and hyphens, none empty, none starting or
+/// ending with a hyphen, at most 253 characters in all. No scheme, port or path. The host goes to `gh` as
+/// the value of `--hostname`, so nothing else is let in.
+pub fn is_host_name(host: &str) -> bool {
+    let is_label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    host.len() <= 253 && host.split('.').all(is_label)
+}
+
 impl DeliveryConfig {
-    /// The host `gh` has to be told: the one the team names, unless it is github.com, which `gh` reads
-    /// without being told.
-    pub fn custom_host(&self) -> Option<&str> {
-        self.host
-            .as_deref()
-            .filter(|host| !host.eq_ignore_ascii_case(GITHUB_COM))
+    /// Why these settings cannot be used, in words that name the setting; `at` is where they sit
+    /// (`teams[0].delivery`).
+    pub fn check(&self, at: &str) -> Result<(), String> {
+        match &self.host {
+            Some(host) if !is_host_name(host) => Err(format!(
+                "{at}.host is not a host name (letters, digits, hyphens and dots; no scheme, port or path)"
+            )),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// What a read of a team's delivery numbers depends on: the repositories (`owner/name`) and the GitHub host
+/// they are on, and nothing else of the team's delivery setting. A read is kept by it, so two teams that
+/// differ in anything else share one read. The host is `None` for github.com, and is in lower case,
+/// since a host name is the same in any case.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct DeliverySite {
+    pub repos: Vec<String>,
+    pub host: Option<String>,
+}
+
+impl DeliverySite {
+    /// These repositories on github.com.
+    pub fn new(repos: Vec<String>) -> Self {
+        Self { repos, host: None }
+    }
+
+    /// The same repositories on the GitHub host `host`; github.com, in any case, is no host.
+    pub fn with_host(self, host: impl AsRef<str>) -> Self {
+        let host = host.as_ref().to_ascii_lowercase();
+        let host = (host != GITHUB_COM).then_some(host);
+        Self { host, ..self }
     }
 }
 
@@ -606,8 +654,9 @@ mod tests {
             RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
         );
         let on_github = team.clone().with_delivery(vec!["acme/app".into()]);
-        let source = on_github.delivery_source().unwrap();
-        assert_eq!(source.custom_host(), None, "no host is github.com");
+        let site = on_github.delivery_source().unwrap();
+        assert_eq!(site.host, None, "no host is github.com");
+        assert_eq!(site.repos, ["acme/app"]);
         assert!(
             !serde_json::to_string(&on_github).unwrap().contains("host"),
             "and is written without one"
@@ -624,15 +673,89 @@ mod tests {
         let again: HostedTeam = serde_json::from_str(&text).unwrap();
         assert_eq!(again.delivery, enterprise.delivery);
         assert_eq!(
-            again.delivery_source().unwrap().custom_host(),
+            again.delivery_source().unwrap().host.as_deref(),
             Some("git.example.test")
         );
 
-        let named = team.with_delivery_on("GitHub.com", vec!["acme/app".into()]);
+        let named = team
+            .clone()
+            .with_delivery_on("GitHub.com", vec!["acme/app".into()]);
         assert_eq!(
-            named.delivery_source().unwrap().custom_host(),
+            named.delivery_source().unwrap().host,
             None,
             "github.com named is github.com, in any case"
+        );
+        let upper = team.with_delivery_on("Git.Example.TEST", vec!["acme/app".into()]);
+        assert_eq!(
+            upper.delivery_source().unwrap().host.as_deref(),
+            Some("git.example.test"),
+            "a host is the same in any case, and is kept in lower case"
+        );
+    }
+
+    #[test]
+    fn a_site_is_the_host_and_the_repositories_and_nothing_else() {
+        let site = DeliverySite::new(vec!["acme/app".into()]);
+        assert_eq!(site.host, None);
+        assert_eq!(site.clone().with_host("github.com"), site);
+        assert_eq!(site.clone().with_host("GITHUB.COM"), site);
+        assert_ne!(site.clone().with_host("git.example.test"), site);
+        assert_eq!(
+            site.clone().with_host("git.example.test"),
+            site.with_host("GIT.example.test")
+        );
+    }
+
+    #[test]
+    fn a_host_is_a_host_name_or_the_node_does_not_start() {
+        for good in [
+            "github.com",
+            "git.example.test",
+            "ghe",
+            "a-b.c-d.example.test",
+            "10.0.0.7",
+        ] {
+            assert!(is_host_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            "-evil",
+            "--hostname",
+            "git.example.test --jq x",
+            "git example",
+            "git.example.test/path",
+            "https://git.example.test",
+            "git.example.test:8443",
+            "git..example.test",
+            ".example.test",
+            "example.test.",
+            "ex_ample.test",
+            "git.example.test?x=1",
+            "-a.example.test",
+            "a-.example.test",
+        ] {
+            assert!(!is_host_name(bad), "{bad:?}");
+        }
+        assert!(!is_host_name(&"a".repeat(64)), "a label of at most 63");
+        assert!(is_host_name(&"a".repeat(63)));
+        assert!(
+            !is_host_name(&format!("{}.com", "a.".repeat(127))),
+            "at most 253 in all"
+        );
+
+        let at = "teams[1].delivery";
+        let with = |host: Option<&str>| DeliveryConfig {
+            repos: vec!["acme/app".into()],
+            host: host.map(str::to_owned),
+        };
+        assert_eq!(with(None).check(at), Ok(()));
+        assert_eq!(with(Some("git.example.test")).check(at), Ok(()));
+        let error = with(Some("https://git.example.test"))
+            .check(at)
+            .unwrap_err();
+        assert!(
+            error.starts_with("teams[1].delivery.host is not a host name"),
+            "{error}"
         );
     }
 
@@ -644,7 +767,7 @@ mod tests {
             Id::parse("owner").unwrap(),
             RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
         );
-        assert!(team.delivery_source().is_none());
+        assert_eq!(team.delivery_source(), None);
         assert!(team
             .clone()
             .with_delivery(vec![])

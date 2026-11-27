@@ -52,19 +52,13 @@ impl Gh for FakeGh {
 }
 
 /// The repositories of a team on github.com.
-fn on_github(repos: &[&str]) -> DeliveryConfig {
-    DeliveryConfig {
-        repos: repos.iter().map(|repo| repo.to_string()).collect(),
-        host: None,
-    }
+fn on_github(repos: &[&str]) -> DeliverySite {
+    DeliverySite::new(repos.iter().map(|repo| repo.to_string()).collect())
 }
 
 /// The repositories of a team on a GitHub host of its own.
-fn on_host(host: &str, repos: &[&str]) -> DeliveryConfig {
-    DeliveryConfig {
-        host: Some(host.to_owned()),
-        ..on_github(repos)
-    }
+fn on_host(host: &str, repos: &[&str]) -> DeliverySite {
+    on_github(repos).with_host(host)
 }
 
 fn since() -> agency_proto::clock::OffsetDateTime {
@@ -153,10 +147,10 @@ async fn asks_github_for_the_default_branch_and_reads_runs_from_a_week_before_th
 }
 
 /// The calls `delivery` makes to a `gh` that answers as `FakeGh` does, one string each.
-async fn calls_for(source: &DeliveryConfig) -> Vec<String> {
+async fn calls_for(site: &DeliverySite) -> Vec<String> {
     let gh = Arc::new(FakeGh::new());
     GithubDelivery::new(gh.clone())
-        .facts(source, since())
+        .facts(site, since())
         .await
         .unwrap();
     let calls = gh.calls.lock().unwrap();
@@ -182,7 +176,7 @@ async fn tells_gh_the_host_of_a_team_that_names_one_in_every_call() {
         );
     }
     let graphql = calls.iter().find(|call| call.contains("graphql")).unwrap();
-    assert!(graphql.starts_with("api graphql --hostname git.example.test -f query="));
+    assert!(graphql.starts_with("api --hostname git.example.test graphql -f query="));
     assert!(graphql.contains("-f owner=acme -f name=app"));
 }
 

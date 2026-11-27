@@ -36,15 +36,15 @@ fn read_runs(repo: &str, text: &str) -> Vec<MainRun> {
 
 /// The default branch of `owner/name`.
 async fn default_branch(gh: &dyn Gh, repo: &Repo<'_>) -> Result<String, GhError> {
-    let mut args: Vec<String> = [
-        "api",
-        &format!("repos/{}", repo.full_name()),
-        "--jq",
-        ".default_branch",
-    ]
-    .map(String::from)
-    .to_vec();
-    args.splice(2..2, repo.host_args());
+    let args = repo.api(
+        [
+            &format!("repos/{}", repo.full_name()),
+            "--jq",
+            ".default_branch",
+        ]
+        .map(String::from)
+        .to_vec(),
+    );
     let branch = gh.run(&args).await?.trim().to_owned();
     if branch.is_empty() {
         Err(GhError::Failed)
@@ -61,8 +61,7 @@ pub async fn main_runs(
 ) -> Result<Vec<MainRun>, GhError> {
     let branch = default_branch(gh, repo).await?;
     let from = (since - MARGIN).date();
-    let mut args: Vec<String> = [
-        "api",
+    let rest: Vec<String> = [
         &format!("repos/{}/actions/runs", repo.full_name()),
         "--method",
         "GET",
@@ -82,7 +81,7 @@ pub async fn main_runs(
     ]
     .map(String::from)
     .to_vec();
-    args.splice(2..2, repo.host_args());
+    let args = repo.api(rest);
     Ok(read_runs(&repo.full_name(), &gh.run(&args).await?))
 }
 

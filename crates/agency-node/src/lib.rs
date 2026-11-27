@@ -155,6 +155,13 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    for (at, team) in config.teams.iter().enumerate() {
+        if let Some(delivery) = &team.delivery {
+            delivery
+                .check(&format!("teams[{at}].delivery"))
+                .map_err(anyhow::Error::msg)?;
+        }
+    }
     config
         .federation
         .check(&config.url)

@@ -208,8 +208,7 @@ pub async fn merged_since(
     let mut all = vec![];
     let mut after: Option<String> = None;
     for _ in 0..PAGES_AT_MOST {
-        let mut args: Vec<String> = [
-            "api",
+        let mut rest: Vec<String> = [
             "graphql",
             "-f",
             &format!("query={QUERY}"),
@@ -220,10 +219,10 @@ pub async fn merged_since(
         ]
         .map(String::from)
         .to_vec();
-        args.splice(2..2, repo.host_args());
         if let Some(cursor) = &after {
-            args.extend(["-f".into(), format!("after={cursor}")]);
+            rest.extend(["-f".into(), format!("after={cursor}")]);
         }
+        let args = repo.api(rest);
         let (found, next) = read_page(&repo.full_name(), &gh.run(&args).await?, since)?;
         all.extend(found);
         match next {

@@ -1,6 +1,6 @@
 //! Keeps what GitHub said for a short while, so that a screen that is read often does not spend the rate
 //! limit of the machine's `gh` login. Nothing is written to disk.
-use agency_core::config::DeliveryConfig;
+use agency_core::config::DeliverySite;
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{DeliveryError, DeliverySource};
 use agency_proto::clock::OffsetDateTime;
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-type Key = (DeliveryConfig, i64);
+type Key = (DeliverySite, i64);
 
 pub struct CachedDelivery<D> {
     inner: D,
@@ -37,16 +37,16 @@ impl<D> CachedDelivery<D> {
 impl<D: DeliverySource> DeliverySource for CachedDelivery<D> {
     async fn facts(
         &self,
-        source: &DeliveryConfig,
+        site: &DeliverySite,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError> {
-        let key = (source.clone(), since.unix_timestamp());
+        let key = (site.clone(), since.unix_timestamp());
         if let Some((at, facts)) = self.lock().get(&key) {
             if at.elapsed() < self.kept_for {
                 return Ok(facts.clone());
             }
         }
-        let facts = self.inner.facts(source, since).await?;
+        let facts = self.inner.facts(site, since).await?;
         let mut kept = self.lock();
         kept.retain(|_, (at, _)| at.elapsed() < self.kept_for);
         kept.insert(key, (Instant::now(), facts.clone()));
@@ -70,10 +70,11 @@ mod tests {
         (CachedDelivery::new(memory.clone(), kept_for), memory)
     }
 
-    fn source(host: Option<&str>, repos: &[&str]) -> DeliveryConfig {
-        DeliveryConfig {
-            repos: repos.iter().map(|repo| repo.to_string()).collect(),
-            host: host.map(str::to_owned),
+    fn source(host: Option<&str>, repos: &[&str]) -> DeliverySite {
+        let site = DeliverySite::new(repos.iter().map(|repo| repo.to_string()).collect());
+        match host {
+            Some(host) => site.with_host(host),
+            None => site,
         }
     }
 
@@ -114,6 +115,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(asked(&memory), 4, "the same repository on another host too");
+    }
+
+    #[tokio::test]
+    async fn github_com_in_any_case_and_a_host_in_any_case_are_one_question() {
+        let (delivery, memory) = cached(Duration::from_secs(60));
+        let since = at("2026-11-10T00:00:00Z");
+        for site in [
+            source(None, &["acme/app"]),
+            source(Some("github.com"), &["acme/app"]),
+            source(Some("GitHub.com"), &["acme/app"]),
+        ] {
+            delivery.facts(&site, since).await.unwrap();
+        }
+        assert_eq!(
+            asked(&memory),
+            1,
+            "no host and github.com are the same read"
+        );
+        for host in ["git.example.test", "Git.Example.Test"] {
+            delivery
+                .facts(&source(Some(host), &["acme/app"]), since)
+                .await
+                .unwrap();
+        }
+        assert_eq!(asked(&memory), 2, "and a host is the same in any case");
     }
 
     #[tokio::test]
