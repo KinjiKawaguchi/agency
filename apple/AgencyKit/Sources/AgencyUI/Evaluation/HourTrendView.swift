@@ -43,6 +43,11 @@ struct HourChartView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(chart.title).font(.subheadline.weight(.semibold)).wrapping()
+            // The budget is named in the flow of the text, not on the plot, so that it never runs into the plot at a large text size.
+            if let budget = chart.budgetMs {
+                Label(Ja.NodeSpeed.Trend.budget(Ja.NodeSpeed.duration(budget)), systemImage: "minus").font(.caption).foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+            }
             HStack(alignment: .top, spacing: 6) {
                 axis.frame(width: Self.axisWidth, height: Self.plotHeight)
                 VStack(alignment: .leading, spacing: 4) {
@@ -86,15 +91,11 @@ struct HourChartView: View {
 
     private func budgetLine(_ budget: Int, in size: CGSize) -> some View {
         let height = y(HourScale.share(ms: Double(budget)), in: size)
-        return ZStack(alignment: .topTrailing) {
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: height))
-                path.addLine(to: CGPoint(x: size.width, y: height))
-            }
-            .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            Text(Ja.NodeSpeed.Trend.budget(Ja.NodeSpeed.duration(budget))).font(.caption2).foregroundStyle(.secondary)
-                .position(x: size.width - 40, y: 8)
+        return Path { path in
+            path.move(to: CGPoint(x: 0, y: height))
+            path.addLine(to: CGPoint(x: size.width, y: height))
         }
+        .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
     }
 
     @ViewBuilder
