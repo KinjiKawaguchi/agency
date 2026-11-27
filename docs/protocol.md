@@ -185,6 +185,10 @@ Without it, a read made for one node verifies on any node of the org that serves
 3. When the invited person accepts, their node signs a join request and sends it to `POST <node>/fed/v1/orgs/<org>/join`. Body: `{ "org", "code", "account", "label", "publicKey", "at" }`. The signature is checked with the body's `publicKey`, and `at` must be within 10 minutes of the root node's clock. An `account` that is one of the reserved runtime names (see "agency-runtime/1") gets 400 at once, and the invite stays unused.
 4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the new member added at the place the invite set (department, role; for an invite made for a seat with `agency invite --org <org> --seat <seat>`, the seat is taken instead: see "Taking a seat" under "Org definition", and the join is refused with 409, leaving the invite unused, when the seat is not in the org any more), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox. When the root key asks for the owner's presence, it holds the join instead and answers `202` (see "Pending root changes"); the joiner then fetches the signed version with the handle.
 
+## Claim link
+
+`agency seat-invite --org <org> --seat <seat> --email <address>` makes one seven-day claim link for one unclaimed seat and one lowercased email. The root node keeps the record under the SHA-256 of its 16-random-byte code; the code is not stored. A newer link for the same seat replaces the older one. With Access, it prints `https://<publicHost>/claim#code=<code>` and the email for the owner to add to the Access policy by hand. Without Access, it prints the node's local claim address and says it works on that machine only. The email is node-local and never enters the org definition.
+
 ## Pending root changes
 
 A root key that asks for the owner's presence (the macOS keychain) never signs because someone else asked: a prompt that anyone can make appear teaches the owner to press without reading. So the root's node holds such changes for the owner and signs them in one run that the owner starts.

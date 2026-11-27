@@ -7,6 +7,7 @@ pub mod activity;
 pub mod budget;
 pub mod capabilities;
 pub mod change_words;
+pub mod claims;
 pub mod client;
 pub mod clients_seen;
 pub mod config;
