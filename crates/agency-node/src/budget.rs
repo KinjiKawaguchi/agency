@@ -1,7 +1,7 @@
 //! The week-sized part of a team's runtime usage report.
+use agency_core::budget::BudgetStatus;
 use agency_proto::{Date, TokenUsage};
 use anyhow::Result;
-use agency_core::budget::BudgetStatus;
 
 /// Adds the daily costs reported from the start of this week through today, inclusive.
 ///

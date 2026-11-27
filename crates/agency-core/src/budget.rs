@@ -70,9 +70,10 @@ pub fn status(
             .sum()
     });
     let team_partial = !matches!(spends.get(team), Some(Some(_)));
-    let partial = team_partial || planned
-        .iter()
-        .any(|t| matches!(spends.get(&t.id), Some(None) | None));
+    let partial = team_partial
+        || planned
+            .iter()
+            .any(|t| matches!(spends.get(&t.id), Some(None) | None));
     let org_spent = planned
         .iter()
         .filter_map(|t| spends.get(&t.id).and_then(|v| *v))
