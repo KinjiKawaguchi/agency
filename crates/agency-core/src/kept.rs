@@ -88,7 +88,10 @@ fn already_kept(node: &Node, record: &DecisionRecord, envelope: &Envelope) -> Re
         .recent_decisions(usize::MAX)
         .into_iter()
         .find(|one| one.id == envelope.id);
-    if logged.as_ref().is_some_and(|one| !one.is_of(envelope)) {
+    if logged
+        .as_ref()
+        .is_some_and(|one| !one.is_of(envelope, &node.account()))
+    {
         return Err(conflict());
     }
     if let Some(parcel) = node
