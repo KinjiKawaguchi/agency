@@ -5,7 +5,7 @@ export const MOCK_VAPID_KEY: VapidKey = { publicKey: 'BP4z9KsN6nGRTbVYI_c7VJSPQT
 
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-const idOf = (endpoint: string): string => {
+export const idOf = (endpoint: string): string => {
   let hash = 0
   for (const character of endpoint) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
   return hash.toString(16).padStart(8, '0')

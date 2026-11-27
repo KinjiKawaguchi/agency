@@ -82,7 +82,7 @@ test('reports a decision the node queued for later', async ({ page, request }) =
   // The node took it (queued): the tray is empty and the request does not come back while the log says it waits.
   await decisionsTaken(page, request)
   await expect(page.getByRole('listbox').getByText(PROPOSAL)).toHaveCount(0)
-  await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Waiting to send')
+  await expect(page.getByRole('region', { name: /Recently decided/ }).getByRole('listitem').first()).toContainText('Saved, not delivered')
 })
 
 test('answers a pending decision in free text', async ({ page, request }) => {

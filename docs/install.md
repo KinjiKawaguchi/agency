@@ -180,6 +180,16 @@ loginctl show-user "$USER" --property=Linger
 The second command must print `Linger=yes`. Without it, logging out of your last session stops the node.
 Run `systemctl --user` in a login session (a terminal or an SSH login). From `su` or `sudo -u`, it cannot reach your services and says `Failed to connect to bus`.
 
+### A machine that other accounts log in to
+
+The node admits a direct local request (from `127.0.0.1` or `localhost`) as its owner, which fits a machine only you log in to. On a machine that other people also log in to, every local account reaches `127.0.0.1` the same way, so turn local clients off there. Put this at the top level of `~/.agency/config.json` and restart the node, or pass `--no-local-clients` to `agency init` when you create it:
+
+```json
+"localClients": false
+```
+
+The Client API and the web client then refuse every local request with 403, `/metrics` included, and federation keeps working on the same port. A node that only hosts teams needs no local client: you reach it from your home node through federation, the `agency` commands on it (`status`, `funding`, `metrics`) read the data directory directly, and the team runtime talks to the node over stdin and stdout, not the Client API. `agency status` prints `Local clients: refused` while the setting is on.
+
 ### Add your browser as the first device
 
 Decisions are signed by your devices, never by the node.
@@ -439,6 +449,7 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
 - What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- The effort screen (where a team's tokens went, by work type, at `/api/orgs/<org>/effort`) is worked out from the same repositories and from the token usage the team's runtime reports (`tokenUsage`). It is an estimate: the runtime reports cost by day, so a day's cost is shared out among the types of the pull requests merged that day, or, on a day nothing merged, among those of the next day that has some ([protocol.md](protocol.md#evaluation) has the rule). A team whose runtime does not report token usage is listed with a reason, never with zero.
 - A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
 
 | Reason on the screen | What to do |
@@ -450,6 +461,9 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
 | the team's node does not give delivery numbers | That node is older than this feature: update it. |
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
+| the team's runtime does not report token usage | Use a runtime that lists `tokenUsage`; until then the team's effort is not shown. |
+| the team's node does not give effort numbers | That node is older than this feature: update it. |
+| the team's node does not give effort numbers to this account | The account is an answerer in the org, who does not read them. |
 | a repository of the team is not written owner/name | Fix `delivery.repos` in the configuration of the node the team runs on. |
 | the team's node did not answer | That node is down or unreachable. |
 
@@ -503,6 +517,7 @@ curl -s http://127.0.0.1:4400/metrics            # the text a Prometheus scrape 
 - `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days (add `hourBuckets=1` to get each hour's buckets too, so that a screen can add the hours of several series and read the percentile of the whole; the answer is about 1.7 times larger). A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
 - To hold the node to your own numbers, set objectives in `config.json`, then restart the node: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`. A `group` is one of `desk`, `teams`, `usage`, `evaluation`, `outcomes`, `devices`, `push`, `federation`, `metrics`, or `other` (the answer names the group of each series), and `p95Ms` is 1 to 30 000; a value outside these stops the node at start and says which. `GET /api/metrics` then says, for each, over the days asked for: `met` (the 95th percentile is within it), `notMet` (every duration in the bucket of the 95th percentile is over it), `undetermined` (the objective falls inside that bucket: the measurement cannot say), or `unknown` (no calls in the range), with the upper bound of that bucket, for the whole group and not for an answer narrowed to a kind or a name.
 - `agency metrics [--days n] [--kind serve|call|client] [--name <name>] [--json]` prints the same as a table, from the files, so it works while the node is stopped and needs no key. `<=100` means at most 100 ms (the upper bound of the bucket), `>30000` is slower than the last bound, and the BUDGET column says `ok` or `OVER` for the reads the performance budget applies to. A running node writes its numbers once a minute, so the last minute is only in `GET /api/metrics`.
+- The web client and the apps report to their node how long their own calls took, with `POST /api/telemetry` (a batch each minute); you do not set anything. Only the owner's clients are heard, a route that is not one of the node's is dropped, and the numbers appear as the `client` series of `GET /api/metrics`, so you can see what the person waited next to what the node took.
 - It is the owner's alone: the direct local request, or Access signed in as the owner. Another person Access lets in gets 403. `/metrics` is read only on the node's own machine, so a Prometheus scrapes it there (not through the tunnel).
 - Nothing is recorded in the data directory by a command that is not `serve`. A node that cannot write its directory keeps what it has in memory and tries again.
 

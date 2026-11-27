@@ -89,6 +89,7 @@ dependencies = [
  "base64 0.22.1",
  "bip39",
  "clap",
+ "futures-util",
  "jsonwebtoken",
  "p256",
  "reqwest",
