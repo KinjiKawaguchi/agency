@@ -334,6 +334,9 @@ fn check_new_feature(summary: &EvaluationSummary) -> Result<(), String> {
     .iter()
     .map(|count| u64::from(*count))
     .sum();
+    if features.merged == 0 {
+        return Err("reported a new-feature part with no new feature".into());
+    }
     if u64::from(features.merged) > typed {
         return Err("reported more new features than pull requests merged".into());
     }
@@ -421,6 +424,16 @@ mod tests {
 
     fn acme() -> Id {
         Id::parse("acme").unwrap()
+    }
+
+    #[test]
+    fn a_new_feature_part_without_a_new_feature_is_refused() {
+        let mut report = sample();
+        report.teams[0].summary.new_feature.as_mut().unwrap().merged = 0;
+        assert!(report
+            .check(&acme(), 14)
+            .unwrap_err()
+            .contains("no new feature"));
     }
 
     #[test]
