@@ -183,7 +183,12 @@ async fn a_node_that_restarts_still_takes_no_unbound_read_from_that_account() {
     )
     .unwrap();
     assert!(
-        reopened.node.store().bound_readers().contains(&id("bob")),
+        reopened
+            .node
+            .store()
+            .bound_readers()
+            .unwrap()
+            .contains(&id("bob")),
         "the account is kept in the data directory"
     );
     alice.clock.advance(Duration::seconds(1));
@@ -282,7 +287,12 @@ async fn a_member_node_that_has_read_the_peers_capabilities_reads_it_by_name() {
     refresh(&bob.node).await.unwrap();
     refresh(&bob.node).await.unwrap();
     assert!(
-        alice.node.store().bound_readers().contains(&id("bob")),
+        alice
+            .node
+            .store()
+            .bound_readers()
+            .unwrap()
+            .contains(&id("bob")),
         "bob's node reads alice's team by naming it once it knows she lists readAudience"
     );
 }
@@ -296,7 +306,7 @@ async fn an_account_that_is_no_member_of_an_org_the_node_has_is_forgotten_when_a
         bound(&alice, &bob, &view_path(), &alices_id(&alice)).await,
         StatusCode::OK
     );
-    let mut kept = alice.node.store().bound_readers();
+    let mut kept = alice.node.store().bound_readers().unwrap();
     kept.insert(id("carol"));
     alice.node.store().save_bound_readers(&kept).unwrap();
 
@@ -307,7 +317,7 @@ async fn an_account_that_is_no_member_of_an_org_the_node_has_is_forgotten_when_a
         head: None,
     };
     agency_core::departments::add(&alice.node, &id("acme"), department).unwrap();
-    let after = alice.node.store().bound_readers();
+    let after = alice.node.store().bound_readers().unwrap();
     assert!(after.contains(&id("bob")), "a member stays: {after:?}");
     assert!(!after.contains(&id("carol")), "no member: {after:?}");
 }
@@ -364,4 +374,46 @@ async fn the_status_names_the_accounts_the_ratchet_holds_and_the_ones_let_throug
     let lines = status_lines(&alice.node);
     assert_eq!(lines.len(), 1, "bob is let through now: {lines:?}");
     assert!(lines[0].contains("federation.unboundReadAccounts") && lines[0].contains("bob"));
+}
+
+#[tokio::test]
+async fn a_file_of_accounts_that_cannot_be_read_is_left_as_it_is_and_reads_are_still_answered() {
+    let (alice, _) = alice().await;
+    let bob = joined_bob(&alice).await;
+    let path = alice.data_dir().join("bound-readers.json");
+    std::fs::write(&path, "not json\n").unwrap();
+
+    assert_eq!(
+        bound(&alice, &bob, &view_path(), &alices_id(&alice)).await,
+        StatusCode::OK,
+        "a read that names the node is answered"
+    );
+    assert_eq!(
+        unbound(&alice, &bob, &view_path()).await,
+        StatusCode::OK,
+        "an older read is taken as before, since nothing says the account named the node"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "not json\n",
+        "the file that cannot be read is not written over"
+    );
+    let lines = status_lines(&alice.node);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].contains("bound-readers.json cannot be read"),
+        "{lines:?}"
+    );
+
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(
+        bound(&alice, &bob, &view_path(), &alices_id(&alice)).await,
+        StatusCode::OK
+    );
+    assert!(alice
+        .node
+        .store()
+        .bound_readers()
+        .unwrap()
+        .contains(&id("bob")));
 }

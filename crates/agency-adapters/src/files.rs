@@ -379,9 +379,15 @@ impl AboutStore for DataDir {
 }
 
 impl BoundReaderStore for DataDir {
-    /// `bound-readers.json`: account ids only, no key and no signature.
-    fn bound_readers(&self) -> BTreeSet<Id> {
-        read_json(&self.0.join("bound-readers.json")).unwrap_or_default()
+    /// `bound-readers.json`: account ids only, no key and no signature. A file that is not there is no accounts;
+    /// one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        let path = self.0.join("bound-readers.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
     }
 
     fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()> {

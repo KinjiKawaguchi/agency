@@ -60,6 +60,10 @@ impl agency_core::ports::Journal for Logger {
     fn info(&self, event: &str, line: &str) {
         self.record(LogLevel::Info, event, line);
     }
+
+    fn warn(&self, event: &str, line: &str) {
+        self.record(LogLevel::Warn, event, line);
+    }
 }
 
 impl Logger {

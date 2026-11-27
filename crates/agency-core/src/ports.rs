@@ -230,8 +230,9 @@ pub trait AboutStore {
 /// restart does not forget them: once an account's node signs reads that way, this node takes no read that
 /// names no node from it.
 pub trait BoundReaderStore {
-    /// The accounts, or none when nothing is kept (a file that cannot be read counts as none).
-    fn bound_readers(&self) -> BTreeSet<Id>;
+    /// The accounts: none when nothing was ever kept, and an error when something is kept that cannot be read,
+    /// which is not the same and must never be written over.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>>;
     /// Keeps exactly these accounts.
     fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()>;
 }
@@ -462,6 +463,10 @@ pub trait FundingSource: Send + Sync {
 /// The node's log. A caller passes a finished sentence, never a token, an endpoint, a request body or a query.
 pub trait Journal: Send + Sync {
     fn info(&self, event: &str, line: &str);
+    /// A line for the owner to act on; a journal that has no levels writes it as `info`.
+    fn warn(&self, event: &str, line: &str) {
+        self.info(event, line);
+    }
 }
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push

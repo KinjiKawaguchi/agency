@@ -269,7 +269,10 @@ fn unbound_policy(
     if config.federation.require_read_audience {
         return Err(UnboundRefusal::Required);
     }
-    if node.store().bound_readers().contains(account) {
+    if node
+        .bound_readers()
+        .is_ok_and(|kept| kept.contains(account))
+    {
         return Err(UnboundRefusal::Ratcheted);
     }
     Ok(())
@@ -311,17 +314,22 @@ pub fn status_lines(node: &Node) -> Vec<String> {
     if config.federation.require_read_audience {
         lines.push("Signed reads: only reads that name this node are taken (federation.requireReadAudience); the read of about is the exception".to_owned());
     }
-    let refused: Vec<Id> = node
-        .store()
-        .bound_readers()
-        .into_iter()
-        .filter(|account| !listed.contains(account))
-        .collect();
-    if !refused.is_empty() && !config.federation.require_read_audience {
-        lines.push(format!(
-            "Signed reads: no read that names no node is taken from {} (each has named this node)",
-            names(refused.iter().collect())
-        ));
+    match node.store().bound_readers() {
+        Err(error) => lines.push(format!(
+            "Signed reads: bound-readers.json cannot be read ({error}); it is left as it is, and reads that name no node are taken as before until it is mended or removed"
+        )),
+        Ok(kept) => {
+            let refused: Vec<Id> = kept
+                .into_iter()
+                .filter(|account| !listed.contains(account))
+                .collect();
+            if !refused.is_empty() && !config.federation.require_read_audience {
+                lines.push(format!(
+                    "Signed reads: no read that names no node is taken from {} (each has named this node)",
+                    names(refused.iter().collect())
+                ));
+            }
+        }
     }
     if !listed.is_empty() {
         lines.push(format!(
