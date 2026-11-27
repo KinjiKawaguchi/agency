@@ -6,7 +6,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use sha2::{Digest, Sha256};
 
-use common::access::{access_token, behind_access, PUBLIC_HOST};
+use common::access::{access_token, behind_access, behind_access_allowing_scheme, PUBLIC_HOST};
 use common::Running;
 use reqwest::header::HeaderMap;
 use reqwest::{redirect, Client, RequestBuilder, StatusCode};
@@ -126,7 +126,7 @@ async fn the_owner_is_sent_to_the_fixed_callback_with_a_code_and_never_the_token
 
 #[tokio::test]
 async fn for_a_host_without_a_universal_link_the_callback_is_the_apps_scheme() {
-    let running = behind_access(Some(APP_ID)).await;
+    let running = behind_access_allowing_scheme(Some(APP_ID)).await;
     let response = handoff(&running, &query(VERIFIER, "scheme"), "alice@example.com")
         .send()
         .await
@@ -138,6 +138,57 @@ async fn for_a_host_without_a_universal_link_the_callback_is_the_apps_scheme() {
         location,
         format!("agency-signin://callback#code={code}&state={STATE}")
     );
+}
+
+/// RED-15: the scheme's callback goes to the app that started the session, whatever app that is, and a starter picks
+/// its own challenge and holds its own verifier. So the node does not make a code for it unless its owner said so.
+#[tokio::test]
+async fn the_apps_scheme_is_refused_unless_the_owner_turned_it_on_and_no_code_is_made() {
+    let running = behind_access(Some(APP_ID)).await;
+    let response = handoff(&running, &query(VERIFIER, "scheme"), "alice@example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        header(response.headers(), "location").is_none(),
+        "no redirect, so no code"
+    );
+    let body = response.text().await.unwrap();
+    assert!(
+        body.contains("allowSchemeSignIn") && !body.contains("agency-signin"),
+        "{body}"
+    );
+    // Nothing was made, so nothing can be redeemed for the owner's token, and the universal link still works.
+    let code = code(&running, VERIFIER, "link").await;
+    let redeemed = redeem(&running, &code, VERIFIER, "198.51.100.1")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(redeemed.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn refusing_the_scheme_takes_no_place_among_the_codes_that_wait() {
+    let running = behind_access(Some(APP_ID)).await;
+    for _ in 0..80 {
+        let refused = handoff(&running, &query(VERIFIER, "scheme"), "alice@example.com");
+        assert_eq!(status(refused).await, StatusCode::BAD_REQUEST);
+    }
+    assert_eq!(
+        code_of(&running_location(&running).await).len(),
+        43,
+        "a sign-in still gets its code"
+    );
+}
+
+async fn running_location(running: &Running) -> String {
+    let response = handoff(running, &query(VERIFIER, "link"), "alice@example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    header(response.headers(), "location").unwrap().to_owned()
 }
 
 #[tokio::test]
@@ -360,7 +411,7 @@ async fn a_code_is_redeemed_once() {
 
 #[tokio::test]
 async fn a_wrong_verifier_gets_nothing_and_burns_the_code() {
-    let running = behind_access(Some(APP_ID)).await;
+    let running = behind_access_allowing_scheme(Some(APP_ID)).await;
     let code = code(&running, VERIFIER, "scheme").await;
     let stolen = redeem(&running, &code, OTHER_VERIFIER, "198.51.100.9")
         .send()

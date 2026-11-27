@@ -8,6 +8,7 @@ use crate::unseen;
 use crate::views::{self, is_addressed_to, Reader};
 use agency_proto::client::RelayedFor;
 use agency_proto::device::envelope_key;
+use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::Kind;
 use agency_proto::{
@@ -38,6 +39,10 @@ pub struct DecisionRecord {
     /// made before guests, which were all the node's own account's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by: Option<Id>,
+    /// The device that signed the envelope: its `signer`, which the node had checked against the member's
+    /// devices and the signature before it kept the record. Absent in records made before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<Id>,
 }
 
 impl DecisionRecord {
@@ -56,7 +61,10 @@ pub struct DecisionNote {
 }
 
 impl DecisionRecord {
-    pub(crate) fn of(envelope: &Envelope, note: DecisionNote, is_local: bool) -> Self {
+    /// The record of a decision whose envelope this node has verified: the signing device is the one the signed
+    /// document names, never a value a client sends beside it.
+    pub(crate) fn of(signed: &Signed<Envelope>, note: DecisionNote, is_local: bool) -> Self {
+        let envelope = &signed.body;
         Self {
             id: envelope.id.clone(),
             org: envelope.org.clone(),
@@ -70,6 +78,7 @@ impl DecisionRecord {
             at: envelope.at.clone(),
             is_local,
             by: Some(envelope.account.clone()),
+            signer: Some(signed.signer.clone()),
         }
     }
 }
@@ -231,6 +240,11 @@ pub(crate) async fn accept_envelope_for(
             "the envelope expired, or its time is too far ahead",
         ));
     }
+    if is_from_before_the_team_came(node, doc.as_ref(), envelope) {
+        return Err(Error::bad_request(
+            "the envelope was made before the team came to this node",
+        ));
+    }
     let _guard = node.write_lock().lock().await;
     if node.store().is_applied(&envelope.id) {
         return Ok((Accepted::Duplicate, None));
@@ -252,4 +266,13 @@ pub(crate) async fn accept_envelope_for(
     node.store()
         .record_applied(&envelope.id, &node.now_text())?;
     Ok((Accepted::Applied, on_behalf_of))
+}
+
+/// Whether `envelope` was made before its team was placed on the node it runs on now: it was made for the node the
+/// team ran on before, which received it, and which this node cannot know applied it.
+fn is_from_before_the_team_came(node: &Node, doc: Option<&SignedOrg>, envelope: &Envelope) -> bool {
+    let placed =
+        doc.and_then(|doc| crate::team_moves::placed_at(node, doc, &envelope.team, node.now()));
+    let made = agency_proto::clock::parse(&envelope.at);
+    matches!((made, placed), (Some(made), Some(placed)) if made < placed)
 }

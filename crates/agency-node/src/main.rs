@@ -265,6 +265,12 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     if !is_node_origin(&config.url) {
         bail!("--url must be http(s)://host[:port]");
     }
+    if agency_proto::runtime::is_reserved_name(&config.account.id) {
+        bail!(
+            "--account {} is a name a team runtime reserves; choose another account id",
+            config.account.id
+        );
+    }
     let key = data.create_key()?;
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
@@ -279,6 +285,12 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     }
     Ok(())
 }
+
+/// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
+/// move only spelled the same origin another way.
+const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
+whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
+the default port) changes nothing.";
 
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
@@ -719,6 +731,7 @@ async fn run(cli: Cli) -> Result<()> {
                 "Moved team {team} of org {org} to {origin} (version {})",
                 doc.body.version
             );
+            println!("{TEAM_MOVE_NOTE}");
         }
         Command::Invite {
             org,

@@ -57,6 +57,22 @@ pub async fn behind_access_with_runtime(
     Running,
     Arc<std::sync::Mutex<agency_adapters::memory::MemoryRuntimeState>>,
 ) {
+    behind_access_configured(app_id, false).await
+}
+
+/// `behind_access` for a node that lets the app sign in through its custom scheme (`allowSchemeSignIn`).
+#[allow(dead_code)]
+pub async fn behind_access_allowing_scheme(app_id: Option<&str>) -> Running {
+    behind_access_configured(app_id, true).await.0
+}
+
+async fn behind_access_configured(
+    app_id: Option<&str>,
+    allow_scheme_sign_in: bool,
+) -> (
+    Running,
+    Arc<std::sync::Mutex<agency_adapters::memory::MemoryRuntimeState>>,
+) {
     let (runtime, memory) = memory_runtime();
     memory
         .lock()
@@ -71,6 +87,7 @@ pub async fn behind_access_with_runtime(
         audience: AUDIENCE.into(),
         owner_email: "alice@example.com".into(),
         app_id: app_id.map(str::to_owned),
+        allow_scheme_sign_in,
     };
     running
         .node
