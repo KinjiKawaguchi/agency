@@ -8,6 +8,7 @@ use crate::unseen;
 use crate::views::{self, is_addressed_to, Reader};
 use agency_proto::client::RelayedFor;
 use agency_proto::device::envelope_key;
+use agency_proto::org::SignedOrg;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::Kind;
 use agency_proto::{
@@ -239,6 +240,11 @@ pub(crate) async fn accept_envelope_for(
             "the envelope expired, or its time is too far ahead",
         ));
     }
+    if is_from_before_the_team_came(node, doc.as_ref(), envelope) {
+        return Err(Error::bad_request(
+            "the envelope was made before the team came to this node",
+        ));
+    }
     let _guard = node.write_lock().lock().await;
     if node.store().is_applied(&envelope.id) {
         return Ok((Accepted::Duplicate, None));
@@ -260,4 +266,13 @@ pub(crate) async fn accept_envelope_for(
     node.store()
         .record_applied(&envelope.id, &node.now_text())?;
     Ok((Accepted::Applied, on_behalf_of))
+}
+
+/// Whether `envelope` was made before its team was placed on the node it runs on now: it was made for the node the
+/// team ran on before, which received it, and which this node cannot know applied it.
+fn is_from_before_the_team_came(node: &Node, doc: Option<&SignedOrg>, envelope: &Envelope) -> bool {
+    let placed =
+        doc.and_then(|doc| crate::team_moves::placed_at(node, doc, &envelope.team, node.now()));
+    let made = agency_proto::clock::parse(&envelope.at);
+    matches!((made, placed), (Some(made), Some(placed)) if made < placed)
 }

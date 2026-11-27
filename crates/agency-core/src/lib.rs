@@ -47,6 +47,7 @@ pub mod routes;
 pub mod seats;
 pub mod ships;
 pub mod signed_decisions;
+pub(crate) mod team_moves;
 pub mod teams;
 pub mod unseen;
 pub mod usage;
