@@ -605,7 +605,7 @@ export const en = {
   },
   metrics: {
     title: 'Response time of this node',
-    lead: 'How long this node took to answer, and how long the calls it makes took, by route group. Only the owner reads it, and it stays on this node. A time given for p50, p95, or p99 is the upper bound of the bucket the requests fell in, so it says at most: a duration is not known more exactly.',
+    lead: 'How long this node took to answer, how long the calls it makes took, and how long its clients waited for their own calls (the network is in that time), by route group. Only the owner reads it, and it stays on this node. A time given for p50, p95, or p99 is the upper bound of the bucket the requests fell in, so it says at most: a duration is not known more exactly.',
     period: 'Period',
     days: (count: number) => (count === 1 ? 'Last day' : `Last ${count} days`),
     unavailable: 'This node does not measure its response time yet.',
@@ -628,6 +628,8 @@ export const en = {
     groups: {
       title: 'Routes this node answers, by route group',
       callsTitle: 'Calls this node makes',
+      clientTitle: (who: string) => `What ${who} waited for`,
+      clients: { web: 'the web client', ios: 'the iPhone app', other: 'another client' },
       group: 'Route group',
       requests: 'Requests',
       errors: 'Errors',

@@ -1,15 +1,17 @@
 import { BUCKET_COUNT } from '../api/metricsApi'
 
-/** How the mock node's measurements look: the usual, nothing measured yet, or a node whose in-node reads are slow. */
-export type MetricsVariant = 'usual' | 'empty' | 'slow'
+/** How the mock node's measurements look: the usual, nothing measured yet, a node whose in-node reads are slow, or the usual with what the clients observed. */
+export type MetricsVariant = 'usual' | 'empty' | 'slow' | 'clients'
 
 interface Spec {
-  kind: 'serve' | 'call'
+  kind: 'serve' | 'call' | 'client'
   name: string
   group: string
   status: string
   isInNodeRead?: boolean
   peer?: string
+  /** Which client reported it (`client` series only). */
+  client?: 'web' | 'ios'
   /** Durations as `[bucket index, how many]`. */
   at: ReadonlyArray<readonly [number, number]>
 }
@@ -26,6 +28,15 @@ const usual: Spec[] = [
   { kind: 'call', name: 'runtime view', group: 'runtime', status: 'ok', at: [[7, 800], [9, 160], [11, 9]] },
   { kind: 'call', name: 'peer get_view', group: 'peer', status: '2xx', peer: 'node-b.example', at: [[5, 40], [6, 60], [9, 5]] },
   { kind: 'call', name: 'apns send', group: 'push', status: '2xx', at: [[6, 30], [7, 20]] },
+]
+
+/** The usual, and what the web client and the iPhone app observed of their own calls: the network is in it, so the same route takes longer than the node's own time and is no in-node read. */
+const withClients: Spec[] = [
+  ...usual,
+  { kind: 'client', client: 'ios', name: 'GET /api/orgs/{org}/teams/{team}/view', group: 'teams', status: '2xx', at: [[6, 200], [7, 90], [9, 12]] },
+  { kind: 'client', client: 'web', name: 'GET /api/me', group: 'desk', status: '2xx', at: [[3, 900], [5, 400], [7, 60]] },
+  { kind: 'client', client: 'web', name: 'GET /api/orgs/{org}/teams/{team}/view', group: 'teams', status: '2xx', at: [[5, 700], [6, 500], [8, 120], [10, 6]] },
+  { kind: 'client', client: 'web', name: 'GET /api/orgs/{org}/teams/{team}/usage', group: 'usage', status: 'network', at: [[14, 3]] },
 ]
 
 const slow: Spec[] = usual.map((spec) => (spec.isInNodeRead === true && spec.status === '2xx' && spec.group === 'teams' ? { ...spec, at: [[5, 100], [7, 700], [9, 200]] } : spec))
@@ -75,7 +86,7 @@ function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: numb
     return {
       hour: new Date(until.getTime() - (hours - index) * 3_600_000).toISOString(),
       count: calls,
-      errors: spec.status === '5xx' ? calls : 0,
+      errors: spec.status === '5xx' || spec.status === 'network' ? calls : 0,
       ...(isBeyond ? {} : { p95Ms: BOUNDS[shifted] }),
       ...(withBuckets ? { buckets } : {}),
     }
@@ -86,17 +97,18 @@ function hoursOf(spec: Spec, count: number, until: Date, days: number, p95: numb
 export function metricsAnswer(now: Date, days: number, variant: MetricsVariant, hourBucketsOf: (group: string) => boolean = () => false): unknown {
   const until = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000 + 3_600_000)
   const from = new Date(until.getTime() - days * 24 * 3_600_000)
-  const specs = variant === 'empty' ? [] : variant === 'slow' ? slow : usual
+  const specs = variant === 'empty' ? [] : variant === 'slow' ? slow : variant === 'clients' ? withClients : usual
   const series = specs.map((spec) => {
     const buckets = bucketsOf(spec.at)
     const count = buckets.reduce((sum, one) => sum + one, 0)
-    const isError = spec.status === '5xx'
+    const isError = spec.status === '5xx' || spec.status === 'network'
     return {
       kind: spec.kind,
       name: spec.name,
       status: spec.status,
       group: spec.group,
       ...(spec.peer === undefined ? {} : { peer: spec.peer }),
+      ...(spec.client === undefined ? {} : { client: spec.client }),
       ...(spec.kind === 'serve' ? { isInNodeRead: spec.isInNodeRead === true } : {}),
       count,
       errors: isError ? count : 0,

@@ -47,7 +47,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     // mock node (the desk's times too), for the dev server and the screenshots.
     ...(outcomes === '1' ? { now: new Date('2026-11-24T12:00:00Z'), evaluation: true } : {}),
     webPush: webPush === '1',
-    ...(metrics === 'usual' || metrics === 'empty' || metrics === 'slow' || metrics === 'absent' ? { metrics } : {}),
+    ...(metrics === 'usual' || metrics === 'empty' || metrics === 'slow' || metrics === 'clients' || metrics === 'absent' ? { metrics } : {}),
     webPushFailing: webPushFailing === '1',
     ...(query?.get('orgs') === 'more' ? { moreOrgs: true } : {}),
     // A claim link for one seat (agency#201): its code, and how a claim of it ends.

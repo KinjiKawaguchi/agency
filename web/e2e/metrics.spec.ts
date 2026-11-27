@@ -42,3 +42,21 @@ for (const [theme, width, height] of [['light', 1280, 900], ['dark', 375, 812]] 
   })
 }
 
+
+for (const [theme, width, height] of [['light', 1280, 900], ['dark', 1280, 900], ['light', 390, 844], ['dark', 390, 844]] as const) {
+  test(`draws what the web client and the iPhone app waited for, apart from the node’s own times, in ${theme} at ${width}px, with no sideways scroll`, async ({ page, request }) => {
+    mkdirSync(DIRECTORY, { recursive: true })
+    await resetNode(request, { evaluation: true, metrics: 'clients' })
+    await page.setViewportSize({ width, height })
+    await page.goto(`/evaluation?theme=${theme}`)
+    await expect(page.getByRole('heading', { level: 3, name: 'What the web client waited for' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: 'What the iPhone app waited for' })).toBeVisible()
+    // The node's own read of `GET /api/me` is tagged; what a client waited for the same route is not.
+    const web = page.locator('.mt-card', { has: page.getByRole('heading', { name: 'What the web client waited for' }) })
+    await expect(web.getByText('In-node read')).toHaveCount(0)
+    const ios = page.locator('.mt-card', { has: page.getByRole('heading', { name: 'What the iPhone app waited for' }) })
+    await web.screenshot({ path: `${DIRECTORY}/metrics-clients-web-${theme}-${width}.png`, animations: 'disabled' })
+    await ios.screenshot({ path: `${DIRECTORY}/metrics-clients-ios-${theme}-${width}.png`, animations: 'disabled' })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}

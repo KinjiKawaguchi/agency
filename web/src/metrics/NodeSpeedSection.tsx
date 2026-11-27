@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
 import { failureText } from '../api/failure'
-import type { Metrics } from '../api/metricsApi'
+import type { LatencySeries, Metrics } from '../api/metricsApi'
 import { metricsQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { Skeleton } from '../shared/Skeleton'
@@ -48,6 +48,22 @@ export function NodeSpeedSection() {
   )
 }
 
+/** What each client that reports waited for its own calls, apart: the web client and the apps are not one reader, and a network in between is in every figure. */
+function ClientTables({ series }: { series: readonly LatencySeries[] }) {
+  const { t } = useI18n()
+  const text = t.metrics.groups
+  const clients = [...new Set(series.filter((one) => one.kind === 'client').map((one) => one.client))].sort((a, b) => clientOrder(a) - clientOrder(b))
+  return (
+    <>
+      {clients.map((client) => (
+        <GroupTable key={client ?? 'none'} series={series} client={client} kind="client" title={text.clientTitle(client === 'web' ? text.clients.web : client === 'ios' ? text.clients.ios : text.clients.other)} />
+      ))}
+    </>
+  )
+}
+
+const clientOrder = (client: string | undefined): number => (client === 'web' ? 0 : client === 'ios' ? 1 : 2)
+
 function Report({ metrics }: { metrics: Metrics }) {
   const { t } = useI18n()
   if (metrics.series.length === 0) return <p className="empty">{t.metrics.none}</p>
@@ -57,6 +73,7 @@ function Report({ metrics }: { metrics: Metrics }) {
       <Objectives objectives={metrics.objectives} />
       <GroupTable series={metrics.series} kind="serve" title={t.metrics.groups.title} />
       <GroupTable series={metrics.series} kind="call" title={t.metrics.groups.callsTitle} />
+      <ClientTables series={metrics.series} />
       <TrendCard series={metrics.series} from={metrics.from /* shown-ok(period): the first time of the range of the series */} until={metrics.until} budgetMs={metrics.budgetInNodeReadP95Ms} />
     </>
   )
