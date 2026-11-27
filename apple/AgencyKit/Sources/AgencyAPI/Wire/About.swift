@@ -26,7 +26,8 @@ public struct About: Decodable, Equatable, Sendable {
         // What decides compatibility is read apart from the capabilities: a form this app does not know costs only the comparison.
         let contracts = try? container.nestedContainer(keyedBy: ContractKeys.self, forKey: .contracts)
         clientApi = try? contracts?.decode(ClientApiRange.self, forKey: .clientApi)
-        oldestApp = try? container.decodeIfPresent([String: String].self, forKey: .oldestApp)
+        // A floor of one platform that is not a text costs that platform's floor, not the others'.
+        oldestApp = (try? container.decodeIfPresent([String: Lenient<String>].self, forKey: .oldestApp))?.compactMapValues(\.value)
     }
 
     /// Whether the node lists `capability`. A node that does not say is taken not to have it.
@@ -38,6 +39,15 @@ public struct About: Decodable, Equatable, Sendable {
     public enum Capability: String, Sendable {
         /// A push registration may name its device (`device`), and the node drops the registrations of a device that is removed.
         case pushDevice
+    }
+}
+
+/// A value that is `nil` when it is not the form asked for, so that one entry of a dictionary does not take the others with it.
+private struct Lenient<Value: Decodable & Sendable>: Decodable, Sendable {
+    let value: Value?
+
+    init(from decoder: any Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(Value.self)
     }
 }
 

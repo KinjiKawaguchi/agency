@@ -37,12 +37,18 @@ struct AboutTests {
         }
         for bad in [
             #"{"capabilities":["pushDevice"],"oldestApp":["ios"]}"#,
-            #"{"capabilities":["pushDevice"],"oldestApp":{"ios":3}}"#,
             #"{"capabilities":["pushDevice"],"oldestApp":"1.0.0"}"#,
         ] {
             let about = try decode(bad)
             #expect(about.has(.pushDevice) && about.oldestApp == nil, Comment(rawValue: bad))
         }
+    }
+
+    @Test("a floor that is not a text costs that platform's floor and no other")
+    func floorPerPlatform() throws {
+        let about = try decode(#"{"capabilities":[],"oldestApp":{"ios":"1.2.0","android":3,"macos":null,"other":["1"]}}"#)
+        #expect(about.oldestApp == ["ios": "1.2.0"])
+        #expect(try decode(#"{"capabilities":[],"oldestApp":{"ios":3}}"#).oldestApp?["ios"] == nil)
     }
 
     @Test("capabilities stay required: an answer without them is not an About")
