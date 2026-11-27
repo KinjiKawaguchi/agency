@@ -292,7 +292,7 @@ impl HourSeries {
     pub fn is_consistent(&self) -> bool {
         self.buckets.as_ref().is_none_or(|buckets| {
             buckets.len() == BUCKETS
-                && buckets.iter().sum::<u64>() == self.count
+                && bucket_total(buckets) == Some(self.count)
                 && self.p95_ms == percentile_ms(buckets, 95)
         })
     }
@@ -382,14 +382,22 @@ pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
     percentile_bucket(buckets, percent).and_then(|index| BUCKET_BOUNDS_MS.get(index).copied())
 }
 
+/// How many durations the buckets hold, or `None` when they hold more than a `u64` counts: a count that
+/// large is not one a node recorded, so what carries it is read as inconsistent and not as a wrapped sum.
+pub fn bucket_total(buckets: &[u64]) -> Option<u64> {
+    buckets
+        .iter()
+        .try_fold(0u64, |total, count| total.checked_add(*count))
+}
+
 /// The index of the bucket the `percent`th percentile of the durations in `buckets` lies in, by nearest rank.
 /// `None` without durations or for a percent outside 1 to 100.
 pub fn percentile_bucket(buckets: &[u64], percent: u64) -> Option<usize> {
-    let total: u64 = buckets.iter().sum();
+    let total = bucket_total(buckets)?;
     if total == 0 || !(1..=100).contains(&percent) {
         return None;
     }
-    let rank = (total * percent).div_ceil(100);
+    let rank = u64::try_from((u128::from(total) * u128::from(percent)).div_ceil(100)).ok()?;
     let mut seen = 0;
     for (index, count) in buckets.iter().enumerate() {
         seen += count;
@@ -432,7 +440,7 @@ impl Series {
             && errors_agree
             && self.by_hour.iter().all(HourSeries::is_consistent)
             && self.buckets.len() == BUCKETS
-            && self.buckets.iter().sum::<u64>() == self.count
+            && bucket_total(&self.buckets) == Some(self.count)
             && self.p50_ms == percentile_ms(&self.buckets, 50)
             && self.p95_ms == percentile_ms(&self.buckets, 95)
             && self.p99_ms == percentile_ms(&self.buckets, 99)
