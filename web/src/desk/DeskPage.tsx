@@ -1,22 +1,20 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../api/client'
-import { CannotSignError, useDecide, useSigningState } from '../device/useDecide'
+import { CannotSignError, useSignDecision, useSigningState } from '../device/useDecide'
 import { SignInExpiredError } from '../api/session'
 import type { Messages } from '../i18n/en'
-import { DECISIONS_KEY, TEAM_KEY, useTeams } from '../api/queries'
-import { teamKey } from '../api/teams'
+import { useTeams } from '../api/queries'
+import { requestKey, teamKey } from '../api/teams'
+import { useOutbox } from '../outbox/OutboxProvider'
 import { failureText } from '../api/failure'
 import { useI18n } from '../i18n'
 import { RecoveryNotice } from '../recovery/RecoveryNotice'
 import { RootChangesNotice } from '../rootchange/RootChangesNotice'
 import { ReplicaNotice } from '../shared/ReplicaNotice'
-import { printable } from '../shared/printable'
 import { useToast } from '../shared/Toasts'
 import { Briefing } from './Briefing'
 import { draftOf, loadDrafts, saveDrafts, withDraft, withoutDraft, type Draft, type Drafts } from './drafts'
-import { isComment } from './comment'
 import { canDecide, openItems, resolveSelection, situationOf, stepSelection, type DeskItem } from './items'
 import { Paper } from './Paper'
 import { Pile, PileSkeleton } from './Pile'
@@ -24,9 +22,6 @@ import { asGiven } from '../shared/printable'
 import { RecentDecisions } from './RecentDecisions'
 import { useDeskKeys } from './useDeskKeys'
 import './desk.css'
-
-/** How long a pressed seal stays visible before the answered item leaves the pile. */
-export const SEAL_HOLD_MS = 1600
 
 /** The option the draft picked, with its label as the node gave it (what is sent back is never the shown form). */
 function chosenOf(item: DeskItem, draft: Draft): { choice?: string; choiceLabel?: string } {
@@ -48,23 +43,21 @@ interface DeskPageProps {
   onSelect: (key: string) => void
   /** Shows only this team's requests (`org/team`), as a link from the overview does. */
   team?: string | undefined
-  sealHoldMs?: number
 }
 
-export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHoldMs = SEAL_HOLD_MS }: DeskPageProps) {
+export function DeskPage({ selected: requested, onSelect, team: onlyTeam }: DeskPageProps) {
   const { t } = useI18n()
   const { me, teams: everyTeam, isLoading, error } = useTeams()
   const scope = onlyTeam === undefined ? undefined : everyTeam.find((team) => teamKey(team) === onlyTeam)
   const teams = useMemo(() => (scope === undefined ? everyTeam : [scope]), [everyTeam, scope])
-  const decide = useDecide()
-  const queryClient = useQueryClient()
+  const sign = useSignDecision()
+  const outbox = useOutbox()
   const toast = useToast()
   const [drafts, setDrafts] = useState<Drafts>(loadDrafts)
-  const [sealed, setSealed] = useState<ReadonlyMap<string, { at: string; isComment: boolean }>>(new Map())
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set())
-  const timers = useRef<number[]>([])
-  useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
   useEffect(() => saveDrafts(drafts), [drafts])
+  // A decision the owner gives up before the node took it comes back on the pile with what was typed.
+  useEffect(() => outbox.onDiscard((entry) => setDrafts((now) => withDraft(now, entry.itemKey, entry.draft))), [outbox])
 
   /** Opens the document; where the paper sits below the pile, brings it into view so the tap visibly does something. */
   const pick = useCallback(
@@ -84,17 +77,34 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
     async (item: DeskItem) => {
       if (!canDecide(item)) return
       const draft = draftOf(drafts, item.key)
-      const asComment = isComment(item.request.options.length, draft)
       const hasAnswer = draft.text.trim() !== '' || draft.choice !== null
       if (!hasAnswer) return toast(item.request.kind === 'pendingDecision' ? t.desk.paper.needDecision : t.desk.paper.needAnswer, 'error')
       setSending((keys) => new Set([...keys, item.key]))
       try {
-        const result = await decide({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: asGiven(item.request, 'title') ?? item.request.title, text: draft.text.trim(), ...chosenOf(item, draft) })
+        const chosen = chosenOf(item, draft)
+        const signed = await sign({ org: item.view.org, team: item.view.team, answerWith: item.request.answerWith, title: asGiven(item.request, 'title') ?? item.request.title, text: draft.text.trim(), ...chosen })
+        const chosenLabel = chosen.choice === undefined ? undefined : item.request.options.find((one) => one.key === chosen.choice)?.text
+        // The decision is signed and kept: the request leaves the pile and the next one is open at once, and the tray sends it.
+        outbox.enqueue({
+          id: signed.envelope.body.id,
+          org: item.view.org,
+          team: item.view.team,
+          itemKey: requestKey(item.view, item.request),
+          itemTitle: item.request.title,
+          ...(chosenLabel === undefined ? {} : { chosenLabel }),
+          text: draft.text.trim(),
+          draft,
+          envelope: signed.envelope,
+          title: signed.title,
+          ...(signed.choiceLabel === undefined ? {} : { choiceLabel: signed.choiceLabel }),
+          createdAt: new Date().toISOString(),
+          attempts: 0,
+          phase: 'sending',
+        })
         setDrafts((current) => withoutDraft(current, item.key))
-        setSealed((current) => new Map([...current, [item.key, { at: new Date().toISOString(), isComment: asComment }]]))
-        toast(result.outcome === 'queued' ? [t.desk.paper.queued, result.message].filter(Boolean).join(' ') : (asComment ? t.desk.paper.sentComment : t.desk.paper.sent)(item.drafter?.label ?? printable(item.request.from)))
-        void queryClient.invalidateQueries({ queryKey: DECISIONS_KEY })
-        timers.current.push(window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: TEAM_KEY }), sealHoldMs))
+        const after = stepSelection(items, item.key, 1)
+        const next = after !== item.key ? after : stepSelection(items, item.key, -1)
+        if (next !== undefined && next !== item.key) onSelect(next)
       } catch (failure) {
         const reason = failure instanceof Error ? failure.message : String(failure)
         toast(sendFailureText(t, failure, reason), 'error')
@@ -102,7 +112,7 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
         setSending((keys) => new Set([...keys].filter((key) => key !== item.key)))
       }
     },
-    [decide, drafts, queryClient, sealHoldMs, t, toast],
+    [drafts, items, onSelect, outbox, sign, t, toast],
   )
 
   useDeskKeys({
@@ -111,11 +121,11 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
       if (next !== undefined) onSelect(next)
     },
     onPick: (position) => {
-      const option = current !== undefined && canDecide(current) && !sealed.has(current.key) ? current.request.options[position - 1] : undefined
+      const option = current !== undefined && canDecide(current) ? current.request.options[position - 1] : undefined
       if (current !== undefined && option !== undefined) setDrafts((now) => withDraft(now, current.key, { choice: option.key }))
     },
     onSend: () => {
-      if (current !== undefined && !sealed.has(current.key) && !sending.has(current.key)) void send(current)
+      if (current !== undefined && !sending.has(current.key)) void send(current)
     },
   })
 
@@ -150,8 +160,8 @@ export function DeskPage({ selected: requested, onSelect, team: onlyTeam, sealHo
             orgLabel={orgLabelOf(current.view.org)}
             viewerLabel={me.account.label}
             draft={draftOf(drafts, current.key)}
-            sealedAt={sealed.get(current.key)?.at ?? null}
-            wasComment={sealed.get(current.key)?.isComment ?? false /* stand-in-ok(device): what this device sealed in this page, not the node's */}
+            sealedAt={null}
+            wasComment={false}
             isSending={sending.has(current.key)}
             signing={signing}
             onChange={(change: Partial<Draft>) => setDrafts((now) => withDraft(now, current.key, change))}

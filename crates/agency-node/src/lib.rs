@@ -180,6 +180,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
             ))
         }),
         notifier,
+        journal: Arc::new(logger.clone()),
         root_keys: match overrides.root_keys {
             Some(root_keys) => root_keys,
             None => root_keys(config.root_keys)?,

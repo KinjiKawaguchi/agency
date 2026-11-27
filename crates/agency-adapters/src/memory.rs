@@ -1,7 +1,9 @@
 //! In-memory test doubles: a clock that moves only when told to, counting randomness, and a team runtime.
 use agency_core::config::HostedTeam;
 use agency_core::delivery::DeliveryFacts;
-use agency_core::ports::{Clock, DeliveryError, DeliverySource, Notifier, Random, TeamRuntime};
+use agency_core::ports::{
+    Clock, DeliveryError, DeliverySource, Journal, Notifier, Random, TeamRuntime,
+};
 use agency_core::push::{Notice, PushError};
 use agency_core::web_push::WebSubscription;
 use agency_proto::activity::{Activity, ActivityEvent};
@@ -299,6 +301,13 @@ impl TeamRuntime for MemoryRuntime {
             events,
         })
     }
+}
+
+/// Writes nothing: the log of a node that is not kept.
+pub struct NoJournal;
+
+impl Journal for NoJournal {
+    fn info(&self, _event: &str, _line: &str) {}
 }
 
 /// Sends nothing: the notifier of a node without an APNs key.

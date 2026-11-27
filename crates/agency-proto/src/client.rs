@@ -550,6 +550,11 @@ pub struct PushTokenInput {
     /// none. Repeated kinds count once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<PushEvent>>,
+    /// The device (`Device.id` in the org definition) this registration belongs to. The node accepts it only
+    /// for a current device of the account, and drops the registration when a definition removes that device.
+    /// Absent for a registration that names none; it then stays until it is removed by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<Id>,
 }
 
 /// A registered device token. In a list, `token` holds only its last 8 characters.
@@ -557,6 +562,9 @@ pub struct PushTokenInput {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PushToken {
+    /// A hash of the token: what a DELETE can name when only the last 8 characters of the token are known.
+    #[serde(default)]
+    pub id: String,
     pub token: String,
     pub environment: PushEnvironment,
     pub label: String,
@@ -574,6 +582,10 @@ pub struct PushToken {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub last_failure: Option<PushFailure>,
+    /// The device it belongs to; left out for a token registered without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub device: Option<Id>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -609,6 +621,11 @@ pub struct PushSubscriptionInput {
     /// The kinds of notification this subscription wants; as for `PushTokenInput`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<PushEvent>>,
+    /// The device (`Device.id` in the org definition) this registration belongs to. The node accepts it only
+    /// for a current device of the account, and drops the registration when a definition removes that device.
+    /// Absent for a registration that names none; it then stays until it is removed by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<Id>,
 }
 
 /// A registered Web Push subscription. The keys are never given back, and `endpoint` is shortened to its
@@ -634,6 +651,10 @@ pub struct PushSubscription {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub last_failure: Option<PushFailure>,
+    /// The device it belongs to; left out for a subscription registered without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub device: Option<Id>,
 }
 
 /// A notice the push service did not take: when, and the reason the node can give without the service's words.
