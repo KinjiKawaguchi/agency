@@ -11,7 +11,7 @@ use crate::routes;
 use crate::unseen;
 use agency_proto::client::{
     DeviceChangeOutcome, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput,
-    OrgDevices,
+    GuestRef, OrgDevices,
 };
 use agency_proto::clock::OffsetDateTime;
 use agency_proto::clock::{self, Duration};
@@ -36,6 +36,9 @@ pub struct DeviceRequestRecord {
     pub label: String,
     pub public_key: PublicKey,
     pub requested_at: String,
+    /// The hosted member the device asks to be added for, and its org; left out for the node's own account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest: Option<GuestRef>,
 }
 
 /// The orgs this node's account belongs to.
@@ -71,18 +74,26 @@ fn is_added_everywhere(orgs: &[SignedOrg], account: &Id, key: &PublicKey) -> boo
     })
 }
 
-/// Requests that have not expired and are not yet added in every org.
-fn open_requests(node: &Node) -> Vec<DeviceRequestRecord> {
-    let (orgs, account, now) = (my_orgs(node), node.account(), node.now());
-    let is_waiting = |record: &DeviceRequestRecord| {
-        let is_recent = clock::parse(&record.requested_at)
-            .is_some_and(|at| now - at <= Duration::seconds(REQUEST_SECONDS));
-        is_recent && !is_added_everywhere(&orgs, &account, &record.public_key)
+/// Whether a request has not expired and its device is not yet added: in every org of the node's account
+/// for the owner's, and in its org for a guest's hosted member.
+fn is_waiting(node: &Node, record: &DeviceRequestRecord) -> bool {
+    let is_recent = clock::parse(&record.requested_at)
+        .is_some_and(|at| node.now() - at <= Duration::seconds(REQUEST_SECONDS));
+    let is_added = match &record.guest {
+        None => is_added_everywhere(&my_orgs(node), &node.account(), &record.public_key),
+        Some(guest) => node
+            .store()
+            .load_org(&guest.org)
+            .is_some_and(|doc| is_added_everywhere(&[doc], &guest.member, &record.public_key)),
     };
-    node.store()
-        .device_requests()
-        .into_iter()
-        .filter(is_waiting)
+    is_recent && !is_added
+}
+
+/// The waiting requests of one scope: the owner's (`None`), or one guest's.
+fn open_requests(node: &Node, scope: &Option<GuestRef>) -> Vec<DeviceRequestRecord> {
+    let records = node.store().device_requests().into_iter();
+    records
+        .filter(|record| &record.guest == scope && is_waiting(node, record))
         .collect()
 }
 
@@ -104,6 +115,17 @@ fn is_label(label: &str) -> bool {
 
 /// Records a device that asks to be added, and answers with its pairing code.
 pub fn request_device(node: &Node, input: DeviceRequestInput) -> Result<DeviceRequest> {
+    request_device_as(node, &crate::guests::Caller::Owner, input)
+}
+
+/// `request_device` for the account the caller acts as: the node's own, or the hosted member a guest is.
+/// Each has its own requests, at most `MAX_REQUESTS` for an hour, and never sees another's.
+pub fn request_device_as(
+    node: &Node,
+    caller: &crate::guests::Caller,
+    input: DeviceRequestInput,
+) -> Result<DeviceRequest> {
+    let scope = caller.guest_of();
     let label = input.label.trim().to_owned();
     if !is_label(&label) {
         return Err(Error::bad_request("the device label is 1 to 80 characters"));
@@ -115,14 +137,21 @@ pub fn request_device(node: &Node, input: DeviceRequestInput) -> Result<DeviceRe
         label,
         public_key: input.public_key,
         requested_at: node.now_text(),
+        guest: scope.clone(),
     };
-    let others = open_requests(node)
+    let elsewhere = node
+        .store()
+        .device_requests()
+        .into_iter()
+        .filter(|one| one.guest != scope && is_waiting(node, one));
+    let own = open_requests(node, &scope)
         .into_iter()
         .filter(|one| one.public_key != record.public_key);
-    let mut kept: Vec<DeviceRequestRecord> = others.collect();
-    kept.push(record.clone());
-    let start = kept.len().saturating_sub(MAX_REQUESTS);
-    node.store().save_device_requests(&kept[start..])?;
+    let mut mine: Vec<DeviceRequestRecord> = own.collect();
+    mine.push(record.clone());
+    let start = mine.len().saturating_sub(MAX_REQUESTS);
+    let kept: Vec<DeviceRequestRecord> = elsewhere.chain(mine.drain(start..)).collect();
+    node.store().save_device_requests(&kept)?;
     to_request(record)
 }
 
@@ -137,7 +166,7 @@ pub fn device_list(node: &Node) -> Result<DeviceList> {
             org: doc.body.org,
         })
         .collect();
-    let requests = open_requests(node)
+    let requests = open_requests(node, &None)
         .into_iter()
         .map(to_request)
         .collect::<Result<_>>()?;
@@ -429,5 +458,16 @@ fn add_change(
 
 /// Open requests, for the terminal to list.
 pub fn pending_requests(node: &Node) -> Result<Vec<DeviceRequest>> {
-    open_requests(node).into_iter().map(to_request).collect()
+    open_requests(node, &None)
+        .into_iter()
+        .map(to_request)
+        .collect()
+}
+
+/// The devices of a guest's hosted member that wait to be added: its own requests, never the owner's.
+pub fn guest_requests(node: &Node, guest: &GuestRef) -> Result<Vec<DeviceRequest>> {
+    open_requests(node, &Some(guest.clone()))
+        .into_iter()
+        .map(to_request)
+        .collect()
 }
