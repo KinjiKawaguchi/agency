@@ -32,6 +32,7 @@ fn pull_request(
         has_issue,
         issue_started_at: in_progress.map(at),
         closes_incident: false,
+        work_type: None,
     }
 }
 
@@ -390,4 +391,26 @@ fn the_same_facts_fall_on_other_days_in_another_time_zone() {
         counts(1, 1, 0, 0),
         "in UTC the fix merged at 16:00 on the 22nd"
     );
+}
+
+#[test]
+fn a_board_option_names_a_work_type_by_its_name_alone() {
+    use agency_proto::view::WorkType::*;
+    for (option, expected) in [
+        ("New feature", Some(NewFeature)),
+        ("new_feature", Some(NewFeature)),
+        ("NEW-FEATURE", Some(NewFeature)),
+        ("Improvement", Some(Improvement)),
+        ("Maintenance", Some(Maintenance)),
+        ("Debt", Some(Debt)),
+        ("Tech debt", Some(Debt)),
+        ("tech-debt", Some(Debt)),
+        ("Incident", Some(Incident)),
+        ("Technical debt", None),
+        ("Bug", None),
+        ("", None),
+        ("newFeatures", None),
+    ] {
+        assert_eq!(board_work_type(option), expected, "{option:?}");
+    }
 }

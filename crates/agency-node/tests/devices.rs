@@ -145,8 +145,9 @@ async fn the_terminal_adds_the_first_device_and_only_devices_decide() {
     let (status, result) = send(&alice, path, &signed_by(envelope("alice", "r-1"), &phone)).await;
     assert_eq!(
         (status, result["outcome"].as_str()),
-        (StatusCode::OK, Some("applied"))
+        (StatusCode::ACCEPTED, Some("queued"))
     );
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
     assert_eq!(memory.lock().unwrap().applied[0].by, id("alice"));
     let log = body(get(&alice, "/api/decisions").send().await.unwrap())
         .await
@@ -301,8 +302,9 @@ async fn a_members_devices_are_added_and_removed_through_the_roots_node() {
     let (status, result) = send(&bob, path, &signed_by(envelope("bob", "r-1"), &phone)).await;
     assert_eq!(
         (status, result["outcome"].as_str()),
-        (StatusCode::OK, Some("delivered"))
+        (StatusCode::ACCEPTED, Some("queued"))
     );
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
     assert_eq!(
         memory.lock().unwrap().applied[0].by,
         id("bob"),
