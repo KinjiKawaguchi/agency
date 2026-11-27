@@ -3,7 +3,7 @@
 //! the same use cases as the owner-only routes, so the limits are the same.
 use agency_core::{outcomes, Node};
 use agency_proto::observation::{Observation, ObservationInput, Source};
-use agency_proto::org::{printable, printable_text};
+use agency_proto::org::printable;
 use agency_proto::{Date, Id};
 use anyhow::Result;
 use clap::Args;
@@ -70,7 +70,7 @@ fn entry_line(one: Observation) -> String {
     };
     let note = one
         .note
-        .map_or_else(String::new, |note| format!(" ({})", printable_text(&note)));
+        .map_or_else(String::new, |note| format!(" ({})", printable(&note)));
     format!(
         "{}  {}  entered {} by {} {source}{note}",
         one.date.as_str(),
@@ -118,16 +118,21 @@ mod tests {
     }
 
     #[test]
-    fn what_someone_else_wrote_is_printed_without_what_hides_or_reorders_a_line() {
+    fn what_someone_else_wrote_is_printed_on_one_line_without_what_hides_or_reorders_it() {
         let line = entry_line(entry(
             Source::Connector {
                 name: "bi\u{202E}lling\n[signed]".into(),
             },
             Some("see\u{202E}this\tnote\nsecond line\u{1b}[2J"),
         ));
-        // A name is one word of a line: a line break in it is a mark. A note is text: its tab and line break stay.
+        // The history is one line for each number: a line break or a tab in a name or a note is a mark, so that none forges a second record.
         assert!(line.contains("from bi?lling?[signed]"), "{line}");
-        assert!(line.contains("(see?this\tnote\nsecond line?[2J)"), "{line}");
-        assert!(!line.contains('\u{202E}') && !line.contains('\u{1b}'));
+        assert!(line.contains("(see?this?note?second line?[2J)"), "{line}");
+        assert!(
+            !line.contains('\u{202E}')
+                && !line.contains('\u{1b}')
+                && !line.contains('\n')
+                && !line.contains('\t')
+        );
     }
 }
