@@ -31,6 +31,13 @@ struct AnswerForRowTests {
         #expect(RequestRow.answerLine(of: item("  Dan (tax) ")) == "Dan (tax) の代理で答える")
     }
 
+    @Test("a seat's request of a team on another node, for a reader the team does not name, has its line too")
+    func remoteTeam() {
+        let replica: [String: Any] = ["kind": "replica", "fetchedAt": "2026-11-26T09:00:00Z", "triedAt": "2026-11-26T09:00:30Z"]
+        let team = UIFixtures.team(extra: [seat], mine: ["r-seat"], relayedFor: ["r-seat": "Dan (tax)"], viewer: nil, source: replica)
+        #expect(RequestRow.answerLine(of: UIFixtures.item("r-seat", in: team)) == "Dan (tax) の代理で答える")
+    }
+
     @Test("a label that looks like markup or has no break is shown as the text it is, whole")
     func oddLabel() {
         let odd = "<b>Dan</b> **x** " + String(repeating: "x", count: 70)

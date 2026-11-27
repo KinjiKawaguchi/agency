@@ -36,6 +36,20 @@ struct AnswerForTests {
         #expect(try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" }).answersFor == odd)
     }
 
+    @Test("a team on another node, read from a copy, and a reader the team does not name: the seat's request is theirs and says whom it is for")
+    func remoteTeamWithoutViewer() throws {
+        let replica: [String: Any] = ["kind": "replica", "fetchedAt": "2026-11-26T09:00:00Z", "triedAt": "2026-11-26T09:00:30Z"]
+        let team = Team(snapshot: Teams.snapshot(
+            viewer: nil, mine: ["r-seat"], source: replica, addRequests: [seat], relayedFor: ["r-seat": "Dan (tax)"]
+        ))
+        #expect(team.isReplica && team.viewer == nil)
+        let item = try #require(Desk.openItems([team]).first { $0.request.id == "r-seat" })
+        #expect(item.isMine && item.answersFor == "Dan (tax)")
+        #expect(Desk.waitingCount([team]) == 1, "it counts on the desk and the icon: it is theirs to answer")
+        let others = try #require(Desk.openItems([team]).first { $0.request.id == Teams.questionID })
+        #expect(!others.isMine && others.answersFor == nil, "what the team addresses to someone else is not theirs and says nothing")
+    }
+
     @Test("the words are the web's")
     func words() {
         #expect(Ja.Desk.answerFor("Dan (tax)") == "Dan (tax) の代理で答える")
