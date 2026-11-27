@@ -18,12 +18,14 @@ fn device_ids_of(node: &Node, whose: Option<&GuestRef>) -> Vec<Id> {
     let Some(guest) = whose else {
         return current_device_ids(node);
     };
-    node.store().load_org(&guest.org).map_or_else(Vec::new, |doc| {
-        my_devices(&doc.body, &guest.member)
-            .iter()
-            .map(|device| device.id.clone())
-            .collect()
-    })
+    node.store()
+        .load_org(&guest.org)
+        .map_or_else(Vec::new, |doc| {
+            my_devices(&doc.body, &guest.member)
+                .iter()
+                .map(|device| device.id.clone())
+                .collect()
+        })
 }
 
 /// The device a registration names, if it is one of the current devices of whoever registers it.
