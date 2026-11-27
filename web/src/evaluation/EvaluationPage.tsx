@@ -6,10 +6,10 @@ import { evaluationQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { NodeSpeedSection } from '../metrics/NodeSpeedSection'
 import { EffortSection } from './EffortSection'
+import { PERIODS } from './periods'
 import { TeamEvaluation } from './TeamEvaluation'
 import './evaluation.css'
 
-export const PERIODS = [14, 30, 90] as const
 const DEFAULT_DAYS = 14
 
 interface PageProps {

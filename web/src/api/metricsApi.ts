@@ -9,12 +9,17 @@ import type { ObjectiveResult, ObjectiveState } from './clientApi'
 
 export type SeriesKind = 'serve' | 'call' | 'client'
 
+/** The longest range whose hours the node gives, in days. */
+export const HOURS_UP_TO_DAYS = 7
+
 export interface HourSeries {
   hour: string
   count: number
   errors: number
   /** The upper bound of the bucket; left out when the hour's p95 is beyond the last bucket. */
   p95Ms?: number
+  /** `BUCKET_COUNT` counts that add up to the hour's `count`, as the period's; only when the page asked for them and the node gives them. */
+  buckets?: number[]
 }
 
 /** One kind, name, and status (and peer or client) of what the node measured. */
