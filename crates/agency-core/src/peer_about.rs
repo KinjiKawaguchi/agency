@@ -103,6 +103,15 @@ pub async fn refresh(node: &Node, definition: &OrgDefinition) -> Result<()> {
     for origin in &origins {
         if is_due(kept.get(origin), node.now()) {
             let next = read_one(node, org, origin, kept.get(origin)).await;
+            if next.error.is_none() {
+                // It answered: the replicas of its teams that waited for it are read at the next pass.
+                if let Err(error) = crate::views::note_contact(node, origin) {
+                    node.journal().warn(
+                        "replicas",
+                        &format!("could not end the wait for a node that answered: {error}"),
+                    );
+                }
+            }
             kept.insert(origin.clone(), next);
         }
     }

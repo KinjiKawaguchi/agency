@@ -104,3 +104,127 @@ async fn one_answer_ends_the_wait_and_sync_reads_at_once() {
     );
     assert!(waiting_lines(&alice.node).is_empty());
 }
+
+/// Bob hosts team b0 of acme, which alice places on his node; bob is then stopped and alice's read of b0 fails once.
+async fn bob_hosts_b0_and_is_down(alice: &Running) -> Running {
+    let mut bob = joined_bob(alice).await;
+    bob.node
+        .update_config(|config| {
+            let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
+            config
+                .teams
+                .push(HostedTeam::new(id("acme"), id("b0"), id("alice"), runtime));
+        })
+        .unwrap();
+    place_team(alice, "b0", &bob.url());
+    deliver_due(&alice.node).await.unwrap();
+    bob.stop().await;
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(failures(alice, "b0"), 1);
+    bob
+}
+
+fn publish_a_version(alice: &Running, label: &str) {
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        body.label = label.into();
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[tokio::test]
+async fn an_outbox_delivery_to_a_node_that_is_back_ends_the_wait_for_its_teams() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    // A team on another node that also waits is left as it is.
+    place_team(&alice, "gone", &closed_origin());
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(failures(&alice, "gone"), 1);
+
+    bob.start().await;
+    publish_a_version(&alice, "Acme, Inc.");
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(
+        failures(&alice, "b0"),
+        0,
+        "bob took the version: no more waiting for him"
+    );
+    assert_eq!(failures(&alice, "gone"), 1, "another node's wait goes on");
+    refresh(&alice.node).await.unwrap();
+    let replica = alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("b0"))
+        .unwrap();
+    assert_eq!(replica.error, None, "the next ordinary pass read b0");
+    assert!(replica.view.is_some());
+}
+
+#[tokio::test]
+async fn an_unreachable_delivery_leaves_the_wait_as_it_is() {
+    let (alice, _) = alice().await;
+    let _bob = bob_hosts_b0_and_is_down(&alice).await;
+    publish_a_version(&alice, "Acme, Inc.");
+
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(failures(&alice, "b0"), 1, "bob did not answer");
+}
+
+#[tokio::test]
+async fn a_node_that_refuses_a_parcel_has_answered_and_its_wait_ends() {
+    use agency_core::outbox::{enqueue, Parcel, ParcelBody};
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    // A version bob refuses: signed by no key of the org.
+    let mut forged = alice.node.store().load_org(&id("acme")).unwrap();
+    forged.body.label = "Forged".into();
+    let parcel = Parcel::new(
+        bob.url(),
+        ParcelBody::Org(Box::new(forged)),
+        &alice.node.now_text(),
+    );
+    enqueue(&alice.node, &parcel).unwrap();
+
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(failures(&alice, "b0"), 0, "a refusal is an answer");
+}
+
+#[tokio::test]
+async fn a_node_that_tells_its_about_again_ends_the_wait_for_its_teams() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    alice.clock.advance(Duration::minutes(11));
+    bob.clock.advance(Duration::minutes(11));
+    // alice's last read of bob's about failed with him, so it is read again at the next pass, and he answers it.
+    let mut kept = alice.node.store().peer_abouts(&id("acme"));
+    for entry in kept.values_mut() {
+        entry.error = Some("did not answer".into());
+        entry.tried_at = agency_proto::clock::format(alice.node.now() - Duration::minutes(11));
+    }
+    alice
+        .node
+        .store()
+        .save_peer_abouts(&id("acme"), &kept)
+        .unwrap();
+    // The wait of b0 is not over yet.
+    let mut waiting = alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("b0"))
+        .unwrap();
+    waiting.tried_at = alice.node.now_text();
+    alice
+        .node
+        .store()
+        .save_replica(&id("acme"), &id("b0"), &waiting)
+        .unwrap();
+
+    refresh(&alice.node).await.unwrap();
+
+    assert_eq!(failures(&alice, "b0"), 0, "he told his about: he is there");
+}

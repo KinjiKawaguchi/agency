@@ -464,6 +464,51 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
+/// Whether two places name the same node, as the node writes an origin (`home_node_origin`); places that are no such
+/// origin are compared as written.
+fn is_same_origin(one: &str, other: &str) -> bool {
+    match (
+        agency_proto::client::home_node_origin(one),
+        agency_proto::client::home_node_origin(other),
+    ) {
+        (Some(one), Some(other)) => one == other,
+        _ => one == other,
+    }
+}
+
+/// The node at `origin` has just answered this node (it took an outbox parcel, even to refuse it, or it told its
+/// `about`): the replicas of its teams that were waiting out a wait that grew while it did not answer are due at the
+/// next pass, so that the desk is not stale for the end of a wait of up to 5 minutes for a node that is back.
+pub(crate) fn note_contact(node: &Node, origin: &str) -> Result<()> {
+    let account = node.account();
+    for doc in node
+        .store()
+        .orgs()
+        .into_iter()
+        .filter(|doc| doc.body.member(&account).is_some())
+    {
+        let org = &doc.body.org;
+        let places =
+            doc.body.teams.iter().filter(|place| {
+                !node.runs_here(org, &place.id) && is_same_origin(&place.node, origin)
+            });
+        for place in places {
+            let Some(replica) = node.store().load_replica(org, &place.id) else {
+                continue;
+            };
+            if replica.failures > 0 {
+                let ended = Replica {
+                    failures: 0,
+                    failing_since: None,
+                    ..replica
+                };
+                node.store().save_replica(org, &place.id, &ended)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What `agency status` says of the teams whose node is being waited for: one line each, with since when its reads
 /// fail, how many failed, and when it is read next.
 pub fn waiting_lines(node: &Node) -> Vec<String> {

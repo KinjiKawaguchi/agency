@@ -125,6 +125,15 @@ pub async fn deliver(node: &Node, parcel: &Parcel) -> Result<Outcome> {
 /// After an attempt: removes a delivered parcel, moves a refused one to the refused box, or schedules
 /// the next attempt.
 pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<()> {
+    // A node that answered, even to refuse, is there: its teams' replicas are read at the next pass.
+    if !matches!(outcome, Outcome::Unreachable(_)) {
+        if let Err(error) = crate::views::note_contact(node, &parcel.to) {
+            node.journal().warn(
+                "replicas",
+                &format!("could not end the wait for a node that answered: {error}"),
+            );
+        }
+    }
     match outcome {
         Outcome::Delivered => node.store().remove_parcel(&parcel.id)?,
         Outcome::Refused(message) => {
