@@ -4,7 +4,7 @@ Everything a node writes, where, for how long, who can read it, and how to delet
 the machine and to whom. It follows [protocol.md](protocol.md), and a change to one changes the other in the same pull
 request.
 
-The data directory is `~/.agency` unless `--data-dir` names another. The node creates it readable by its own operating
+The data directory is the one `--data-dir` names, else `$AGENCY_DIR`, else `~/.agency`. The node creates it readable by its own operating
 system user only (`0700`), and sets the account key and the owner's numbers to `0600` as well. Nothing in it is encrypted
 by the node: on a machine whose disk the
 operating system encrypts (FileVault, LUKS, BitLocker), it is encrypted at rest with the rest of the disk. A backup of
@@ -17,7 +17,7 @@ text of a decision or a request.
 
 | Path | What it holds | Personal data | Kept for | How to delete it |
 |---|---|---|---|---|
-| `config.json` | The node's settings: its address, its account's id and label, the teams it runs and their `people` maps, funding sources, the Access owner's email, push and Web Push settings | The account's label, the owner's email | Until changed | Edit the file |
+| `config.json` | The node's settings: its address, its account's id and label, the teams it runs (their `people` maps, and each runtime's command and `env`, which may hold a credential the runtime needs), funding sources (whose `usageFile` may name a file outside the data directory), the Access owner's email, push and Web Push settings | The account's label, the owner's email; a credential if a runtime's `env` holds one | Until changed | Edit the file |
 | `account.key` | The account's private key: it signs reads, join requests, and the account's first device | No | For the node's life | Only with the node: it cannot be replaced (see "Keys") |
 | `cli-device.key` | The private key of the node's own device (`agency decide`) | No | For the node's life | Remove the device from a client's Devices screen, then the file |
 | `orgs/` | Each org's current signed definition (`<org>.json`), every version it took (`<org>.history/<version>.json`), and when it took a recovery's start (`<version>.recovery-start.json`) | Members' ids and labels, devices' labels, seats', departments' and external parties' labels | Forever: each version names the one before it, so none can be dropped without breaking the chain (`agency audit` reads them) | Removing a member leaves their name in older versions. Only removing the org's files removes it, and the node then no longer has the org |
@@ -30,11 +30,12 @@ text of a decision or a request.
 | `claims/`, `claims-by-seat/` | Each seat's claim link, under the SHA-256 of its code: the seat, the email it is for, its expiry, and once redeemed the device key and label sent with it | The email, the device's label | Until confirmed, refused or replaced; a link expires after 7 days | `agency claim-reject` drops a waiting one |
 | `pending-root/` | Changes held for the root key's presence (joins, device changes, claim confirmations), and the version that signed each | The joiner's id and label, a device's label | 7 days, then dropped | `agency root-sign --refuse <handle>` |
 | `waiting-joins/` | Joins this node asked another org's root to hold, with the handle to fetch the version | No | Until the join is signed or refused | Remove the file |
-| `guests/` | Which sign-in email is which hosted member (`<sha256 of the email>.json`), and the requests each guest was already told of (`notified/`) | The email | Until the member is removed or its record is replaced | `agency member-remove` drops a member's records |
-| `device-requests.json` | Devices that asked to be added and wait, with their pairing codes | Devices' labels | One hour | They expire on their own |
+| `guests/` | Which sign-in email is which hosted member (`<sha256 of the email>.json`), and the requests each guest was already told of (`notified/`) | The email | Until the member is removed or its record is replaced | `agency member-remove` drops a member's sign-in records. Its `notified/` list (request keys only, no address) stays until it is removed by hand |
+| `device-requests.json` | Devices that asked to be added and wait, with their pairing codes | Devices' labels | One hour; an expired request is no longer offered, and leaves the file the next time a request is saved | Remove the file |
 | `push-tokens.json`, `web-push-subscriptions.json` | The iPhones' APNs tokens and the browsers' Web Push subscriptions, with their labels, devices, and last answers | Devices' labels | Until removed, or the push service says they are gone, or their device is removed | From the Devices screen, or remove the entries |
 | `push-retries.json` | Notifications that failed for one destination and are tried again: the notice's key and the destination, never its words | No | At most a day, 1000 at most | Remove the file |
-| `notified.json`, `desk-refresh.json` | What the owner was already told of (keys only), and when the iPhones were last woken | No | The newest 1000 of each kind | Remove the files (old news may then be told again) |
+| `notified.json` | What the owner was already told of (keys only) | No | The newest 1000 of each kind | Remove the file (old news may then be told again) |
+| `desk-refresh.json` | When the iPhones were last woken to read the desk, and what it held then: one snapshot | No | Replaced at each pass | Remove the file |
 | `clients-seen.json` | Which app versions called the node, and when, for the oldest version still in use | No | 32 versions per platform | Remove the file |
 | `bound-readers.json` | The accounts whose node signs reads that name this node, so an older form of read from them is refused | Account ids | While they are members of an org this node has | Remove the file (older reads are then taken again) |
 | `own-origins.json` | The origins this node has been configured with, so a team's place under an older one is still this node | No | The last 20 | Remove the file |
