@@ -6,7 +6,6 @@ use agency_core::ports::TeamRuntime;
 use agency_proto::{EnvelopeKind, Id, Payload, RuntimeDecision};
 use std::collections::BTreeMap;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -14,8 +13,11 @@ const SAMPLE: &str = include_str!("../../../testdata/teamview.sample.json");
 const USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
 const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
 
-const FAKE: &str = r#"#!/bin/sh
-input=$(cat)
+/// The fake runtime's script. It is run as `sh runtime.sh`, never executed itself: a program that was just
+/// written cannot be executed while any process still holds it open for writing (`ETXTBSY`, "Text file
+/// busy"), and another test's `fork` can hold that descriptor for a moment, which failed a test now and then.
+/// A file that only `sh` reads has no such wait, and the shell it starts is never written by a test.
+const FAKE: &str = r#"input=$(cat)
 op=$(printf '%s' "$input" | sed -n 's/.*"op":"\([a-zA-Z]*\)".*/\1/p')
 printf '%s' "$input" > "$FAKE_DIR/last-$op.json"
 echo "$op" >> "$FAKE_DIR/calls"
@@ -38,7 +40,6 @@ impl Fake {
         let dir = TempDir::new().unwrap();
         let script = dir.path().join("runtime.sh");
         fs::write(&script, FAKE).unwrap();
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let fake = Self { dir };
         fake.answer("describe", r#"{"result":{"runtimes":["agency-runtime/1"],"ops":["describe","view","decide"],"label":"App"}}"#, 0);
         fake.answer("view", &format!(r#"{{"result":{SAMPLE}}}"#), 0);
@@ -58,13 +59,9 @@ impl Fake {
 
     fn team(&self, team: &str) -> HostedTeam {
         let env = BTreeMap::from([("FAKE_DIR".to_owned(), self.dir.path().display().to_string())]);
-        let runtime = RuntimeCommand::of(vec![self
-            .dir
-            .path()
-            .join("runtime.sh")
-            .display()
-            .to_string()])
-        .with_env(env);
+        let script = self.dir.path().join("runtime.sh");
+        let runtime = RuntimeCommand::of(vec!["/bin/sh".to_owned(), script.display().to_string()])
+            .with_env(env);
         HostedTeam::new(id("acme"), id(team), id("alice"), runtime)
     }
 
