@@ -25,6 +25,7 @@ use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
 use agency_core::config::{NodeConfig, RootKeyStore};
+use agency_core::delivery::Period;
 use agency_core::logging_config::LogLevel;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
@@ -155,6 +156,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     let config = data.load_config()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    config
+        .outcomes
+        .check(&config.teams)
+        .map_err(anyhow::Error::msg)?;
     for (index, team) in config.teams.iter().enumerate() {
         if let Some(delivery) = &team.delivery {
             delivery
@@ -198,6 +203,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         },
     };
     let node = Arc::new(Node::open(ports, key)?);
+    agency_core::connectors::check_units(&node).map_err(anyhow::Error::msg)?;
     Ok(Opened {
         node,
         data_dir,
@@ -209,6 +215,9 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         recorder,
     })
 }
+
+/// How long the delivery connectors wait before looking again at a day that is not settled.
+const CONNECTOR_RETRY: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// The built web client (`web/dist`), embedded at compile time. Empty when it was not built.
 #[derive(rust_embed::RustEmbed)]
@@ -247,6 +256,36 @@ impl Opened {
                 Arc::new(move |line: String| sink(&line))
             },
         ));
+    }
+
+    /// Starts entering the delivery numbers of the finished days for the KPIs the operator connected
+    /// (`outcomes.connectors`), for as long as the node runs. A pass that could not read what it needed is
+    /// tried again after ten minutes; one that finished is not repeated until the node's day changes.
+    pub fn start_delivery_connectors(&self) {
+        if self.node.config().outcomes.connectors.is_empty() {
+            return;
+        }
+        let node = self.node.clone();
+        let log = self.logger.sink(LogLevel::Warn, "outcomes");
+        tokio::spawn(async move {
+            let mut said = std::collections::HashSet::new();
+            let mut settled = None;
+            loop {
+                let today = Period::new(node.now(), node.utc_offset(), 1).last();
+                if settled.as_ref() != Some(&today) {
+                    let pass = agency_core::connectors::write_finished_days(&node).await;
+                    for line in pass.refused.iter().chain(&pass.failures) {
+                        if said.insert(line.clone()) {
+                            log(line);
+                        }
+                    }
+                    if pass.failures.is_empty() {
+                        settled = Some(today);
+                    }
+                }
+                tokio::time::sleep(CONNECTOR_RETRY).await;
+            }
+        });
     }
 
     /// A fresh write token for the page: 32 random bytes as hex.

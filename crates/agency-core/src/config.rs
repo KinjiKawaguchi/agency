@@ -2,6 +2,7 @@
 use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
+use crate::outcomes_config::OutcomesConfig;
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -179,6 +180,9 @@ pub struct NodeConfig {
     /// The node's measurements: the objectives its operator sets for how fast a group of routes should answer.
     #[serde(default, skip_serializing_if = "MetricsConfig::is_default")]
     pub metrics: MetricsConfig,
+    /// The KPIs whose daily number the node works out itself, from its delivery numbers.
+    #[serde(default, skip_serializing_if = "OutcomesConfig::is_default")]
+    pub outcomes: OutcomesConfig,
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
@@ -472,6 +476,7 @@ impl NodeConfig {
             home_nodes: vec![],
             logging: LoggingConfig::default(),
             metrics: MetricsConfig::default(),
+            outcomes: OutcomesConfig::default(),
             root_keys: RootKeyStore::Files,
             federation: FederationConfig::default(),
             local_clients: true,

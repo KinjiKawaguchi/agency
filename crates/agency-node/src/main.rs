@@ -482,6 +482,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
+    opened.start_delivery_connectors();
     let background = node.clone();
     let background_log = logger.clone();
     tokio::spawn(async move {

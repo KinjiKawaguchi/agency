@@ -47,12 +47,14 @@ fn numbers_of(date: Date, day: &Day) -> DayNumbers {
 /// them included.
 pub fn day_numbers(input: &Input) -> Vec<DayNumbers> {
     let (period, days, _) = tally(input);
-    let first = super::period::calendar_date(&period.first());
+    let first = crate::outcomes::calendar_day(&period.first()).expect("a period starts on a day");
     let count = i64::from(input.days.max(1));
     (0..count)
         .map(|offset| {
             let date = super::period::proto_date(first + Duration::days(offset));
-            let day = days.get(date.as_str()).map(|day| numbers_of(date.clone(), day));
+            let day = days
+                .get(date.as_str())
+                .map(|day| numbers_of(date.clone(), day));
             day.unwrap_or_else(|| numbers_of(date, &Day::default()))
         })
         .collect()
