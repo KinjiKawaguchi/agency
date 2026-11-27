@@ -317,6 +317,7 @@ async fn evaluation_answer(alice: &Running) -> Value {
                 has_issue: started.is_some(),
                 issue_started_at: started.map(at),
                 closes_incident: false,
+                work_type: None,
             }
         };
     let run = |commit: &str, finished: &str, verdict| MainRun {

@@ -32,6 +32,7 @@ fn pull_request(
         has_issue,
         issue_started_at: in_progress.map(at),
         closes_incident: false,
+        work_type: None,
     }
 }
 
@@ -506,4 +507,26 @@ fn a_period_without_a_new_feature_leaves_the_part_out() {
         .filter(|one| !one.title.starts_with("feat"))
         .collect();
     assert_eq!(lead_time_evaluation(&found).summary.new_feature, None);
+}
+
+#[test]
+fn a_board_option_names_a_work_type_by_its_name_alone() {
+    use agency_proto::view::WorkType::*;
+    for (option, expected) in [
+        ("New feature", Some(NewFeature)),
+        ("new_feature", Some(NewFeature)),
+        ("NEW-FEATURE", Some(NewFeature)),
+        ("Improvement", Some(Improvement)),
+        ("Maintenance", Some(Maintenance)),
+        ("Debt", Some(Debt)),
+        ("Tech debt", Some(Debt)),
+        ("tech-debt", Some(Debt)),
+        ("Incident", Some(Incident)),
+        ("Technical debt", None),
+        ("Bug", None),
+        ("", None),
+        ("newFeatures", None),
+    ] {
+        assert_eq!(board_work_type(option), expected, "{option:?}");
+    }
 }
