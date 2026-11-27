@@ -396,6 +396,14 @@ async fn get_usage(
     respond(result.await)
 }
 
+/// A team's weekly budget status: this week's spend of the team and of the org against their caps.
+async fn get_budget(State(api): Shared, Path((org, team)): Path<(String, String)>) -> Response {
+    let result = async {
+        crate::budget::budget_status(&api.node, &parse_id(&org)?, &parse_id(&team)?).await
+    };
+    respond(result.await)
+}
+
 /// The delivery evaluation of every team of an org over the last `days` days (default 14, at most 90).
 async fn get_evaluation(
     State(api): Shared,
@@ -676,6 +684,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/orgs/{org}"),
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("GET", "/api/orgs/{org}/teams/{team}/usage"),
+    ("GET", "/api/orgs/{org}/teams/{team}/budget"),
     ("GET", "/api/orgs/{org}/evaluation"),
     ("GET", "/api/orgs/{org}/teams/{team}/activity"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
@@ -715,6 +724,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}" => get(get_org),
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
+        "/api/orgs/{org}/teams/{team}/budget" => get(get_budget),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
         "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),

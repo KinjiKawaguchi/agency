@@ -1,11 +1,10 @@
 //! A team's weekly budget status, read from the usage of the teams that have a plan. The Client API
 //! and the command line call the same function, so they cannot differ in the week or the thresholds.
-use agency_core::budget::{
-    definition_for_budget, status, today, week_spend, week_start, BudgetStatus,
-};
+use agency_core::budget::{definition_for_budget, status, today, week_spend, week_start};
 use agency_core::error::Result;
 use agency_core::node::Node;
 use agency_core::usage::team_usage;
+use agency_proto::budget::BudgetStatus;
 use agency_proto::Id;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;

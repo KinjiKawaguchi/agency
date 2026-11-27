@@ -2,52 +2,19 @@
 use crate::client::membership;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
+use agency_proto::budget::{BudgetPart, BudgetState, BudgetStatus, OrgBudget};
 use agency_proto::clock::{Duration, OffsetDateTime, UtcOffset};
 use agency_proto::org::OrgDefinition;
 use agency_proto::{Date, Id, Role, TokenUsage};
-use serde::Serialize;
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BudgetState {
-    Ok,
-    Warning,
-    Over,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BudgetPart {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cap_usd: Option<u32>,
-    pub spent_usd: f64,
-    pub state: BudgetState,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub partial: bool,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BudgetStatus {
-    pub week_start: Date,
-    pub team: BudgetPart,
-    pub org: OrgBudget,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrgBudget {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cap_usd: Option<u32>,
-    pub spent_usd: f64,
-    pub state: BudgetState,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub partial: bool,
-}
-
+/// The Monday of the week `now` is in, in the node's time zone.
 pub fn week_start(now: OffsetDateTime, offset: UtcOffset) -> Date {
     let day = now.to_offset(offset).date();
     let start = day - Duration::days(day.weekday().number_days_from_monday().into());
     Date::parse(&start.to_string()).unwrap()
 }
+
 /// The calendar day of `now` in the node's time zone.
 pub fn today(now: OffsetDateTime, offset: UtcOffset) -> Date {
     Date::parse(&now.to_offset(offset).date().to_string())

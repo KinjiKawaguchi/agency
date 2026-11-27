@@ -4,11 +4,11 @@
 mod common;
 
 use agency_adapters::budget::budget_status;
-use agency_core::budget::BudgetState;
 use agency_core::departments::plan_team;
 use agency_core::error::ErrorKind;
 use agency_core::invites::{invite, join};
 use agency_core::orgs;
+use agency_proto::budget::BudgetState;
 use agency_proto::org::{Allocation, TeamPlace, TeamPlan};
 use agency_proto::{Id, Role};
 use common::{alice, id, joined_bob, node, Running};
@@ -183,5 +183,51 @@ async fn an_unknown_team_and_an_answerer_read_nothing() {
         refused.kind,
         ErrorKind::Forbidden,
         "an answerer reads no usage"
+    );
+}
+
+// ── The Client API ──
+
+async fn client_budget(running: &Running, team: &str) -> (reqwest::StatusCode, serde_json::Value) {
+    common::body(
+        common::get(running, &format!("/api/orgs/acme/teams/{team}/budget"))
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn the_route_answers_what_the_command_prints() {
+    let (alice, _) = with_plan(200).await;
+    let (status, answer) = client_budget(&alice, "app").await;
+    assert_eq!(status, 200, "{answer}");
+    let status = budget_status(&alice.node, &id("acme"), &app())
+        .await
+        .unwrap();
+    let printed: serde_json::Value =
+        serde_json::from_str(&agency_node::budget::json_line(&status).unwrap()).unwrap();
+    assert_eq!(answer, printed, "the API and the command are one function");
+    assert_eq!(answer["team"]["state"], "warning");
+    assert!(
+        answer["team"].get("partial").is_none(),
+        "left out when false"
+    );
+}
+
+#[tokio::test]
+async fn the_route_refuses_an_answerer_and_does_not_know_what_the_org_does_not_have() {
+    let (alice, _) = with_plan(200).await;
+    assert_eq!(client_budget(&alice, "nobody").await.0, 404);
+    let carol = node("carol", common::memory_runtime().0).await;
+    let link = invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
+    join(&carol.node, &link, |_| true).await.unwrap();
+    assert_eq!(client_budget(&carol, "app").await.0, 403);
+    let stranger = node("dave", common::memory_runtime().0).await;
+    assert_eq!(
+        client_budget(&stranger, "app").await.0,
+        404,
+        "dave is no member of acme"
     );
 }

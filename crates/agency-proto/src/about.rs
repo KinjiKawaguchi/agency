@@ -150,10 +150,12 @@ pub enum Capability {
     /// `device` in a push registration (an APNs token or a Web Push subscription), and the registrations
     /// dropped with the device they name.
     PushDevice,
+    /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
+    Budget,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 12] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -165,6 +167,7 @@ impl Capability {
         Capability::Activity,
         Capability::Outcomes,
         Capability::PushDevice,
+        Capability::Budget,
     ];
 
     pub fn name(self) -> &'static str {
@@ -180,6 +183,7 @@ impl Capability {
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
             Capability::PushDevice => "pushDevice",
+            Capability::Budget => "budget",
         }
     }
 
