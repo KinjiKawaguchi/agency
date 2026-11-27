@@ -388,6 +388,12 @@ pub struct AccessConfig {
     /// no app association file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
+    /// Whether the app may sign in through its custom scheme (`via=scheme`), for a host that is not in the app
+    /// build's associated domains. Off by default: the scheme is delivered to the app that starts the sign-in,
+    /// whatever app that is, so an app of someone else's on the owner's device could start it and redeem the
+    /// owner's token; the universal link of `via=link` reaches only the app the association file names.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_scheme_sign_in: bool,
 }
 
 impl NodeConfig {
@@ -503,6 +509,25 @@ mod tests {
 
     fn id(raw: &str) -> Id {
         Id::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn the_apps_scheme_sign_in_is_off_unless_the_access_setting_turns_it_on() {
+        let base = r#""publicHost":"agency.example.com","teamDomain":"acme.cloudflareaccess.com","audience":"a","ownerEmail":"alice@example.com""#;
+        let without: AccessConfig = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(
+            !without.allow_scheme_sign_in,
+            "a configuration from before keeps the scheme off"
+        );
+        assert!(!serde_json::to_string(&without)
+            .unwrap()
+            .contains("allowSchemeSignIn"));
+        let with: AccessConfig =
+            serde_json::from_str(&format!("{{{base},\"allowSchemeSignIn\":true}}")).unwrap();
+        assert!(with.allow_scheme_sign_in);
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .contains("\"allowSchemeSignIn\":true"));
     }
 
     #[test]
