@@ -35,6 +35,11 @@ public struct DeskItem: Equatable, Identifiable, Sendable {
     public let drafter: PersonStatus?
     /// The person it is addressed to: the viewer when it is theirs, otherwise whoever `to` names.
     public let decider: PersonStatus?
+    /// Who drafted it, as a screen draws it: the person's label when the team lists them, else the runtime's name without the
+    /// characters that can reorder a line. Finding the person goes by the name as written (`team.person(named:)`), never by this.
+    public var drafterName: String { drafter?.label ?? request.shownFrom }
+    /// Who it is addressed to, drawn the same way; `nil` when it names no one.
+    public var deciderName: String? { decider?.label ?? request.shownTo }
     /// Whether the node lists the request as the viewer's to decide. Only the viewer's can be decided here.
     public let isMine: Bool
     /// The people (not work refs) that are stopped until the request is decided.

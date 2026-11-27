@@ -21,6 +21,12 @@ struct ShownLabelsGuardTests {
             "what a held change names: its reader shows it with `NodeLabel.shown` (`RootChangeRef.init(from:)`)",
         "AgencyKit/Sources/AgencyAPI/Wire/RootChanges.swift:RootChangeRef.public let device: String?":
             "what a held change names: its reader shows it with `NodeLabel.shown` (`RootChangeRef.init(from:)`)",
+        "AgencyKit/Sources/AgencyAPI/Wire/TeamView.swift:Request.public let from: String":
+            "the team runtime's name, which finds the person who has it (`Team.person(named:)`), so it is kept as written; a screen draws `shownFrom` (`DeskItem.drafterName`)",
+        "AgencyKit/Sources/AgencyAPI/Wire/TeamView.swift:Request.public let to: String?":
+            "the team runtime's name, kept as written to find the person; a screen draws `shownTo` (`DeskItem.deciderName`)",
+        "AgencyKit/Sources/AgencyAPI/Wire/TeamView.swift:ThreadMessage.public let from: String":
+            "the team runtime's name of who wrote a message, kept as written; a screen draws `shownFrom`",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:Effort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:TeamEffort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Evaluation.swift:Evaluation.public let from: String": "a calendar day, the period's first: never a label",
