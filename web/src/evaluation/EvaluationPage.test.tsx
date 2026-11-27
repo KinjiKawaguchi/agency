@@ -99,6 +99,11 @@ describe('evaluation', () => {
   })
 })
 
+// What a team spent in the last seven days is made up from the dates of the days (a weekend costs less), so it is the same only
+// for the same days: a node whose clock is not pinned says a different thing each week, and a test of "over the weekly budget" then
+// passes or fails by the date it is run on. The days of this node are the week of 13 to 19 November 2026, which cost more than the weekly budget of the app team.
+const pinnedNode = () => createMockNode({ evaluation: true, now: new Date('2026-11-19T12:00:00Z') })
+
 describe('evaluation: where effort goes', () => {
   const effortOf = async (team: string) => {
     const heading = (await screen.findAllByRole('heading', { level: 3, name: `${team} team` }))[0] as HTMLElement
@@ -106,7 +111,7 @@ describe('evaluation: where effort goes', () => {
   }
 
   it('shows each work type of a team with its share, and the plan beside it', async () => {
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     const app = await effortOf('App')
     const rows = app.getAllByRole('listitem').filter((item) => item.classList.contains('ev-alloc-row'))
     expect(rows.map((row) => row.querySelector('.ev-alloc-name')?.textContent)).toEqual(['New feature', 'Improvement', 'Maintenance', 'Tech debt', 'Incident', 'Unclassified'])
@@ -117,12 +122,12 @@ describe('evaluation: where effort goes', () => {
   })
 
   it('says unclassified work is left unclassified, not guessed', async () => {
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     expect(await within((await effortOf('App')).getByText(/stays unclassified/).parentElement as HTMLElement).findByText(/It is not guessed\./)).toBeInTheDocument()
   })
 
   it('measures the last seven days against the weekly budget', async () => {
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     const app = await effortOf('App')
     expect(app.getByRole('img', { name: /spent of a weekly budget of \$100$/ })).toBeInTheDocument()
     expect(app.getByText(/over$/)).toBeInTheDocument()
@@ -130,7 +135,7 @@ describe('evaluation: where effort goes', () => {
   })
 
   it('says a team has no plan, and compares nothing', async () => {
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     const site = await effortOf('Site')
     expect(site.getByText('The org has stated no plan for this team, so there is nothing to compare with.')).toBeInTheDocument()
     expect(site.queryByText(/intended/)).toBeNull()
@@ -138,7 +143,7 @@ describe('evaluation: where effort goes', () => {
   })
 
   it('draws cost by day for every work type', async () => {
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     const app = await effortOf('App')
     expect(app.getByRole('group', { name: 'Cost by day' }).querySelectorAll('.ev-col')).toHaveLength(14)
   })
@@ -149,7 +154,7 @@ describe('evaluation: where effort goes', () => {
   })
 
   it('names the route an agent reads for the effort', async () => {
-    renderApp({ path: '/evaluation?days=30', evaluation: true })
+    renderApp({ path: '/evaluation?days=30', node: pinnedNode() })
     expect(await screen.findByText(/GET \/api\/orgs\/acme\/effort\?days=30/)).toBeInTheDocument()
   })
 
@@ -184,7 +189,7 @@ describe('evaluation: where effort goes', () => {
 
   it('has one tab stop for each chart of days, and the arrow keys walk its days', async () => {
     const user = userEvent.setup()
-    renderApp({ path: '/evaluation', evaluation: true })
+    renderApp({ path: '/evaluation', node: pinnedNode() })
     const app = await section('App team')
     for (const name of ['Merged pull requests per day', 'Lead time', 'Cost per merged pull request', 'Main CI red, per day', 'Reverts per day']) {
       const chart = app.getByRole('group', { name })
