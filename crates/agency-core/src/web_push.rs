@@ -44,6 +44,10 @@ pub struct WebSubscription {
     /// The device it belongs to (`Device.id`); none for one registered without.
     #[serde(default)]
     pub device: Option<Id>,
+    /// The guest this browser is a guest's, by org and member; absent for the owner's browsers. A guest's
+    /// browser gets only its own requests' notices, and the owner's never a guest's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest: Option<agency_proto::client::GuestRef>,
 }
 
 /// A DNS host name: at least two labels of letters, digits, and hyphens, the last starting with a letter. That
@@ -167,8 +171,19 @@ pub fn register_subscription(
     node: &Node,
     input: PushSubscriptionInput,
 ) -> Result<PushSubscription> {
+    register_subscription_as(node, &crate::guests::Caller::Owner, input)
+}
+
+/// `register_subscription` for the caller: a guest's browser is kept as the guest's, and never takes over a
+/// browser kept as someone else's (the owner's, or another guest's), nor the other way round.
+pub fn register_subscription_as(
+    node: &Node,
+    caller: &crate::guests::Caller,
+    input: PushSubscriptionInput,
+) -> Result<PushSubscription> {
     let key = vapid_key(node).ok_or_else(not_set_up)?;
-    let device = check_device(node, input.device)?;
+    let guest = caller.guest_of();
+    let device = check_device(node, guest.as_ref(), input.device)?;
     let endpoint = check_endpoint(&input.endpoint, &extra_hosts(node))?;
     if !is_key(&input.p256dh, 65) || !is_key(&input.auth, 16) {
         return Err(Error::bad_request(
@@ -190,6 +205,12 @@ pub fn register_subscription(
         .web_subscriptions()
         .into_iter()
         .find(|one| one.id == id);
+    if known.as_ref().is_some_and(|one| one.guest != guest) {
+        return Err(Error::new(
+            crate::error::ErrorKind::Conflict,
+            "this browser is registered for someone else on this node",
+        ));
+    }
     let entry = WebSubscription {
         id,
         endpoint,
@@ -197,12 +218,13 @@ pub fn register_subscription(
         auth: input.auth,
         label,
         registered_at,
-        events: crate::push::normal_events(input.events),
+        events: caller.events(crate::push::normal_events(input.events)),
         key_id: key.key_id,
         // What was last known of this browser's push service is kept when the browser registers again.
         last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
         last_failure: known.and_then(|one| one.last_failure),
         device,
+        guest,
     };
     let mut all: Vec<WebSubscription> = node
         .store()
@@ -218,10 +240,28 @@ pub fn register_subscription(
 
 /// Removes a subscription by its id. An unknown id is not an error.
 pub fn remove_subscription(node: &Node, id: &str) -> Result<()> {
+    remove_subscription_as(node, &crate::guests::Caller::Owner, id)
+}
+
+/// Removes one of the caller's own subscriptions; another's, like an unknown id, is left as it is.
+pub fn remove_subscription_as(node: &Node, caller: &crate::guests::Caller, id: &str) -> Result<()> {
+    let guest = caller.guest_of();
+    let is_own = node
+        .store()
+        .web_subscriptions()
+        .iter()
+        .any(|one| one.id == id && one.guest == guest);
+    if !is_own {
+        return Ok(());
+    }
     remove_subscriptions(node, &[id.to_owned()])
 }
 
 pub(crate) fn remove_subscriptions(node: &Node, gone: &[String]) -> Result<()> {
+    // Nothing to remove writes nothing: a send to a destination that took it changes no file.
+    if gone.is_empty() {
+        return Ok(());
+    }
     let kept: Vec<WebSubscription> = node
         .store()
         .web_subscriptions()
@@ -232,12 +272,22 @@ pub(crate) fn remove_subscriptions(node: &Node, gone: &[String]) -> Result<()> {
 }
 
 pub fn subscriptions(node: &Node) -> Result<PushSubscriptionList> {
+    subscriptions_of(node, &crate::guests::Caller::Owner)
+}
+
+/// The caller's own browsers: the owner's, or one guest's.
+pub fn subscriptions_of(
+    node: &Node,
+    caller: &crate::guests::Caller,
+) -> Result<PushSubscriptionList> {
     vapid_key(node).ok_or_else(not_set_up)?;
+    let guest = caller.guest_of();
     Ok(PushSubscriptionList {
         subscriptions: node
             .store()
             .web_subscriptions()
             .into_iter()
+            .filter(|one| one.guest == guest)
             .map(view)
             .collect(),
     })
@@ -294,7 +344,12 @@ pub(crate) fn record_sends(node: &Node, results: &[(&str, Sent<'_>)]) -> Result<
 
 /// The subscriptions that get this notice: of its kind, and made with the node's current key (one made
 /// with another key is refused by the push service, and the screen tells the owner to subscribe again).
-pub(crate) fn wanting(node: &Node, notice: &Notice) -> Vec<WebSubscription> {
+/// The browsers of `whose` (the owner's for `None`, else that guest's) that want this notice.
+pub(crate) fn wanting(
+    node: &Node,
+    notice: &Notice,
+    whose: Option<&agency_proto::client::GuestRef>,
+) -> Vec<WebSubscription> {
     let Some(key) = vapid_key(node) else {
         return vec![];
     };
@@ -302,6 +357,7 @@ pub(crate) fn wanting(node: &Node, notice: &Notice) -> Vec<WebSubscription> {
         .web_subscriptions()
         .into_iter()
         .filter(|one| one.key_id == key.key_id && notice.is_wanted_by(&one.events))
+        .filter(|one| one.guest.as_ref() == whose)
         .collect()
 }
 

@@ -48,7 +48,8 @@ final class ShellModel {
         let tokens = AccessTokenStore(host: homeNode.host)
         let flow = AccessSignInFlow(homeNode: homeNode, tokens: tokens)
         self.flow = flow
-        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, standing: standing)
+        let key = SecureEnclaveVault.loader.load(host: homeNode.host)
+        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key, standing: standing)
         takeLink()
     }
 
@@ -167,6 +168,14 @@ final class ShellModel {
     func renewKeyAfterRemoval() {
         hasRenewedKeyAfterRemoval = true
         replaceKey()
+    }
+
+    /// Reads the stored key again, for when it could not be used and may be now (the phone was locked, the store was busy). It keeps the
+    /// stored key whatever comes of it.
+    func retryKey() {
+        guard session?.keyUnusable != nil else { return }
+        session = nil
+        start()
     }
 
     /// Makes this device's key again, for when the biometrics were changed and the old key can no longer sign.

@@ -14,9 +14,14 @@ import { KeyKeepingNotes } from './KeyKeepingNotes'
 import { useKeyKeeping, type KeyKeeping } from './keyKeeping'
 import { useStanding } from '../guest/useStanding'
 import { HomeNodesCard } from '../nodes/HomeNodesCard'
+import { DestinationsCard } from '../notifications/DestinationsCard'
 import { OsNoticesCard } from '../notifications/OsNoticesCard'
+import { useWebPushBrowser } from '../pwa/WebPushBrowserContext'
+import { useWebPush } from '../pwa/useWebPush'
+import { useThisDeviceId } from './useThisDeviceId'
 import { isHeldFor } from '../rootchange/held'
 import { answerOf } from '../rootchange/changes'
+import { RemoveDevice } from './RemoveDevice'
 import { useDeviceKey } from './useDeviceKey'
 import './device.css'
 
@@ -170,6 +175,7 @@ function YourDevices({ deviceKey, list }: { deviceKey: DeviceKey; list: DeviceLi
             <b>{device.label}</b>
             {device.publicKey === deviceKey.publicKey ? <span className="device-here">{t.devices.thisOne}</span> : null}
             <span className="muted">{t.devices.addedOn(fmt.dateTime(device.addedAt))}</span>
+            <RemoveDevice device={device} list={list} ownKey={deviceKey} />
           </li>
         ))}
       </ul>
@@ -216,6 +222,8 @@ export function DevicesPage() {
   const { t } = useI18n()
   const key = useDeviceKey()
   const standing = useStanding()
+  // One reading of Web Push in this browser for the two cards that speak of it: the switch, and the list of where notices are sent.
+  const webPush = useWebPush(useApi(), useWebPushBrowser(), useThisDeviceId())
   return (
     <>
       <h1 className="page-title">{t.devices.title}</h1>
@@ -225,7 +233,8 @@ export function DevicesPage() {
       {key.status === 'failed' ? <p className="empty" role="alert">{t.devices.failed(key.reason)}</p> : null}
       {key.status === 'ready' ? <WithDeviceKey deviceKey={key.key} /> : null}
       {standing.status === 'member' ? <HomeNodesCard /> : null}
-      <OsNoticesCard />
+      <OsNoticesCard webPush={webPush} />
+      {standing.status === 'member' ? <DestinationsCard webPush={webPush} /> : null}
       <InstallCard />
     </>
   )
