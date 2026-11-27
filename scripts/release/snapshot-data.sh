@@ -55,7 +55,8 @@ if [ ! -e "$client_destination" ]; then
   [ -d "$work/source/testdata/client" ] \
     || { echo "$tag has no testdata/client" >&2; exit 1; }
   mkdir -p "$(dirname "$client_destination")"
-  cp -R "$work/source/testdata/client" "$client_destination"
+  cp -R "$work/source/testdata/client" "$work/client"
+  mv "$work/client" "$client_destination"
   echo "client answers of $tag: $client_destination"
 fi
 [ ! -e "$destination" ] || exit 0
