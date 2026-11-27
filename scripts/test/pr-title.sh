@@ -66,6 +66,11 @@ for boundary in "federation" "signed text" "team runtime" "client API" "data"; d
 BREAKING CHANGE: $boundary: the route is gone"
   check "footer alone with the boundary $boundary" ok "feat(node): drop a route" "BREAKING CHANGE: $boundary: the route is gone"
 done
+check "a footer keyword in lowercase is not the footer" bad "feat(node)!: drop a route" "breaking change: data: gone"
+check "a footer keyword in capitals and lowercase is not the footer" bad "feat(node)!: drop a route" "Breaking Change: data: gone"
+check "a lowercase keyword next to a good footer does not matter" ok "feat(node)!: drop a route" "breaking change: data: gone
+BREAKING CHANGE: data: gone"
+check "a lowercase keyword alone, without a !, is only text" ok "feat(node): drop a route" "breaking change: nothing to see"
 check "the hyphenated footer" ok "feat(node): drop a route" "BREAKING-CHANGE: federation: the route is gone"
 check "a boundary in other letters" ok "feat(node): drop a route" "BREAKING CHANGE: Client Api: the route is gone"
 check "the footer among other lines, with CRLF" ok "fix(node)!: drop a route" $'Why\r\n\r\nBREAKING CHANGE: data: the file is gone\r\n\r\nCloses #1'

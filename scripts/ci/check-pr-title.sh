@@ -51,7 +51,8 @@ breaking_lines="$(printf '%s\n' "$body" | grep -E '^BREAKING[ -]CHANGE:' || true
 [ -n "$breaking_lines" ] && is_breaking=true
 
 if [ "$is_breaking" = true ]; then
-  named="$(printf '%s\n' "$body" | grep -ciE "^BREAKING[ -]CHANGE: ($boundaries): [^[:space:]]" || true)"
+  # The keyword is exact (release-please copies only that into the changelog); the boundary may be in any case.
+  named="$(printf '%s\n' "$body" | sed -nE 's/^BREAKING[ -]CHANGE: //p' | grep -ciE "^($boundaries): [^[:space:]]" || true)"
   if [ "$named" -eq 0 ]; then
     add_error "A breaking change names its boundary in the body, on a line of its own: 'BREAKING CHANGE: <boundary>: <what changes>', where the boundary is one of ${boundaries//|/, } (docs/compatibility.md)."
   fi
