@@ -26,6 +26,8 @@ export const isRefusal = (value: unknown): value is Refusal => typeof value === 
 
 export interface MockDevices {
   list: () => DeviceList
+  /** The ids of the account's devices, in any org. */
+  deviceIds: () => ReadonlySet<string>
   /** Keeps a request to add a device, as `POST /api/devices/requests` does. */
   request: (body: unknown) => Promise<DeviceRequest | Refusal>
   /** Applies a change signed by one of the account's devices. */
@@ -121,7 +123,9 @@ export function createMockDevices(orgs: readonly string[], account: string, init
     return true
   }
 
-  return { list, request, change, checkEnvelope, addFromTerminal }
+  const deviceIds: MockDevices['deviceIds'] = () => new Set([...devices.values()].flatMap((held) => held.map((one) => one.id)))
+
+  return { list, deviceIds, request, change, checkEnvelope, addFromTerminal }
 }
 
 export type { DeviceChange }

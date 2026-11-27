@@ -282,7 +282,7 @@ async fn through_access_only_the_owner_reads_or_enters_the_numbers() {
         assert_eq!(status, StatusCode::OK, "the owner reads {path}: {answer}");
     }
 
-    // Someone Access lets in who is not the owner reads the rest of the API, but none of the numbers.
+    // Someone Access lets in who is neither the owner nor a guest reads nothing, the numbers included.
     let (status, _) = body(
         via_access(other, "GET", "/api/me", None)
             .send()
@@ -292,8 +292,8 @@ async fn through_access_only_the_owner_reads_or_enters_the_numbers() {
     .await;
     assert_eq!(
         status,
-        StatusCode::OK,
-        "Access decides who may read the rest"
+        StatusCode::FORBIDDEN,
+        "the node admits only the owner or a guest"
     );
     for (method, path) in [
         ("GET", OUTCOMES.to_owned()),

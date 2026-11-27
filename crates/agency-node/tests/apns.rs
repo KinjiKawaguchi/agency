@@ -74,6 +74,7 @@ fn apns(hosts: ApnsHosts, clock: &ManualClock) -> Apns {
 
 fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
     PushToken {
+        id: String::new(),
         token: prefix.repeat(32),
         environment,
         label: "iPhone".into(),
@@ -81,6 +82,7 @@ fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
         events: vec![PushEvent::Request],
         last_succeeded_at: None,
         last_failure: None,
+        device: None,
         guest: None,
     }
 }

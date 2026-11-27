@@ -148,15 +148,21 @@ async fn admit(
         .as_ref()
         .ok_or((StatusCode::FORBIDDEN, "this node has no Access setting"))?;
     match access.verify(header_text(headers, ACCESS_HEADER)).await {
-        // The owner's email always wins; then a guest's record; then any other sign-in, as before.
+        // Only a known identity is admitted: the owner's email, which always wins, or a current guest's.
+        // Any other sign-in, one without an email included, is refused.
         Ok(identity) if is_owner(api, &identity) => Ok(Admitted::Access(identity)),
-        Ok(identity) => {
-            let guest = identity
-                .email
-                .as_deref()
-                .and_then(|email| agency_core::guests::admit(&api.node, email));
-            Ok(guest.map_or(Admitted::Access(identity), Admitted::Guest))
-        }
+        Ok(identity) => identity
+            .email
+            .as_deref()
+            .and_then(|email| agency_core::guests::admit(&api.node, email))
+            .map(Admitted::Guest)
+            .ok_or_else(|| {
+                (api.log)("refused an Access sign-in that is neither the owner nor a guest");
+                (
+                    StatusCode::FORBIDDEN,
+                    "this sign-in is not the node's owner or a guest of it",
+                )
+            }),
         Err(reason) => {
             (api.log)(&format!("refused an Access request ({reason})"));
             Err((

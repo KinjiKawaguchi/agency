@@ -7,10 +7,13 @@ private final class ScriptedMetrics: NodeSpeedSource, @unchecked Sendable {
     private let lock = NSLock()
     private var _results: [Int: Result<Metrics, Error>] = [:]
     private var _asked: [Int] = []
+    private var _hourBuckets: [Int: Bool] = [:]
     var asked: [Int] { lock.withLock { _asked } }
+    /// For each period read, whether the buckets of its hours were asked for.
+    var hourBuckets: [Int: Bool] { lock.withLock { _hourBuckets } }
     func set(_ days: Int, _ result: Result<Metrics, Error>) { lock.withLock { _results[days] = result } }
-    func metrics(days: Int) async throws -> Metrics {
-        try lock.withLock { _asked.append(days); return try (_results[days] ?? .failure(NodeError.http(status: 500, message: nil))).get() }
+    func metrics(days: Int, hourBuckets: Bool) async throws -> Metrics {
+        try lock.withLock { _asked.append(days); _hourBuckets[days] = hourBuckets; return try (_results[days] ?? .failure(NodeError.http(status: 500, message: nil))).get() }
     }
 }
 
@@ -26,6 +29,17 @@ struct NodeSpeedStoreTests {
     }
 
     private func store(_ source: ScriptedMetrics) -> NodeSpeedStore { NodeSpeedStore(source: source) }
+
+    @Test("the buckets of each hour are asked for with the hours of a period of up to 7 days, and not for a longer one, which has none")
+    func hourBuckets() async {
+        let source = ScriptedMetrics()
+        for days in [1, 7, 30] { source.set(days, .success(answer(count: 4))) }
+        let store = store(source)
+        await store.refresh()
+        await store.choose(days: 7)
+        await store.choose(days: 30)
+        #expect(source.hourBuckets == [1: true, 7: true, 30: false])
+    }
 
     @Test("nothing is known before the node has answered, and a period is read once it is chosen")
     func firstRead() async {

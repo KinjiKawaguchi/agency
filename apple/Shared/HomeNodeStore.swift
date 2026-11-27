@@ -85,6 +85,7 @@ enum HomeNodeSecrets {
         AccessTokenStore(host: host).clear()
         SecureEnclaveSigner.deleteKey(host: host)
         DraftDefaultsStorage.forget(host: host)
+        FileOutboxStorage.forget(host: host)
         NotificationDefaultsStorage.forget(host: host)
         WidgetDefaultsStorage.forget(host: host)
     }

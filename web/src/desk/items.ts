@@ -1,4 +1,4 @@
-import type { Team } from '../api/teams'
+import { requestKey, type Team } from '../api/teams'
 import type { PersonStatus, RequestKind, TeamRequest, TeamView } from '../api/teamview'
 import { presenceOf } from '../people/state'
 import { personOf } from '../people/viewer'
@@ -27,7 +27,7 @@ export interface DeskItem {
 /** Only the person a request is addressed to can decide it. */
 export const canDecide = (item: DeskItem): boolean => item.isMine
 
-export const itemKey = (view: TeamView, request: TeamRequest): string => `${view.org}:${view.team}:${request.id}`
+export const itemKey = (view: TeamView, request: TeamRequest): string => requestKey(view, request)
 
 function toItem({ view, viewer, mine, relayedFor }: Team, request: TeamRequest): DeskItem {
   // Whose it is is the node's call, because it knows how runtime names map to people; the desk only reads it.

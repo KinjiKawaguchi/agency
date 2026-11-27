@@ -37,7 +37,7 @@ for (const width of [375, 430]) {
 }
 
 test('every request of every screen goes to this origin, and a listed node is only opened by a click', async ({ page, baseURL }) => {
-  const origin = new URL(baseURL ?? 'http://127.0.0.1:4173').origin
+  const origin = new URL(baseURL ?? `http://127.0.0.1:${process.env.AGENCY_E2E_PORT ?? '4173'}`).origin
   const others: string[] = []
   page.on('request', (request) => {
     if (new URL(request.url()).origin !== origin) others.push(request.url())

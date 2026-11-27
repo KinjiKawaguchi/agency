@@ -336,6 +336,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<TokenUsage, PeerError>;
+    /// The events of a team's activity after a time, from the node it runs on (`routes::activity`).
+    async fn get_activity(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Activity, PeerError>;
     /// A team's delivery evaluation, from the node it runs on.
     async fn get_evaluation(
         &self,
@@ -445,6 +452,11 @@ pub trait DeliverySource: Send + Sync {
 pub trait FundingSource: Send + Sync {
     /// The windows that could be read and when; nothing when the usage is unknown.
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
+}
+
+/// The node's log. A caller passes a finished sentence, never a token, an endpoint, a request body or a query.
+pub trait Journal: Send + Sync {
+    fn info(&self, event: &str, line: &str);
 }
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push

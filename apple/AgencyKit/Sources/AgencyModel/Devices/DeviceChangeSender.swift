@@ -20,12 +20,15 @@ public enum DeviceChangeSenderError: Error, Equatable, LocalizedError, Sendable 
     case codeMismatch
     /// No org holds both this device and lacks the new one.
     case nowhereToAdd
+    /// The removal is one the client does not make: the person's last device in an org, or no org this device can sign for.
+    case nowhereToRemove
 
     public var errorDescription: String? {
         switch self {
         case .malformedRequest: Ja.Devices.malformedRequest
         case .codeMismatch: Ja.Devices.codeMismatch
         case .nowhereToAdd: Ja.Devices.nowhereToAdd
+        case .nowhereToRemove: Ja.Devices.Remove.cannotHere
         }
     }
 }
@@ -71,6 +74,36 @@ public struct DeviceChangeSender: Sendable {
             let text = try signedText(kind: .device, body: change.json)
             let signature = try await signer.sign(text, reason: Ja.Devices.faceIDReason(request.label))
             let signed = SignedDeviceChange(change: change, signer: target.signer, signature: signature.base64EncodedString())
+            do {
+                results.append(try await poster.submitDeviceChange(signed))
+            } catch where !results.isEmpty {
+                throw DeviceChangePartlyAnswered(answered: results, cause: error)
+            }
+        }
+        return results
+    }
+
+    /// Removes a device of the person's from each org the plan names: a change for each, stamped with the node's time, signed after Face ID by
+    /// this device as its own id in that org, and posted. What is signed is the id of the device as the node gave it, never a shown one.
+    /// - Returns: what the node answered for each org, in the order they were sent.
+    /// - Throws: `DeviceChangePartlyAnswered` when a change fails after an earlier one was answered; the failure itself otherwise.
+    public func remove(_ plan: DeviceRemovalPlan) async throws -> [DeviceChangeResult] {
+        guard !plan.isBlocked else { throw DeviceChangeSenderError.nowhereToRemove }
+        _ = try await poster.refreshSession()
+        let me = try await poster.me()
+        var changes: [DeviceChange] = []
+        for target in plan.targets {
+            let now = Timestamp.string(from: await poster.nodeNow())
+            let change = DeviceChange(org: target.org, account: me.account.id, operation: .remove(target.deviceID), at: now)
+            try change.validate()
+            changes.append(change)
+        }
+        // All of them are signed on one confirmation, before the first is sent: the person is asked once for what the confirmation listed.
+        let texts = try changes.map { try signedText(kind: .device, body: $0.json) }
+        let signatures = try await signer.signEach(texts, reason: Ja.Devices.Remove.faceIDReason(plan.label))
+        var results: [DeviceChangeResult] = []
+        for (index, target) in plan.targets.enumerated() {
+            let signed = SignedDeviceChange(change: changes[index], signer: target.signer, signature: signatures[index].base64EncodedString())
             do {
                 results.append(try await poster.submitDeviceChange(signed))
             } catch where !results.isEmpty {

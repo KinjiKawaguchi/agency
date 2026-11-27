@@ -6,6 +6,7 @@ use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
 use crate::outbox::{enqueue, outcome_of, settle, Outcome, Parcel, ParcelBody};
 use crate::pending_root::{hold, must_hold, RootChange};
+use crate::push_devices::keep_org;
 use crate::routes;
 use crate::unseen;
 use agency_proto::client::{
@@ -42,6 +43,16 @@ fn my_orgs(node: &Node) -> Vec<SignedOrg> {
     let account = node.account();
     let orgs = node.store().orgs().into_iter();
     orgs.filter(|doc| doc.body.member(&account).is_some())
+        .collect()
+}
+
+/// The ids of the devices the account has now: those of its entry in any org it belongs to.
+pub(crate) fn current_device_ids(node: &Node) -> Vec<Id> {
+    let account = node.account();
+    my_orgs(node)
+        .iter()
+        .flat_map(|doc| my_devices(&doc.body, &account))
+        .map(|device| device.id.clone())
         .collect()
 }
 
@@ -215,7 +226,7 @@ async fn keep_returned(node: &Node, root_node: &str, returned: SignedOrg) -> Res
     let current = load(node, &returned.body.org)?;
     if returned.body.version > current.body.version {
         verify_root_successor(&current, &returned).map_err(Error::bad_request)?;
-        node.store().save_org(&returned)?;
+        keep_org(node, &returned)?;
     }
     Ok(())
 }

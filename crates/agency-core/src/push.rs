@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::guests::Caller;
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
+use crate::push_devices::check_device;
 use crate::push_events::{
     decision_candidates, device_candidates, recovery_candidates, root_change_candidates,
 };
@@ -16,6 +17,7 @@ use agency_proto::client::{
     default_push_events, GuestRef, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
 use agency_proto::clock;
+use agency_proto::digest::sha256_hex;
 use agency_proto::view::Request;
 use agency_proto::{Id, OrgDefinition, Timestamp};
 use serde::{Deserialize, Serialize};
@@ -72,7 +74,12 @@ pub(crate) fn normal_events(events: Option<Vec<PushEvent>>) -> Vec<PushEvent> {
     events
 }
 
-/// Registers a device token, or updates its environment, label, and kinds.
+/// What a DELETE can name instead of a whole token: the first 16 characters of the token's SHA-256, as hex.
+fn token_id(token: &str) -> String {
+    sha256_hex(token.as_bytes())[..16].to_owned()
+}
+
+/// Registers a device token, or updates its environment, label, kinds, and device.
 pub fn register_push_token(node: &Node, input: PushTokenInput) -> Result<PushToken> {
     register_push_token_as(node, &Caller::Owner, input)
 }
@@ -85,6 +92,8 @@ pub fn register_push_token_as(
     input: PushTokenInput,
 ) -> Result<PushToken> {
     let token = check_token(&input.token)?;
+    let guest = caller.guest_of();
+    let device = check_device(node, guest.as_ref(), input.device)?;
     let label = input.label.trim().to_owned();
     if !(1..=80).contains(&label.chars().count()) || label.chars().any(char::is_control) {
         return Err(Error::bad_request("the label is 1 to 80 characters"));
@@ -96,7 +105,6 @@ pub fn register_push_token_as(
         .push_tokens()
         .into_iter()
         .find(|one| one.token == token);
-    let guest = caller.guest_of();
     if known.as_ref().is_some_and(|one| one.guest != guest) {
         return Err(Error::new(
             crate::error::ErrorKind::Conflict,
@@ -104,6 +112,7 @@ pub fn register_push_token_as(
         ));
     }
     let entry = PushToken {
+        id: token_id(&token),
         token,
         environment: input.environment,
         label,
@@ -113,6 +122,7 @@ pub fn register_push_token_as(
         last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
         last_failure: known.and_then(|one| one.last_failure),
         guest,
+        device,
     };
     let mut tokens: Vec<PushToken> = node
         .store()
@@ -126,24 +136,30 @@ pub fn register_push_token_as(
     Ok(entry)
 }
 
-/// Removes a device token. Removing an unknown token is not an error.
+/// Removes a device token, named by the token or by its `id`. Removing an unknown one is not an error.
 pub fn remove_push_token(node: &Node, raw: &str) -> Result<()> {
     remove_push_token_as(node, &Caller::Owner, raw)
 }
 
-/// Removes one of the caller's own tokens; another's, like an unknown one, is left as it is.
+/// Removes one of the caller's own tokens, named by the token or by its `id`; another's, like an unknown
+/// one, is left as it is.
 pub fn remove_push_token_as(node: &Node, caller: &Caller, raw: &str) -> Result<()> {
-    let token = check_token(raw)?;
+    let named = raw.trim().to_ascii_lowercase();
+    let is_id = named.len() == token_id("").len() && named.bytes().all(|b| b.is_ascii_hexdigit());
+    let token = if is_id { None } else { Some(check_token(raw)?) };
+    let is_named = |one: &str| match &token {
+        Some(token) => one == token,
+        None => token_id(one) == named,
+    };
     let guest = caller.guest_of();
-    let is_own = node
+    let gone: Vec<String> = node
         .store()
         .push_tokens()
-        .iter()
-        .any(|one| one.token == token && one.guest == guest);
-    if !is_own {
-        return Ok(());
-    }
-    remove_tokens(node, &[token])
+        .into_iter()
+        .filter(|one| one.guest == guest && is_named(&one.token))
+        .map(|one| one.token)
+        .collect();
+    remove_tokens(node, &gone)
 }
 
 pub(crate) fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
@@ -156,7 +172,7 @@ pub(crate) fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
     node.store().save_push_tokens(&kept)
 }
 
-/// The registered tokens, each shortened to its last 8 characters.
+/// The registered tokens, each shortened to its last 8 characters and named by its `id`.
 pub fn push_tokens(node: &Node) -> PushTokenList {
     push_tokens_of(node, &Caller::Owner)
 }
@@ -165,6 +181,7 @@ pub fn push_tokens(node: &Node) -> PushTokenList {
 pub fn push_tokens_of(node: &Node, caller: &Caller) -> PushTokenList {
     let guest = caller.guest_of();
     let shorten = |one: PushToken| PushToken {
+        id: token_id(&one.token),
         token: one.token[one.token.len().saturating_sub(8)..].to_owned(),
         ..one
     };

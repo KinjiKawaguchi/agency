@@ -5,6 +5,7 @@ use crate::node::Node;
 use crate::orgs::{is_root, load, publish, sign};
 use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
+use crate::push_devices::keep_org;
 use crate::read_auth::sign_read;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
@@ -351,7 +352,7 @@ async fn keep_joined(
     let stored = node.store().load_org(&invite.org);
     if stored.is_none_or(|stored| stored.body.version < joined.body.version) {
         for version in &chain {
-            node.store().save_org(version)?;
+            keep_org(node, version)?;
         }
     }
     node.update_config(|config| {

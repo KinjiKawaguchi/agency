@@ -48,5 +48,66 @@ struct NodeSpeedSnapshotTests {
             }
         }
     }
+
+    // MARK: The hourly trend
+
+    /// A day of hours: `calls` is the calls of each hour by bucket (an hour with none is left out, as the node may), and with `hasBuckets`
+    /// false the hours carry only their own p95.
+    private func daySeries(_ name: String, kind: String = "serve", group: String, isRead: Bool = false, hasBuckets: Bool = true, calls: [Int: [Int: Int]]) -> String {
+        let start = Date(timeIntervalSince1970: 1_795_518_000 - 21 * 3600)
+        func counts(_ spread: [Int: Int]) -> [Int] {
+            var all = Array(repeating: 0, count: LatencySeries.bucketCount)
+            for (bucket, count) in spread { all[bucket] = count }
+            return all
+        }
+        let hours = calls.keys.sorted().map { hour -> String in
+            let all = counts(calls[hour] ?? [:])
+            let time = ISO8601DateFormatter().string(from: start.addingTimeInterval(Double(hour) * 3600))
+            let p95 = Latency.percentile(of: all, percent: 95)
+            let bound: String
+            switch p95 {
+            case .atMost(let ms)?: bound = #","p95Ms":\#(ms)"#
+            case .beyond?, nil: bound = ""
+            }
+            return #"{"hour":"\#(time)","count":\#(all.reduce(0, +)),"errors":0\#(bound)\#(hasBuckets ? #","buckets":\#(all)"# : "")}"#
+        }
+        var total: [Int: Int] = [:]
+        for spread in calls.values { for (bucket, count) in spread { total[bucket, default: 0] += count } }
+        let all = counts(total)
+        return #"{"kind":"\#(kind)","name":"\#(name)","status":"2xx","group":"\#(group)","isInNodeRead":\#(isRead),"count":\#(all.reduce(0, +)),"errors":0,"sumMs":0,"buckets":\#(all),"byHour":[\#(hours.joined(separator: ","))]}"#
+    }
+
+    private func day(_ series: [String], hours: Int = 24) -> Metrics {
+        let json = #"{"from":"2026-11-23T14:00:00Z","until":"2026-11-24T14:00:00Z","generatedAt":"2026-11-24T14:00:00Z","budget":{"inNodeReadP95Ms":100},"series":[\#(series.joined(separator: ","))]}"#
+        return try! JSONDecoder().decode(Metrics.self, from: Data(json.utf8))
+    }
+
+    @Test("the hourly trend: a line with gaps for hours with no call, the budget on the reads, a hollow mark for an hour slower than the last bound, and the approximate chart that says so")
+    func trend() {
+        var reads: [Int: [Int: Int]] = [:]
+        var usage: [Int: [Int: Int]] = [:]
+        for hour in 0..<24 where hour % 5 != 3 {
+            reads[hour] = [2: 20, 3: 6 + hour % 4, hour > 18 ? 6 : 4: 3]
+            usage[hour] = [8: 10, hour == 12 ? 14 : 9: hour == 12 ? 4 : 2]
+        }
+        let runtime = ["runtime view": [5: [14: 3], 6: [7: 2]]]
+        let metrics = day([
+            daySeries("GET /api/me", group: "desk", isRead: true, calls: reads),
+            daySeries("GET /api/orgs/{org}/teams/{team}/usage", group: "usage", calls: usage),
+            daySeries("runtime view", kind: "call", group: "runtime", calls: runtime["runtime view"] ?? [:]),
+            daySeries(UIFixtures.unbrokenID, group: UIFixtures.unbrokenID, hasBuckets: false, calls: [20: [9: 7], 21: [11: 2]]),
+        ])
+        let speed = NodeSpeed(metrics)
+        guard case .charts(let charts) = speed.trend else { Issue.record("should have charts"); return }
+        #expect(charts.first?.budgetMs == 100 && charts.contains { !$0.isExact } && charts.contains { $0.isExact })
+        let states: [(String, NodeSpeed.Trend, Bool)] = [("hour-trend", speed.trend, false), ("hour-trend-open", speed.trend, true), ("hour-trend-short", .onlyShort, false)]
+        for (name, trend, opened) in states {
+            for scheme in [ColorScheme.light, .dark] {
+                let result = Snapshot.capture(name, HourTrendCard(trend: trend, showsTable: opened).padding(Theme.gutter), scheme: scheme)
+                #expect(!result.png.isEmpty)
+                #expect(result.size.width == Snapshot.phoneWidth, "\(name): \(result.size.width) points wide, the screen is \(Snapshot.phoneWidth)")
+            }
+        }
+    }
 }
 #endif
