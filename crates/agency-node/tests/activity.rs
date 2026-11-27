@@ -125,15 +125,15 @@ async fn an_answer_that_is_not_valid_is_unavailable() {
 }
 
 #[tokio::test]
-async fn a_team_on_another_node_is_not_answered_yet_and_an_answerer_reads_none() {
+async fn an_answerer_reads_none_of_the_feed_of_a_team_on_another_node() {
     let (alice, memory) = alice().await;
     reports(&memory);
     let bob = joined_bob(&alice).await;
-    let (status, _) = activity(&bob, "").await;
+    let (status, _) = activity(&bob, "?since=2026-11-24T11:00:00Z").await;
     assert_eq!(
         status,
-        StatusCode::NOT_FOUND,
-        "the team runs on alice's node"
+        StatusCode::OK,
+        "the team runs on alice's node, which answers bob"
     );
 
     let carol = node("carol", memory_runtime().0).await;
@@ -145,4 +145,24 @@ async fn a_team_on_another_node_is_not_answered_yet_and_an_answerer_reads_none()
         StatusCode::FORBIDDEN,
         "an answerer does not read the feed"
     );
+}
+
+#[tokio::test]
+async fn a_refusal_by_the_teams_node_is_403_and_not_unavailable() {
+    let (alice, memory) = alice().await;
+    reports(&memory);
+    let carol = node("carol", memory_runtime().0).await;
+    let link = invite(&alice.node, &id("acme"), None, Role::Answerer).unwrap();
+    join(&carol.node, &link, |_| true).await.unwrap();
+    // carol's copy of the org says she is a member (it is behind alice's), so her node asks, and alice's
+    // node, which has her as an answerer, refuses.
+    let mut doc = carol.node.store().load_org(&id("acme")).unwrap();
+    doc.body
+        .people
+        .iter_mut()
+        .filter(|person| person.account == carol.node.account())
+        .for_each(|person| person.role = Role::Member);
+    carol.node.store().save_org(&doc).unwrap();
+    let (status, answer) = activity(&carol, "?since=2026-11-24T11:00:00Z").await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{answer}");
 }
