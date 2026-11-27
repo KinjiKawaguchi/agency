@@ -168,6 +168,7 @@ Names start at what came after the first release: every node has what the first 
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
 | `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
+| `members` | feature | The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`. |
 
 ## Checks in CI
 
