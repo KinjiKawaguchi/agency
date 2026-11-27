@@ -19,6 +19,8 @@ pub struct BudgetPart {
     pub cap_usd: Option<u32>,
     pub spent_usd: f64,
     pub state: BudgetState,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,9 +69,11 @@ pub fn status(
             .map(|t| t.plan.as_ref().unwrap().weekly_budget_usd)
             .sum()
     });
-    let partial = planned
-        .iter()
-        .any(|t| matches!(spends.get(&t.id), Some(None) | None));
+    let team_partial = !matches!(spends.get(team), Some(Some(_)));
+    let partial = team_partial
+        || planned
+            .iter()
+            .any(|t| matches!(spends.get(&t.id), Some(None) | None));
     let org_spent = planned
         .iter()
         .filter_map(|t| spends.get(&t.id).and_then(|v| *v))
@@ -85,6 +89,7 @@ pub fn status(
             cap_usd: cap,
             spent_usd: team_spent,
             state: team_state,
+            partial: team_partial,
         },
         org: OrgBudget {
             cap_usd: org_cap,
