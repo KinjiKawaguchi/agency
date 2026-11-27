@@ -1,9 +1,9 @@
 //! The metrics contract: the shared sample answer reads and writes back unchanged, its series agree with
 //! themselves, and what a series holds is only what the protocol allows.
 use agency_proto::metrics::{
-    group_of, is_error_status, is_in_node_read, judge, valid_name, valid_status, HourSeries,
-    Metrics, ObjectiveResult, ObjectiveState, Series, SeriesKind, CALL_GROUPS,
-    IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
+    bucket_total, group_of, is_error_status, is_in_node_read, judge, percentile_bucket,
+    percentile_ms, valid_name, valid_status, HourSeries, Metrics, ObjectiveResult, ObjectiveState,
+    Series, SeriesKind, BUCKETS, CALL_GROUPS, IN_NODE_READ_P95_BUDGET_MS, ROUTE_GROUPS,
 };
 use serde_json::Value;
 
@@ -580,6 +580,32 @@ fn the_buckets_of_an_hour_add_up_to_its_count_and_give_its_percentile() {
     let mut plain = hour_with(4, 5, Some(999));
     plain.buckets = None;
     assert!(plain.is_consistent());
+}
+
+#[test]
+fn buckets_that_hold_more_than_a_count_can_are_inconsistent_and_give_no_percentile() {
+    assert_eq!(bucket_total(&[u64::MAX, 0, 0]), Some(u64::MAX));
+    assert_eq!(bucket_total(&[u64::MAX, 1, 0]), None);
+    assert_eq!(percentile_ms(&[u64::MAX, 1, 0], 95), None);
+    assert_eq!(percentile_bucket(&[u64::MAX, 0, 0], 95), Some(0));
+    // The sum wraps to the count it claims; the hour is still told apart.
+    let mut wrapped = hour_with(0, 0, None);
+    assert!(wrapped.is_consistent());
+    wrapped.buckets.as_mut().unwrap()[0] = u64::MAX;
+    wrapped.buckets.as_mut().unwrap()[1] = 1;
+    assert!(!wrapped.is_consistent());
+    let mut series = sample().series.remove(0);
+    series.count = 0;
+    series.errors = 0;
+    series.by_hour = Vec::new();
+    series.buckets = vec![0; BUCKETS];
+    series.p50_ms = None;
+    series.p95_ms = None;
+    series.p99_ms = None;
+    assert!(series.is_consistent());
+    series.buckets[0] = u64::MAX;
+    series.buckets[1] = 1;
+    assert!(!series.is_consistent());
 }
 
 #[test]
