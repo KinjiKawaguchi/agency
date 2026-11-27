@@ -540,17 +540,24 @@ async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
         .map(|place| place.id.clone())
         .collect::<BTreeSet<_>>();
     teams.insert(team.clone());
+    let reads = teams.into_iter().map(|id| async {
+        let spend = tokio::time::timeout(
+            Duration::from_secs(8),
+            agency_core::usage::team_usage(node, &org, &id, Some(7)),
+        )
+        .await
+        .ok()
+        .and_then(|answer| answer.ok())
+        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
+        (id, spend)
+    });
     let mut spends = BTreeMap::new();
-    for id in teams {
-        let spend = agency_core::usage::team_usage(node, &org, &id, Some(7))
-            .await
-            .ok()
-            .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
+    for (id, spend) in futures_util::future::join_all(reads).await {
         spends.insert(id, spend);
     }
     let report = agency_core::budget::status(&definition, start, &team, &spends)
         .expect("the selected team was checked in the signed definition");
-    println!("{}", serde_json::to_string(&report)?);
+    println!("{}", agency_node::budget::json_line(&report)?);
     Ok(())
 }
 
