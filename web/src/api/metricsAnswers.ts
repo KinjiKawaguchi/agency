@@ -75,7 +75,10 @@ function series(raw: unknown): LatencySeries | null {
   }
 }
 
-const STATES: readonly ObjectiveState[] = ['met', 'notMet', 'unknown']
+/** The states this client knows: a new one in the generated type is a compile error here, to be worded and drawn. */
+const KNOWN_STATES: Record<ObjectiveState, true> = { met: true, notMet: true, undetermined: true, unknown: true }
+
+const stateOf = (value: unknown): ObjectiveState => (typeof value === 'string' && Object.hasOwn(KNOWN_STATES, value) ? (value as ObjectiveState) : 'unknown')
 
 function objective(raw: unknown): Objective {
   const given = asObject(raw, 'objective')
@@ -83,7 +86,7 @@ function objective(raw: unknown): Objective {
   return {
     group: text(given.group, 'objective group'),
     p95Ms: count(given.p95Ms, 'objective p95'),
-    state: STATES.find((one) => one === given.state) ?? 'unknown',
+    state: stateOf(given.state),
     ...(measuredP95Ms === undefined ? {} : { measuredP95Ms }),
   }
 }

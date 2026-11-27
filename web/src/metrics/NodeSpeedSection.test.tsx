@@ -142,8 +142,12 @@ describe('the node’s own response time, on the evaluation page', () => {
     expect(items[0]).toHaveTextContent('Measured: ≤ 1 s.')
     expect(items[1]).toHaveTextContent('Desk: p95 ≤ 50 ms')
     expect(items[1]).toHaveTextContent('Met')
-    expect(items[2]).toHaveTextContent('Cannot be told yet')
-    expect(items[2]).not.toHaveTextContent('Measured')
+    expect(items[2]).toHaveTextContent('Usage: p95 ≤ 3 s')
+    expect(items[2]).toHaveTextContent('Cannot be told against this objective')
+    expect(items[2]).toHaveTextContent('Measured: ≤ 5 s.')
+    expect(items[2]).not.toHaveTextContent(/\bMet\b|Not met/)
+    expect(items[3]).toHaveTextContent('Cannot be told yet')
+    expect(items[3]).not.toHaveTextContent('Measured')
   })
 
   it('does not say an answer it cannot read in the words of its own fields', async () => {
