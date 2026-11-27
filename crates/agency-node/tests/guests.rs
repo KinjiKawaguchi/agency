@@ -232,3 +232,18 @@ async fn a_guest_decides_only_as_its_member_and_never_as_the_owner() {
         "the owner's log is not the guest's: {owners}"
     );
 }
+
+#[tokio::test]
+async fn me_has_no_guest_key_at_all_for_the_owner_a_local_request_or_another_sign_in() {
+    let (alice, _) = with_guest().await;
+    for email in ["alice@example.com", "erin@example.com"] {
+        let (status, me) = call(&alice, Method::GET, "/api/me", email, None).await;
+        assert_eq!(status, 200, "{me}");
+        assert!(
+            me.as_object().unwrap().get("guest").is_none(),
+            "{email}: {me}"
+        );
+    }
+    let (_, local) = common::body(common::get(&alice, "/api/me").send().await.unwrap()).await;
+    assert!(local.as_object().unwrap().get("guest").is_none(), "{local}");
+}

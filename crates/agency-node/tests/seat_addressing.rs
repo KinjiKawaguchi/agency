@@ -9,6 +9,7 @@ use agency_core::decisions::Decided;
 use agency_core::invites::{invite, join};
 use agency_core::read_auth::sign_read;
 use agency_core::seats;
+use agency_core::views::refresh;
 use agency_core::ErrorKind;
 use agency_proto::client::SignedDecisionInput;
 use agency_proto::org::Role;
@@ -306,4 +307,170 @@ async fn a_people_entry_that_names_no_one_is_found_and_the_rest_are_not() {
         [("typo".to_owned(), id("zed"))],
         "members, seats and external parties are fine"
     );
+}
+
+/// What the team's node says each of its readers answers for: bob (named `reviewer` there) for carol and
+/// for erin, cara (not named there) for erin.
+#[tokio::test]
+async fn a_reader_on_another_node_has_the_requests_of_the_seats_they_answer_for() {
+    let (_alice, _, bob, cara) = world().await;
+    let (acme, app) = (id("acme"), id("app"));
+    refresh(&bob.node).await.unwrap();
+    refresh(&cara.node).await.unwrap();
+
+    let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
+    assert_eq!(snapshot.viewer.as_deref(), Some("reviewer"));
+    let mut mine = snapshot.mine;
+    mine.dedup(); // the runtime fixture already has an r-1 of its own
+    assert_eq!(mine, ["r-1", "r-3", "r-4"], "r-2 is the owner's");
+    assert_eq!(
+        snapshot.relayed_for.into_iter().collect::<Vec<_>>(),
+        [
+            ("r-1".to_owned(), "Carol (finance)".to_owned()),
+            ("r-3".to_owned(), "Erin (outside counsel)".to_owned()),
+        ],
+        "r-4 is bob's own: no one is answered for"
+    );
+
+    let snapshot = team_snapshot(&cara.node, &acme, &app).await.unwrap();
+    assert_eq!(snapshot.viewer, None, "the team does not name her");
+    assert_eq!(snapshot.mine, ["r-3"]);
+    assert_eq!(
+        snapshot.relayed_for.into_iter().collect::<Vec<_>>(),
+        [("r-3".to_owned(), "Erin (outside counsel)".to_owned())]
+    );
+}
+
+/// What the team's node answers to `reader`'s signed read of acme/app.
+async fn fed_view(team_node: &Running, reader: &Running, account: &str) -> serde_json::Value {
+    let path = "/fed/v1/teams/acme/app/view";
+    let auth = sign_read(
+        reader.node.key(),
+        &id(account),
+        "GET",
+        path,
+        reader.node.now(),
+    );
+    let mut request = reqwest::Client::new().get(format!("{}{path}", team_node.url()));
+    for (name, value) in read_headers(&auth) {
+        request = request.header(name, value);
+    }
+    request.send().await.unwrap().json().await.unwrap()
+}
+
+#[tokio::test]
+async fn the_team_node_says_which_seats_each_reader_answers_for_by_the_name_it_knows_them_by() {
+    let (alice, _, bob, cara) = world().await;
+    let answered = |view: &serde_json::Value| view["answersFor"].clone();
+    assert_eq!(
+        answered(&fed_view(&alice, &bob, "bob").await),
+        serde_json::json!([
+            { "name": "counsel", "id": "erin" },
+            { "name": "finance", "id": "carol" },
+        ])
+    );
+    assert_eq!(
+        answered(&fed_view(&alice, &cara, "cara").await),
+        serde_json::json!([{ "name": "counsel", "id": "erin" }])
+    );
+    // The seat that names no one is the owner's, and the owner is not named in the people it maps.
+    assert_eq!(
+        answered(&fed_view(&alice, &alice, "alice").await),
+        serde_json::json!([{ "name": "tax", "id": "dan" }])
+    );
+}
+
+#[tokio::test]
+async fn the_decision_log_of_a_team_elsewhere_keeps_whom_the_decision_answered_for() {
+    let (_alice, _, bob, _) = world().await;
+    let key = device(&bob).await;
+    refresh(&bob.node).await.unwrap();
+    assert_eq!(decide(&bob, &key, "r-1").await, Decided::Delivered);
+    assert_eq!(decide(&bob, &key, "r-4").await, Decided::Delivered);
+    let log = decision_log(&bob.node, None);
+    let by_target = |target: &str| log.entries.iter().find(|one| one.target == target).unwrap();
+    let relayed = by_target("r-1").relayed_for.as_ref().unwrap();
+    assert_eq!(
+        (relayed.id.as_str(), relayed.label.as_str()),
+        ("carol", "Carol (finance)")
+    );
+    assert_eq!(by_target("r-4").relayed_for, None);
+}
+
+/// Cara takes the seat carol (finance) by a merge: its requests are hers, no one answers for it any more, and
+/// the team's node still says she has them, under the name it knew the seat by.
+#[tokio::test]
+async fn a_member_on_another_node_who_took_a_seat_has_its_requests_as_her_own() {
+    let (alice, _, bob, cara) = world().await;
+    let (acme, app) = (id("acme"), id("app"));
+    seats::merge_seat(&alice.node, &acme, &id("carol"), &id("cara")).unwrap();
+    refresh(&bob.node).await.unwrap();
+    refresh(&cara.node).await.unwrap();
+    let replica = cara.node.store().load_replica(&acme, &app).unwrap();
+    let said: Vec<(&str, &str)> = replica
+        .answers_for
+        .iter()
+        .map(|one| (one.name.as_str(), one.id.as_str()))
+        .collect();
+    assert_eq!(said, [("counsel", "erin"), ("finance", "carol")]);
+    let snapshot = team_snapshot(&cara.node, &acme, &app).await.unwrap();
+    let mut mine = snapshot.mine;
+    mine.dedup(); // the runtime fixture already has an r-1 of its own
+    assert_eq!(mine, ["r-1", "r-3"]);
+    assert_eq!(
+        snapshot.relayed_for.into_iter().collect::<Vec<_>>(),
+        [("r-3".to_owned(), "Erin (outside counsel)".to_owned())],
+        "r-1 is hers: it is for no one else"
+    );
+
+    let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
+    assert!(
+        !snapshot.mine.contains(&"r-1".to_owned()),
+        "bob answered for the seat only while it was one"
+    );
+}
+
+/// The team's node knows a seat this node's definition of the org does not have yet.
+#[tokio::test]
+async fn a_party_the_definition_does_not_have_yet_is_said_by_its_id() {
+    let (_alice, _, bob, _) = world().await;
+    let (acme, app) = (id("acme"), id("app"));
+    refresh(&bob.node).await.unwrap();
+    let mut replica = bob.node.store().load_replica(&acme, &app).unwrap();
+    for one in &mut replica.answers_for {
+        if one.name == "finance" {
+            one.id = id("newseat");
+        }
+    }
+    bob.node
+        .store()
+        .save_replica(&acme, &app, &replica)
+        .unwrap();
+
+    let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
+    assert!(
+        snapshot.mine.contains(&"r-1".to_owned()),
+        "still bob's to answer"
+    );
+    assert_eq!(
+        snapshot.relayed_for.get("r-1").map(String::as_str),
+        Some("newseat")
+    );
+    let key = device(&bob).await;
+    assert_eq!(decide(&bob, &key, "r-1").await, Decided::Delivered);
+    let log = decision_log(&bob.node, None);
+    let relayed = log.entries[0].relayed_for.as_ref().unwrap();
+    assert_eq!(
+        (relayed.id.as_str(), relayed.label.as_str()),
+        ("newseat", "newseat")
+    );
+}
+
+#[tokio::test]
+async fn a_decision_sent_before_the_node_has_read_the_team_is_logged_without_a_party() {
+    let (_alice, _, bob, _) = world().await;
+    let key = device(&bob).await;
+    assert_eq!(decide(&bob, &key, "r-1").await, Decided::Delivered);
+    let log = decision_log(&bob.node, None);
+    assert_eq!(log.entries[0].relayed_for, None, "no replica to say it by");
 }

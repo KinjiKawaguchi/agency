@@ -3,7 +3,7 @@
 //! and nobody else the node lets in. They are not federation routes, so no other node reads them.
 use super::{is_owner_request, refuse, respond, Admitted, ClientApi, Shared};
 use agency_core::Error;
-use agency_proto::metrics::{valid_metrics_days, SeriesKind, MAX_METRICS_DAYS};
+use agency_proto::metrics::{judge, valid_metrics_days, SeriesKind, MAX_METRICS_DAYS};
 use axum::extract::{Extension, Query, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
@@ -77,6 +77,18 @@ async fn get_metrics(State(api): Shared, Query(query): Query<HashMap<String, Str
             "the measurements could not be read",
         );
     };
+    // The objectives the operator set, against the whole of each group: not in an answer narrowed to a kind or
+    // a name, which would not be the whole of it.
+    if kind.is_none() && !query.contains_key("name") {
+        metrics.objectives = api
+            .node
+            .config()
+            .metrics
+            .objectives
+            .iter()
+            .map(|objective| judge(&objective.group, objective.p95_ms, &metrics.series))
+            .collect();
+    }
     if days > HOURS_UP_TO_DAYS {
         for series in &mut metrics.series {
             series.by_hour.clear();
