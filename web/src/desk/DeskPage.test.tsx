@@ -214,7 +214,7 @@ describe('decision desk', () => {
     // The node took it (queued): the tray is empty and the request stays off the pile while the node's log says it is queued.
     await waitFor(() => expect(node.decisions()).toHaveLength(1))
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Sending decisions' })).not.toBeInTheDocument())
-    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Saved, not delivered')).length).toBeGreaterThan(0)
     expect((await pile()).queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
