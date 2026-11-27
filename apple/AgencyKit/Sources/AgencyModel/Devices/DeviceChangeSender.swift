@@ -68,7 +68,7 @@ public struct DeviceChangeSender: Sendable {
             let now = Timestamp.string(from: await poster.nodeNow())
             let change = DeviceChange(
                 org: target.org, account: me.account.id,
-                operation: .add(.init(id: request.deviceId, label: request.label, publicKey: key.string, addedAt: now)), at: now
+                operation: .add(.init(id: request.deviceId, label: request.rawLabel, publicKey: key.string, addedAt: now)), at: now
             )
             try change.validate()
             let text = try signedText(kind: .device, body: change.json)

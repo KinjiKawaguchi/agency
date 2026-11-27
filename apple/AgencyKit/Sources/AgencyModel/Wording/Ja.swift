@@ -1,4 +1,5 @@
 import AgencyAPI
+import AgencyProtocol
 import Foundation
 
 /// The words of the app, in Japanese, taken from the web client (`web/src/i18n/ja.ts`) where it has them.
@@ -109,7 +110,7 @@ public enum Ja {
         /// What Face ID says it is for: the action, then the request's title.
         public static func faceIDReason(_ decision: PreparedDecision) -> String {
             let action = decision.isComment ? "コメントを送る" : verb(decision.kind)
-            return "\(action): \(decision.title)"
+            return "\(action): \(NodeLabel.shown(decision.title))"
         }
 
         public static func sendWith(_ verb: String, choice: String) -> String { "「\(choice)」で\(verb)" }
