@@ -121,7 +121,7 @@ async fn activity_of_a_node_that_lacks_it_is_not_read_and_the_reason_names_its_r
 
     let (status, answer) = activity(&alice).await;
 
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answer}");
+    assert_eq!(status, StatusCode::NOT_FOUND, "{answer}");
     let reason = answer["error"].as_str().unwrap();
     assert!(reason.contains("release 0.2.0"), "{reason}");
     assert!(reason.contains("activity"), "{reason}");
@@ -246,7 +246,7 @@ async fn a_node_lacking_one_feature_is_still_asked_for_the_other() {
     })
     .await;
 
-    assert_eq!(activity(&alice).await.0, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(activity(&alice).await.0, StatusCode::NOT_FOUND);
     assert_eq!(hits.load(Ordering::SeqCst), 0);
     assert_eq!(
         effort_reason(&alice).await,
@@ -286,7 +286,7 @@ async fn a_node_that_was_updated_since_is_read_again_and_then_asked() {
     };
     keep_alice_as_behind(&bob, &alice);
 
-    assert_eq!(read_activity(&bob).await, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(read_activity(&bob).await, StatusCode::NOT_FOUND);
     let kept = bob.node.store().peer_abouts(&id("acme"));
     assert!(
         kept[&alice.url()].should_read_again,
@@ -297,7 +297,7 @@ async fn a_node_that_was_updated_since_is_read_again_and_then_asked() {
     agency_core::views::refresh(&bob.node).await.unwrap();
     assert_eq!(
         read_activity(&bob).await,
-        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::NOT_FOUND,
         "not read again before ten minutes"
     );
 

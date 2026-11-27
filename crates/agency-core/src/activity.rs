@@ -91,10 +91,10 @@ pub async fn team_activity(
 }
 
 /// The events from the node a team runs on, read live. A node that cannot be reached, or whose answer is
-/// malformed, is unavailable, and so is a node that has been read and does not list the `activity`
-/// capability (the route is not called, and the reason names the release it runs); a node that lists it, or
-/// has not been read, and does not report activity or does not serve the route is not found; a node that
-/// refuses the reader (403) is passed through.
+/// malformed, is unavailable; a node that does not report activity or does not serve the route is not found,
+/// and so is one that has been read and does not list the `activity` capability (the route is not called, and
+/// the reason names the release it runs and says it needs an update); a node that refuses the reader (403) is
+/// passed through.
 async fn remote_activity(
     node: &Node,
     org: &Id,
@@ -109,7 +109,7 @@ async fn remote_activity(
         Capability::Activity,
         "the team's activity feed",
     ) {
-        return Err(Error::new(ErrorKind::Unavailable, reason));
+        return Err(Error::not_found(reason));
     }
     let path = routes::activity(org, &place.id, since, limit);
     let auth = sign_for_peer(node, org, &place.node, &path);
