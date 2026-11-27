@@ -49,7 +49,7 @@ pub async fn decide_signed(
         .ok_or_else(|| Error::not_found("not found"))?
         .clone();
     let is_local = node.runs_here(org, team);
-    let record = DecisionRecord::of(envelope, note, is_local);
+    let record = DecisionRecord::of(&signed, note, is_local);
     if !is_local {
         let record = DecisionRecord {
             // The replica is read as the node's own account's: for anyone else it says nothing of them.

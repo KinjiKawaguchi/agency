@@ -631,3 +631,30 @@ fn a_series_is_consistent_only_when_its_hours_are_and_the_buckets_of_an_hour_are
         "left out, not null"
     );
 }
+
+#[test]
+fn an_objective_over_series_that_add_up_past_what_a_count_holds_says_nothing() {
+    let template = sample()
+        .series
+        .into_iter()
+        .find(|one| one.kind == SeriesKind::Serve && one.group == "desk")
+        .unwrap();
+    let mut half = template.clone();
+    half.buckets = vec![0; BUCKETS];
+    half.buckets[3] = u64::MAX / 2 + 2;
+    let (mut over, mut exact) = (half.clone(), half.clone());
+    over.status = "5xx".into();
+    exact.buckets[3] = u64::MAX / 2 - 1;
+    let result = judge("desk", 10, &[half.clone(), over]);
+    assert_eq!(
+        (result.state, result.measured_p95_ms),
+        (ObjectiveState::Unknown, None),
+        "a wrapped sum would have said 2 durations, in a bucket that nobody measured"
+    );
+    let result = judge("desk", 10, &[half, exact]);
+    assert_ne!(
+        result.state,
+        ObjectiveState::Unknown,
+        "what adds up to exactly a u64's most is still a count"
+    );
+}

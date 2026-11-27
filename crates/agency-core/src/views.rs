@@ -5,7 +5,7 @@ use crate::node::Node;
 use crate::orgs;
 use crate::peer_about;
 use crate::ports::{DefinitionAccess, PeerError};
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
@@ -315,7 +315,7 @@ async fn fetch_view(
     place: &TeamPlace,
 ) -> Result<FederatedView, FetchFailure> {
     let path = routes::view(org, &place.id);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let fetched = node
         .peers()
         .get_view(&place.node, &path, &auth)
@@ -380,13 +380,7 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
         return;
     };
     let path = routes::definition(&doc.body.org);
-    let access = DefinitionAccess::Signed(sign_read(
-        node.key(),
-        &node.account(),
-        "GET",
-        &path,
-        node.now(),
-    ));
+    let access = DefinitionAccess::Signed(sign_for_peer(node, &doc.body.org, &place.node, &path));
     if let Ok(newer) = node
         .peers()
         .get_definition(&place.node, &path, &access)

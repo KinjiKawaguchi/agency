@@ -816,3 +816,24 @@ fn torn_bytes_in_a_day_file_cost_the_line_they_are_in_and_not_the_day() {
         "the day's other lines are kept when the file is rewritten"
     );
 }
+
+#[test]
+fn merging_counts_never_wraps_around_to_a_small_number() {
+    let big = |count: u64| {
+        let mut buckets = [0; BUCKETS];
+        buckets[3] = count;
+        Counts {
+            count,
+            errors: count,
+            sum_ms: 0,
+            buckets,
+        }
+    };
+    let mut merged = big(u64::MAX / 2 + 1);
+    merged.merge(&big(u64::MAX / 2 + 1));
+    assert_eq!(
+        (merged.count, merged.errors, merged.buckets[3]),
+        (u64::MAX, u64::MAX, u64::MAX),
+        "it stops at what a count holds"
+    );
+}
