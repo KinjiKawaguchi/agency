@@ -148,15 +148,53 @@ pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<
     Ok(())
 }
 
-/// Delivers, oldest first, every parcel whose next attempt is due.
+/// How many receiving nodes are delivered to at once. A node that does not answer holds one of these for its
+/// timeout, not the whole outbox.
+pub const NODES_AT_ONCE: usize = 8;
+
+/// Delivers every parcel whose next attempt is due: to each receiving node in the order the parcels were queued
+/// (so that versions of an org arrive in order), and to several nodes at once. Once a node is unreachable, its
+/// other parcels wait for their next attempt instead of each waiting for the same timeout now.
 pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
+    use futures_util::stream::{self, StreamExt};
     let now = node.now();
-    let mut outcomes = vec![];
+    let mut by_node: std::collections::BTreeMap<String, Vec<Parcel>> = Default::default();
     for parcel in pending(node)
         .into_iter()
         .filter(|one| clock::parse(&one.next_at).is_none_or(|at| at <= now))
     {
-        outcomes.push(deliver(node, &parcel).await?);
+        by_node.entry(parcel.to.clone()).or_default().push(parcel);
+    }
+    let delivered: Vec<Result<Vec<Outcome>>> = stream::iter(by_node.into_values())
+        .map(|parcels| deliver_in_order(node, parcels))
+        .buffer_unordered(NODES_AT_ONCE)
+        .collect()
+        .await;
+    let mut outcomes = vec![];
+    for one in delivered {
+        outcomes.extend(one?);
+    }
+    Ok(outcomes)
+}
+
+/// The parcels for one node, oldest first, until one finds the node unreachable.
+async fn deliver_in_order(node: &Node, mut parcels: Vec<Parcel>) -> Result<Vec<Outcome>> {
+    // Two versions of an org queued in the same second go in version order: a node takes only the next one.
+    let version = |parcel: &Parcel| match &parcel.body {
+        ParcelBody::Org(doc) => doc.body.version,
+        _ => 0,
+    };
+    parcels.sort_by(|one, other| {
+        (&one.queued_at, version(one), &one.id).cmp(&(&other.queued_at, version(other), &other.id))
+    });
+    let mut outcomes = vec![];
+    for parcel in &parcels {
+        let outcome = deliver(node, parcel).await?;
+        let is_unreachable = matches!(outcome, Outcome::Unreachable(_));
+        outcomes.push(outcome);
+        if is_unreachable {
+            break;
+        }
     }
     Ok(outcomes)
 }

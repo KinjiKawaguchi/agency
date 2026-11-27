@@ -359,14 +359,25 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
     node.store().save_replica(org, &place.id, &next)
 }
 
-/// Takes a newer org definition from one of the org's other nodes, if it has one.
+/// Takes a newer org definition from one of the org's other nodes, if it has one: a node whose team was last read
+/// without an error, so that a node that does not answer is not the one asked every time.
 async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     let org = &doc.body.org;
-    let Some(place) = doc
+    let elsewhere: Vec<&TeamPlace> = doc
         .body
         .teams
         .iter()
-        .find(|place| !node.runs_here(org, &place.id))
+        .filter(|place| !node.runs_here(org, &place.id))
+        .collect();
+    let answered = |place: &&&TeamPlace| {
+        node.store()
+            .load_replica(org, &place.id)
+            .is_some_and(|replica| replica.error.is_none() && replica.fetched_at.is_some())
+    };
+    let Some(place) = elsewhere
+        .iter()
+        .find(answered)
+        .or_else(|| elsewhere.first())
     else {
         return;
     };
@@ -384,24 +395,50 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
-/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to.
+/// How many teams on other nodes are read at once. A team node that does not answer holds one of these for its
+/// timeout, not the whole pass.
+pub const READS_AT_ONCE: usize = 8;
+
+/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to, at most
+/// `READS_AT_ONCE` at a time, and, at the same time, org by org, what the org's other nodes say about themselves
+/// and the org's definition. The first failure to keep what was read is returned once everything was tried.
 pub async fn refresh(node: &Node) -> Result<()> {
+    use futures_util::stream::{self, StreamExt};
     let account = node.account();
-    for doc in node
+    let orgs: Vec<SignedOrg> = node
         .store()
         .orgs()
         .into_iter()
         .filter(|doc| doc.body.member(&account).is_some())
-    {
-        let org = &doc.body.org;
-        let elsewhere = doc.body.teams.iter();
-        for place in elsewhere.filter(|place| !node.runs_here(org, &place.id)) {
-            refresh_replica(node, org, place).await?;
-        }
-        peer_about::refresh(node, &doc.body).await?;
-        refresh_definition(node, &doc).await;
-    }
-    Ok(())
+        .collect();
+    let elsewhere: Vec<(Id, TeamPlace)> = orgs
+        .iter()
+        .flat_map(|doc| {
+            let org = &doc.body.org;
+            doc.body
+                .teams
+                .iter()
+                .filter(|place| !node.runs_here(org, &place.id))
+                .map(|place| (org.clone(), place.clone()))
+        })
+        .collect();
+    let replicas = stream::iter(elsewhere)
+        .map(|(org, place)| async move { refresh_replica(node, &org, &place).await })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let peers = stream::iter(orgs)
+        .map(|doc| async move {
+            let (about, ()) = futures_util::future::join(
+                peer_about::refresh(node, &doc.body),
+                refresh_definition(node, &doc),
+            )
+            .await;
+            about
+        })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let (replicas, peers) = futures_util::future::join(replicas, peers).await;
+    replicas.into_iter().chain(peers).collect()
 }
 
 #[cfg(test)]
