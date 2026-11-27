@@ -583,7 +583,7 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
 | `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |

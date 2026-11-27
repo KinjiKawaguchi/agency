@@ -73,3 +73,36 @@ async fn a_version_that_does_not_move_the_team_refuses_nothing() {
         .unwrap();
     assert_eq!(accepted, Accepted::Applied);
 }
+
+#[tokio::test]
+async fn a_version_that_only_spells_the_place_another_way_is_no_move() {
+    let (alice, phone) = with_phone().await;
+    alice.clock.advance(Duration::minutes(1));
+    move_team(
+        &alice.node,
+        &id("acme"),
+        &id("app"),
+        "https://Agency.Example.com".into(),
+    )
+    .unwrap();
+    alice.clock.advance(Duration::minutes(1));
+    let made_between = signed_answer(&alice, &phone, "r-1", "a");
+    alice.clock.advance(Duration::minutes(1));
+    move_team(
+        &alice.node,
+        &id("acme"),
+        &id("app"),
+        "https://agency.example.com:443".into(),
+    )
+    .unwrap();
+    alice.clock.advance(Duration::minutes(1));
+
+    let accepted = accept_envelope(&alice.node, &id("acme"), &id("app"), made_between)
+        .await
+        .unwrap();
+    assert_eq!(
+        accepted,
+        Accepted::Applied,
+        "the same origin, written another way"
+    );
+}

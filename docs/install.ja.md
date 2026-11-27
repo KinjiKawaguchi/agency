@@ -618,7 +618,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 |---|---|
 | `Node running: <url> (listening on <address>)` と `Web client: …` | ノードが起動しました。 |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd と systemd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。 |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。書き方だけの違い（ホスト名の大文字小文字、既定のポート）なら、ほかは何も変わりません。実際に名前を変えた場合は、それより前に行い、まだ届いていない決定は断られるので、もう一度行います。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
