@@ -14,6 +14,7 @@ import { SignInExpiredProvider } from '../shared/SignInExpired'
 import { WebPushBrowserProvider } from '../pwa/WebPushBrowserContext'
 import { WebPushRegistration } from '../pwa/WebPushRegistration'
 import type { WebPushBrowser } from '../pwa/useWebPush'
+import { OutboxProvider } from '../outbox/OutboxProvider'
 import { ToastProvider } from '../shared/Toasts'
 import { createQueryClient } from './queryClient'
 import { createAppRouter } from './router'
@@ -43,10 +44,12 @@ export function App({ client, history, locale, keyStore, queryClient: given, web
               <DeviceKeyProvider>
                 <ToastProvider>
                   <WebPushBrowserProvider browser={webPushBrowser}>
-                    <NativePushRegistration />
-                    <WebPushRegistration />
-                    <NativeBadge />
-                    <RouterProvider router={router} />
+                    <OutboxProvider>
+                      <NativePushRegistration />
+                      <WebPushRegistration />
+                      <NativeBadge />
+                      <RouterProvider router={router} />
+                    </OutboxProvider>
                   </WebPushBrowserProvider>
                 </ToastProvider>
               </DeviceKeyProvider>

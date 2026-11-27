@@ -56,6 +56,12 @@ pub struct Logger {
     inner: Arc<Inner>,
 }
 
+impl agency_core::ports::Journal for Logger {
+    fn info(&self, event: &str, line: &str) {
+        self.record(LogLevel::Info, event, line);
+    }
+}
+
 impl Logger {
     /// A logger that writes to `dir`, which is created when the first line is written. When standard
     /// error is a terminal, every line is also printed there.

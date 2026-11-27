@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 export interface NodeOptions {
   /** Serve the mock token use (the real node does not yet). */
@@ -144,4 +144,17 @@ export async function waitOnClock(page: Page, done: () => Promise<boolean>): Pro
       { timeout: 30_000, intervals: [100] },
     )
     .toBe(true)
+}
+
+/** How many envelopes the mock node has taken: its own record, which does not depend on what the page has drawn yet. */
+export async function acceptedEnvelopes(request: APIRequestContext): Promise<number> {
+  return ((await (await request.get('/__mock/envelopes')).json()) as unknown[]).length
+}
+
+/** Waits for a decision to have been sent and taken: first the mock node's own record of it (never a guess at how long a loaded runner takes), then the tray, which empties after that. */
+export async function decisionsTaken(page: Page, request: APIRequestContext, count = 1): Promise<void> {
+  // The test's own time is lengthened by what this waits for, so that this wait's message is the one that fails, not the test's clock.
+  test.info().setTimeout(test.info().timeout + 60_000)
+  await expect.poll(() => acceptedEnvelopes(request), { timeout: 30_000 }).toBe(count)
+  await expect(page.getByRole('region', { name: 'Sending decisions' })).toHaveCount(0, { timeout: 30_000 })
 }

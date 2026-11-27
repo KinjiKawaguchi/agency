@@ -237,6 +237,16 @@ struct NodeClientTests {
         #expect(transport.requests.first?.headers["x-agency-token"] == nil)
     }
 
+    @Test("the node's measurements are asked for with the buckets of each hour only when the reader wants them")
+    func metricsQuery() async throws {
+        let answer = #"{"from":"2026-11-24T10:00:00Z","until":"2026-11-24T12:00:00Z","generatedAt":"2026-11-24T11:30:00Z","series":[]}"#
+        let transport = ScriptedTransport([("GET /api/metrics?days=7&hourBuckets=1", json(answer)), ("GET /api/metrics?days=30", json(answer))])
+        let node = client(transport)
+        _ = try await node.metrics(days: 7, hourBuckets: true)
+        _ = try await node.metrics(days: 30)
+        #expect(transport.requests.map(\.path) == ["/api/metrics?days=7&hourBuckets=1", "/api/metrics?days=30"])
+    }
+
     @Test("registering a push token is a write with the token, environment and label")
     func pushToken() async throws {
         let transport = ScriptedTransport([
@@ -249,6 +259,32 @@ struct NodeClientTests {
         let post = try #require(transport.requests.last)
         #expect(String(decoding: try #require(post.body), as: UTF8.self) == #"{"environment":"sandbox","label":"iPhone","token":"ab12"}"#)
         #expect(post.headers["x-agency-token"] == "w-1")
+    }
+
+    @Test("a push token that names its device carries it, and one that does not carries none")
+    func pushTokenDevice() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(session)),
+            ("POST /api/push/tokens", fixture("push-token")),
+            ("POST /api/push/tokens", fixture("push-token")),
+        ])
+        let node = client(transport)
+        _ = try await node.registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone", events: ["request"], device: "d-abc")
+        _ = try await node.registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone", events: ["request"])
+        let bodies = transport.requests.filter { $0.method == "POST" }.map { String(decoding: $0.body ?? Data(), as: UTF8.self) }
+        #expect(bodies == [
+            #"{"device":"d-abc","environment":"sandbox","events":["request"],"label":"iPhone","token":"ab12"}"#,
+            #"{"environment":"sandbox","events":["request"],"label":"iPhone","token":"ab12"}"#,
+        ])
+    }
+
+    @Test("what the node says of itself is read for its capabilities, and a name the app does not know is just a name")
+    func about() async throws {
+        let transport = ScriptedTransport([("GET /api/about", json(#"{"node":"0.4.0","contracts":{"clientApi":{"current":1,"oldest":1}},"capabilities":["webPush","pushDevice","somethingNew"],"oldestApp":{"ios":"1.0"}}"#))])
+        let about = try await client(transport).about()
+        #expect(about.has(.pushDevice) && about.capabilities.contains("somethingNew"))
+        let older = ScriptedTransport([("GET /api/about", json(#"{"capabilities":["webPush"]}"#))])
+        #expect(try await client(older).about().has(.pushDevice) == false)
     }
 
     @Test("stopping a push token is a write with no body, to the token's own path; a refusal is an error")
@@ -439,6 +475,17 @@ struct NodeClientRedeemTests {
         #expect(tokens.map(\.token) == ["ab12cd34", "11112222"])
         #expect(tokens[0].lastSucceededAt?.text == "2026-11-26T08:00:00Z" && tokens[0].lastFailure?.reason == "APNs answered 503")
         #expect(tokens[1].lastSucceededAt == nil && tokens[1].lastFailure == nil, "left out until there is something to say")
+    }
+
+    @Test("a refusal's own words are shown without hidden characters, since an alert reads them, and the line breaks stay")
+    func refusalText() async throws {
+        let transport = ScriptedTransport([("GET /api/me", json(#"{"error":"no\u202E label\nsecond\u200B"}"#, status: 403))])
+        do {
+            _ = try await owner(transport).me()
+            Issue.record("should be refused")
+        } catch let error as NodeError {
+            #expect(error == .http(status: 403, message: "no? label\nsecond?"))
+        }
     }
 
     @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")

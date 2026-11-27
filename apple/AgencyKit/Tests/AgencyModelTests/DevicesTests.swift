@@ -122,6 +122,20 @@ struct DeviceChangeSenderTests {
         #expect(newKey.pairingCode == key.fingerprint.pairingCode)
     }
 
+    @Test("what is signed is the label the node gave, never the shown one: the request is added with its label as it was written, and the person is asked about the shown one")
+    func signsTheRawLabel() async throws {
+        let raw = "iPhone\u{202E} of Erin"
+        var object = try #require(JSONSerialization.jsonObject(with: Fixture.data("device-request")) as? [String: Any])
+        object["label"] = raw
+        let request = try JSONDecoder().decode(DeviceRequest.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(request.label == "iPhone? of Erin" && request.rawLabel == raw)
+        let poster = FakePoster(devices: devices(#"{"org":"acme","devices":[\#(device("d-a652124afda7", own, label: "iPhone"))]}"#))
+        _ = try await sender(poster).add(request)
+        guard case .add(let added) = try #require(poster.submitted.first).change.operation else { Issue.record("should be an add"); return }
+        #expect(added.label == raw, "the signature covers the bytes the node wrote")
+        #expect(signer.reasons == ["端末を追加する: iPhone? of Erin"], "what the person reads is the shown label")
+    }
+
     @Test("an add is signed by this device as its id in the org, and the signature verifies over the device text")
     func adds() async throws {
         let poster = FakePoster(devices: devices(#"{"org":"acme","devices":[\#(device("d-a652124afda7", own, label: "iPhone"))]}"#))
@@ -388,12 +402,14 @@ struct DevicesHeldTests {
         #expect(store.confirmed.isEmpty && store.confirmFailures.isEmpty)
     }
 
-    @Test("an outcome the app does not know is said with the node's message, and not as a success; with no message it is taken as done")
+    @Test("an outcome the app does not know is never a success: said with the node's message, or without one that it is not known and where the result is")
     func unknown() async {
         let said = await confirmed(.success([result(.unknown("later"), "It will take a while.")]))
         #expect(said.held[newKey.publicKey] == "It will take a while." && said.confirmed.isEmpty)
         let silent = await confirmed(.success([result(.unknown("later"))]))
-        #expect(silent.held.isEmpty && silent.confirmed[newKey.publicKey] == Ja.Devices.confirmed("iPhone"))
+        #expect(silent.held[newKey.publicKey] == Ja.Devices.unknownOutcome && silent.confirmed.isEmpty)
+        let empty = await confirmed(.success([result(.unknown("later"), "")]))
+        #expect(empty.held[newKey.publicKey] == Ja.Devices.unknownOutcome && empty.confirmed.isEmpty)
     }
 
     @Test("with several orgs, a held one is not turned into a success by the others, and a node that was asleep is still said")

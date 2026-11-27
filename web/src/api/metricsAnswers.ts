@@ -95,7 +95,7 @@ export function readMetrics(raw: unknown): Metrics {
   const given = asObject(raw, 'answer')
   const budget = optional(given.budget, (value) => count(asObject(value, 'budget').inNodeReadP95Ms, 'budget'))
   return {
-    from: time(given.from, 'from'),
+    from: time(given.from, 'from'), // shown-ok(period): the start of a range
     until: time(given.until, 'until'),
     generatedAt: time(given.generatedAt, 'time'),
     ...(budget === undefined ? {} : { budgetInNodeReadP95Ms: budget }),

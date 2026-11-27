@@ -50,10 +50,11 @@ public struct PreparedDecision: Equatable, Sendable {
         team = item.team
         answerWith = item.request.answerWith
         kind = item.request.kind
-        title = Self.clipped(item.request.title)
+        // Sent to the node for its decision log: what the runtime wrote, and not what the screen shows of it.
+        title = Self.clipped(item.request.rawTitle)
         self.text = text
         choice = option?.key
-        choiceLabel = option.map { Self.clipped($0.text) }.flatMap { $0.isEmpty ? nil : $0 }
+        choiceLabel = option.map { Self.clipped($0.rawText) }.flatMap { $0.isEmpty ? nil : $0 }
         self.isComment = isComment
     }
 

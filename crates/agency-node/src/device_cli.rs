@@ -5,6 +5,7 @@ use agency_adapters::files::DataDir;
 use agency_core::devices::{add_device, pending_requests, request_device, Added, DeviceSigner};
 use agency_core::Node;
 use agency_proto::client::{DeviceChangeOutcome, DeviceRequestInput};
+use agency_proto::org::printable;
 use agency_proto::{AccountKey, Id, PublicKey};
 use anyhow::{bail, Result};
 use std::io::Write;
@@ -51,11 +52,11 @@ fn describe(label: &str, outcome: DeviceChangeOutcome, message: Option<String>) 
         DeviceChangeOutcome::Delivered => format!("{label} added by the root's node"),
         DeviceChangeOutcome::Pending => format!(
             "{label} waits for the owner of the root key ({})",
-            message.unwrap_or_default()
+            printable(&message.unwrap_or_default())
         ),
         DeviceChangeOutcome::Queued => format!(
             "{label} waits in the outbox for the root's node ({})",
-            message.unwrap_or_default()
+            printable(&message.unwrap_or_default())
         ),
     }
 }
@@ -83,7 +84,10 @@ async fn add_and_report(
                     "Org {org}: you already have a device there; add {label} from one of them"
                 );
             }
-            Added::Failed(error) => println!("Org {org}: {label} not added: {error}"),
+            Added::Failed(error) => println!(
+                "Org {org}: {label} not added: {}",
+                printable(&error.to_string())
+            ),
         }
     }
     needs_device

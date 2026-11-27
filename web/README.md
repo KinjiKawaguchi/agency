@@ -6,9 +6,17 @@ A single-page app for answering the requests your teams are waiting on. Vite, Re
 npm install
 npm run dev      # http://localhost:5173, served against a mock node
 npm test         # component and unit tests
+                 # as if it were another day or zone: AGENCY_TEST_NOW=2026-11-28T12:00:00Z TZ=Asia/Tokyo npm test
 npm run build    # type-check and production build
 npm run e2e      # build, then drive the built client in headless Chromium against the mock node
 ```
+
+## Deciding without waiting (`src/outbox/`)
+
+Deciding on the desk signs the envelope (`useSignDecision`), keeps it in the browser (`localStorage`, written at the moment it is made, before the desk moves on), takes the request off the pile and opens the next one at once. `OutboxProvider` sends what is kept (one try for each, three at once; a lost connection, 408, 425, 429 and 5xx are tried again after 5 s, 15 s, 1 min, 5 min and every 5 min, a 503's `Retry-After` honoured; the other 4xx stop as failed with the node's words; an ended sign-in pauses all sending): always the same envelope with the same id, which the node keeps once. Any 2xx is "the node took it". `SendingTray` (a small list in a corner that never blocks the desk, nothing drawn while nothing is kept) shows what is on its way, with "Send again" and, for a failure, "Discard", which gives the request back with what was written. A request stays off the pile and out of every count (`useTeams`) while its decision is kept here, failed, or queued at the node (the node's log). The shared contract is on #446; the words are in the glossary.
+## Tests on other days
+
+A test must not say something that is true only on the day it was written (a number made up from the date, a week that has moved on): pin the clock in it, as a mock node does with its `now` option. `AGENCY_TEST_NOW=<moment>` (and `TZ=<zone>`) starts the clock of every test at a moment, in `src/test/shiftedClock.ts`, so that one day can be tried at once; without it nothing changes. `scripts/ci/shifted-clock.sh --at <moment>[@<zone>]` is the same with the answer written out. Every Monday, and when run by hand from the Actions tab, the workflow `shifted-clock` runs all the tests as if it were each of the next seven days, the end of the month and of the year, and the next change of the clock of three zones (`src/test/shiftedDates.ts`), and posts the days that broke a test on the standing issue (#265), not on a PR. A test that depends on the clock without pinning it is fixed by pinning it, not by changing the page.
 
 ## Screens
 

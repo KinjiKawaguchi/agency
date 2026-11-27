@@ -7,7 +7,6 @@ import SwiftUI
 struct RequestRow: View {
     let item: DeskItem
     let now: Date
-    let isSent: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,10 +14,6 @@ struct RequestRow: View {
                 Tag(text: Ja.Desk.kind(item.request.kind), color: item.isMine ? .accentColor : .secondary)
                 if item.blockedPeople.count > 0 {
                     Tag(text: Ja.Desk.blocking(item.blockedPeople.count), color: Theme.warning)
-                }
-                Spacer(minLength: 0)
-                if isSent {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 }
             }
             Text(item.request.title)
@@ -42,7 +37,7 @@ struct RequestRow: View {
 
     /// Who drafted it, the team, and when.
     static func meta(of item: DeskItem, now: Date) -> String {
-        let drafter = item.drafter?.label ?? item.request.from
+        let drafter = item.drafterName
         let when = Ago.text(from: item.request.createdAt.date, now: now)
         return [Ja.Desk.drafter(drafter), item.teamLabel, when].joined(separator: " · ")
     }
