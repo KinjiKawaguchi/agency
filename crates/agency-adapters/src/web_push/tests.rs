@@ -45,6 +45,7 @@ impl Browser {
             key_id: "k".into(),
             last_succeeded_at: None,
             last_failure: None,
+            guest: None,
         }
     }
 

@@ -2,82 +2,16 @@
 //! only the routes of its own table, scoped to its member, and never writes as the owner.
 mod common;
 
-use agency_core::config::{HostedTeam, RuntimeCommand};
 use agency_core::guests::{self, Guest};
 use agency_core::orgs;
-use agency_proto::org::{Device, Person, TeamPlace};
+use agency_proto::org::TeamPlace;
 use agency_proto::{AccountKey, Timestamp};
-use common::access::{access_token, behind_access_with_runtime, PUBLIC_HOST};
-use common::{id, Running, TOKEN};
+use common::access::{access_token, PUBLIC_HOST};
+use common::guests::{call, with_guest, CAROL};
+use common::id;
 use reqwest::Method;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
-
-const CAROL: &str = "carol@example.com";
-
-/// Alice's org with team `app` on her node, addressing `carol` (a hosted member with one device) as
-/// `finance`, with request r-2 for carol and r-1 for the owner; and carol's guest record.
-async fn with_guest() -> (Running, AccountKey) {
-    let (alice, memory) = behind_access_with_runtime(Some("ABCDE12345.dev.example.agency")).await;
-    {
-        let mut state = memory.lock().unwrap();
-        state
-            .requests
-            .push(("r-2".into(), "Approve the invoice?".into()));
-        state.to.insert("r-2".into(), "finance".into());
-    }
-    let node = &alice.node;
-    orgs::add_team(
-        node,
-        &id("acme"),
-        TeamPlace::new(id("app"), "app", alice.url()),
-    )
-    .unwrap();
-    let laptop = AccountKey::from_seed([0x81; 32]);
-    let device = Device {
-        id: laptop.public().device_id(),
-        label: "Laptop".into(),
-        public_key: laptop.public(),
-        added_at: Timestamp::parse(&node.now_text()).unwrap(),
-    };
-    orgs::amend(node, &id("acme"), |body| {
-        body.people
-            .push(Person::hosted(id("carol"), "Carol", vec![device]));
-        Ok(())
-    })
-    .unwrap();
-    node.update_config(|config| {
-        let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
-        let people = BTreeMap::from([("finance".to_owned(), id("carol"))]);
-        config
-            .teams
-            .push(HostedTeam::new(id("acme"), id("app"), id("alice"), runtime).with_people(people))
-    })
-    .unwrap();
-    guests::keep(node, &Guest::new(CAROL, id("acme"), id("carol"))).unwrap();
-    (alice, laptop)
-}
-
-async fn call(
-    running: &Running,
-    method: Method,
-    path: &str,
-    email: &str,
-    body: Option<Value>,
-) -> (u16, Value) {
-    let mut request = reqwest::Client::new()
-        .request(method, format!("{}{path}", running.url()))
-        .header("host", PUBLIC_HOST)
-        .header("cf-ray", "1")
-        .header("cf-access-jwt-assertion", access_token(email, |_| {}))
-        .header("x-agency-token", TOKEN);
-    if let Some(body) = body {
-        request = request.json(&body);
-    }
-    let response = request.send().await.unwrap();
-    let status = response.status().as_u16();
-    (status, response.json().await.unwrap_or(Value::Null))
-}
 
 #[tokio::test]
 async fn a_guest_reads_its_own_member_org_and_requests_and_nothing_of_the_owners() {
@@ -141,7 +75,7 @@ async fn every_route_outside_the_guest_table_answers_a_guest_403_and_the_owner_s
         .into_iter()
         .filter(|route| !guest_routes.contains(route))
         .collect();
-    assert!(owners.len() >= 15, "{owners:?}");
+    assert!(owners.len() >= 12, "{owners:?}");
     for (method, pattern) in owners {
         let method = Method::from_bytes(method.as_bytes()).unwrap();
         let path = filled(pattern);

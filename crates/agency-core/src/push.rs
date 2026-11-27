@@ -3,6 +3,7 @@
 //! starts waiting for the owner, a device asks to be added, or a decision of the owner's is refused.
 //! Only titles and labels leave the node, and none when `push.hideTitles` is set.
 use crate::error::{Error, Result};
+use crate::guests::Caller;
 use crate::node::Node;
 pub use crate::notice::{Notice, NoticeKind};
 use crate::push_events::{
@@ -12,7 +13,7 @@ use crate::push_retries::{failure_of, retry_failed, Destination, Retry};
 use crate::views::{mine, runtime_view, Reader, Replica};
 use crate::web_push::{failure_at, record_sends, Sent};
 use agency_proto::client::{
-    default_push_events, PushEvent, PushToken, PushTokenInput, PushTokenList,
+    default_push_events, GuestRef, PushEvent, PushToken, PushTokenInput, PushTokenList,
 };
 use agency_proto::clock;
 use agency_proto::view::Request;
@@ -73,6 +74,16 @@ pub(crate) fn normal_events(events: Option<Vec<PushEvent>>) -> Vec<PushEvent> {
 
 /// Registers a device token, or updates its environment, label, and kinds.
 pub fn register_push_token(node: &Node, input: PushTokenInput) -> Result<PushToken> {
+    register_push_token_as(node, &Caller::Owner, input)
+}
+
+/// `register_push_token` for the caller: a guest's token is kept as the guest's and gets only request
+/// notices, and a token kept as someone else's (the owner's, or another guest's) is not taken over.
+pub fn register_push_token_as(
+    node: &Node,
+    caller: &Caller,
+    input: PushTokenInput,
+) -> Result<PushToken> {
     let token = check_token(&input.token)?;
     let label = input.label.trim().to_owned();
     if !(1..=80).contains(&label.chars().count()) || label.chars().any(char::is_control) {
@@ -85,15 +96,23 @@ pub fn register_push_token(node: &Node, input: PushTokenInput) -> Result<PushTok
         .push_tokens()
         .into_iter()
         .find(|one| one.token == token);
+    let guest = caller.guest_of();
+    if known.as_ref().is_some_and(|one| one.guest != guest) {
+        return Err(Error::new(
+            crate::error::ErrorKind::Conflict,
+            "this app is registered for someone else on this node",
+        ));
+    }
     let entry = PushToken {
         token,
         environment: input.environment,
         label,
         registered_at,
-        events: normal_events(input.events),
+        events: caller.events(normal_events(input.events)),
         // What APNs last did with this token is kept when the app registers it again.
         last_succeeded_at: known.as_ref().and_then(|one| one.last_succeeded_at.clone()),
         last_failure: known.and_then(|one| one.last_failure),
+        guest,
     };
     let mut tokens: Vec<PushToken> = node
         .store()
@@ -109,7 +128,21 @@ pub fn register_push_token(node: &Node, input: PushTokenInput) -> Result<PushTok
 
 /// Removes a device token. Removing an unknown token is not an error.
 pub fn remove_push_token(node: &Node, raw: &str) -> Result<()> {
+    remove_push_token_as(node, &Caller::Owner, raw)
+}
+
+/// Removes one of the caller's own tokens; another's, like an unknown one, is left as it is.
+pub fn remove_push_token_as(node: &Node, caller: &Caller, raw: &str) -> Result<()> {
     let token = check_token(raw)?;
+    let guest = caller.guest_of();
+    let is_own = node
+        .store()
+        .push_tokens()
+        .iter()
+        .any(|one| one.token == token && one.guest == guest);
+    if !is_own {
+        return Ok(());
+    }
     remove_tokens(node, &[token])
 }
 
@@ -125,6 +158,12 @@ pub(crate) fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
 
 /// The registered tokens, each shortened to its last 8 characters.
 pub fn push_tokens(node: &Node) -> PushTokenList {
+    push_tokens_of(node, &Caller::Owner)
+}
+
+/// The caller's own tokens (the owner's, or one guest's), each shortened to its last 8 characters.
+pub fn push_tokens_of(node: &Node, caller: &Caller) -> PushTokenList {
+    let guest = caller.guest_of();
     let shorten = |one: PushToken| PushToken {
         token: one.token[one.token.len().saturating_sub(8)..].to_owned(),
         ..one
@@ -134,6 +173,7 @@ pub fn push_tokens(node: &Node) -> PushTokenList {
             .store()
             .push_tokens()
             .into_iter()
+            .filter(|one| one.guest == guest)
             .map(shorten)
             .collect(),
     }
@@ -173,18 +213,10 @@ async fn waiting_in(
     let Some(person) = definition.member(&node.account()) else {
         return vec![];
     };
-    let (view, mine) = if let Some(hosted) = node.hosted(org, team) {
-        let Ok(view) = runtime_view(node, &hosted).await else {
-            return vec![];
-        };
-        let reader = Reader::Hosted {
-            hosted: &hosted,
-            person: &person.id,
-            definition,
-        };
-        let mine = mine(&view, &reader);
-        (view, mine)
-    } else {
+    if let Some(hosted) = node.hosted(org, team) {
+        return waiting_in_hosted(node, definition, &hosted, &person.id, is_hidden).await;
+    }
+    let (view, mine) = {
         let replica = node.store().load_replica(org, team).unwrap_or_default();
         let Replica {
             view,
@@ -206,6 +238,38 @@ async fn waiting_in(
     requests
         .filter(|request| mine.contains(&request.id))
         .map(|request| waiting(org, team, &view.label, request, is_hidden))
+        .collect()
+}
+
+/// Requests that are `person`'s to decide in a team on this node, by the same rule as `TeamSnapshot.mine`.
+pub(crate) async fn waiting_in_hosted(
+    node: &Node,
+    definition: &OrgDefinition,
+    hosted: &crate::config::HostedTeam,
+    person: &Id,
+    is_hidden: bool,
+) -> Vec<Candidate> {
+    let Ok(view) = runtime_view(node, hosted).await else {
+        return vec![];
+    };
+    let reader = Reader::Hosted {
+        hosted,
+        person,
+        definition,
+    };
+    let mine = mine(&view, &reader);
+    view.requests
+        .iter()
+        .filter(|request| mine.contains(&request.id))
+        .map(|request| {
+            waiting(
+                &definition.org,
+                &hosted.team,
+                &view.label,
+                request,
+                is_hidden,
+            )
+        })
         .collect()
 }
 
@@ -252,11 +316,16 @@ impl Outcome {
     }
 }
 
-async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Outcome> {
+async fn send_to_tokens(
+    node: &Node,
+    notice: &Notice,
+    whose: Option<&GuestRef>,
+    pass: &mut Pass,
+) -> Result<Outcome> {
     let all = node.store().push_tokens();
     let wanting: Vec<&PushToken> = all
         .iter()
-        .filter(|token| notice.is_wanted_by(&token.events))
+        .filter(|token| token.guest.as_ref() == whose && notice.is_wanted_by(&token.events))
         .collect();
     let mut outcome = Outcome {
         wanting: wanting.len(),
@@ -273,8 +342,13 @@ async fn send_to_tokens(node: &Node, notice: &Notice, pass: &mut Pass) -> Result
     Ok(outcome)
 }
 
-async fn send_to_browsers(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Outcome> {
-    let wanting = crate::web_push::wanting(node, notice);
+async fn send_to_browsers(
+    node: &Node,
+    notice: &Notice,
+    whose: Option<&GuestRef>,
+    pass: &mut Pass,
+) -> Result<Outcome> {
+    let wanting = crate::web_push::wanting(node, notice, whose);
     let mut outcome = Outcome {
         wanting: wanting.len(),
         ..Outcome::default()
@@ -334,13 +408,19 @@ pub(crate) fn record_token_sends(
     Ok(())
 }
 
-/// Sends one notice to every token and browser subscription that wants its kind. It counts as delivered
+/// Sends one notice to every token and browser subscription of `whose` (the owner's for `None`, else that
+/// guest's) that wants its kind. It counts as delivered
 /// if any of them took it, or if none wants it (including when none is registered), or if the ones that
 /// wanted it are gone; otherwise it is tried again on the next pass. Tokens APNs no longer accepts, and
 /// subscriptions a push service says are gone, are removed.
-async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<Delivery> {
-    let tokens = send_to_tokens(node, notice, pass).await?;
-    let browsers = send_to_browsers(node, notice, pass).await?;
+pub(crate) async fn send_to_all(
+    node: &Node,
+    notice: &Notice,
+    whose: Option<&GuestRef>,
+    pass: &mut Pass,
+) -> Result<Delivery> {
+    let tokens = send_to_tokens(node, notice, whose, pass).await?;
+    let browsers = send_to_browsers(node, notice, whose, pass).await?;
     let wanting = tokens.wanting + browsers.wanting;
     let gone = tokens.gone.len() + browsers.gone.len();
     let failed = tokens
@@ -357,9 +437,9 @@ async fn send_to_all(node: &Node, notice: &Notice, pass: &mut Pass) -> Result<De
 }
 
 /// What sending one notice came to.
-struct Delivery {
+pub(crate) struct Delivery {
     /// Delivered, or nobody wants it; otherwise it is tried again on the next pass.
-    is_done: bool,
+    pub is_done: bool,
     /// The destinations that failed to take it, to be sent it again alone.
     failed: Vec<Destination>,
     /// An iPhone took it. A request's alert wakes the app (`content-available`), so the desk it asked about
@@ -370,7 +450,13 @@ struct Delivery {
 /// Wakes every registered iPhone to read the desk, and says whether that is done: it is when one took it,
 /// when none is registered, or when all that were are gone. Tokens APNs no longer accepts are removed.
 async fn wake_iphones(node: &Node, pass: &mut Pass) -> Result<bool> {
-    let tokens = node.store().push_tokens();
+    // The owner's desk: a guest's app reads its own on its own schedule.
+    let tokens: Vec<PushToken> = node
+        .store()
+        .push_tokens()
+        .into_iter()
+        .filter(|token| token.guest.is_none())
+        .collect();
     let mut outcome = Outcome {
         wanting: tokens.len(),
         ..Outcome::default()
@@ -504,7 +590,7 @@ async fn send_fresh(
             let (title, body) = crate::notice::recovery_text(org, takes_effect_at.as_deref());
             pass.recoveries.push(format!("{title}. {body}"));
         }
-        let delivery = send_to_all(node, &notice, pass).await?;
+        let delivery = send_to_all(node, &notice, None, pass).await?;
         if delivery.is_done {
             pass.sent += 1;
         }
@@ -522,10 +608,18 @@ async fn send_fresh(
     Ok(sent)
 }
 
+/// Notifies the owner of whatever started waiting since the last pass, and each guest with a destination
+/// here of its own requests (`guest_push`).
+pub async fn notify_waiting(node: &Node) -> Result<Pass> {
+    let mut pass = notify_owner(node).await?;
+    crate::guest_push::notify_guests(node, &mut pass).await?;
+    Ok(pass)
+}
+
 /// Notifies the owner of whatever started waiting since the last pass: requests, device requests, and
 /// refused decisions. The first pass of a node with an empty data directory only records what is there,
 /// so nothing old is sent.
-pub async fn notify_waiting(node: &Node) -> Result<Pass> {
+async fn notify_owner(node: &Node) -> Result<Pass> {
     let is_hidden = is_hiding_titles(node);
     let requests = waiting_for_owner(node, is_hidden).await;
     let badge = u32::try_from(requests.len()).unwrap_or(u32::MAX);

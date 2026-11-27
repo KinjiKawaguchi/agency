@@ -81,6 +81,7 @@ fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
         events: vec![PushEvent::Request],
         last_succeeded_at: None,
         last_failure: None,
+        guest: None,
     }
 }
 

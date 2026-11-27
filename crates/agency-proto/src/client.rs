@@ -574,6 +574,11 @@ pub struct PushToken {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub last_failure: Option<PushFailure>,
+    /// The guest whose app this is (docs/protocol.md, "Guests"): it gets only that member's request notices.
+    /// Left out for the owner's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub guest: Option<GuestRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
