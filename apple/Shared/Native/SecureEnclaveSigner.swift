@@ -72,13 +72,19 @@ struct SecureEnclaveSigner: DeviceSigner {
     }
 
     func sign(_ text: Data, reason: String) async throws -> Data {
+        try await signEach([text], reason: reason)[0]
+    }
+
+    /// One `LAContext` for all of them: the person confirms once, and the key is used again with what that confirmation allowed.
+    func signEach(_ texts: [Data], reason: String) async throws -> [Data] {
         let handle = handle
         // The call waits for the person to confirm, so it runs off the main actor.
         return try await Task.detached(priority: .userInitiated) {
             let context = LAContext()
             context.localizedReason = reason
+            context.touchIDAuthenticationAllowableReuseDuration = 10
             let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle, authenticationContext: context)
-            return try key.signature(for: text).rawRepresentation
+            return try texts.map { try key.signature(for: $0).rawRepresentation }
         }.value
     }
 }

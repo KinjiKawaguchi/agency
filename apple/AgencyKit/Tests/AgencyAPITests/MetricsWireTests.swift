@@ -27,6 +27,38 @@ struct MetricsWireTests {
         #expect(metrics.series.first { $0.peer != nil }?.peer == "node-b.example")
     }
 
+    private func hourOf(count: Int = 4, buckets: String? = nil, p95: String = #","p95Ms":10"#) -> String {
+        #"{"hour":"2026-11-24T11:00:00Z","count":\#(count),"errors":0\#(p95)\#(buckets.map { #","buckets":\#($0)"# } ?? "")}"#
+    }
+
+    private func hours(_ entry: String) -> String { series(extra: "").replacingOccurrences(of: #""byHour":[]"#, with: #""byHour":[\#(entry)]"#) }
+
+    @Test("the hours of a series are read with their buckets when the node gave them, and without them as an older answer")
+    func hourlyBuckets() throws {
+        let counts = [0, 0, 4] + Array(repeating: 0, count: LatencySeries.bucketCount - 3)
+        let given = try read(answer(series: [hours(hourOf(buckets: "\(counts)"))])).series[0].byHour
+        #expect(given.count == 1 && given[0].count == 4 && given[0].p95Ms == 10 && given[0].buckets == counts)
+        let without = try read(answer(series: [hours(hourOf())])).series[0].byHour
+        #expect(without.count == 1 && without[0].buckets == nil)
+        let older = try read(answer(series: [series().replacingOccurrences(of: #""byHour":[],"#, with: "").replacingOccurrences(of: #","byHour":[]"#, with: "")])).series[0]
+        #expect(older.byHour.isEmpty, "a node that gives no hours")
+        let beyond = try read(answer(series: [hours(hourOf(p95: ""))])).series[0].byHour
+        #expect(beyond[0].p95Ms == nil)
+    }
+
+    @Test("an hour whose buckets deny its count, or that are not 15 non-negative numbers, refuses the whole answer")
+    func hourlyBucketsRefused() {
+        let fifteen = Array(repeating: 0, count: LatencySeries.bucketCount)
+        let denying = [5] + Array(repeating: 0, count: LatencySeries.bucketCount - 1)
+        let negative = [5, -1] + Array(repeating: 0, count: LatencySeries.bucketCount - 2)
+        let short = [4] + Array(repeating: 0, count: LatencySeries.bucketCount - 2)
+        for buckets in [fifteen, denying, negative, short, [4]] {
+            #expect(throws: DecodingError.self) { try read(answer(series: [hours(hourOf(count: 4, buckets: "\(buckets)"))])) }
+        }
+        #expect(throws: DecodingError.self) { try read(answer(series: [hours(hourOf(count: -1))])) }
+        #expect(throws: DecodingError.self) { try read(answer(series: [hours(hourOf(p95: #","p95Ms":-5"#))])) }
+    }
+
     @Test("an answer with no series is a node that measured and has nothing yet, and no budget or objective is none")
     func empty() throws {
         let metrics = try read(answer())

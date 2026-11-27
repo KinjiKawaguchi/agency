@@ -126,7 +126,7 @@ describe('deciding without waiting for the node', () => {
     await waitFor(() => expect(node.decisions()).toHaveLength(1))
     await waitFor(() => expect(tray()).not.toBeInTheDocument())
     // The node's log says it is queued, and the request is not on the pile.
-    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Saved, not delivered')).length).toBeGreaterThan(0)
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
 
@@ -203,7 +203,7 @@ describe('deciding without waiting for the node', () => {
     await approve(user)
     await waitFor(() => expect(node.decisions()).toHaveLength(1))
     await waitFor(() => expect(tray()).not.toBeInTheDocument())
-    expect((await screen.findAllByText('Waiting to send')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Saved, not delivered')).length).toBeGreaterThan(0)
     // The view lists the request again, and the log says it is queued: it stays off the pile and out of the count.
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()

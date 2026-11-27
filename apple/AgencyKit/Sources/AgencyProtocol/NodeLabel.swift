@@ -4,9 +4,11 @@ import Foundation
 /// characters that can reorder or hide what is around it replaced by `?`: a bidirectional override in a label can reorder the line
 /// it sits on, on the screen where the owner decides, as it can in a terminal. The node refuses them in a new label and prints an older
 /// one's as `?` in its own text; a label stored before that can still hold them, and every client shows a label with the same set
-/// replaced. That set is the control characters (Unicode category Cc), the bidirectional controls (U+061C, U+200E, U+200F, U+202A to
-/// U+202E, U+2066 to U+2069), the zero-width space (U+200B), the word joiner (U+2060) and the byte order mark (U+FEFF). The zero-width
-/// joiner and non-joiner and the emoji tag characters stay: they are part of how some scripts and emoji are written.
+/// replaced. That set is the control characters (Unicode category Cc), the line and paragraph separators (U+2028, U+2029), the bidirectional
+/// controls (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069), and the format characters (Cf) that are invisible or change how a
+/// line is laid out: the soft hyphen (U+00AD), U+180E, U+2060 to U+206F, the zero-width space (U+200B), the byte order mark (U+FEFF),
+/// U+FFF9 to U+FFFB and the language tag (U+E0001). The zero-width joiner and non-joiner, the emoji tag characters and the format characters
+/// of a script's own text stay: they are part of how some scripts and emoji are written. `testdata/label-hidden-chars.json` is the set.
 public enum NodeLabel {
     /// `text` as it is shown: each character of the set above is a `?`.
     public static func shown(_ text: String) -> String {
@@ -33,7 +35,7 @@ public enum NodeLabel {
     /// Whether a character of a label is shown as `?`.
     public static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
-        case 0x061C, 0x200B, 0x200E, 0x200F, 0x2060, 0xFEFF, 0x202A...0x202E, 0x2066...0x2069: true
+        case 0x00AD, 0x061C, 0x180E, 0x200B, 0x200E, 0x200F, 0xFEFF, 0xE0001, 0x2028...0x202E, 0x2060...0x206F, 0xFFF9...0xFFFB: true
         default: scalar.properties.generalCategory == .control
         }
     }

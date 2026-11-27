@@ -3,7 +3,7 @@
 //! of one series and hour add up. Only the node's account can read the files.
 
 use super::{Counts, Hour, SeriesKey};
-use agency_proto::metrics::{SeriesKind, BUCKETS};
+use agency_proto::metrics::{bucket_total, SeriesKind, BUCKETS};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -144,7 +144,7 @@ fn read_file(path: &Path) -> std::io::Result<BTreeMap<(Hour, SeriesKey), Counts>
             ..Counts::default()
         };
         counts.buckets.copy_from_slice(&line.buckets);
-        if counts.buckets.iter().sum::<u64>() != counts.count || counts.errors > counts.count {
+        if bucket_total(&counts.buckets) != Some(counts.count) || counts.errors > counts.count {
             continue;
         }
         let key = SeriesKey {

@@ -36,8 +36,13 @@ public struct DeskScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacing) {
                     banners
+                    SendingTray(
+                        entries: store.outbox.entries, sending: store.outbox.sending, needsSignIn: store.outbox.needsSignIn,
+                        onSendAgain: { id in Task { await store.outbox.sendAgain(id) } },
+                        onDiscard: { id in store.discardDecision(id) }
+                    )
                     if store.hasAnswer {
-                        DeskPile(items: store.items, situation: store.situation, sent: Set(store.sent.keys), now: Date())
+                        DeskPile(items: store.items, situation: store.situation, now: Date())
                         if !store.recent.isEmpty || store.recentFailure != nil {
                             RecentDecisions(entries: store.recent, failure: store.recentFailure, now: Date()).padding(.top, 16)
                         }
@@ -56,7 +61,7 @@ public struct DeskScreen: View {
             .navigationDestination(for: String.self) { id in
                 RequestDetailScreen(
                     store: store, isDeviceReady: pairing?.isReady ?? false, isDeviceChecked: pairing.map { $0.status != .checking } ?? true,
-                    itemID: id
+                    itemID: id, onMoveOn: moveOn
                 )
             }
             .toolbar {
@@ -82,6 +87,11 @@ public struct DeskScreen: View {
                 await pairing?.refresh()
             }
         }
+    }
+
+    /// A decision of the open item is kept: the next item opens at once, or the pile shows when no other waits for the owner.
+    private func moveOn(to next: String?) {
+        if let next { path = [next] } else { path = [] }
     }
 
     private var isWaitingToBeAdded: Bool {
@@ -138,6 +148,8 @@ struct RequestDetailScreen: View {
     let isDeviceReady: Bool
     let isDeviceChecked: Bool
     let itemID: String
+    /// Called once a decision of this item is kept: the next item to open, or `nil` to go back to the pile.
+    let onMoveOn: (String?) -> Void
 
     var body: some View {
         ScrollView {
@@ -164,19 +176,25 @@ struct RequestDetailScreen: View {
 
     private var status: ReplyStatus {
         if store.sending.contains(itemID) { return .sending }
-        if let sent = store.sent[itemID] { return .sent(sent) }
         if let failure = store.sendFailures[itemID] { return .failed(failure) }
         return .idle
     }
 
     private func decide(_ item: DeskItem) {
         guard let reply = store.draft(for: itemID).decision(for: item) else { return }
-        Task { await store.send(reply, for: itemID) }
+        Task { await send(reply) }
     }
 
     private func comment() {
         let text = store.draft(for: itemID).text
-        Task { await store.send(.comment(text), for: itemID) }
+        Task { await send(.comment(text)) }
+    }
+
+    /// Decides, and moves on at once to the next item: the node is told from the outbox.
+    private func send(_ reply: DeskReply) async {
+        let pile = store.items
+        await store.send(reply, for: itemID)
+        if store.outbox.decidedItemIDs.contains(itemID) { onMoveOn(Desk.next(after: itemID, in: pile)) }
     }
 }
 #endif
