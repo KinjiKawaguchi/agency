@@ -337,6 +337,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<TokenUsage, PeerError>;
+    /// The events of a team's activity after a time, from the node it runs on (`routes::activity`).
+    async fn get_activity(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Activity, PeerError>;
     /// A team's delivery evaluation, from the node it runs on.
     async fn get_evaluation(
         &self,

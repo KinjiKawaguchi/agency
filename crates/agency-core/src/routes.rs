@@ -1,6 +1,6 @@
 //! The federation routes (`/fed/v1`). Read signatures cover the path, so both sides build it here.
 //! Where a route takes a query, the signed path includes it.
-use agency_proto::Id;
+use agency_proto::{Id, Timestamp};
 
 pub fn definition(org: &Id) -> String {
     format!("/fed/v1/orgs/{org}/definition")
@@ -40,6 +40,11 @@ pub fn envelopes(org: &Id, team: &Id) -> String {
 /// The query is part of the signed path, so a signature for one range cannot read another.
 pub fn evaluation(org: &Id, team: &Id, days: u32) -> String {
     format!("/fed/v1/teams/{org}/{team}/evaluation?days={days}")
+}
+
+/// The query is part of the signed path, so a signature for one range cannot read another.
+pub fn activity(org: &Id, team: &Id, since: &Timestamp, limit: u32) -> String {
+    format!("/fed/v1/teams/{org}/{team}/activity?since={since}&limit={limit}")
 }
 
 /// The query is part of the signed path, so a signature for one range cannot read another.
