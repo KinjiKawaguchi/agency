@@ -18,7 +18,7 @@ use agency_core::about;
 use agency_core::activity::team_activity;
 use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
 use agency_core::clients_seen;
-use agency_core::devices::{device_list, request_device};
+use agency_core::devices::{device_list, request_device_as};
 use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
@@ -520,10 +520,15 @@ async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted
     respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
 }
 
-/// A new device asks to be added; the answer carries its pairing code.
-async fn post_device_request(State(api): Shared, bytes: Bytes) -> Response {
+/// A new device asks to be added, for the owner's account or for the guest's hosted member; the answer
+/// carries its pairing code.
+async fn post_device_request(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
     let result = json_body::<DeviceRequestInput>(&bytes, "device request")
-        .and_then(|input| request_device(&api.node, input));
+        .and_then(|input| request_device_as(&api.node, &caller_of(&admitted), input));
     respond(result)
 }
 
