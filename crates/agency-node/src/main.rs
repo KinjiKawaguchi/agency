@@ -16,7 +16,6 @@ mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
-use agency_adapters::system::OutboxWake;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::Decided;
 use agency_core::invites::{finish_joins, join, Joined};
@@ -24,8 +23,6 @@ use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
-use agency_core::push::notify_waiting;
-use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -459,9 +456,6 @@ fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("y")
 }
 
-/// How long the outbox waits for a parcel to be queued before it looks for parcels whose retry is due.
-const OUTBOX_ROUND: Duration = Duration::from_secs(2);
-
 async fn serve(opened: agency_node::Opened) -> Result<()> {
     let node = opened.node.clone();
     let listen = node.config().listen;
@@ -493,64 +487,11 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
-    let wake = std::sync::Arc::new(OutboxWake::default());
-    node.set_outbox_bell(wake.clone());
-    let delivering = node.clone();
-    let delivering_log = logger.clone();
-    tokio::spawn(async move {
-        loop {
-            if let Err(error) = deliver_due(&delivering).await {
-                delivering_log.warn("outbox", &format!("delivering the outbox failed: {error}"));
-            }
-            wake.wait(OUTBOX_ROUND).await;
-        }
-    });
-    let background = node.clone();
-    let background_log = logger.clone();
-    tokio::spawn(async move {
-        let logger = background_log;
-        let mut tick = 0u64;
-        loop {
-            if tick.is_multiple_of(2) {
-                // Expired held changes are dropped, and a held join's invite freed, even when nobody looks.
-                if let Err(error) = agency_core::pending_root::waiting(&background) {
-                    logger.warn("root", &format!("sweeping held changes failed: {error}"));
-                }
-                if let Err(error) = finish_joins(&background).await {
-                    logger.warn("joins", &format!("asking for held joins failed: {error}"));
-                }
-                if let Err(error) = refresh(&background).await {
-                    logger.warn(
-                        "replicas",
-                        &format!("re-reading the replicas failed: {error}"),
-                    );
-                }
-                if let Err(error) = record_all(&background).await {
-                    eprintln!("agency: remembering the days epics shipped failed: {error}");
-                }
-                match notify_waiting(&background).await {
-                    Ok(pass) => {
-                        for recovery in pass.recoveries {
-                            logger.warn("recovery", &recovery);
-                            eprintln!("agency: {recovery}");
-                        }
-                        for failure in pass.failures {
-                            logger.warn(
-                                "push",
-                                &format!("a push notification was not sent: {failure}"),
-                            );
-                        }
-                    }
-                    Err(error) => logger.warn(
-                        "requests",
-                        &format!("checking for new requests failed: {error}"),
-                    ),
-                }
-            }
-            tick += 1;
-            tokio::time::sleep(Duration::from_secs(15)).await;
-        }
-    });
+    agency_node::background::start(
+        node.clone(),
+        logger.clone(),
+        agency_node::background::Schedule::default(),
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
