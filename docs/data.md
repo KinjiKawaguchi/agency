@@ -37,6 +37,7 @@ text of a decision or a request.
 | `push-retries.json` | Notifications that failed for one destination and are tried again: the notice's key and the destination, never its words | No | At most a day, 1000 at most | Remove the file |
 | `notified.json` | What the owner was already told of (keys only) | No | The newest 1000 of each kind | Remove the file (old news may then be told again) |
 | `desk-refresh.json` | When the iPhones were last woken to read the desk, and what it held then: one snapshot | No | Replaced at each pass | Remove the file |
+| `runtime-releases.json` | For each team this node runs, the release its runtime said it is (`describe`), or none, and when it was read | No | Rewritten whole; an entry stays until its team is read again | Remove the file: it is made again at the next runtime call |
 | `clients-seen.json` | Which app versions called the node, and when, for the oldest version still in use | No | 32 versions per platform | Remove the file |
 | `bound-readers.json` | The accounts whose node signs reads that name this node, so an older form of read from them is refused | Account ids | While they are members of an org this node has | Remove the file (older reads are then taken again) |
 | `own-origins.json` | The origins this node has been configured with, so a team's place under an older one is still this node | No | The last 20 | Remove the file |

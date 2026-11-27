@@ -1,7 +1,8 @@
-//! `docs/data.md` names everything a node keeps in its data directory. Every name an adapter writes under it (each
-//! `.dir("…")`, however rustfmt splits the call, and each `self.0.join("…")` or `self.root().join("…")` in any source
-//! of `agency-adapters`), and the few written there by other paths, must be in that document, so a new store cannot
-//! land without saying what it holds, for how long, and how to delete it.
+//! `docs/data.md` names everything a node keeps in its data directory. Every name an adapter writes under it must be
+//! in that document: each `.dir("…")` (however rustfmt splits the call), each `self.0.join("…")` or
+//! `self.root().join("…")`, and each `.join(NAME)` of a `const NAME: &str = "…";`, in any source of
+//! `agency-adapters`, and the few written there by other paths. So a new store cannot land without saying what it
+//! holds, for how long, and how to delete it.
 use std::path::Path;
 
 /// The string literals that follow `pattern` in `source`, such as the `"orgs"` of `self.dir("orgs")`.
@@ -34,6 +35,25 @@ fn sources(dir: &Path) -> String {
     text
 }
 
+/// The names joined to a path through a named constant (`.join(FILE)` with `const FILE: &str = "…";`), as a store
+/// that keeps its file name in a constant writes it.
+fn joined_constants(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let declaration = line
+                .trim()
+                .trim_start_matches("pub ")
+                .strip_prefix("const ")?;
+            let (name, value) = declaration.split_once(": &str = \"")?;
+            let value = value.strip_suffix("\";")?;
+            source
+                .contains(&format!(".join({name})"))
+                .then(|| value.to_owned())
+        })
+        .collect()
+}
+
 /// What other adapters write directly under the data directory through other paths than the ones scanned.
 const ELSEWHERE: [&str; 4] = ["logs/", "metrics/", "usage/", "web-push-vapid.key"];
 
@@ -50,6 +70,7 @@ fn every_name_the_store_writes_under_the_data_directory_is_in_the_document() {
         .chain(literals_after(&store, "self.root().join(\""));
     let names: Vec<String> = directories
         .chain(files)
+        .chain(joined_constants(&store))
         .chain(ELSEWHERE.iter().map(|name| (*name).to_owned()))
         .collect();
     assert!(
