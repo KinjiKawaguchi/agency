@@ -646,7 +646,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
 | `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
-| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもなく、使える申請リンクのアドレスでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
 
 ## チームランタイム
 

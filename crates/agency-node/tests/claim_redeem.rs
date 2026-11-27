@@ -250,3 +250,45 @@ async fn a_claim_asked_about_by_an_address_that_redeemed_nothing_is_not_found() 
         "another address"
     );
 }
+
+#[tokio::test]
+async fn an_address_is_a_claimant_while_its_link_can_be_used_or_waits_for_the_owner() {
+    let (alice, code) = with_a_link().await;
+    assert!(
+        claims::is_claimant(&alice.node, "Carol@Example.com"),
+        "an open link, any case"
+    );
+    assert!(
+        !claims::is_claimant(&alice.node, "mallory@example.com"),
+        "another address"
+    );
+
+    redeem(&alice, &code, CAROL, &key(0x71)).await.unwrap();
+    assert!(
+        claims::is_claimant(&alice.node, CAROL),
+        "redeemed, waiting for the owner"
+    );
+
+    let digest = agency_proto::invite::code_digest(&code);
+    let mut record = alice.node.store().load_claim(&digest).unwrap();
+    let ClaimState::Redeemed(kept) = record.state.clone() else {
+        panic!("{record:?}")
+    };
+    record.state = ClaimState::Confirmed(kept);
+    alice.node.store().save_claim(&digest, &record).unwrap();
+    assert!(
+        !claims::is_claimant(&alice.node, CAROL),
+        "confirmed: the person is a guest, not a claimant"
+    );
+}
+
+#[tokio::test]
+async fn an_address_whose_link_expired_is_no_claimant() {
+    let (alice, _) = with_a_link().await;
+    assert!(claims::is_claimant(&alice.node, CAROL));
+    alice.clock.advance(Duration::days(8));
+    assert!(
+        !claims::is_claimant(&alice.node, CAROL),
+        "an expired link admits no one"
+    );
+}

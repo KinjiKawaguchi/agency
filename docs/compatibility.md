@@ -156,6 +156,7 @@ Names start at what came after the first release: every node has what the first 
 | `outcomes` | feature | The owner's numbers and the readings of them. |
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
+| `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
 
 ## Checks in CI
 

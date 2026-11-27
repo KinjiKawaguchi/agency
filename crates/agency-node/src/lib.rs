@@ -295,6 +295,7 @@ impl Opened {
             launch: self.launch.clone(),
             client_notes: Default::default(),
             handoff: handoff::Codes::default(),
+            claim_attempts: Default::default(),
         };
         let refusals = RefusalLog::new(self.logger.sink(LogLevel::Warn, "refused"));
         let app = server::router_with_log(self.node.clone(), refusals)

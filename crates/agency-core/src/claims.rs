@@ -234,3 +234,19 @@ pub fn state(node: &Node, email: &str) -> Result<ClaimStatus> {
         pairing_code: redemption.public_key.pairing_code(),
     })
 }
+
+/// Whether `email` has a claim link that can still be used or is waiting for the owner: one not yet redeemed and
+/// not expired, or one redeemed and not confirmed. Only such an address is admitted, and only to the claim.
+pub fn is_claimant(node: &Node, email: &str) -> bool {
+    let email = email.trim().to_lowercase();
+    let now = node.now();
+    node.store()
+        .claims()
+        .iter()
+        .filter(|(_, record)| record.email == email)
+        .any(|(_, record)| match record.state {
+            ClaimState::Open => clock::parse(&record.expires_at).is_some_and(|at| at > now),
+            ClaimState::Redeemed(_) => true,
+            ClaimState::Confirmed(_) => false,
+        })
+}
