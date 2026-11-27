@@ -145,6 +145,10 @@ pub trait InviteStore {
 /// Seat claim links, keyed by the SHA-256 of their secret code. The seat index lets a newer link replace
 /// the older open link without keeping the code itself.
 pub trait ClaimStore {
+    /// The claim link kept under `digest` (the SHA-256 of its code).
+    fn load_claim(&self, digest: &str) -> Option<crate::claims::ClaimRecord>;
+    /// Every claim link, with the digest it is kept under.
+    fn claims(&self) -> Vec<(String, crate::claims::ClaimRecord)>;
     fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String>;
     fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
     fn remove_claim(&self, digest: &str) -> Result<()>;

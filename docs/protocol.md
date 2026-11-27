@@ -164,15 +164,28 @@ A read that fails any of these checks is refused like a read of an org or team t
 
 ## Invites and joining (kind `join`)
 
-## Claim link
-
-`agency seat-invite --org <org> --seat <seat> --email <address>` makes one seven-day claim link for one unclaimed seat and one lowercased email. The root node keeps the record under the SHA-256 of its 16-random-byte code; the code is not stored. A newer link for the same seat replaces the older one. With Access, it prints `https://<publicHost>/claim#code=<code>` and the email for the owner to add to the Access policy by hand. Without Access, it prints the node's local claim address and says it works on that machine only. The email is node-local and never enters the org definition.
-
 1. The root key's node creates an invite. Invite link: `agency:join?node=<node origin>&org=<org>&fp=<root key fingerprint>&code=<code>`. The code is 16 random bytes as base64url. The node keeps only the code's SHA-256. An invite expires after 7 days and can be used once.
 2. The invited account's home node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
    An org id names one org on a node. If the node already has an org with the link's id (a stored definition, or a trusted root fingerprint) under another root key, it refuses the link and changes nothing: joining would replace its definition and its trust for that id, and with them the teams it hosts there. A node also never creates an org with an id it already trusts.
 3. When the invited person accepts, their node signs a join request and sends it to `POST <node>/fed/v1/orgs/<org>/join`. Body: `{ "org", "code", "account", "label", "publicKey", "at" }`. The signature is checked with the body's `publicKey`, and `at` must be within 10 minutes of the root node's clock.
 4. The root key's node checks the code, its expiry, and that it is unused, signs the next version with the new member added at the place the invite set (department, role; for an invite made for a seat with `agency invite --org <org> --seat <seat>`, the seat is taken instead: see "Taking a seat" under "Org definition", and the join is refused with 409, leaving the invite unused, when the seat is not in the org any more), and returns it to the requesting node. The new version goes to the nodes of the org's teams through the outbox. When the root key asks for the owner's presence, it holds the join instead and answers `202` (see "Pending root changes"); the joiner then fetches the signed version with the handle.
+
+## Claim link
+
+`agency seat-invite --org <org> --seat <seat> --email <address>` makes one seven-day claim link for one unclaimed seat and one lowercased email. The root node keeps the record under the SHA-256 of its 16-random-byte code; the code is not stored. A newer link for the same seat replaces the older one. With Access, it prints `https://<publicHost>/claim#code=<code>` and the email for the owner to add to the Access policy by hand. Without Access, it prints the node's local claim address and says it works on that machine only. The email is node-local and never enters the org definition.
+
+**Redeeming the link.** The person opens the link, signs in to Access with the address it was made for, and their browser makes a device key (Ed25519 or P-256, as every device key) and redeems the code with it: the code, the key as text, and a label of 1 to 80 characters for the browser (`label_ok_to_write`: nothing that hides or reorders text). The node checks, in this order, and keeps nothing until all hold:
+
+- a code that no link has, and one that is spent, are the same answer: 404, with the same words (so the answer does not say which). A code is spent by a redeem, once, under the node's write lock, so two redeems of one link at once make one claim;
+- the link has expired (7 days): 410;
+- the signed-in address is not the one the link was made for: 403, and the answer names no address; the link is not spent by it;
+- the seat is not in the org any more: 409;
+- the key is not a device key: 400; it is a key the org already has (an account, root, recovery or revoked key, or a member's device) or one another claim holds: 409;
+- the label is not acceptable: 400.
+
+A refusal spends nothing: the same link works after the person fixes what was refused. No answer holds the address, the code, or the key.
+
+The redeem answers `ClaimStatus { state: "waiting" | "in", seat, org, pairingCode }`: `seat` and `org` are the labels the definition has, `pairingCode` the pairing code of the key the browser sent, which the person's browser shows and the owner compares on the node's side. The same shape answers the person's later asks for where it stands (by the signed-in address; 404 when that address redeemed nothing), `waiting` until the owner confirms, then `in`. The seat is still a seat until the owner confirms: confirming is a separate step, and the routes that carry these calls are separate too.
 
 ## Pending root changes
 

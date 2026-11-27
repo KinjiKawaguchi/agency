@@ -315,6 +315,26 @@ impl InviteStore for DataDir {
 }
 
 impl ClaimStore for DataDir {
+    fn load_claim(&self, digest: &str) -> Option<ClaimRecord> {
+        read_json(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    /// Every file of `claims/`, named by the digest it holds.
+    fn claims(&self) -> Vec<(String, ClaimRecord)> {
+        let Ok(entries) = fs::read_dir(self.dir("claims")) else {
+            return vec![];
+        };
+        entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let digest = path.file_stem()?.to_str()?.to_owned();
+                let is_json = path.extension().is_some_and(|ext| ext == "json");
+                is_json.then(|| read_json(&path).map(|record| (digest, record)))?
+            })
+            .collect()
+    }
+
     fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String> {
         read_json(&self.dir("claims-by-seat").join(format!(
             "{}-{}.json",
