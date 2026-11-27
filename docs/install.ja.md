@@ -484,6 +484,7 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- 労力の画面（チームのトークンがどの作業種別に使われたか。`/api/orgs/<org>/effort`）は、同じリポジトリと、チームのランタイムが報告するトークン使用量（`tokenUsage`）から求めます。これは推定です。ランタイムは費用を日ごとに報告するので、1 日の費用は、その日にマージした PR の種別に分けます。マージのない日は、次にマージのある日の種別に分けます（規則は [protocol.md](protocol.md#evaluation) にあります）。ランタイムがトークン使用量を報告しないチームは、0 ではなく理由とともに並びます。
 - `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
 
 | 画面に出る理由 | すること |
@@ -495,6 +496,9 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
+| the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |
+| the team's node does not give effort numbers | そのノードがこの機能より古いので、更新します。 |
+| the team's node does not give effort numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | a repository of the team is not written owner/name | チームが動いているノードの設定の `delivery.repos` を直します。 |
 | the team's node did not answer | そのノードが止まっているか、届きません。 |
 
