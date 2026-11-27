@@ -164,6 +164,10 @@ A read that fails any of these checks is refused like a read of an org or team t
 
 ## Invites and joining (kind `join`)
 
+## Claim link
+
+`agency seat-invite --org <org> --seat <seat> --email <address>` makes one seven-day claim link for one unclaimed seat and one lowercased email. The root node keeps the record under the SHA-256 of its 16-random-byte code; the code is not stored. A newer link for the same seat replaces the older one. With Access, it prints `https://<publicHost>/claim#code=<code>` and the email for the owner to add to the Access policy by hand. Without Access, it prints the node's local claim address and says it works on that machine only. The email is node-local and never enters the org definition.
+
 1. The root key's node creates an invite. Invite link: `agency:join?node=<node origin>&org=<org>&fp=<root key fingerprint>&code=<code>`. The code is 16 random bytes as base64url. The node keeps only the code's SHA-256. An invite expires after 7 days and can be used once.
 2. The invited account's home node reads the org definition with `GET <node>/fed/v1/orgs/<org>/definition?code=<code>` and checks that the root key's fingerprint matches the link's `fp`. If it does not, it stops (the node may be fake).
    An org id names one org on a node. If the node already has an org with the link's id (a stored definition, or a trusted root fingerprint) under another root key, it refuses the link and changes nothing: joining would replace its definition and its trust for that id, and with them the teams it hosts there. A node also never creates an org with an id it already trusts.
