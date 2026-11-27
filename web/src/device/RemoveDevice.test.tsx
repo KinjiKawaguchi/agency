@@ -7,6 +7,7 @@ import { deviceKeyOf, generateKeyPair } from './deviceKey'
 import { deviceIdOf } from './fingerprint'
 
 const other = await deviceKeyOf(await generateKeyPair())
+const tablet = await deviceKeyOf(await generateKeyPair())
 const OTHER_ID = deviceIdOf(other.pairingCode)
 const withLaptop = (options: Parameters<typeof createTestNode>[0] = {}) =>
   createTestNode({ ...options, devices: [{ id: OTHER_ID, label: 'Work laptop', publicKey: other.publicKey }] })
@@ -201,6 +202,70 @@ describe('removing one of the account’s devices', () => {
       renderApp({ path: '/devices', node: withLaptop(), enrolled: true })
       expect(await screen.findByRole('button', { name: 'Remove Browser' })).toBeInTheDocument()
     })
+  })
+
+  it('says in the confirmation how many decisions the node holds as saved, not delivered, and that those the device signed will be refused', async () => {
+    const user = userEvent.setup()
+    // The sample log has one decision the node holds for a team that is asleep.
+    renderApp({ path: '/devices', node: withLaptop(), enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Work laptop?' })
+    expect(await within(panel).findByText('1 decision is saved, not delivered. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+  })
+
+  it('says it of the ones made in this browser when it is this device that goes, and still lets it go', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop()
+    renderApp({ path: '/devices', node, enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Browser' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Browser?' })
+    expect(await within(panel).findByText('1 decision is saved, not delivered. The ones made in this browser will be refused once it is removed.')).toBeInTheDocument()
+    await user.click(within(panel).getByRole('button', { name: 'Remove this device' }))
+    expect(await screen.findByText(/This device is removed\./)).toBeInTheDocument()
+    expect(await listedBy(node)).toEqual([['acme', ['Work laptop']]])
+  })
+
+  it('says nothing of undelivered decisions when the node holds none', async () => {
+    const user = userEvent.setup()
+    renderApp({ path: '/devices', node: withLaptop({ earlierDecisions: false }), enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Work laptop?' })
+    await within(panel).findByText(/can never sign again\./)
+    expect(within(panel).queryByText(/saved, not delivered/)).not.toBeInTheDocument()
+  })
+
+  it('says where the device was removed and where it is still listed, and does not say it can never sign again of the latter', async () => {
+    const user = userEvent.setup()
+    // A second other device keeps the laptop from being the last one in club.
+    const node = createTestNode({ deviceOrgs: ['acme', 'club'], devices: [{ id: OTHER_ID, label: 'Work laptop', publicKey: other.publicKey }, { id: deviceIdOf(tablet.pairingCode), label: 'Tablet', publicKey: tablet.publicKey }] })
+    // This browser is added in acme only: in club it cannot sign the removal, so the laptop stays listed there.
+    const client = createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/devices' || request.method !== 'GET') return reply
+      const list = (await reply.json()) as { orgs: Array<{ org: string; devices: Array<{ id: string }> }> }
+      return new Response(JSON.stringify({ ...list, orgs: list.orgs.map((org) => (org.org === 'club' ? { ...org, devices: org.devices.filter((one) => one.id !== TEST_DEVICE_ID) } : org)) }), { headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/devices', node, client, enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
+    await user.click(await screen.findByRole('button', { name: 'Remove this device' }))
+    expect(await screen.findByText('Work laptop is removed from acme. It can never sign there again.')).toBeInTheDocument()
+    expect(screen.queryByText('Work laptop is removed. It can never sign again.')).not.toBeInTheDocument()
+    expect(await screen.findByText(/It is still listed in club/)).toBeInTheDocument()
+  })
+
+  it('says, with no button, that a device is listed only where this browser cannot sign, so it cannot be removed from here', async () => {
+    const node = createTestNode({ deviceOrgs: ['acme', 'club'], devices: [{ id: OTHER_ID, label: 'Work laptop', publicKey: other.publicKey }, { id: deviceIdOf(tablet.pairingCode), label: 'Tablet', publicKey: tablet.publicKey }] })
+    // This browser is added in acme, and the laptop is listed in club only.
+    const client = createApiClient(async (request) => {
+      const reply = await node.handle(request)
+      if (new URL(request.url, 'http://mock.local').pathname !== '/api/devices' || request.method !== 'GET') return reply
+      const list = (await reply.json()) as { orgs: Array<{ org: string; devices: Array<{ id: string }> }> }
+      const kept = (org: string, id: string): boolean => (org === 'club' ? id !== TEST_DEVICE_ID : id !== OTHER_ID)
+      return new Response(JSON.stringify({ ...list, orgs: list.orgs.map((org) => ({ ...org, devices: org.devices.filter((one) => kept(org.org, one.id)) })) }), { headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/devices', node, client, enrolled: true })
+    expect(await screen.findByText('It is still listed in club: this device is not added there, so it cannot sign the removal.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove Work laptop' })).not.toBeInTheDocument()
   })
 
   it('says it in Japanese', async () => {
