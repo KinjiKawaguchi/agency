@@ -52,8 +52,9 @@ const TYPE_OF: Record<string, string> = {
  * error too, so that it is removed when the difference is.
  */
 const KNOWN_DIFFERENCES: Record<string, string> = {
-  'v0.3.0/push-token': 'PushToken.id (a hash a DELETE can name) was added after v0.3.0 and the type requires it; the node reads it as optional',
-  'v0.3.0/push-token-list': 'the same: each token of the list has no id in v0.3.0',
+  'v0.3.0/push-token':
+    '`id` was added after v0.3.0 (#453); the web client only reads its own node, and the Apple apps do not decode `id`. A client that reads other releases\' push tokens is when the type changes (AgencyCore, #580)',
+  'v0.3.0/push-token-list': 'the same: each token of the list has no `id` in v0.3.0',
 }
 /** An error answer is `{ "error": text }`, which the client reads by hand and has no generated type for. */
 const READ_BY_HAND = new Set(['error'])
