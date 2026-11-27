@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { useApi } from '../api/context'
-import { DECISIONS_KEY, decisionsQuery, TEAM_KEY } from '../api/queries'
+import { DECISIONS_KEY, decisionsQuery, meQuery, TEAM_KEY } from '../api/queries'
 import { SignInExpiredError } from '../api/session'
 import { afterFailure, classify, dueEntries, nextDueAt, sendAgain, type OutboxEntry } from './entry'
 import { loadOutbox, OUTBOX_STORAGE_KEY, saveOutbox } from './storage'
@@ -49,6 +49,8 @@ export function OutboxProvider({ children, now = Date.now }: { children: ReactNo
   const queryClient = useQueryClient()
   const [entries, setEntries] = useState<readonly OutboxEntry[]>(() => loadOutbox())
   const [isPaused, setIsPaused] = useState(false)
+  /** The requests of decisions the node has taken, while what it says of them is being read. */
+  const [settling, setSettling] = useState<ReadonlySet<string>>(() => new Set())
   // A counter that wakes the effect that starts what is due; never drawn.
   const [tick, wake] = useReducer((count: number) => count + 1, 1)
   const inFlight = useRef(new Set<string>())
@@ -91,9 +93,11 @@ export function OutboxProvider({ children, now = Date.now }: { children: ReactNo
       inFlight.current.add(entry.id)
       try {
         await api.decideSigned(entry.org, entry.team, { envelope: entry.envelope, ...(entry.title === undefined ? {} : { title: entry.title }), ...(entry.choiceLabel === undefined ? {} : { choiceLabel: entry.choiceLabel }) })
-        // The node has it. The request stays off the pile until what the node says of it has been read, so that it does not come back for the moment between.
-        await Promise.all([queryClient.invalidateQueries({ queryKey: DECISIONS_KEY }), queryClient.invalidateQueries({ queryKey: TEAM_KEY })])
+        // The node has it: the entry is done at once. The request stays off the pile until what the node says of it has been read, so that it does
+        // not come back for the moment between (a slow team node makes that moment long).
         update(entry.id, () => undefined)
+        setSettling((keys) => new Set([...keys, entry.itemKey]))
+        void Promise.all([queryClient.invalidateQueries({ queryKey: DECISIONS_KEY }), queryClient.invalidateQueries({ queryKey: TEAM_KEY })]).finally(() => setSettling((keys) => new Set([...keys].filter((key) => key !== entry.itemKey))))
       } catch (error) {
         update(entry.id, (current) => afterFailure(current, classify(failureOf(error)), now()))
       } finally {
@@ -116,12 +120,14 @@ export function OutboxProvider({ children, now = Date.now }: { children: ReactNo
   }, [attempt, entries, isPaused, now, tick])
 
   const hasPending = entries.length > 0
-  const log = useQuery({ ...decisionsQuery(api), refetchInterval: hasPending ? WATCH_MS : decisionsQuery(api).refetchInterval })
+  // The log is read where the viewer is known (a person on the claim page has no seat yet, and the node may refuse it).
+  const me = useQuery(meQuery(api))
+  const log = useQuery({ ...decisionsQuery(api), enabled: me.data !== undefined, refetchInterval: hasPending ? WATCH_MS : decisionsQuery(api).refetchInterval })
   const queuedKeys = useMemo(
     () => new Set((log.data?.entries ?? [] /* stand-in-ok(optional): before the log has been read nothing is known to be queued; the entries kept here hide their own requests */).flatMap((entry) => (entry.state.kind === 'queued' ? [`${entry.org}:${entry.team}:${entry.target}`] : []))),
     [log.data],
   )
-  const hiddenKeys = useMemo(() => new Set([...entries.map((entry) => entry.itemKey), ...queuedKeys]), [entries, queuedKeys])
+  const hiddenKeys = useMemo(() => new Set([...entries.map((entry) => entry.itemKey), ...settling, ...queuedKeys]), [entries, queuedKeys, settling])
 
   // A decision that was queued at the node and is not any more has ended: the team's view says what became of its request.
   const wasQueued = useRef<ReadonlySet<string>>(new Set())

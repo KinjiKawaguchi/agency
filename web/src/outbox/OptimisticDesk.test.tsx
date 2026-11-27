@@ -208,5 +208,45 @@ describe('deciding without waiting for the node', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
   })
+
+  it('leaves the decided request out of every count: the team card of the Overview, not only the desk', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    const { client } = clientWith(node, () => new Promise<Response>(() => undefined))
+    renderApp({ node, client, enrolled: true })
+    await user.click(await screen.findByRole('link', { name: /Overview/ }))
+    const waiting = async (): Promise<number> => {
+      const line = await screen.findByText(/^\d+ requests? waits? for you, in /)
+      return Number(/^(\d+) request/.exec(line.textContent ?? '')?.[1])
+    }
+    const before = await waiting()
+    expect(before).toBeGreaterThan(0)
+    await user.click(screen.getByRole('link', { name: /Decisions/ }))
+    await approve(user)
+    await screen.findByRole('region', { name: TRAY })
+    await user.click(screen.getByRole('link', { name: /Overview/ }))
+    await waitFor(async () => expect(await waiting()).toBe(before - 1))
+  })
+
+  it('takes the entry out of the tray the moment the node has it, while what the node says of it is still being read', async () => {
+    const user = userEvent.setup()
+    const node = createTestNode()
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const client = createApiClient(async (request) => {
+      const path = new URL(request.url, 'http://mock.local').pathname
+      // The team's read is slow, as a slow team node makes it.
+      if (request.method === 'GET' && path.endsWith('/teams/app/view') && node.decisions().length > 0) await held
+      return node.handle(request)
+    })
+    renderApp({ node, client, enrolled: true })
+    await approve(user)
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    await waitFor(() => expect(tray()).not.toBeInTheDocument())
+    expect(within(screen.getByRole('listbox', { name: 'Documents waiting' })).queryByText(PROPOSAL)).not.toBeInTheDocument()
+    release()
+  })
 })
 

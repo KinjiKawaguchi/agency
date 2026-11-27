@@ -33,5 +33,7 @@ export const requestKey = (view: Pick<TeamView, 'org' | 'team'>, request: { id: 
 /** The team without the requests that were decided and are not yet done with (kept in the browser or queued at the node): they are not waiting on anyone any more. The same team when none of them is in it. */
 export function withoutDecided(team: Team, decided: ReadonlySet<string>): Team {
   if (decided.size === 0 || !team.view.requests.some((request) => decided.has(requestKey(team.view, request)))) return team
-  return { ...team, view: { ...team.view, requests: team.view.requests.filter((request) => !decided.has(requestKey(team.view, request))) } }
+  const left = team.view.requests.filter((request) => !decided.has(requestKey(team.view, request)))
+  // What the node says is the viewer's to decide (`mine`) is cut to what is left: every count that reads it leaves the decided request too.
+  return { ...team, view: { ...team.view, requests: left }, mine: new Set([...team.mine].filter((id) => left.some((request) => request.id === id))) }
 }

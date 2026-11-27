@@ -80,6 +80,11 @@ describe('which kept decisions are due', () => {
     expect(dueEntries(entries, new Set(['a']), NOW).map((one) => one.id)).toEqual(['d'])
   })
 
+  it('takes a waiting entry with no time, or one that is not a time, as due at once, never left waiting for nothing', () => {
+    const odd = [entry({ id: 'x', phase: 'retrying' }), entry({ id: 'y', phase: 'retrying', nextAt: 'soon' })]
+    expect(dueEntries(odd, new Set(), NOW).map((one) => one.id)).toEqual(['x', 'y'])
+  })
+
   it('is, for the timer, the earliest time a waiting one is due; nothing when none waits or the time is not one', () => {
     expect(nextDueAt(entries)).toBe(Date.parse('2026-11-27T01:00:00.000Z'))
     expect(nextDueAt([entry(), entry({ phase: 'failed' })])).toBeUndefined()

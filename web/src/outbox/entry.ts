@@ -74,9 +74,15 @@ const withoutNext = ({ nextAt: _nextAt, ...rest }: OutboxEntry): OutboxEntry => 
 /** "Send again": the same envelope, at once, whatever the wait was. */
 export const sendAgain = (entry: OutboxEntry): OutboxEntry => ({ ...withoutNext(entry), phase: 'sending' })
 
+/** A waiting entry is due at its time, and at once when its time is missing or is not one: it is never left waiting for nothing. */
+const isDue = (entry: OutboxEntry, now: number): boolean => {
+  const at = entry.nextAt === undefined ? Number.NaN : Date.parse(entry.nextAt)
+  return Number.isNaN(at) || at <= now
+}
+
 /** The entries that should be tried now: on their way and not in flight, or waiting and their time has come. */
 export function dueEntries(entries: readonly OutboxEntry[], inFlight: ReadonlySet<string>, now: number): OutboxEntry[] {
-  return entries.filter((entry) => !inFlight.has(entry.id) && (entry.phase === 'sending' || (entry.phase === 'retrying' && entry.nextAt !== undefined && Date.parse(entry.nextAt) <= now)))
+  return entries.filter((entry) => !inFlight.has(entry.id) && (entry.phase === 'sending' || (entry.phase === 'retrying' && isDue(entry, now))))
 }
 
 /** When the earliest waiting entry is due, for the timer; nothing when none waits. */
