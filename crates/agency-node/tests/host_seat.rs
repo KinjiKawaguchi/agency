@@ -376,3 +376,38 @@ async fn an_org_with_a_node_that_does_not_list_hostedmembers_waits() {
     assert_eq!(version(&alice), before);
     assert!(alice.node.store().guest(CAROL).is_none());
 }
+
+/// A directory where the guest record is written through a temporary file makes the write fail.
+fn block_the_guest_record(running: &Running, email: &str) {
+    use sha2::{Digest, Sha256};
+    let name: String = Sha256::digest(email.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let blocked = running
+        .data_dir()
+        .join("guests")
+        .join(format!("{name}.tmp-{}", std::process::id()));
+    std::fs::create_dir_all(blocked).unwrap();
+}
+
+#[tokio::test]
+async fn a_sign_in_that_cannot_be_kept_leaves_the_seat_a_seat_and_publishes_nothing() {
+    let (alice, _) = with_seats().await;
+    let before = version(&alice);
+    block_the_guest_record(&alice, CAROL);
+
+    let error = seats::host_seat(
+        &alice.node,
+        &acme(),
+        &id("carol"),
+        device_of(&alice, &laptop()),
+        CAROL,
+    )
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Internal, "{error:?}");
+    assert_eq!(version(&alice), before, "no version was kept");
+    let doc = alice.node.store().load_org(&acme()).unwrap();
+    assert!(doc.body.seats.iter().any(|one| one.id == id("carol")));
+    assert!(doc.body.member(&id("carol")).is_none());
+}
