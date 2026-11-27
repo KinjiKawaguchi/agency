@@ -63,6 +63,12 @@ describe('what the node takes of a subscription', () => {
       expect(subscriptionInput(incomplete as PushSubscriptionJSON, 'x')).toBeUndefined()
     }
   })
+
+  it('names the device it belongs to when it is given one, and says nothing of one when it is not', () => {
+    const subscription = { endpoint: 'https://push.example/x', keys: { p256dh: 'P', auth: 'A' } }
+    expect(subscriptionInput(subscription, 'Chrome on macOS', 'd-0123456789ab')).toMatchObject({ device: 'd-0123456789ab' })
+    expect(subscriptionInput(subscription, 'Chrome on macOS')).not.toHaveProperty('device')
+  })
 })
 
 describe('the real browser’s stand-in for the worker’s messages', () => {

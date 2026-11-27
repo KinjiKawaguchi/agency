@@ -11,8 +11,8 @@ struct ReplyControlsTests {
         try #require(Desk.openItems([team ?? self.team]).first { $0.request.id == id })
     }
 
-    private func controls(_ item: DeskItem, _ draft: DeskDraft = DeskDraft(), sending: Bool = false, sent: Bool = false, ready: Bool = true) -> ReplyControls {
-        ReplyControls(item: item, draft: draft, isSending: sending, isSent: sent, isDeviceReady: ready)
+    private func controls(_ item: DeskItem, _ draft: DeskDraft = DeskDraft(), sending: Bool = false, ready: Bool = true) -> ReplyControls {
+        ReplyControls(item: item, draft: draft, isSending: sending, isDeviceReady: ready)
     }
 
     @Test("with options: nothing to decide until one is picked; a note alone can only be a comment")
@@ -73,7 +73,7 @@ struct ReplyControlsTests {
     func locked() throws {
         let question = try item(Teams.questionID)
         let draft = DeskDraft(text: "x", optionKey: "a")
-        for locked in [controls(question, draft, sending: true), controls(question, draft, sent: true)] {
+        for locked in [controls(question, draft, sending: true)] {
             #expect(!locked.canPick && !locked.canDecide && !locked.canComment)
         }
         let others = Teams.team(addRequests: [Teams.request(to: "frontend")])

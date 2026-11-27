@@ -97,9 +97,10 @@ public actor NodeClient {
     }
 
     /// The node's own response times over the last `days` days (1 to 30). Owner only: anyone else is told 403, and a node that does
-    /// not measure 404.
-    public func metrics(days: Int) async throws -> Metrics {
-        try await get("/api/metrics?days=\(days)")
+    /// not measure 404. `hourBuckets` asks for the buckets of each hour too (`hourBuckets=1`), so that the hours of several series can be
+    /// added and the percentile of their whole read: only for a range with hours (up to 7 days), which is what the trend draws from.
+    public func metrics(days: Int, hourBuckets: Bool = false) async throws -> Metrics {
+        try await get("/api/metrics?days=\(days)" + (hourBuckets ? "&hourBuckets=1" : ""))
     }
 
     /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
@@ -171,18 +172,26 @@ public actor NodeClient {
         return session
     }
 
+    /// What the node says of itself: the capabilities the app decides by (`GET /api/about`).
+    public func about() async throws -> About {
+        try await get("/api/about")
+    }
+
     /// Tells the node this phone's push token (`PushTokenInput`). Registering a known token updates it.
     /// `environment` is `production` or `sandbox`, as the app was signed; `label` is 1 to 80 characters.
     /// `events` names the kinds the token wants (`request`, `device`, `decision`); without it the node sends
-    /// requests only, and an empty list means none.
+    /// requests only, and an empty list means none. `device` is the id of this phone as one of the account's devices, so that the node
+    /// drops the registration when the device is removed; only a node that lists `pushDevice` takes it (any other answers 400 for the
+    /// unknown field), and only a current device of the account (400 otherwise).
     @discardableResult
     public func registerPushToken(
-        token: String, environment: String, label: String, events: [String]? = nil
+        token: String, environment: String, label: String, events: [String]? = nil, device: String? = nil
     ) async throws -> RegisteredPushToken {
         var members: [JSONValue.Member] = [
             .init("token", .string(token)), .init("environment", .string(environment)), .init("label", .string(label)),
         ]
         if let events { members.append(.init("events", .array(events.map { .string($0) }))) }
+        if let device { members.append(.init("device", .string(device))) }
         let body = Data(try CanonicalJSON.encode(.object(members)).utf8)
         return try await write("POST", "/api/push/tokens", body: body)
     }
