@@ -171,3 +171,30 @@ async fn a_hosted_members_sign_in_and_push_registrations_go_with_it() {
     );
     assert!(current(&alice).body.revoked.contains(&laptop.public()));
 }
+
+#[tokio::test]
+async fn a_team_that_addresses_a_seat_the_member_took_names_the_member() {
+    let (alice, _) = alice().await;
+    joined_bob(&alice).await;
+    let seat = Seat {
+        id: id("dan"),
+        label: "Dan (tax)".into(),
+        department: None,
+        ask_about: vec![],
+        relays: vec![],
+    };
+    seats::add_seat(&alice.node, &acme(), seat).unwrap();
+    seats::merge_seat(&alice.node, &acme(), &id("dan"), &id("bob")).unwrap();
+    alice
+        .node
+        .update_config(|config| {
+            config.teams[0].people.insert("tax".into(), id("dan"));
+        })
+        .unwrap();
+    let before = current(&alice).body.version;
+
+    let error = remove_member(&alice.node, &acme(), &id("bob")).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Conflict, "{error:?}");
+    assert!(error.message.contains("team app"), "{error:?}");
+    assert_eq!(current(&alice).body.version, before);
+}

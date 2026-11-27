@@ -9,8 +9,9 @@ use agency_proto::org::SignedOrg;
 use agency_proto::{Id, OrgDefinition};
 
 /// The places in the org, and in the teams this node runs, that still name `member`: a seat or an external party it
-/// answers for, a department it heads, a team it owns or that addresses it by a runtime name. Removing the member
-/// while one of them names it would leave something addressed to no one, so each must be changed first.
+/// answers for, a department it heads, a team it owns or that addresses it, or a seat it took, by a runtime name.
+/// Removing the member while one of them names it would leave a request there addressed to no one, so each must be
+/// changed first. Teams on other nodes are named in those nodes' configuration, which this node does not see.
 fn still_named(node: &Node, org: &OrgDefinition, member: &Id) -> Vec<String> {
     let seats = org
         .seats
@@ -27,11 +28,19 @@ fn still_named(node: &Node, org: &OrgDefinition, member: &Id) -> Vec<String> {
         .iter()
         .filter(|department| department.head.as_ref() == Some(member))
         .map(|department| format!("it heads department {}", department.id));
+    // A seat the member took is answered by the member (`formerly`), so a team that addresses that id names it too.
+    let taken: Vec<&Id> = org
+        .people
+        .iter()
+        .filter(|person| &person.id == member)
+        .flat_map(|person| &person.formerly)
+        .collect();
+    let is_theirs = |id: &Id| id == member || taken.contains(&id);
     let hosted = node.config().teams;
     let teams = hosted
         .iter()
         .filter(|team| team.org == org.org)
-        .filter(|team| &team.owner == member || team.people.values().any(|one| one == member))
+        .filter(|team| &team.owner == member || team.people.values().any(is_theirs))
         .map(|team| format!("team {} on this node names it", team.team));
     seats.chain(externals).chain(heads).chain(teams).collect()
 }
