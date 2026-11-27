@@ -16,6 +16,7 @@ use agency_proto::org::{
     verify_genesis, verify_successor, Root, SignedOrg, Succession, TeamPlace, Versions,
     RECOVERY_WAIT_SECONDS,
 };
+use agency_proto::runtime::is_reserved_name;
 use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
@@ -140,6 +141,42 @@ fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
     Ok(())
 }
 
+/// The ids of the people, seats, and external parties of `body`, with what each names.
+fn identities(body: &OrgDefinition) -> Vec<(&'static str, &Id)> {
+    let people = body.people.iter().map(|one| ("a member", &one.id));
+    let seats = body.seats.iter().map(|one| ("a seat", &one.id));
+    let externals = body
+        .externals
+        .iter()
+        .map(|one| ("an external party", &one.id));
+    people.chain(seats).chain(externals).collect()
+}
+
+/// Refuses a version that gives a member, a seat, or an external party a name a team runtime reserves
+/// (`RESERVED_NAMES`), which the current version does not already have: a runtime would read a decision by
+/// it as one by that name. One that is already there is kept, so that an org that has one still signs.
+fn refuse_new_reserved_ids(node: &Node, body: &OrgDefinition) -> Result<()> {
+    let before = node.store().load_org(&body.org);
+    let kept: Vec<&Id> = before
+        .as_ref()
+        .map(|doc| {
+            identities(&doc.body)
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect()
+        })
+        .unwrap_or_default();
+    let taken = identities(body)
+        .into_iter()
+        .find(|(_, id)| is_reserved_name(id) && !kept.contains(id));
+    match taken {
+        Some((what, id)) => Err(Error::bad_request(format!(
+            "{id} is a name a team runtime reserves, so it cannot be the id of {what}"
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
 /// presence prompt: `RootKeys::with_signer`).
 pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
@@ -148,6 +185,7 @@ pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Re
     body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
     refuse_new_hidden_labels(node, &body)?;
+    refuse_new_reserved_ids(node, &body)?;
     let org = body.org.clone();
     let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
         .map_err(|error| Error::internal(error.to_string()))?;
