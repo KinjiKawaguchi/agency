@@ -261,9 +261,13 @@ fn init(
     if !is_node_origin(url) {
         bail!("--url must be http(s)://host[:port]");
     }
+    let account_id = id(account)?;
+    if agency_proto::runtime::is_reserved_name(&account_id) {
+        bail!("--account {account} is a name a team runtime reserves; choose another account id");
+    }
     let key = data.create_key()?;
     let owner = Account {
-        id: id(account)?,
+        id: account_id,
         label: label.to_owned(),
     };
     data.save_config(&NodeConfig::new(url, listen, owner, scrum))?;

@@ -11,6 +11,17 @@ use ts_rs::TS;
 
 pub const RUNTIME_VERSION: &str = "agency-runtime/1";
 
+/// Names a team runtime gives meaning of its own: `owner` is the team's owner (see "agency-runtime/1"), and
+/// `board` and `unverified` are participants of the reference runtime that are no org member. The node passes
+/// a member's id to the runtime as `by`, so no member, seat, or external party may newly take one of these
+/// as its id: a runtime would read a decision by it as one by that name.
+pub const RESERVED_NAMES: [&str; 3] = ["owner", "board", "unverified"];
+
+/// Whether `id` is one of `RESERVED_NAMES`.
+pub fn is_reserved_name(id: &Id) -> bool {
+    RESERVED_NAMES.contains(&id.as_str())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
