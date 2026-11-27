@@ -93,6 +93,22 @@ describe('readEvaluation', () => {
     expect(summary && 'costPerMergedPrUsd' in summary).toBe(false)
   })
 
+  it('reads the lead times of the new features, leaves the part out when the node does, and refuses a bad number in it', () => {
+    const read = (newFeature: unknown) =>
+      readEvaluation({ ...header, teams: [{ team: 'app', ...period, summary: { merged: {}, newFeature }, byDay: [] }] }).teams[0]?.summary
+    expect(read({ merged: 3, prLeadMedianSeconds: 5400, prLeadP90Seconds: 9000, issueLeadMedianSeconds: null })?.newFeature).toEqual({
+      merged: 3,
+      prLeadMedianSeconds: 5400,
+      prLeadP90Seconds: 9000,
+    })
+    const quiet = read(undefined)
+    expect(quiet && 'newFeature' in quiet).toBe(false)
+    const none = read(null)
+    expect(none && 'newFeature' in none).toBe(false)
+    expect(() => read({ merged: 1, prLeadMedianSeconds: -1 })).toThrow(/bad/)
+    expect(() => read({ merged: 'three' })).toThrow(/bad/)
+  })
+
   it('refuses a negative count and a lead time that is not a number', () => {
     const answer = (day: unknown) => ({ ...header, teams: [{ team: 'app', ...period, summary: {}, byDay: [day] }] })
     expect(() => readEvaluation(answer({ date: '2026-11-26', merged: { feat: -1 } }))).toThrow(/bad/)

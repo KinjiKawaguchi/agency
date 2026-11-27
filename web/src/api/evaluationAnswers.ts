@@ -4,7 +4,7 @@
 // optional field the node leaves out stays left out. A screen can then rely on every type being there.
 import { EFFORT_TYPES, PULL_REQUEST_TYPES } from './evaluationApi'
 import type { TokenCounts } from './clientApi'
-import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, ParticipantEvaluation, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
+import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, NewFeatureSummary, ParticipantEvaluation, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
 
 /** The answer is not what the route promises. The client turns it into a 503, "could not answer", shown in place. */
 export class MalformedAnswer extends Error {
@@ -60,8 +60,21 @@ const day = (raw: unknown): DayEvaluation => {
   }
 }
 
+/** The lead times of the period's new features alone; the node leaves the part out when none merged, and so does this. */
+function newFeatureSummary(raw: unknown): NewFeatureSummary {
+  const given = asObject(raw)
+  return {
+    merged: amount(given.merged, 'new features merged'),
+    ...present('prLeadMedianSeconds', optionalAmount(given.prLeadMedianSeconds, 'lead time')),
+    ...present('prLeadP90Seconds', optionalAmount(given.prLeadP90Seconds, 'lead time')),
+    ...present('issueLeadMedianSeconds', optionalAmount(given.issueLeadMedianSeconds, 'lead time')),
+    ...present('issueLeadP90Seconds', optionalAmount(given.issueLeadP90Seconds, 'lead time')),
+  }
+}
+
 function summary(raw: unknown): EvaluationSummary {
   const given = asObject(raw)
+  const newFeature = given.newFeature === undefined || given.newFeature === null ? {} : { newFeature: newFeatureSummary(given.newFeature) }
   return {
     merged: counts(given.merged, 'merged'),
     ...present('prLeadMedianSeconds', optionalAmount(given.prLeadMedianSeconds, 'lead time')),
@@ -72,6 +85,7 @@ function summary(raw: unknown): EvaluationSummary {
     longestRedSeconds: amount(given.longestRedSeconds, 'longest red time'),
     reverts: amount(given.reverts, 'reverts'),
     ...present('costPerMergedPrUsd', optionalAmount(given.costPerMergedPrUsd, 'cost')),
+    ...newFeature,
   }
 }
 
