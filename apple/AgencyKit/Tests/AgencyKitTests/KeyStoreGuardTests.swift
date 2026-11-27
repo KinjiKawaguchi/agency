@@ -46,6 +46,7 @@ struct KeyStoreGuardTests {
             let text = try Self.source(file)
             #expect(!text.contains("SecItemUpdate"), "\(file) writes over a stored item")
             #expect(!text.contains(".save("), "\(file) calls `save`, which replaces what is stored")
+            #expect(!text.contains(".load("), "\(file) calls `load`, which answers nothing for every failure and not only for \"none stored\"")
             #expect(!text.contains("loadOrCreate"), "\(file) makes a key on any failure to load one")
         }
     }
