@@ -1,6 +1,6 @@
 //! Budget command data preparation: only costs inside the node's current calendar week count.
-use agency_core::budget::{BudgetPart, BudgetState, BudgetStatus, OrgBudget};
-use agency_node::budget::{json_line, week_spend};
+use agency_core::budget::{week_spend, BudgetPart, BudgetState, BudgetStatus, OrgBudget};
+use agency_node::budget::json_line;
 use agency_proto::{Date, TokenUsage};
 
 fn usage() -> TokenUsage {
