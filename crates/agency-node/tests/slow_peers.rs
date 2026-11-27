@@ -164,3 +164,36 @@ async fn notifications_and_the_outbox_keep_their_pace_while_replicas_wait() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_version_that_waits_for_its_next_attempt_holds_back_the_later_ones() {
+    let (alice, _) = alice().await;
+    let mut bob = joined_bob(&alice).await;
+    bob_hosts_a_team(&alice, &bob).await;
+    let before = bob.node.store().load_org(&id("acme")).unwrap().body.version;
+
+    bob.stop().await;
+    for round in 0..2 {
+        orgs::amend(&alice.node, &id("acme"), |body| {
+            body.label = format!("Acme {round}");
+            Ok(())
+        })
+        .unwrap();
+    }
+    // bob does not answer: the first version waits for its next attempt, and the second is not tried.
+    deliver_due(&alice.node).await.unwrap();
+    bob.start().await;
+    // bob is back, but the first version is not due yet: the second must not go ahead of it.
+    deliver_due(&alice.node).await.unwrap();
+    let at_bob = bob.node.store().load_org(&id("acme")).unwrap();
+    assert_eq!(at_bob.body.version, before, "nothing out of order");
+
+    alice
+        .clock
+        .advance(agency_proto::clock::Duration::seconds(16));
+    deliver_due(&alice.node).await.unwrap();
+    let current = alice.node.store().load_org(&id("acme")).unwrap();
+    let at_bob = bob.node.store().load_org(&id("acme")).unwrap();
+    assert_eq!(at_bob.body.version, current.body.version, "both, in order");
+    assert_eq!(at_bob.body.label, "Acme 1");
+}

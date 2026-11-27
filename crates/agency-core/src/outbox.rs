@@ -154,15 +154,12 @@ pub const NODES_AT_ONCE: usize = 8;
 
 /// Delivers every parcel whose next attempt is due: to each receiving node in the order the parcels were queued
 /// (so that versions of an org arrive in order), and to several nodes at once. Once a node is unreachable, its
-/// other parcels wait for their next attempt instead of each waiting for the same timeout now.
+/// other parcels wait for their next attempt instead of each waiting for the same timeout now; and a version that
+/// is waiting for its next attempt holds back the later versions of its org for that node.
 pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
     use futures_util::stream::{self, StreamExt};
-    let now = node.now();
     let mut by_node: std::collections::BTreeMap<String, Vec<Parcel>> = Default::default();
-    for parcel in pending(node)
-        .into_iter()
-        .filter(|one| clock::parse(&one.next_at).is_none_or(|at| at <= now))
-    {
+    for parcel in pending(node) {
         by_node.entry(parcel.to.clone()).or_default().push(parcel);
     }
     let delivered: Vec<Result<Vec<Outcome>>> = stream::iter(by_node.into_values())
@@ -177,7 +174,16 @@ pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
     Ok(outcomes)
 }
 
-/// The parcels for one node, oldest first, until one finds the node unreachable.
+/// The org whose version a parcel carries, if it carries one.
+fn org_of(parcel: &Parcel) -> Option<&agency_proto::Id> {
+    match &parcel.body {
+        ParcelBody::Org(doc) => Some(&doc.body.org),
+        _ => None,
+    }
+}
+
+/// The parcels for one node, oldest first: each that is due is delivered, until one finds the node unreachable.
+/// A version that is not due yet holds back the later versions of its org, which the node could take only after it.
 async fn deliver_in_order(node: &Node, mut parcels: Vec<Parcel>) -> Result<Vec<Outcome>> {
     // Two versions of an org queued in the same second go in version order: a node takes only the next one.
     let version = |parcel: &Parcel| match &parcel.body {
@@ -187,8 +193,19 @@ async fn deliver_in_order(node: &Node, mut parcels: Vec<Parcel>) -> Result<Vec<O
     parcels.sort_by(|one, other| {
         (&one.queued_at, version(one), &one.id).cmp(&(&other.queued_at, version(other), &other.id))
     });
+    let now = node.now();
+    let mut waiting_orgs: Vec<agency_proto::Id> = vec![];
     let mut outcomes = vec![];
     for parcel in &parcels {
+        let org = org_of(parcel);
+        if org.is_some_and(|org| waiting_orgs.contains(org)) {
+            continue;
+        }
+        let is_due = clock::parse(&parcel.next_at).is_none_or(|at| at <= now);
+        if !is_due {
+            waiting_orgs.extend(org.cloned());
+            continue;
+        }
         let outcome = deliver(node, parcel).await?;
         let is_unreachable = matches!(outcome, Outcome::Unreachable(_));
         outcomes.push(outcome);
