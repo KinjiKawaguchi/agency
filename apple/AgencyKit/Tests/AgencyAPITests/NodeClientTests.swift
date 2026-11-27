@@ -251,6 +251,32 @@ struct NodeClientTests {
         #expect(post.headers["x-agency-token"] == "w-1")
     }
 
+    @Test("a push token that names its device carries it, and one that does not carries none")
+    func pushTokenDevice() async throws {
+        let transport = ScriptedTransport([
+            ("GET /api/session", json(session)),
+            ("POST /api/push/tokens", fixture("push-token")),
+            ("POST /api/push/tokens", fixture("push-token")),
+        ])
+        let node = client(transport)
+        _ = try await node.registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone", events: ["request"], device: "d-abc")
+        _ = try await node.registerPushToken(token: "ab12", environment: "sandbox", label: "iPhone", events: ["request"])
+        let bodies = transport.requests.filter { $0.method == "POST" }.map { String(decoding: $0.body ?? Data(), as: UTF8.self) }
+        #expect(bodies == [
+            #"{"device":"d-abc","environment":"sandbox","events":["request"],"label":"iPhone","token":"ab12"}"#,
+            #"{"environment":"sandbox","events":["request"],"label":"iPhone","token":"ab12"}"#,
+        ])
+    }
+
+    @Test("what the node says of itself is read for its capabilities, and a name the app does not know is just a name")
+    func about() async throws {
+        let transport = ScriptedTransport([("GET /api/about", json(#"{"node":"0.4.0","contracts":{"clientApi":{"current":1,"oldest":1}},"capabilities":["webPush","pushDevice","somethingNew"],"oldestApp":{"ios":"1.0"}}"#))])
+        let about = try await client(transport).about()
+        #expect(about.has(.pushDevice) && about.capabilities.contains("somethingNew"))
+        let older = ScriptedTransport([("GET /api/about", json(#"{"capabilities":["webPush"]}"#))])
+        #expect(try await client(older).about().has(.pushDevice) == false)
+    }
+
     @Test("stopping a push token is a write with no body, to the token's own path; a refusal is an error")
     func unregisterPushToken() async throws {
         let transport = ScriptedTransport([("GET /api/session", json(session)), ("DELETE /api/push/tokens/ab12", json("", status: 204))])
