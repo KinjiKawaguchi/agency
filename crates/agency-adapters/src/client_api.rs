@@ -124,7 +124,8 @@ pub(crate) fn header_text(headers: &HeaderMap, name: impl header::AsHeaderName) 
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-fn is_via_cloudflare(headers: &HeaderMap) -> bool {
+/// Whether the request came through Cloudflare (its tunnel or proxy adds these headers).
+pub fn is_via_cloudflare(headers: &HeaderMap) -> bool {
     headers.contains_key("cf-ray") || headers.contains_key("cf-connecting-ip")
 }
 

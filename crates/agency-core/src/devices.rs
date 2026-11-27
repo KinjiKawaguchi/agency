@@ -148,42 +148,45 @@ pub fn device_list(node: &Node) -> Result<DeviceList> {
     })
 }
 
+/// The org's current definition, when `signed` is a device change that one of its keys signed; else the refusal that tells
+/// a caller nothing (see `unseen`).
+fn signed_device_change(node: &Node, org: &Id, signed: &Signed<DeviceChange>) -> Result<SignedOrg> {
+    let current = node.store().load_org(org);
+    let key = current
+        .as_ref()
+        .and_then(|current| device_change_key(&current.body, signed));
+    let is_valid = unseen::check(signed, Kind::Device, key);
+    let (account, signer) = (&signed.body.account, &signed.signer);
+    match current {
+        None => Err(unseen::refused(format!(
+            "a device change for {account} in {org}, an org this node does not have"
+        ))),
+        Some(current) if key.is_none() && current.body.member(account).is_none() => {
+            Err(unseen::refused(format!(
+                "a device change for {account}, who is not a member of {org}"
+            )))
+        }
+        Some(_) if key.is_none() => Err(unseen::refused(format!(
+            "a device change for {account} signed as {signer}, which is not the key it needs"
+        ))),
+        Some(_) if !is_valid => Err(unseen::refused(format!(
+            "a device change for {account} whose signature does not match {signer}"
+        ))),
+        Some(current) => Ok(current),
+    }
+}
+
 /// On the root key's node: checks a device change and writes it into the next version.
 pub async fn accept_device_change(
     node: &Node,
     org: &Id,
     signed: Signed<DeviceChange>,
 ) -> Result<RootAnswer> {
+    // Anyone can send a device change, so the signature is checked before the write lock, which only a
+    // change a key of the org signed waits for. The org is read again under the lock.
+    signed_device_change(node, org, &signed)?;
     let _guard = node.write_lock().lock().await;
-    let current = node.store().load_org(org);
-    let key = current
-        .as_ref()
-        .and_then(|current| device_change_key(&current.body, &signed));
-    let is_valid = unseen::check(&signed, Kind::Device, key);
-    let (account, signer) = (&signed.body.account, &signed.signer);
-    let current = match current {
-        None => {
-            return Err(unseen::refused(format!(
-                "a device change for {account} in {org}, an org this node does not have"
-            )))
-        }
-        Some(current) if key.is_none() && current.body.member(account).is_none() => {
-            return Err(unseen::refused(format!(
-                "a device change for {account}, who is not a member of {org}"
-            )))
-        }
-        Some(_) if key.is_none() => {
-            return Err(unseen::refused(format!(
-                "a device change for {account} signed as {signer}, which is not the key it needs"
-            )))
-        }
-        Some(_) if !is_valid => {
-            return Err(unseen::refused(format!(
-                "a device change for {account} whose signature does not match {signer}"
-            )))
-        }
-        Some(current) => current,
-    };
+    let current = signed_device_change(node, org, &signed)?;
     if !is_root(node, &current) {
         return Err(Error::new(
             ErrorKind::Forbidden,
