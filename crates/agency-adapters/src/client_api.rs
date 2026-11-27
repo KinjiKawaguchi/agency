@@ -50,6 +50,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 mod guests;
 mod metrics;
 mod outcomes;
+mod telemetry;
+
+pub use telemetry::REPORTABLE_ROUTES;
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -699,9 +702,12 @@ pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
     guests::GUEST_ROUTES.to_vec()
 }
 
-/// Every route behind the guard, this module's and its parts' (outcomes, metrics), by method and path.
+/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = outcomes::ROUTES.iter().chain(metrics::ROUTES);
+    let parts = outcomes::ROUTES
+        .iter()
+        .chain(metrics::ROUTES)
+        .chain(telemetry::ROUTES);
     ROUTES.iter().chain(parts).copied().collect()
 }
 
@@ -741,6 +747,7 @@ pub fn router(api: Arc<ClientApi>) -> Router {
     });
     own.merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
+        .merge(telemetry::routes())
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))
