@@ -16,9 +16,9 @@ public struct ReplyControls: Equatable, Sendable {
 
     /// - Parameter isDeviceReady: this phone's key is added to the org, so a decision can be signed.
     ///   Picking and typing stay possible without it; sending does not.
-    public init(item: DeskItem, draft: DeskDraft, isSending: Bool, isSent: Bool, isDeviceReady: Bool) {
+    public init(item: DeskItem, draft: DeskDraft, isSending: Bool, isDeviceReady: Bool) {
         let request = item.request
-        let isLocked = !item.isMine || !item.isAnswerableHere || isSending || isSent
+        let isLocked = !item.isMine || !item.isAnswerableHere || isSending
         let hasText = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasOptions = !request.options.isEmpty
         let picked = draft.optionKey.flatMap { key in request.options.first { $0.key == key } }

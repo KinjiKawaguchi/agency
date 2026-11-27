@@ -3,6 +3,7 @@
 // types defined here are the client's own: the arguments of a decision call.
 import type { AnswerWith } from './teamview'
 
+export type { About } from '../../../bindings/About'
 export type { AccountRef } from '../../../bindings/AccountRef'
 export type { DayCost } from '../../../bindings/DayCost'
 export type { Device } from '../../../bindings/Device'

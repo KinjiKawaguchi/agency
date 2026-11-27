@@ -272,7 +272,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 }
 ```
 
-- `ownerEmail` is the email you sign in to Access with. Requests from other signed-in emails may read, but only `ownerEmail` may write (decide, add devices).
+- `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
 - For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
@@ -320,7 +320,7 @@ Once the node has `webPush` in `config.json` (it makes its own key in the data d
 3. **See one.** Close every page of the app (the browser itself must keep running; a browser that is quit is told when it starts again, if the push service still has it: it keeps a message for an hour). When a request starts waiting for you, a device asks to be added, or a decision of yours is refused, a notification arrives within about a minute (the node checks every 30 seconds): "Agency", and under it the team and the request's title, or only "A request is waiting for you" on a node that hides titles. Clicking it opens the request on the desk (a device, the Devices screen). There is no test button: to see one at once, ask one of the team's agents a question that waits for you.
 4. **If nothing arrives.** When the node has sent a notice that the browser's push service did not take, the card says so under the line that says it is on: that the push service did not take the last notice, when, and why (its host and the status it answered, or that it could not be reached), and when it last took one, or that it has taken none yet. The card is read when the page is opened, so open it again to see a newer answer. The card says **Subscribe again** when the node's key was made again: click it. If **Notifications in this browser** says this browser does not allow notifications, allow them in the browser's site settings for this address, and turn them on again. The node's log has `agency: a push notification was not sent: …` for a push service that did not take one (it is tried again, to that browser alone, for a day).
 
-To turn it off, click **Turn off for a closed app** on the card of each browser (the browser is then removed from the node, and the notifications stop), or remove `webPush` from `config.json` and restart the node: nothing is sent, and the browsers' subscriptions are kept for when it is on again. To stop one browser without opening it, delete its entry: `GET /api/push/subscriptions` lists them by `id`, and `DELETE /api/push/subscriptions/<id>` (with the page's write token) removes one.
+To turn it off, click **Turn off for a closed app** on the card of each browser (the browser is then removed from the node, and the notifications stop), or remove `webPush` from `config.json` and restart the node: nothing is sent, and the browsers' subscriptions are kept for when it is on again. To stop one browser without opening it, delete its entry: `GET /api/push/subscriptions` lists them by `id`, and `DELETE /api/push/subscriptions/<id>` (with the page's write token) removes one. The iPhone's push tokens are listed the same way at `GET /api/push/tokens`, by `id` and the last 8 characters of the token, and `DELETE /api/push/tokens/<id>` removes one. A browser or an iPhone that registered with the id of its device (`device`) is dropped by the node when that device is removed, and the node's log says so, without the token or the endpoint; a registration that names no device stays until you remove it.
 
 ## AI subscriptions and their usage
 
@@ -586,6 +586,7 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
 | `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token. |
 
 ## The team runtime
 

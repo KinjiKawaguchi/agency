@@ -6,7 +6,7 @@ import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockWebPush } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { About, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
@@ -96,6 +96,8 @@ interface MockNodeOptions {
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
   nothingWaiting?: boolean
+  /** True for a node that ties a push registration to the device it names (the capability `pushDevice`): it takes `device` on a registration and drops the registrations of a device that is removed. Otherwise a registration that names one is refused as an unknown field, as an older node does. */
+  pushDevice?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
   /** With `webPush`: every browser's push service has refused the last notice it was sent. */
@@ -161,6 +163,13 @@ const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
+/** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean }): About => ({
+  node: '0.4.0',
+  contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
+  capabilities: [...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+})
+
 const DEVICES_PATH = '/api/devices'
 const PUSH_TOKENS_PATH = '/api/push/tokens'
 
@@ -232,7 +241,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
-  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true)
+  const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
   const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
@@ -372,6 +381,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (url.pathname === `${DEVICES_PATH}/changes`) {
       if (options.pendingRoot === true) return json({ outcome: 'pending', message: PENDING_ROOT_MESSAGE })
       const refusal = await devices.change(write.body)
+      if (refusal === undefined) {
+        // A node that ties registrations to devices drops the ones that name a device that is no longer the account's.
+        const body = (write.body as { body?: { op?: string } } | null)?.body
+        if (options.pushDevice === true && body?.op === 'remove') webPush.dropWithoutDevice(devices.deviceIds())
+      }
       return refusal === undefined ? json({ outcome: 'applied' }) : failure(refusal.status, refusal.message)
     }
     return failure(404, 'No such route.')
@@ -386,6 +400,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
     if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgRef => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
+    if (request.method === 'GET' && url.pathname === '/api/about') return json(aboutOf(options))
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)

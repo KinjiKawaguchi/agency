@@ -305,14 +305,11 @@ async fn a_guest_decides_only_as_its_member_and_never_as_the_owner() {
 #[tokio::test]
 async fn me_has_no_guest_key_at_all_for_the_owner_a_local_request_or_another_sign_in() {
     let (alice, _) = with_guest().await;
-    for email in ["alice@example.com", "erin@example.com"] {
-        let (status, me) = call(&alice, Method::GET, "/api/me", email, None).await;
-        assert_eq!(status, 200, "{me}");
-        assert!(
-            me.as_object().unwrap().get("guest").is_none(),
-            "{email}: {me}"
-        );
-    }
+    let (status, me) = call(&alice, Method::GET, "/api/me", "alice@example.com", None).await;
+    assert_eq!(status, 200, "{me}");
+    assert!(me.as_object().unwrap().get("guest").is_none(), "{me}");
+    let (status, other) = call(&alice, Method::GET, "/api/me", "erin@example.com", None).await;
+    assert_eq!(status, 403, "another sign-in reads no me at all: {other}");
     let (_, local) = common::body(common::get(&alice, "/api/me").send().await.unwrap()).await;
     assert!(local.as_object().unwrap().get("guest").is_none(), "{local}");
 }
@@ -389,4 +386,54 @@ async fn a_record_on_a_node_that_is_not_the_roots_admits_no_one() {
         me.get("guest").is_none(),
         "only the root's node hosts members: {me}"
     );
+}
+
+/// The reads an unknown sign-in must not make: each one answered only to the owner or a guest.
+const OWNERS_READS: [&str; 5] = [
+    "/api/orgs/acme/teams/app/view",
+    "/api/orgs/acme",
+    "/api/me",
+    "/api/session",
+    "/api/decisions",
+];
+
+#[tokio::test]
+async fn a_guest_whose_member_left_the_org_is_refused_everywhere_and_never_read_as_the_owner() {
+    let (alice, _) = with_guest().await;
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        body.people.retain(|person| person.id != id("carol"));
+        Ok(())
+    })
+    .unwrap();
+    for path in OWNERS_READS {
+        let (status, answer) = call(&alice, Method::GET, path, CAROL, None).await;
+        assert_eq!(status, 403, "{path}: {answer}");
+    }
+    let (status, _) = call(&alice, Method::GET, "/api/me", "alice@example.com", None).await;
+    assert_eq!(status, 200, "the owner still reads");
+}
+
+#[tokio::test]
+async fn a_sign_in_without_an_email_or_with_another_one_is_refused_everywhere() {
+    let (alice, _) = with_guest().await;
+    let tokens = [
+        access_token("", |claims| {
+            claims.as_object_mut().unwrap().remove("email");
+            claims["common_name"] = json!("a-service-token");
+        }),
+        access_token("dan@example.com", |_| {}),
+    ];
+    for token in tokens {
+        for path in OWNERS_READS.iter().chain(&["/desk"]) {
+            let response = reqwest::Client::new()
+                .get(format!("{}{path}", alice.url()))
+                .header("host", PUBLIC_HOST)
+                .header("cf-ray", "1")
+                .header("cf-access-jwt-assertion", &token)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), 403, "{path}");
+        }
+    }
 }
