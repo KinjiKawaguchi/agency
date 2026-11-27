@@ -28,7 +28,7 @@ public struct DeviceChangeResult: Decodable, Equatable, Sendable {
 
     public let outcome: Outcome
     /// Why a change was queued, or what the node says of an outcome.
-    public let message: String?
+    @ShownTextIfPresent public private(set) var message: String?
 
     public init(outcome: Outcome, message: String?) {
         self.outcome = outcome
