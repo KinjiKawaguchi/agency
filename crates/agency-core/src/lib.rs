@@ -34,6 +34,7 @@ pub mod peer_about;
 pub mod pending_root;
 pub mod ports;
 pub mod push;
+mod push_devices;
 mod push_events;
 pub mod push_retries;
 pub mod read_auth;

@@ -440,6 +440,11 @@ pub trait FundingSource: Send + Sync {
     fn usage(&self, source: &FundingConfig) -> (Vec<UsageWindow>, Option<Timestamp>);
 }
 
+/// The node's log. A caller passes a finished sentence, never a token, an endpoint, a request body or a query.
+pub trait Journal: Send + Sync {
+    fn info(&self, event: &str, line: &str);
+}
+
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push
 /// service. Without a configured key, it sends nothing.
 #[async_trait]
