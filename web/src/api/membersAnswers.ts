@@ -1,6 +1,7 @@
 // The members answer comes from the node and is read once, here, before a screen sees it: every list is there (the node leaves out only `held`
 // and what a member has no use for), a role and a key kind are ones the screen knows how to say, and an id or a label that is not text refuses the
 // whole answer, so that a screen never draws a person it cannot name. The node never sends an address or a key; nothing here reads one.
+import { printable } from '../shared/printable'
 import type { KeyKind, MemberDevice, OrgMember, OrgMembers, OrgParty, RootChangeRef } from './clientApi'
 import { MalformedAnswer } from './evaluationAnswers'
 
@@ -49,7 +50,9 @@ function partyOf(raw: unknown): OrgParty {
     id: text(given.id, 'party'),
     label: text(given.label, 'party label'),
     ...(optionalText(given.department, 'department') as { department?: string }),
-    askAbout: asList(given.askAbout, 'topics').map((topic) => text(topic, 'topic')),
+    // What to ask a party about is the org's own words, which an earlier version of the org may hold with a character that reorders a line:
+    // `labelsMadePrintable` does not reach the strings of a list, so each topic is made printable here, as the node prints it.
+    askAbout: asList(given.askAbout, 'topics').map((topic) => printable(text(topic, 'topic'))),
     answeredBy: asList(given.answeredBy, 'answerers').map((one) => text(one, 'answerer')),
   }
 }

@@ -120,6 +120,13 @@ describe('the owner’s members page', () => {
     expect(seats.getByText('Nothing to ask about is stated.')).toBeInTheDocument()
   })
 
+  it('draws what to ask about without a character that reorders the line', async () => {
+    const { node, client } = answering({ org: 'acme', members: [], seats: [{ id: 'dan', label: 'Dan', askAbout: [`in${String.fromCodePoint(0x202e)}voices`], answeredBy: [] }], externals: [] })
+    const { container } = renderApp({ path: '/members', node, client, enrolled: true })
+    expect(await screen.findByText('Ask about: in?voices')).toBeInTheDocument()
+    expect(container.textContent).not.toContain(String.fromCodePoint(0x202e))
+  })
+
   it('refuses an answer with a key kind it cannot say, in place', async () => {
     const { node, client } = answering({ org: 'acme', members: [{ id: 'x', label: 'X', role: 'member', isHosted: false, devices: [{ id: 'd-1', label: 'Old', keyKind: 'rsa', addedAt: '2026-11-24T12:00:00Z' }] }], seats: [], externals: [] })
     renderApp({ path: '/members', node, client, enrolled: true })
