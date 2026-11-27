@@ -379,19 +379,28 @@ pub fn label_ok_to_write(label: &str) -> bool {
     label_ok(label) && !label.chars().any(is_hidden_char)
 }
 
-/// A control character (Unicode Cc), a bidirectional control (U+061C, U+200E, U+200F, U+202A to U+202E,
-/// U+2066 to U+2069), a zero-width space (U+200B), a word joiner (U+2060), or a byte-order mark (U+FEFF).
-/// The joiners U+200C and U+200D, which Persian, Indic scripts and emoji need, and the emoji tag characters
-/// stay: none of them can reorder text.
+/// A control character (Unicode Cc), a line or paragraph separator (U+2028, U+2029), a bidirectional control
+/// (U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069), or a format character (Cf) that is invisible or
+/// changes how a line is laid out: the soft hyphen (U+00AD), the Mongolian vowel separator (U+180E), the word
+/// joiner and the invisible and deprecated format characters from U+2060 to U+206F, the zero-width space
+/// (U+200B), the byte-order mark (U+FEFF), the interlinear annotation marks (U+FFF9 to U+FFFB) and the language
+/// tag (U+E0001). The joiners U+200C and U+200D, which Persian, Indic scripts and emoji need, the emoji tag
+/// characters, and the format characters that belong to a script's own text (the Arabic, Syriac and Kaithi
+/// number and end-of-verse signs, and the hieroglyph, shorthand and musical format controls) stay: none of them
+/// hides or reorders a line. `testdata/label-hidden-chars.json` is the set for every client.
 pub fn is_hidden_char(c: char) -> bool {
     const HIDDEN: &[(u32, u32)] = &[
+        (0x00AD, 0x00AD),
         (0x061C, 0x061C),
+        (0x180E, 0x180E),
         (0x200B, 0x200B),
         (0x200E, 0x200F),
+        (0x2028, 0x2029),
         (0x202A, 0x202E),
-        (0x2060, 0x2060),
-        (0x2066, 0x2069),
+        (0x2060, 0x206F),
         (0xFEFF, 0xFEFF),
+        (0xFFF9, 0xFFFB),
+        (0xE0001, 0xE0001),
     ];
     let code = u32::from(c);
     c.is_control()
