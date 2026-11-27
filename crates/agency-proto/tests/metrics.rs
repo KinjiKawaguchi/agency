@@ -269,6 +269,7 @@ fn a_route_is_in_the_group_of_its_template_and_a_call_in_the_group_of_its_first_
         ("GET /fed/v1/teams/{org}/{team}/view", "federation"),
         ("POST /fed/v1/orgs/{org}/join", "federation"),
         ("GET /api/metrics", "metrics"),
+        ("POST /api/telemetry", "metrics"),
         ("GET /metrics", "metrics"),
         ("unmatched", "unmatched"),
         ("GET /api/something/new", "other"),
