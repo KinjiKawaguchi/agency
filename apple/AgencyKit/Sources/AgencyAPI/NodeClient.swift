@@ -202,6 +202,13 @@ public actor NodeClient {
         try await get("/api/orgs/\(Self.segment(org))/outcomes/observations?kpi=\(Self.segment(kpi))&limit=\(limit)")
     }
 
+    /// The owner's registered push tokens, each shortened to its last 8 characters, with when APNs last took a notice for it and when it
+    /// last did not (`GET /api/push/tokens`).
+    public func pushTokens() async throws -> [RegisteredPushToken] {
+        let list: PushTokenList = try await get("/api/push/tokens")
+        return list.tokens
+    }
+
     /// Tells the node to stop sending to this push token (`DELETE /api/push/tokens/<token>`; the node answers 204, also for a
     /// token it does not know).
     public func unregisterPushToken(_ token: String) async throws {

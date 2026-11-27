@@ -45,7 +45,9 @@ public struct Budget: Decodable, Equatable, Sendable {
 /// A response time the node's operator set for a route group, and whether it held over the days asked. The node compares; the
 /// app only says what it says.
 public struct Objective: Decodable, Equatable, Sendable {
-    public enum State: String, OpenWireEnum { case met, notMet, unknown }
+    /// `undetermined`: the objective falls inside the bucket the p95 is known by, so the measurement cannot say (the same three-outcome
+    /// rule as the budget); `unknown`: no call in the range, or a state this app does not know.
+    public enum State: String, OpenWireEnum { case met, notMet, undetermined, unknown }
 
     public let group: String
     public let p95Ms: Int

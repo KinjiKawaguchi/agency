@@ -164,7 +164,7 @@ fn check_relays(definition: &OrgDefinition, whose: &Id, relays: &[Id]) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::{Department, Person, Role, Root};
+    use crate::org::{Department, Person, Root};
     use crate::AccountKey;
 
     fn id(raw: &str) -> Id {
@@ -172,17 +172,12 @@ mod tests {
     }
 
     fn member(raw: &str, seed: u8) -> Person {
-        Person {
-            id: id(raw),
-            label: raw.to_uppercase(),
-            account: id(raw),
-            public_key: AccountKey::from_seed([seed; 32]).public(),
-            department: None,
-            role: Role::Member,
-            devices: vec![],
-            formerly: vec![],
-            ask_about: vec![],
-        }
+        Person::new(
+            id(raw),
+            raw.to_uppercase(),
+            id(raw),
+            AccountKey::from_seed([seed; 32]).public(),
+        )
     }
 
     /// An org with the members alice and bob and the department dev, and nothing else yet.

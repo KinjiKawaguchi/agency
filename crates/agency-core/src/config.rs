@@ -1,5 +1,6 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
 use crate::logging_config::LoggingConfig;
+use crate::metrics_config::MetricsConfig;
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -159,6 +160,9 @@ pub struct NodeConfig {
     /// The node's log: its level, and when its files are rotated and deleted.
     #[serde(default, skip_serializing_if = "LoggingConfig::is_default")]
     pub logging: LoggingConfig,
+    /// The node's measurements: the objectives its operator sets for how fast a group of routes should answer.
+    #[serde(default, skip_serializing_if = "MetricsConfig::is_default")]
+    pub metrics: MetricsConfig,
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
@@ -400,6 +404,7 @@ impl NodeConfig {
             hide_titles: false,
             home_nodes: vec![],
             logging: LoggingConfig::default(),
+            metrics: MetricsConfig::default(),
             root_keys: RootKeyStore::Files,
         }
     }
