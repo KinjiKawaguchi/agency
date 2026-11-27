@@ -3,7 +3,7 @@
 //! use cases the terminal's `agency claims` calls. The routes are not in the table of a guest or a claimant, so the
 //! guard answers either 403; a write has the write token and the owner's sign-in like any other.
 use super::{json_body, respond, ClientApi, Shared};
-use agency_core::claims;
+use agency_core::claims::{self, ClientConfirmation};
 use agency_core::Error;
 use agency_proto::claim::{
     claim_id, parse_claim_id, ClaimConfirmInput, ClaimConfirmed, ClaimList, WaitingClaim,
@@ -59,18 +59,27 @@ async fn get_claims(State(api): Shared) -> Response {
     respond(waiting(&api.node))
 }
 
+/// 200 with the version that made the seat a member, or 202 with the handle of the confirmation held for the root
+/// key's presence (`agency root-sign`).
 async fn post_confirm(State(api): Shared, Path(raw): Path<String>, bytes: Bytes) -> Response {
     let result = async {
         let (org, seat) = named(&raw)?;
         let input: ClaimConfirmInput = json_body(&bytes, "claim confirmation")?;
-        let doc = claims::confirm_from_client(&api.node, &org, &seat, &input.pairing_code).await?;
-        Ok(ClaimConfirmed {
+        let confirmed =
+            claims::confirm_from_client(&api.node, &org, &seat, &input.pairing_code).await?;
+        Ok((org, seat, confirmed))
+    };
+    match result.await {
+        Ok((org, seat, ClientConfirmation::Signed(doc))) => respond(Ok(ClaimConfirmed {
             org,
             seat,
             version: doc.body.version,
-        })
-    };
-    respond(result.await)
+        })),
+        Ok((_, _, ClientConfirmation::Held(held))) => {
+            super::json_response(StatusCode::ACCEPTED, &held)
+        }
+        Err(error) => respond::<()>(Err(error)),
+    }
 }
 
 async fn post_reject(State(api): Shared, Path(raw): Path<String>) -> Response {

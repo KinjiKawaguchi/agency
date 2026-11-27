@@ -9,7 +9,7 @@ use crate::unseen;
 use agency_proto::clock::{self, Duration};
 use agency_proto::device::{DeviceChange, DeviceOp};
 use agency_proto::invite::{code_from_bytes, JoinRequest};
-use agency_proto::org::SignedOrg;
+use agency_proto::org::{Device, SignedOrg};
 use agency_proto::root_change::{
     waiting_message, PendingRootAnswer, RootAnswer, RootChangeKind, RootChangeRef,
     PENDING_ROOT_DAYS,
@@ -37,8 +37,19 @@ pub struct PendingRootChange {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum RootChange {
-    Join { request: Box<Signed<JoinRequest>> },
-    Device { change: Box<Signed<DeviceChange>> },
+    Join {
+        request: Box<Signed<JoinRequest>>,
+    },
+    Device {
+        change: Box<Signed<DeviceChange>>,
+    },
+    /// The owner confirmed from a client that `seat` becomes a member this node hosts, with the device of the
+    /// person who claimed it (docs/protocol.md, "Claim link"). The seat's label is kept as it was, for the words.
+    ClaimSeat {
+        seat: Id,
+        seat_label: String,
+        device: Box<Device>,
+    },
 }
 
 /// A join this node asked for, held by the org's root node: where to ask, with which handle, and the
@@ -76,6 +87,14 @@ impl PendingRootChange {
                     format!("remove device {device} of {}", change.body.account)
                 }
             },
+            RootChange::ClaimSeat {
+                seat,
+                seat_label,
+                device,
+            } => format!(
+                "host seat {seat} ({seat_label}) as a member, with device {} ({})",
+                device.label, device.id
+            ),
         }
     }
 
@@ -89,10 +108,7 @@ impl PendingRootChange {
 
     /// The account the change is for: the joiner, or the member whose device it is.
     pub fn account(&self) -> &Id {
-        match &self.change {
-            RootChange::Join { request } => &request.body.account,
-            RootChange::Device { change } => &change.body.account,
-        }
+        account_of(&self.change)
     }
 
     fn is_expired(&self, node: &Node) -> bool {
@@ -117,6 +133,11 @@ impl PendingRootChange {
                     (RootChangeKind::RemoveDevice, None, Some(device.clone()))
                 }
             },
+            RootChange::ClaimSeat { device, .. } => (
+                RootChangeKind::ClaimSeat,
+                Some(device.label.clone()),
+                Some(device.id.clone()),
+            ),
         };
         RootChangeRef {
             id: self.id.clone(),
@@ -133,6 +154,23 @@ impl PendingRootChange {
 
 use agency_proto::org::printable;
 
+/// The account a change is for: the joiner, the member whose device it is, or the seat that becomes a member.
+fn account_of(change: &RootChange) -> &Id {
+    match change {
+        RootChange::Join { request } => &request.body.account,
+        RootChange::Device { change } => &change.body.account,
+        RootChange::ClaimSeat { seat, .. } => seat,
+    }
+}
+
+/// The confirmation of `seat`'s claim that waits for the owner, if one does: there is at most one for a seat.
+pub(crate) fn held_claim(node: &Node, org: &Id, seat: &Id) -> Result<Option<PendingRootChange>> {
+    Ok(waiting(node)?.into_iter().find(|one| {
+        &one.org == org
+            && matches!(&one.change, RootChange::ClaimSeat { seat: held, .. } if held == seat)
+    }))
+}
+
 /// The most changes one presence prompt signs: every one of them is named in its words.
 pub const MOST_PER_PROMPT: usize = 3;
 
@@ -148,10 +186,7 @@ pub(crate) fn must_hold(node: &Node, current: &SignedOrg) -> bool {
 
 /// Holds a checked change and answers with its handle.
 pub(crate) fn hold(node: &Node, org: &Id, change: RootChange) -> Result<RootAnswer> {
-    let account = match &change {
-        RootChange::Join { request } => request.body.account.clone(),
-        RootChange::Device { change } => change.body.account.clone(),
-    };
+    let account = account_of(&change).clone();
     let held_for = waiting(node)?
         .iter()
         .filter(|one| &one.org == org && one.account() == &account)
@@ -305,6 +340,10 @@ pub async fn sign_held(node: &Node, org: &Id, ids: &[String]) -> Result<SignRun>
     }
     let run = run_signatures(node, &current, &held)?;
     for (one, doc) in &run.signed {
+        // What goes with a claim's version (the person's sign-in, the claim confirmed) is kept before it is published.
+        if let RootChange::ClaimSeat { seat, device, .. } = &one.change {
+            crate::claims::confirm_held(node, org, seat, &device.public_key)?;
+        }
         crate::orgs::publish(node, doc)?;
         settle(node, one, Some(doc.body.version))?;
     }
@@ -367,6 +406,14 @@ fn next_body(
             let received = clock::parse(&held.received_at)
                 .ok_or_else(|| Error::bad_request("a held change without a time"))?;
             crate::devices::changed_body(node, doc, change, received)
+        }
+        RootChange::ClaimSeat { seat, device, .. } => {
+            let org = &doc.body.org;
+            crate::claims::can_host(node, org, seat, &device.public_key)?;
+            let mut body = agency_proto::OrgDefinition::successor_of(doc, node.now_text());
+            crate::seats::host_in(&mut body, org, seat, device.as_ref().clone())?;
+            crate::capabilities::check_before_signing(node, &doc.body, &body)?;
+            Ok(body)
         }
     }
 }
