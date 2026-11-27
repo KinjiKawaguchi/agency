@@ -62,9 +62,13 @@ fn get_mut<T>(by: &mut ByWorkType<T>, slot: Slot) -> &mut T {
 }
 
 /// The work type of a merged pull request: the board's, when the issue it closes has one, and otherwise its
-/// title's type, with incident for a fix of an issue labeled `incident`. A revert and a title of no known
-/// type are unclassified.
+/// title's type, with incident for a fix of an issue labeled `incident`. A revert is unclassified whatever
+/// the board says, and so is a title of no known type.
 fn slot_of(pull_request: &MergedPullRequest) -> Slot {
+    let kind = classify(&pull_request.title, &pull_request.body);
+    if kind == Kind::Revert {
+        return Slot::Unclassified;
+    }
     if let Some(work_type) = pull_request.work_type {
         return match work_type {
             WorkType::NewFeature => Slot::NewFeature,
@@ -74,7 +78,7 @@ fn slot_of(pull_request: &MergedPullRequest) -> Slot {
             WorkType::Incident => Slot::Incident,
         };
     }
-    match classify(&pull_request.title, &pull_request.body) {
+    match kind {
         Kind::Feat => Slot::NewFeature,
         Kind::Fix if pull_request.closes_incident => Slot::Incident,
         Kind::Refactor => Slot::Debt,

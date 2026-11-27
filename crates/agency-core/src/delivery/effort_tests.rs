@@ -243,3 +243,20 @@ fn the_boards_work_type_decides_before_the_title() {
         (0.0, 0.0, 0.0)
     );
 }
+
+#[test]
+fn a_revert_is_unclassified_even_when_the_issue_it_closes_has_a_work_type() {
+    let mut revert = merged("Revert \"feat(web): a screen\"", "2026-11-24T01:00:00Z");
+    revert.work_type = Some(agency_proto::view::WorkType::Debt);
+    revert.closes_incident = true;
+    let mut body_revert = merged("fix: undo it", "2026-11-24T02:00:00Z");
+    body_revert.body = "This reverts commit 0123456789abcdef.".into();
+    body_revert.work_type = Some(agency_proto::view::WorkType::Improvement);
+    let team = run(&[revert, body_revert], &[("2026-11-24", 4.0)]);
+    let cost = team.by_day[0].cost_usd;
+    assert_eq!(cost.unclassified, 4.0, "a revert is no type of work");
+    assert_eq!(
+        (cost.debt, cost.improvement, cost.incident),
+        (0.0, 0.0, 0.0)
+    );
+}
