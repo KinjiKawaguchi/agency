@@ -96,7 +96,7 @@ jobs:
           shellcheck -x scripts/ci/flaky-weekly.sh scripts/test/flaky-weekly.sh scripts/test/flaky-fakes/*
           scripts/test/flaky-weekly.sh
       - name: Check the scripts
-        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/debian-package.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
+        run: shellcheck -x scripts/ci/*.sh scripts/test/ci-scripts.sh scripts/test/pr-title.sh scripts/test/ci-fakes/* scripts/systemd-unit.sh scripts/deploy-macos.sh scripts/release-macos.sh scripts/test/systemd-unit.sh scripts/test/debian-package.sh scripts/test/deploy-macos.sh scripts/test/release-macos.sh scripts/test/deploy-fakes/* scripts/test/release-fakes/* scripts/release/*.sh
       - name: Test the systemd unit script
         run: scripts/test/systemd-unit.sh
       - name: Test the Debian package script
@@ -107,6 +107,8 @@ jobs:
         run: scripts/test/release-macos.sh
       - name: Test the scripts that show the tests that passed only on a retry
         run: scripts/test/ci-scripts.sh
+      - name: Test the check of a pull request's title
+        run: scripts/test/pr-title.sh
 
   web:
     runs-on: ubuntu-latest

@@ -14,6 +14,20 @@ Versions are `0.MINOR.PATCH` until the first 1.0. How the number moves, from the
 
 A `refactor` is listed in the changelog, but it does not call for a release by itself. Before 1.0, a breaking change raises the minor number, as a new feature does, so read the changelog before updating across a minor number. What counts as breaking at each boundary (nodes, the Client API, the team runtime, the apps) is the subject of the compatibility policy ([compatibility.md](compatibility.md)), and the release numbering follows it.
 
+## Pull request titles
+
+A pull request's title is the commit title of its squash merge, so release-please reads it. CI checks it (the `pr-title` workflow, which runs again when the title is edited):
+
+- The title is `<type>(<scope>)!: <description>`: a type from the table above or `revert` (the repository's reverts use it; it has no changelog section), an optional scope, an optional `!`, and a description. A title that GitHub's revert button writes, `Revert "<such a title>"`, is accepted.
+- It is at most 70 characters (characters, not bytes). A bot's title, such as a dependency update, is not held to the length. A title that is too long is shortened with `gh pr edit <number> --title "..."`; no commit is needed.
+- A breaking change, which is a `!` in the title or a `BREAKING CHANGE:` footer in the body, says which boundary it breaks, in a body line of its own:
+
+```text
+BREAKING CHANGE: client API: the desk answer no longer has a `pending` field
+```
+
+  The boundary is one of `federation`, `signed text`, `team runtime`, `client API` (the contracts of [compatibility.md](compatibility.md)) or `data` (the files a node keeps). release-please copies the line into the changelog, so a reader of the changelog sees what to check before updating.
+
 ## How a release is made
 
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
