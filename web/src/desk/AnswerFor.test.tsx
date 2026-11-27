@@ -81,6 +81,49 @@ describe('a request addressed to a seat or an external party the viewer answers 
   })
 })
 
+/**
+ * What a team on another node answers when it does not address the reader by a name there, and the reader answers only for a seat
+ * (docs/protocol.md, "Requests"): no `viewer`, and in `mine` only the requests of that seat, each with whom it is for.
+ */
+function throughSeatOnly(node: ReturnType<typeof createTestNode>) {
+  return createApiClient(async (request) => {
+    const reply = await node.handle(request)
+    if (!new URL(request.url, 'http://mock.local').pathname.endsWith('/teams/app/view')) return reply
+    const { viewer: _viewer, ...snapshot } = (await reply.json()) as { viewer?: string; mine: string[] }
+    return new Response(JSON.stringify({ ...snapshot, mine: [REQUEST] }), { headers: { 'content-type': 'application/json' } })
+  })
+}
+
+describe('a team on another node that does not address the viewer by a name, only through a seat', () => {
+  it('shows the request of the seat, whom it is for, and none of the others as the viewer’s', async () => {
+    const node = nodeFor('Erin (outside counsel)')
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    expect(within(await pileRow()).getByText('Answer for Erin (outside counsel)')).toBeInTheDocument()
+    const heading = await screen.findByRole('heading', { level: 2, name: TITLE })
+    expect(within(heading.parentElement as HTMLElement).getByText('Answer for Erin (outside counsel)')).toBeInTheDocument()
+    expect(screen.queryByText('Add a second frontend agent', { selector: '.pile-title' })).toBeInTheDocument()
+    const own = (await screen.findAllByText('Add a second frontend agent')).map((one) => one.closest('button')).find((one) => one !== null) as HTMLElement
+    expect(within(own).queryByText(/^Answer for /)).not.toBeInTheDocument()
+  })
+
+  it('is answered for the seat: nothing of it is sent, and the log, which the node writes, says whom it was for', async () => {
+    const user = userEvent.setup()
+    const node = nodeFor('Erin (outside counsel)')
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    await user.click(await screen.findByRole('radio', { name: /Include them/ }))
+    await user.click(screen.getByRole('button', { name: /Include them/ }))
+    await waitFor(() => expect(node.decisions()).toHaveLength(1))
+    expect(node.decisions()[0]).not.toHaveProperty('relayedFor')
+    expect(await screen.findByText('Answered for Erin (outside counsel).')).toBeInTheDocument()
+  })
+
+  it('says a party the definition does not have yet by its id, which the node gives in place of a label', async () => {
+    const node = createTestNode({ view: withRequestFor('finance'), relayedFor: { [REQUEST]: { id: 'finance', label: 'finance' } } })
+    renderApp({ node, client: throughSeatOnly(node), path: `/desk?item=acme:app:${REQUEST}`, enrolled: true })
+    expect(within(await pileRow()).getByText('Answer for finance')).toBeInTheDocument()
+  })
+})
+
 describe('how the snapshot says whom a request is for', () => {
   it('says nothing for a label with nothing in it', () => {
     const base = { view: withRequestFor('finance'), viewer: 'owner', mine: [REQUEST], waitingOnViewer: [], source: { kind: 'local' as const } }
