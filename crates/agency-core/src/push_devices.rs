@@ -49,6 +49,7 @@ pub(crate) fn check_device(
 /// this node writes or learns is kept through here.
 pub(crate) fn keep_org(node: &Node, doc: &SignedOrg) -> Result<()> {
     node.store().save_org(doc)?;
+    crate::read_auth::drop_departed_readers(node);
     drop_removed_devices(node)
 }
 

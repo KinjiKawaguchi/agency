@@ -294,6 +294,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::read_auth::status_lines(node) {
+        println!("{line}");
+    }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
     }
