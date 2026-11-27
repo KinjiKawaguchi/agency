@@ -553,6 +553,7 @@ Funding: each configured source (`id`, `label`, `kind` `subscription` or `apiKey
 
 When `push` is configured (`keyPath` of an APNs `.p8` key, `keyId`, `teamId`, `bundleId`), the node notifies the owner's registered push tokens through APNs. Without it, nothing is sent.
 
+- **What a notice says is printable.** Every text in a notice that someone else wrote (a team's label, a request's title, a device's label, a refused decision's title, the words of a held change) is sent, through APNs and Web Push alike, with each character `is_hidden_char` names, a line break included, as `?`. A notice is shown on a lock screen and in a browser's notification, where such a character could make a line say something it does not.
 - The node checks every 30 seconds for three kinds of news, each one told once: a **request** waits for the owner, a **device** asks to be added, or a **decision** of the owner's is refused. A token gets the kinds it registered with (`events`), and a kind no token wants is recorded and sent to nobody.
   - `request`: it waits for the owner when it is the owner's to decide, by the rule in "Requests" (the same set as `TeamSnapshot.mine`, with the same limit for teams on other nodes). Its key is `org/team/request id`.
   - `device`: a device request (see "Devices") that was not waiting at the previous check, by the device's id (`d-` and its pairing code), so the same key asking again is the same device. Its key is `device/<device id>`.
