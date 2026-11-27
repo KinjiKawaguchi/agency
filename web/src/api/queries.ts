@@ -1,6 +1,6 @@
 import { HOURS_UP_TO_DAYS } from './metricsApi'
 import { queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import type { ApiClient } from './client'
+import { ApiError, type ApiClient } from './client'
 import { useApi } from './context'
 import type { Me, OrgRef, TeamRef } from './clientApi'
 import { isRetryable, RETRY_DELAYS_MS, withRetry } from './retry'
@@ -173,3 +173,24 @@ export function useSuspenseTeamStates(): { me: Me; orgs: readonly OrgStates[]; t
   const loading = new Set(orgs.flatMap(({ org, teams }) => teams.flatMap(({ ref, state }) => (state.status === 'loading' ? [`${org.id}/${ref.id}`] : []))))
   return { me, orgs, teams: orgs.flatMap(({ teams }) => teams.flatMap(({ state }) => (state.status === 'ready' ? [state.team] : []))), loading }
 }
+
+export const DESTINATIONS_KEY = ['destinations'] as const
+
+/** What the node says about itself: read once, since its capabilities change only when it is replaced. */
+export const aboutQuery = (api: ApiClient) => queryOptions({ queryKey: ['about'], queryFn: () => api.about(), staleTime: 10 * 60_000 })
+
+/** The browsers the node sends notices to. */
+/** A node without Web Push (or without APNs) answers 404 for its list: it sends notices nowhere of that kind, which is an answer, not a failure. */
+const emptyWhenAbsent = async <T>(read: () => Promise<T>, none: T): Promise<T> => {
+  try {
+    return await read()
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return none
+    throw error
+  }
+}
+
+export const pushSubscriptionsQuery = (api: ApiClient) => queryOptions({ queryKey: [...DESTINATIONS_KEY, 'browsers'], queryFn: () => emptyWhenAbsent(() => api.pushSubscriptions(), { subscriptions: [] }), refetchInterval: POLL_MS })
+
+/** The apps (APNs tokens) the node sends notices to: the owner's. */
+export const pushTokensQuery = (api: ApiClient) => queryOptions({ queryKey: [...DESTINATIONS_KEY, 'apps'], queryFn: () => emptyWhenAbsent(() => api.pushTokens(), { tokens: [] }), refetchInterval: POLL_MS })

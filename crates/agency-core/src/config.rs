@@ -1,4 +1,5 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
 use agency_proto::client::FundingKind;
@@ -166,6 +167,14 @@ pub struct NodeConfig {
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
+    /// How the node takes the signed reads of other nodes.
+    #[serde(default, skip_serializing_if = "FederationConfig::is_default")]
+    pub federation: FederationConfig,
+    /// Whether the Client API and the web client admit direct local requests (loopback, a local `Host`).
+    /// `false` refuses every one of them with 403, for a machine that other accounts log in to: each of them
+    /// reaches the loopback address as well. The federation routes answer either way.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub local_clients: bool,
 }
 
 /// Where a node keeps the org root keys it holds.
@@ -406,7 +415,22 @@ impl NodeConfig {
             logging: LoggingConfig::default(),
             metrics: MetricsConfig::default(),
             root_keys: RootKeyStore::Files,
+            federation: FederationConfig::default(),
+            local_clients: true,
         }
+    }
+
+    /// Whether the Client API admits direct local requests (`localClients`).
+    pub fn with_local_clients(self, local_clients: bool) -> Self {
+        Self {
+            local_clients,
+            ..self
+        }
+    }
+
+    /// How the node takes the signed reads of other nodes (`federation`).
+    pub fn with_federation(self, federation: FederationConfig) -> Self {
+        Self { federation, ..self }
     }
 
     /// The owner's other home nodes (`homeNodes`).

@@ -219,7 +219,7 @@ fn files_of_days_past_the_thirty_kept_are_deleted_and_others_are_left_alone() {
 }
 
 #[test]
-fn a_line_that_is_cut_or_does_not_add_up_is_skipped() {
+fn a_line_that_is_cut_or_does_not_add_up_or_adds_up_past_what_a_count_holds_is_skipped() {
     let dir = tempfile::tempdir().unwrap();
     let metrics = dir.path().join("metrics");
     std::fs::create_dir_all(&metrics).unwrap();
@@ -237,11 +237,16 @@ fn a_line_that_is_cut_or_does_not_add_up_is_skipped() {
         r#"{{"hour":1795518000,"kind":"serve","name":"GET /d","status":"2xx","count":2,"errors":3,"sumMs":2,"buckets":{}}}"#,
         buckets(2)
     );
+    let overflowing = format!(
+        r#"{{"hour":1795518000,"kind":"serve","name":"GET /e","status":"2xx","count":0,"errors":0,"sumMs":2,"buckets":[{},1,0,0,0,0,0,0,0,0,0,0,0,0,0]}}"#,
+        u64::MAX
+    );
     let text = [
         good,
         wrong_sum,
         short.to_owned(),
         too_many_errors,
+        overflowing,
         "{\"hour\":1795518000,\"kind\":\"se".into(),
         "nonsense".into(),
     ]
@@ -809,5 +814,26 @@ fn torn_bytes_in_a_day_file_cost_the_line_they_are_in_and_not_the_day() {
             ("GET /before".to_owned(), 2)
         ],
         "the day's other lines are kept when the file is rewritten"
+    );
+}
+
+#[test]
+fn merging_counts_never_wraps_around_to_a_small_number() {
+    let big = |count: u64| {
+        let mut buckets = [0; BUCKETS];
+        buckets[3] = count;
+        Counts {
+            count,
+            errors: count,
+            sum_ms: 0,
+            buckets,
+        }
+    };
+    let mut merged = big(u64::MAX / 2 + 1);
+    merged.merge(&big(u64::MAX / 2 + 1));
+    assert_eq!(
+        (merged.count, merged.errors, merged.buckets[3]),
+        (u64::MAX, u64::MAX, u64::MAX),
+        "it stops at what a count holds"
     );
 }

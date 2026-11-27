@@ -180,6 +180,16 @@ loginctl show-user "$USER" --property=Linger
 The second command must print `Linger=yes`. Without it, logging out of your last session stops the node.
 Run `systemctl --user` in a login session (a terminal or an SSH login). From `su` or `sudo -u`, it cannot reach your services and says `Failed to connect to bus`.
 
+### A machine that other accounts log in to
+
+The node admits a direct local request (from `127.0.0.1` or `localhost`) as its owner, which fits a machine only you log in to. On a machine that other people also log in to, every local account reaches `127.0.0.1` the same way, so turn local clients off there. Put this at the top level of `~/.agency/config.json` and restart the node, or pass `--no-local-clients` to `agency init` when you create it:
+
+```json
+"localClients": false
+```
+
+The Client API and the web client then refuse every local request with 403, `/metrics` included, and federation keeps working on the same port. A node that only hosts teams needs no local client: you reach it from your home node through federation, the `agency` commands on it (`status`, `funding`, `metrics`) read the data directory directly, and the team runtime talks to the node over stdin and stdout, not the Client API. `agency status` prints `Local clients: refused` while the setting is on.
+
 ### Add your browser as the first device
 
 Decisions are signed by your devices, never by the node.
@@ -496,6 +506,20 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
 
+### Signed reads between nodes of different releases
+
+Nodes of one org read each other with signed reads. A node of this release makes a read for one particular node (it signs that node's id with it), once it knows that node lists `readAudience`; a node takes such a read only if it names itself. Update the nodes of an org in any order. A node still reads an older one the old way, and answers an older one the old way too, with two things to know:
+
+- Once a node has taken a read that names it from an account, it takes no older read from that account. If one account has two nodes (for example one on a Mac and one on another machine) and you update one of them, the other one's reads of the updated node are refused (the node answers `404`, like for any read it refuses) until you update it as well. The updated node writes the reason to its log (`agency logs`): `a read signed by alice that names no node; …`.
+- To let the older node through until you update it, add the account to `config.json` of the node that refuses, and restart it:
+
+  ```json
+  "federation": { "unboundReadAccounts": ["alice"] }
+  ```
+
+  Take the line out once both nodes are updated. The same line helps an account whose node you rolled back to a release without `readAudience`. A node keeps the accounts it has taken such a read from in `bound-readers.json` in its data directory, so a restart does not reset anything, and `agency status` lists them.
+- When every node of the org is updated, set `"federation": { "requireReadAudience": true }` on each node to refuse the older reads from every account. Without it, a read that was made the old way and captured before its account first named the node can still be replayed there. `requireReadAudience` needs `url` to be this node's origin as `https://<host>[:<port>]` (or `http://` on a loopback address), and the node refuses to start otherwise.
+
 ### The measurements
 
 The node times every request it answers and writes the numbers to `~/.agency/metrics/`, one file for each UTC day, for 30 days. They are the node's own data, on this machine only; nothing leaves it unless you scrape it (below). A request is named by the route it matched (`GET /api/orgs/{org}/teams/{team}/usage`, never the path with the ids in it), what matched no route is one series, `unmatched`, and no body, token, query, or address is kept. The owner reads them:
@@ -508,6 +532,7 @@ curl -s http://127.0.0.1:4400/metrics            # the text a Prometheus scrape 
 - `GET /api/metrics?days=<1 to 30>&kind=&name=` answers, for each series (a route, a call the node makes, or what a client reported), how many calls, how many were errors, and the median, 95th, and 99th percentile in milliseconds, by hour for a range of up to 7 days (add `hourBuckets=1` to get each hour's buckets too, so that a screen can add the hours of several series and read the percentile of the whole; the answer is about 1.7 times larger). A percentile is the **upper bound** of its bucket (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10 000, 30 000 ms): "p95 100" means at most 100 ms. The answer also says which series the performance budget applies to (a read the node answers from its own state, held to a 95th percentile of at most 100 ms in the reference environment) and the budget itself.
 - To hold the node to your own numbers, set objectives in `config.json`, then restart the node: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`. A `group` is one of `desk`, `teams`, `usage`, `evaluation`, `outcomes`, `devices`, `push`, `federation`, `metrics`, or `other` (the answer names the group of each series), and `p95Ms` is 1 to 30 000; a value outside these stops the node at start and says which. `GET /api/metrics` then says, for each, over the days asked for: `met` (the 95th percentile is within it), `notMet` (every duration in the bucket of the 95th percentile is over it), `undetermined` (the objective falls inside that bucket: the measurement cannot say), or `unknown` (no calls in the range), with the upper bound of that bucket, for the whole group and not for an answer narrowed to a kind or a name.
 - `agency metrics [--days n] [--kind serve|call|client] [--name <name>] [--json]` prints the same as a table, from the files, so it works while the node is stopped and needs no key. `<=100` means at most 100 ms (the upper bound of the bucket), `>30000` is slower than the last bound, and the BUDGET column says `ok` or `OVER` for the reads the performance budget applies to. A running node writes its numbers once a minute, so the last minute is only in `GET /api/metrics`.
+- The web client and the apps report to their node how long their own calls took, with `POST /api/telemetry` (a batch each minute); you do not set anything. Only the owner's clients are heard, a route that is not one of the node's is dropped, and the numbers appear as the `client` series of `GET /api/metrics`, so you can see what the person waited next to what the node took.
 - It is the owner's alone: the direct local request, or Access signed in as the owner. Another person Access lets in gets 403. `/metrics` is read only on the node's own machine, so a Prometheus scrapes it there (not through the tunnel).
 - Nothing is recorded in the data directory by a command that is not `serve`. A node that cannot write its directory keeps what it has in memory and tries again.
 

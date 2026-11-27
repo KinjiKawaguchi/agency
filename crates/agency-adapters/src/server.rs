@@ -1,7 +1,7 @@
 //! The federation routes (`/fed/v1`), checked with account signatures. Each handler parses the request,
 //! calls a use case in agency-core, and maps its error kind to an HTTP status. A refusal that looks like
 //! "not found" to the caller is logged here with its real reason (see `agency_core::unseen`).
-use crate::peers::{ACCOUNT, DATE, SIGNATURE};
+use crate::peers::{ACCOUNT, AUDIENCE, DATE, SIGNATURE};
 use crate::refusal_log::RefusalLog;
 use agency_core::about::read_about;
 use agency_core::activity::{hosted_activity, Asked};
@@ -101,6 +101,10 @@ fn read_auth(headers: &HeaderMap) -> ReadAuth {
         account: header(ACCOUNT),
         date: header(DATE),
         signature: header(SIGNATURE),
+        // Present means the signature claims to cover it: a value that is no node id is checked, and refused.
+        audience: headers
+            .get(AUDIENCE)
+            .map(|value| value.to_str().unwrap_or("").to_owned()),
     }
 }
 

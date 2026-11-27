@@ -64,6 +64,10 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
       : {}),
     // The other home nodes the node's configuration names, as it tells its owner.
     ...(query?.get('homeNodes') === '1' ? { homeNodes: [{ label: 'Work', url: 'https://work.example.com' }, { label: 'Lab (on this machine)', url: 'http://127.0.0.1:4500' }] } : {}),
+    // A second device the account has, to remove: the device key of testdata/vectors.json (its pairing code is dbc2-9825-1c51).
+    ...(query?.get('laptop') === '1' ? { devices: [{ id: 'd-dbc298251c51', label: 'Work laptop', publicKey: '/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg=' }] } : {}),
+    // A node that ties push registrations to devices (the capability `pushDevice`).
+    ...(query?.get('pushDevice') === '1' ? { pushDevice: true } : {}),
     // A member the node hosts, as a guest: `guest=carol`. Only a made-up id and its label.
     ...(guest === '' ? {} : { guest: { member: guest, label: `${guest.charAt(0).toUpperCase()}${guest.slice(1)}` } }),
     ...(isEmpty ? { nothingWaiting: true, earlierDecisions: false } : {}),
