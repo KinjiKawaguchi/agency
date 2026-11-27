@@ -66,5 +66,15 @@ struct ShownLabelsTests {
         #expect(try read(DecisionEntry.self, entry.replacingOccurrences(of: #","choiceLabel":"\#(bad)""#, with: "")).choiceLabel == nil)
         #expect(try read(DecisionEntry.self, entry.replacingOccurrences(of: #""\#(bad)""#, with: "null")).choiceLabel == nil)
     }
+
+    @Test("the node's own text of a reason: a team that could not be read, and why APNs refused a notice")
+    func reasons() throws {
+        let unavailable = try read(TeamUnavailable.self, #"{"team":"app","reason":"busy\u202E"}"#)
+        #expect(unavailable.reason == "busy?")
+        let failure = try read(PushFailure.self, #"{"at":"2026-11-26T09:00:00Z","reason":"APNs answered\u200B 503"}"#)
+        #expect(failure.reason == "APNs answered? 503")
+        #expect(try read(ReportedTime.self, #""later\u202E""#).text == "later?")
+        #expect(try read(ReportedTime.self, #""2026-11-26T09:00:00Z""#).date != nil)
+    }
 }
 
