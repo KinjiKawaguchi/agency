@@ -139,6 +139,10 @@ async fn admit(
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
         return match (peer.ip().is_loopback(), is_local_host) {
+            // On a machine other accounts log in to, each of them reaches the loopback address too.
+            (true, true) if !api.node.config().local_clients => {
+                Err((StatusCode::FORBIDDEN, "this node admits no local clients"))
+            }
             (true, true) => Ok(Admitted::Local),
             (true, false) => Err((StatusCode::MISDIRECTED_REQUEST, "wrong host")),
             (false, _) => Err((StatusCode::FORBIDDEN, "the Client API is local only")),
