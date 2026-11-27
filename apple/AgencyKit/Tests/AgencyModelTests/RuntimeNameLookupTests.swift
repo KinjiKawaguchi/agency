@@ -38,5 +38,24 @@ struct RuntimeNameLookupTests {
         let item = try #require(Desk.openItems([team]).first)
         #expect(item.drafterName == "E?rin" && item.deciderName == "Z?ed")
         #expect(item.request.thread?.first?.shownFrom == "B?ob")
+        #expect(item.threadAuthors == ["B?ob"], "an author the team does not list is drawn by the shown name")
+    }
+
+    @Test("a message's author the team lists is drawn by label, as the drafter is, even when the name holds a hidden character")
+    func threadAuthorByLabel() throws {
+        let name = "a\u{200B}b"
+        let json = """
+        {"view":{"org":"acme","team":"app","label":"App","generatedAt":"2026-11-26T09:00:00Z",
+          "people":[{"id":"\(name)","label":"Ann B","kind":"human","role":"member","state":"idle","status":"","holding":[]}],
+          "requests":[{"id":"r-1","kind":"question","title":"T","context":"","from":"\(name)","createdAt":"2026-11-26T08:00:00Z",
+            "blocks":[],"options":[],"answerWith":{"kind":"answer","target":"r-1"},
+            "thread":[{"from":"\(name)","text":"x","at":"2026-11-26T08:30:00Z"},{"from":"Zed","text":"y","at":"2026-11-26T08:40:00Z"}]}],
+          "work":[],"epics":[]},
+         "viewer":"owner","mine":[],"waitingOnViewer":[],"source":{"kind":"local"}}
+        """
+        let team = Team(snapshot: try JSONDecoder().decode(TeamSnapshot.self, from: Data(json.utf8)))
+        let item = try #require(Desk.openItems([team]).first)
+        #expect(item.threadAuthors == ["Ann B", "Zed"], "listed: the label; not listed: the name")
+        #expect(item.drafterName == "Ann B")
     }
 }

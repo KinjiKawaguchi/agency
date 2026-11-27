@@ -66,6 +66,34 @@ public struct ShownIfPresent: Decodable, Equatable, Sendable {
     }
 }
 
+/// The same for a map of labels by id that may be missing (whom each request is answered for): the values are shown, the keys (ids)
+/// are as the node wrote them, and a missing map is `nil`.
+@propertyWrapper
+public struct ShownValuesIfPresent: Decodable, Equatable, Sendable {
+    private var values: [String: String]?
+
+    public var wrappedValue: [String: String]? {
+        get { values }
+        set { values = newValue.map { $0.mapValues(NodeLabel.shown) } }
+    }
+
+    public init(wrappedValue: [String: String]?) {
+        values = wrappedValue.map { $0.mapValues(NodeLabel.shown) }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        values = container.decodeNil() ? nil : try container.decode([String: String].self).mapValues(NodeLabel.shown)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// A map the node leaves out is `nil`, as an optional field is, though its wrapper is not optional.
+    public func decode(_ type: ShownValuesIfPresent.Type, forKey key: Key) throws -> ShownValuesIfPresent {
+        try decodeIfPresent(type, forKey: key) ?? ShownValuesIfPresent(wrappedValue: nil)
+    }
+}
+
 extension KeyedDecodingContainer {
     /// A label the node leaves out is `nil`, as an optional field is, though its wrapper is not optional.
     public func decode(_ type: ShownIfPresent.Type, forKey key: Key) throws -> ShownIfPresent {

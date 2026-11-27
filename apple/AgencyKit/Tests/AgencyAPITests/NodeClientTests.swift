@@ -432,6 +432,15 @@ struct NodeClientRedeemTests {
         #expect(escaped.requests.last?.path == "/api/orgs/acme/outcomes/observations?kpi=a%2Fb&limit=5")
     }
 
+    @Test("the owner's push tokens are read from the list, each with when APNs last took a notice and when it last did not, when it has")
+    func pushTokens() async throws {
+        let answer = #"{"tokens":[{"token":"ab12cd34","environment":"production","label":"iPhone","events":["request","device"],"registeredAt":"2026-11-20T09:00:00Z","lastSucceededAt":"2026-11-26T08:00:00Z","lastFailure":{"at":"2026-11-26T09:00:00Z","reason":"APNs answered 503"}},{"token":"11112222","environment":"sandbox","label":"Mac","registeredAt":"2026-11-20T09:00:00Z"}]}"#
+        let tokens = try await owner(ScriptedTransport([("GET /api/push/tokens", json(answer))])).pushTokens()
+        #expect(tokens.map(\.token) == ["ab12cd34", "11112222"])
+        #expect(tokens[0].lastSucceededAt?.text == "2026-11-26T08:00:00Z" && tokens[0].lastFailure?.reason == "APNs answered 503")
+        #expect(tokens[1].lastSucceededAt == nil && tokens[1].lastFailure == nil, "left out until there is something to say")
+    }
+
     @Test("the redeem carries the app's identity too, though the sign-in has no Access token yet")
     func redeemIdentity() async throws {
         let transport = ScriptedTransport([("POST /app/redeem", json(#"{"token":"a.b.c"}"#))])

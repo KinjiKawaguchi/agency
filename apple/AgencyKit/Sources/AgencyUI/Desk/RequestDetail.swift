@@ -100,9 +100,9 @@ struct RequestDetail: View {
     private func threadSection(_ thread: [ThreadMessage]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(Ja.Paper.earlierMessages).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            ForEach(Array(thread.enumerated()), id: \.offset) { _, message in
+            ForEach(Array(thread.enumerated()), id: \.offset) { index, message in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Ja.Paper.thread(name: message.shownFrom, choice: message.choice)).font(.footnote.weight(.semibold)).wrapping()
+                    Text(Ja.Paper.thread(name: item.threadAuthors.indices.contains(index) ? item.threadAuthors[index] : message.shownFrom, choice: message.choice)).font(.footnote.weight(.semibold)).wrapping()
                     if !message.text.isEmpty { Text(message.text).font(.footnote).wrapping() }
                 }
             }

@@ -13,6 +13,27 @@ describe('reading the answer of the measurements route', () => {
     expect(read.series[0]).toMatchObject({ kind: 'serve', status: '2xx', count: sample.series[0]?.count })
   })
 
+  it('reads the objectives of the shared sample, each of the four states, as the node says them', () => {
+    const read = readMetrics(sample)
+    expect(read.objectives).toEqual(sample.objectives)
+    expect(new Set(read.objectives.map((one) => one.state))).toEqual(new Set(['met', 'notMet', 'undetermined', 'unknown']))
+  })
+
+  it('reads the buckets of an hour when they are given, and has none when they are not', () => {
+    const hour = { hour: '2026-11-24T10:00:00Z', count: 3, errors: 0, p95Ms: 5 }
+    const [given] = readMetrics(answer({}, [series({ byHour: [{ ...hour, buckets: buckets({ 2: 3 }) }, { ...hour, hour: '2026-11-24T11:00:00Z' }] })])).series
+    expect(given?.byHour[0]?.buckets).toEqual(buckets({ 2: 3 }))
+    expect(given?.byHour[1]?.buckets).toBeUndefined()
+    expect('buckets' in (given?.byHour[1] ?? {})).toBe(false)
+  })
+
+  it('refuses an hour whose buckets deny its count, or are not 15 numbers', () => {
+    const hour = { hour: '2026-11-24T10:00:00Z', count: 3, errors: 0, p95Ms: 5 }
+    for (const bad of [buckets({ 2: 2 }), buckets({ 2: 4 }), buckets({ 2: 3 }).slice(1), 'x', [...buckets({ 2: 3 }).slice(1), -0.5 + 0.5 - 1]]) {
+      expect(() => readMetrics(answer({}, [series({ byHour: [{ ...hour, buckets: bad }] })]))).toThrow(MalformedAnswer)
+    }
+  })
+
   it('keeps a percentile that is left out as left out, and never fills it', () => {
     const [read] = readMetrics(answer({}, [series({ count: 4, buckets: buckets({ 14: 4 }), p50Ms: undefined, p95Ms: undefined, p99Ms: undefined })])).series
     expect(read?.p95Ms).toBeUndefined()
@@ -20,9 +41,9 @@ describe('reading the answer of the measurements route', () => {
   })
 
   it('reads the budget and the objectives, and has none when the node says none', () => {
-    const given = readMetrics(answer({ budget: { inNodeReadP95Ms: 100 }, objectives: [{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'later' }] }))
+    const given = readMetrics(answer({ budget: { inNodeReadP95Ms: 100 }, objectives: [{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'later' }, { group: 'usage', p95Ms: 3000, state: 'undetermined', measuredP95Ms: 5000 }, { group: 'x', p95Ms: 5, state: 'constructor' }] }))
     expect(given.budgetInNodeReadP95Ms).toBe(100)
-    expect(given.objectives).toEqual([{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'unknown' }])
+    expect(given.objectives).toEqual([{ group: 'teams', p95Ms: 100, state: 'notMet', measuredP95Ms: 250 }, { group: 'desk', p95Ms: 50, state: 'unknown' }, { group: 'usage', p95Ms: 3000, state: 'undetermined', measuredP95Ms: 5000 }, { group: 'x', p95Ms: 5, state: 'unknown' }])
     const none = readMetrics(answer())
     expect(none.budgetInNodeReadP95Ms).toBeUndefined()
     expect(none.objectives).toEqual([])

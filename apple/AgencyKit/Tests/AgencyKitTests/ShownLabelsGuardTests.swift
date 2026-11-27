@@ -3,7 +3,7 @@ import Testing
 
 /// A label the node gives is shown without the characters that can reorder it (`NodeLabel`, applied when it is decoded). This reads the
 /// wire types and fails for a field that is named like a label and is not decoded that way, so that a new one is not forgotten: any
-/// `label`, `name`, `member`, `device`, `what`, `from`, `to` or `choiceLabel` that is a `String` must be `@Shown` or `@ShownIfPresent`,
+/// `label`, `name`, `member`, `device`, `what`, `from`, `to`, `choiceLabel` or `reason` that is a `String` must be `@Shown` or `@ShownIfPresent`,
 /// or be named here with why it is not one.
 @Suite("Labels on the wire are all shown without hidden characters")
 struct ShownLabelsGuardTests {
@@ -27,6 +27,8 @@ struct ShownLabelsGuardTests {
             "the team runtime's name, kept as written to find the person; a screen draws `shownTo` (`DeskItem.deciderName`)",
         "AgencyKit/Sources/AgencyAPI/Wire/TeamView.swift:ThreadMessage.public let from: String":
             "the team runtime's name of who wrote a message, kept as written; a screen draws `shownFrom`",
+        "AgencyKit/Sources/AgencyAPI/Wire/Me.swift:GuestRef.public let member: String?":
+            "the id of the hosted member, which the app reads to know the viewer is a guest and never shows",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:Effort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Effort.swift:TeamEffort.public let from: String": "a calendar day, the period's first: never a label",
         "AgencyKit/Sources/AgencyAPI/Wire/Evaluation.swift:Evaluation.public let from: String": "a calendar day, the period's first: never a label",
@@ -35,7 +37,7 @@ struct ShownLabelsGuardTests {
     ]
 
     private static let declaration = try! NSRegularExpression(
-        pattern: #"public\s+(?:private\(set\)\s+)?(?:let|var)\s+(label|name|member|device|what|from|to|choiceLabel)\s*:\s*String\??(?![\w.])"#
+        pattern: #"public\s+(?:private\(set\)\s+)?(?:let|var)\s+(label|name|member|device|what|from|to|choiceLabel|reason)\s*:\s*String\??(?![\w.])"#
     )
 
     @Test("every field of the wire types that is named like a label is shown, or is named here with why not")

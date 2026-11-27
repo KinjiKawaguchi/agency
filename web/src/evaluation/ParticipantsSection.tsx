@@ -1,5 +1,6 @@
 import type { ParticipantEvaluation } from '../api/evaluationApi'
 import { useI18n } from '../i18n'
+import { printable } from '../shared/printable'
 import { formatDuration } from './duration'
 
 interface Props {
@@ -28,7 +29,7 @@ function Row({ participant }: { participant: ParticipantEvaluation }) {
   const spans = sharesOf(participant)
   return (
     <li className="ev-person">
-      <h4>{participant.name}</h4>
+      <h4>{printable(participant.name)}</h4>
       {spans === undefined ? (
         <p className="muted">{text.noSession}</p>
       ) : (
@@ -82,7 +83,7 @@ export function ParticipantsSection({ participants, unattributedMerged }: Props)
       </p>
       <ul className="ev-people">
         {participants.map((participant) => (
-          <Row key={participant.name} participant={participant} />
+          <Row key={participant.name /* shown-ok(key): the key of a row, never drawn */} participant={participant} />
         ))}
       </ul>
       <p className="muted ev-note">{text.timeNote}</p>
