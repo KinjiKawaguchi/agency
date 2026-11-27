@@ -150,10 +150,12 @@ pub enum Capability {
     /// `device` in a push registration (an APNs token or a Web Push subscription), and the registrations
     /// dropped with the device they name.
     PushDevice,
+    /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
+    ReadAudience,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 12] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -165,6 +167,7 @@ impl Capability {
         Capability::Activity,
         Capability::Outcomes,
         Capability::PushDevice,
+        Capability::ReadAudience,
     ];
 
     pub fn name(self) -> &'static str {
@@ -180,6 +183,7 @@ impl Capability {
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
             Capability::PushDevice => "pushDevice",
+            Capability::ReadAudience => "readAudience",
         }
     }
 

@@ -6,7 +6,7 @@ use crate::orgs::{is_root, load, publish, sign};
 use crate::pending_root::{hold, must_hold, PendingRootChange, RootChange, WaitingJoin};
 use crate::ports::DefinitionAccess;
 use crate::push_devices::keep_org;
-use crate::read_auth::sign_read;
+use crate::read_auth::sign_for_peer;
 use crate::routes;
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes, Invite};
@@ -376,7 +376,7 @@ async fn chain_to(
     let mut last = current.clone();
     while last.body.version + 1 < joined.body.version {
         let path = routes::versions(&current.body.org, last.body.version);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, &current.body.org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

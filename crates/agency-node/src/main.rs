@@ -267,6 +267,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::read_auth::status_lines(node) {
+        println!("{line}");
+    }
     for doc in node.store().orgs() {
         let role = if orgs::is_root(node, &doc) {
             "root key"

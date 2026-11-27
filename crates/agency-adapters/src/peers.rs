@@ -16,13 +16,17 @@ use std::time::Duration;
 pub const ACCOUNT: &str = "x-agency-account";
 pub const DATE: &str = "x-agency-date";
 pub const SIGNATURE: &str = "x-agency-signature";
+/// The id of the node a read is made for, present only when the signature covers it.
+pub const AUDIENCE: &str = "x-agency-audience";
 
-pub fn read_headers(auth: &ReadAuth) -> [(&'static str, String); 3] {
-    [
+pub fn read_headers(auth: &ReadAuth) -> Vec<(&'static str, String)> {
+    let mut headers = vec![
         (ACCOUNT, auth.account.clone()),
         (DATE, auth.date.clone()),
         (SIGNATURE, auth.signature.clone()),
-    ]
+    ];
+    headers.extend(auth.audience.clone().map(|audience| (AUDIENCE, audience)));
+    headers
 }
 
 pub struct HttpPeers {

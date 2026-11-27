@@ -43,7 +43,7 @@ May change without a new version:
 
 Breaking, so a new `/fed/v2`:
 - removing or renaming a route or a field, or changing its type or meaning;
-- changing what a signed read covers;
+- changing what a signed read covers, other than by a new signed-text version of the read (see "Signed data"; the routes stay as they are);
 - refusing something current nodes send.
 
 Rollout of `/fed/v2`:
@@ -73,7 +73,12 @@ Breaking, so a new signed-text version `agency/v2/<kind>`:
 - a change to the signed text's layout;
 - a change to the meaning of an existing field.
 
-Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
+Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`.
+
+A new layout of one kind can come alone, and then it is announced by a capability (the first is `readAudience`, for `agency/v2/read`, a signed read that names the node it is for) instead of by `signedText`, which lists a version only when every kind has it. The rules for it are these:
+- The new layout has its own kind line, and a header that travels with the signed document says which text was signed (for a read, `x-agency-audience` present means `agency/v2/read`). A verifier then makes one check, and neither text can pass for the other.
+- A writer uses the new layout toward a peer only when the peer lists the capability, and the older layout otherwise.
+- A verifier takes the older layout through the overlap. It may stop earlier: for an account that has already used the new layout (the account's node speaks it, so an older signature of that account is a copy), and for every account when its owner sets so. A way to take an account's older layout again is named in the refusal's log line, for an account that has two nodes of different releases. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
 
 ## Node and team runtime (`agency-runtime/1`)
 
@@ -155,6 +160,7 @@ Names start at what came after the first release: every node has what the first 
 | `activity` | feature | A team's activity feed. |
 | `outcomes` | feature | The owner's numbers and the readings of them. |
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
+| `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
 
 ## Checks in CI
 

@@ -7,7 +7,7 @@ use crate::ports::{
 };
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Ports {
@@ -30,6 +30,8 @@ pub struct Node {
     config: RwLock<NodeConfig>,
     /// The signed reads accepted recently, with when they were signed (see `accept_read_once`).
     reads: Mutex<HashMap<String, OffsetDateTime>>,
+    /// Serializes the writes of the accounts that read bound (`keep_bound_reader`).
+    bound_readers: Mutex<()>,
 }
 
 /// At most this many recent signed reads are remembered. A signature is remembered only once it is
@@ -45,6 +47,7 @@ impl Node {
             key,
             config: RwLock::new(config),
             reads: Mutex::default(),
+            bound_readers: Mutex::default(),
         })
     }
 
@@ -73,6 +76,25 @@ impl Node {
         }
         reads.insert(signature.to_owned(), signed_at);
         true
+    }
+
+    /// Changes the accounts whose node signs reads that name this node (see `read_auth`), one change at a time,
+    /// and keeps the result in the data directory when it differs. A failure to keep it is said on the node's
+    /// terminal, and the accounts are then taken as before.
+    pub(crate) fn change_bound_readers(&self, change: impl FnOnce(&mut BTreeSet<Id>)) {
+        let _one_at_a_time = self
+            .bound_readers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let before = self.store().bound_readers();
+        let mut after = before.clone();
+        change(&mut after);
+        if after == before {
+            return;
+        }
+        if let Err(error) = self.store().save_bound_readers(&after) {
+            eprintln!("agency: could not keep which accounts read in the form that names this node: {error}");
+        }
     }
 
     pub fn store(&self) -> &dyn Store {

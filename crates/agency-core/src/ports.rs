@@ -29,7 +29,7 @@ use agency_proto::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
@@ -226,6 +226,16 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The accounts this node has taken a read from that names it (`read_auth`), kept in the data directory so that a
+/// restart does not forget them: once an account's node signs reads that way, this node takes no read that
+/// names no node from it.
+pub trait BoundReaderStore {
+    /// The accounts, or none when nothing is kept (a file that cannot be read counts as none).
+    fn bound_readers(&self) -> BTreeSet<Id>;
+    /// Keeps exactly these accounts.
+    fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()>;
+}
+
 /// The guests of this node, by sign-in email (`guests`), kept in its data directory.
 pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
@@ -260,6 +270,7 @@ pub trait Store:
     + OutcomeStore
     + ShipLedger
     + AboutStore
+    + BoundReaderStore
     + ClientsSeenStore
     + GuestStore
     + Send
@@ -281,6 +292,7 @@ impl<
             + OutcomeStore
             + ShipLedger
             + AboutStore
+            + BoundReaderStore
             + ClientsSeenStore
             + GuestStore
             + Send
