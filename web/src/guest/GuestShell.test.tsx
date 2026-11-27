@@ -116,7 +116,7 @@ describe('what a member hosted by the node has', () => {
     await user.click(await screen.findByRole('radio', { name: /Approve/ }))
     await user.type(screen.getByRole('textbox', { name: /^Notes/ }), 'Go ahead.')
     await user.click(screen.getByRole('button', { name: 'Approve with “Approve”' }))
-    await screen.findByText(/Carol approved this/)
+    await waitFor(() => expect(node.envelopes()).toHaveLength(1))
     expect(node.envelopes()).toMatchObject([{ signer: deviceId, body: { kind: 'answer', org: 'acme', team: 'app', account: 'carol' } }])
   })
 

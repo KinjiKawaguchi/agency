@@ -9,6 +9,7 @@ import { isGuestPage, useStanding } from '../guest/useStanding'
 import { Notices } from '../notifications/Notices'
 import { SignInExpiredBanner } from '../shared/SignInExpired'
 import { Loading, Skeleton } from '../shared/Skeleton'
+import { SendingTray } from '../outbox/SendingTray'
 import { AppBar } from './AppBar'
 import { lazyPage } from './lazyPage'
 
@@ -59,6 +60,7 @@ function AppShell({ path }: { path: string }) {
           <Outlet />
         )}
       </main>
+      <SendingTray />
     </>
   )
 }

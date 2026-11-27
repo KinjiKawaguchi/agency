@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { useApi } from '../api/context'
-import type { DecisionAnswer, DecisionResult } from '../api/clientApi'
+import type { DecisionAnswer, DecisionResult, Envelope, Signed } from '../api/clientApi'
 import { devicesQuery, meQuery } from '../api/queries'
 import { rememberSent } from '../notifications/sent'
 import { buildEnvelope, newEnvelopeId, signEnvelope } from './envelope'
@@ -22,11 +22,19 @@ export class CannotSignError extends Error {
   }
 }
 
+/** A decision signed by this device and ready to send: the envelope, and the notes the node keeps in its log with it. */
+export interface SignedDecision {
+  envelope: Signed<Envelope>
+  title: string
+  choiceLabel?: string
+}
+
 /**
- * Sends a decision, signed by this device's key: the only way the node takes one. A device that has no
- * key, or is not added to the team's org, cannot decide; it says why, and the caller keeps the draft.
+ * Signs a decision with this device's key, and does not send it: the only kind of decision the node takes is one signed by a
+ * device of the org. A device that has no key, or is not added to the team's org, cannot decide; it says why, and the caller keeps
+ * the draft. The envelope is made once, with its id, so that sending it again is the same decision.
  */
-export function useDecide(): (answer: DecisionAnswer) => Promise<DecisionResult> {
+export function useSignDecision(): (answer: DecisionAnswer) => Promise<SignedDecision> {
   const api = useApi()
   const queryClient = useQueryClient()
   const settledKey = useSettledDeviceKey()
@@ -40,14 +48,17 @@ export function useDecide(): (answer: DecisionAnswer) => Promise<DecisionResult>
       const me = await queryClient.fetchQuery({ ...meQuery(api), staleTime: DEVICES_FRESH_MS })
       const envelope = buildEnvelope({ answer, account: me.account.id, id: newEnvelopeId(), at: new Date() })
       rememberSent(envelope.id)
-      return api.decideSigned(answer.org, answer.team, {
-        envelope: await signEnvelope(held.key, deviceId, envelope),
-        title: answer.title,
-        ...(answer.choiceLabel === undefined ? {} : { choiceLabel: answer.choiceLabel }),
-      })
+      return { envelope: await signEnvelope(held.key, deviceId, envelope), title: answer.title, ...(answer.choiceLabel === undefined ? {} : { choiceLabel: answer.choiceLabel }) }
     },
     [api, queryClient, settledKey],
   )
+}
+
+/** Signs a decision and sends it, and waits for the node's answer: for a caller that has nothing to do before it. */
+export function useDecide(): (answer: DecisionAnswer) => Promise<DecisionResult> {
+  const api = useApi()
+  const sign = useSignDecision()
+  return useCallback(async (answer) => api.decideSigned(answer.org, answer.team, await sign(answer)), [api, sign])
 }
 
 /** Whether this device can sign for `org`, as far as is known: `checking` while the key or the node's list is still coming. */

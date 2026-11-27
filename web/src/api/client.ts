@@ -20,11 +20,14 @@ export type FetchLike = (input: Request) => Promise<Response>
  */
 export class ApiError extends Error {
   readonly status: number
+  /** How many seconds the node asked to wait before trying again (`Retry-After`), when it did. */
+  readonly retryAfterSeconds: number | undefined
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, retryAfterSeconds?: number) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -126,7 +129,8 @@ async function readJson<T>(response: Response): Promise<T> {
   const body: unknown = await response.json().catch(() => ({}))
   if (!response.ok) {
     const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : `HTTP ${response.status}`
-    throw new ApiError(message, response.status)
+    const waited = Number(response.headers.get('retry-after'))
+    throw new ApiError(message, response.status, Number.isInteger(waited) && waited >= 0 && response.headers.get('retry-after') !== null ? waited : undefined)
   }
   // The labels in an answer are drawn as they are printed on a terminal: a hidden character is a `?`.
   return labelsMadePrintable(body) as T

@@ -226,6 +226,13 @@ pub trait AboutStore {
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()>;
 }
 
+/// The guests of this node, by sign-in email (`guests`), kept in its data directory.
+pub trait GuestStore {
+    fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
+    fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
+    fn remove_guest(&self, email: &str) -> Result<()>;
+}
+
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.
 pub trait ClientsSeenStore {
     fn clients_seen(&self) -> ClientsSeen;
@@ -254,6 +261,7 @@ pub trait Store:
     + ShipLedger
     + AboutStore
     + ClientsSeenStore
+    + GuestStore
     + Send
     + Sync
 {
@@ -274,6 +282,7 @@ impl<
             + ShipLedger
             + AboutStore
             + ClientsSeenStore
+            + GuestStore
             + Send
             + Sync,
     > Store for T
@@ -320,6 +329,13 @@ pub trait Peers: Send + Sync {
         path: &str,
         auth: &ReadAuth,
     ) -> Result<TokenUsage, PeerError>;
+    /// The events of a team's activity after a time, from the node it runs on (`routes::activity`).
+    async fn get_activity(
+        &self,
+        node: &str,
+        path: &str,
+        auth: &ReadAuth,
+    ) -> Result<Activity, PeerError>;
     /// A team's delivery evaluation, from the node it runs on.
     async fn get_evaluation(
         &self,

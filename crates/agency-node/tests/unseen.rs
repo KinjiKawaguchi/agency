@@ -12,6 +12,7 @@ use reqwest::{RequestBuilder, StatusCode};
 use serde_json::{json, Value};
 
 const SAMPLE_USAGE: &str = include_str!("../../../testdata/tokenusage.sample.json");
+const SAMPLE_ACTIVITY: &str = include_str!("../../../testdata/activity.sample.json");
 
 /// The one answer every unauthenticated refusal gets.
 const REFUSED: (StatusCode, &str) = (StatusCode::NOT_FOUND, r#"{"error":"not found"}"#);
@@ -94,6 +95,11 @@ fn failed_reads(
 async fn a_signed_read_that_fails_looks_like_one_of_something_that_is_not_here() {
     let (alice, memory) = alice().await;
     memory.lock().unwrap().usage = Some(serde_json::from_str(SAMPLE_USAGE).unwrap());
+    memory.lock().unwrap().activity = Some(
+        serde_json::from_str::<agency_proto::activity::Activity>(SAMPLE_ACTIVITY)
+            .unwrap()
+            .events,
+    );
     let bob = joined_bob(&alice).await;
     let routes = [
         (
@@ -107,6 +113,10 @@ async fn a_signed_read_that_fails_looks_like_one_of_something_that_is_not_here()
         (
             "/fed/v1/teams/acme/app/usage?days=7",
             "/fed/v1/teams/other/app/usage?days=7",
+        ),
+        (
+            "/fed/v1/teams/acme/app/activity?since=2026-11-24T11:00:00Z&limit=200",
+            "/fed/v1/teams/other/app/activity?since=2026-11-24T11:00:00Z&limit=200",
         ),
     ];
     for (path, elsewhere) in routes {
@@ -130,6 +140,10 @@ async fn a_signed_read_that_fails_looks_like_one_of_something_that_is_not_here()
         (
             "/fed/v1/teams/acme/other/usage?days=7",
             "the usage of an unknown team",
+        ),
+        (
+            "/fed/v1/teams/acme/other/activity?since=2026-11-24T11:00:00Z&limit=200",
+            "the activity of an unknown team",
         ),
         ("/fed/v1/teams/acme/Not-An-Id/view", "a malformed team id"),
     ] {

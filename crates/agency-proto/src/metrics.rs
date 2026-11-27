@@ -278,6 +278,24 @@ pub struct HourSeries {
     /// The 95th percentile of the hour, as above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p95_ms: Option<u32>,
+    /// How many durations of the hour fell in each bucket, as `Series.buckets` (`BUCKETS` of them, adding up
+    /// to the hour's `count`), so that a reader can add the hours of several series and read the percentile of
+    /// the whole. Only in an answer asked for it (`hourBuckets=1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "Array<number>", optional)]
+    pub buckets: Option<Vec<u64>>,
+}
+
+impl HourSeries {
+    /// Whether the hour agrees with itself: when it has buckets they are `BUCKETS` that add up to `count`,
+    /// and its percentile is that of the buckets.
+    pub fn is_consistent(&self) -> bool {
+        self.buckets.as_ref().is_none_or(|buckets| {
+            buckets.len() == BUCKETS
+                && buckets.iter().sum::<u64>() == self.count
+                && self.p95_ms == percentile_ms(buckets, 95)
+        })
+    }
 }
 
 /// `GET /api/metrics?days=<1 to 30>&kind=&name=`: the node's own measurements over a range.
@@ -387,6 +405,14 @@ impl Series {
     /// kind may have (the answer holds nothing a requester could choose freely), `BUCKETS` buckets that add up
     /// to `count`, errors that are all of the calls or none as the status says, and the percentiles those of
     /// the buckets (so a reader can trust either).
+    /// Leaves the buckets of the hours out, as the answer does unless it is asked for them.
+    pub fn without_hour_buckets(mut self) -> Self {
+        for hour in &mut self.by_hour {
+            hour.buckets = None;
+        }
+        self
+    }
+
     pub fn is_consistent(&self) -> bool {
         let errors_agree = if is_error_status(self.kind, &self.status) {
             self.errors == self.count
@@ -404,6 +430,7 @@ impl Series {
                 .is_none_or(|client| CLIENTS.contains(&client))
             && self.client.is_some() == (self.kind == SeriesKind::Client)
             && errors_agree
+            && self.by_hour.iter().all(HourSeries::is_consistent)
             && self.buckets.len() == BUCKETS
             && self.buckets.iter().sum::<u64>() == self.count
             && self.p50_ms == percentile_ms(&self.buckets, 50)
