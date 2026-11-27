@@ -33,7 +33,7 @@ public struct TeamSnapshot: Decodable, Equatable, Sendable {
                 self = .replica(
                     fetchedAt: try container.decodeIfPresent(Instant.self, forKey: .fetchedAt),
                     triedAt: try container.decode(Instant.self, forKey: .triedAt),
-                    error: try container.decodeIfPresent(String.self, forKey: .error)
+                    error: try container.decodeIfPresent(String.self, forKey: .error).map(NodeLabel.shownText)
                 )
             case let other:
                 self = .unknown(other)

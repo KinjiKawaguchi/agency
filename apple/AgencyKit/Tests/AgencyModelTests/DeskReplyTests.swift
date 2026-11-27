@@ -27,6 +27,19 @@ struct DeskReplyTests {
         #expect(decision.title == "Which database should the app use in production?")
     }
 
+    @Test("what is sent back for the decision log (the request's title and the chosen option's label) is what the runtime wrote, and what the person reads is the shown text")
+    func sendsTheRawTitle() throws {
+        let request: [String: Any] = [
+            "id": "r-bidi", "kind": "question", "title": "Ship\u{202E} it?", "context": "c", "from": "backend", "createdAt": "2026-11-24T12:00:00Z",
+            "blocks": [], "options": [["key": "a", "text": "Y\u{202E}es", "isRecommended": false]], "answerWith": ["kind": "answer", "target": "r-bidi"],
+        ]
+        let item = try item("r-bidi", in: Teams.team(addRequests: [request]))
+        #expect(item.request.title == "Ship? it?" && item.request.rawTitle == "Ship\u{202E} it?")
+        let decision = try item.prepare(.choose(optionKey: "a", note: ""))
+        #expect(decision.title == "Ship\u{202E} it?" && decision.choiceLabel == "Y\u{202E}es", "sent as written")
+        #expect(Ja.Paper.faceIDReason(decision) == "\(Ja.Paper.verb(.question)): Ship? it?", "shown to the person")
+    }
+
     @Test("a choice needs no note")
     func chooseWithoutNote() throws {
         let decision = try item(Teams.proposalID).prepare(.choose(optionKey: "approve", note: "   "))
