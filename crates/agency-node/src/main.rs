@@ -33,6 +33,7 @@ use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use device_cli::{device_add, CliDevice};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -190,12 +191,28 @@ enum Command {
         #[command(subcommand)]
         command: funding_cli::FundingCommand,
     },
+    /// Shows this week's team and organization spending against their plans as JSON
+    Budget {
+        #[command(subcommand)]
+        command: BudgetCommand,
+    },
     /// Prints the node's log (logs/node.jsonl and the closed files), oldest first, filtered; reads no key and needs no running node
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
+}
+
+#[derive(Subcommand)]
+enum BudgetCommand {
+    /// Shows the current Monday-based week's spending and budget state as JSON
+    Status {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        team: String,
+    },
 }
 
 fn data_dir(cli: &Cli) -> DataDir {
@@ -379,7 +396,12 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
         };
         write(format!(
             "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
-            misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()
+            misplaced.org,
+            misplaced.team,
+            node.url(),
+            misplaced.org,
+            misplaced.team,
+            node.url()
         ));
     }
 }
@@ -499,6 +521,46 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     Ok(())
 }
 
+/// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
+/// report becomes `partial`, as calculated by `agency_core::budget::status`.
+async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
+    let definition = agency_core::client::org_definition(node, &org)?;
+    if definition.team(&team).is_none() {
+        bail!("not found");
+    }
+    let now = node.now();
+    let offset = node.utc_offset();
+    let start = agency_core::budget::week_start(now, offset);
+    let today = agency_proto::Date::parse(&now.to_offset(offset).date().to_string())
+        .expect("a time date is a valid protocol date");
+    let mut teams = definition
+        .teams
+        .iter()
+        .filter(|place| place.plan.is_some())
+        .map(|place| place.id.clone())
+        .collect::<BTreeSet<_>>();
+    teams.insert(team.clone());
+    let reads = teams.into_iter().map(|id| async {
+        let spend = tokio::time::timeout(
+            Duration::from_secs(8),
+            agency_core::usage::team_usage(node, &org, &id, Some(7)),
+        )
+        .await
+        .ok()
+        .and_then(|answer| answer.ok())
+        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
+        (id, spend)
+    });
+    let mut spends = BTreeMap::new();
+    for (id, spend) in futures_util::future::join_all(reads).await {
+        spends.insert(id, spend);
+    }
+    let report = agency_core::budget::status(&definition, start, &team, &spends)
+        .expect("the selected team was checked in the signed definition");
+    println!("{}", agency_node::budget::json_line(&report)?);
+    Ok(())
+}
+
 async fn run(cli: Cli) -> Result<()> {
     let data = data_dir(&cli);
     if let Command::Init {
@@ -528,6 +590,11 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) | Command::Metrics(_) => {
             unreachable!()
         }
+        Command::Budget { command } => match command {
+            BudgetCommand::Status { org, team } => {
+                budget_status(&node, id(&org)?, id(&team)?).await?
+            }
+        },
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(
@@ -653,7 +720,9 @@ async fn run(cli: Cli) -> Result<()> {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
                 Joined::Member(doc) => println!(
                     "Joined org {} ({}) (version {})",
-                    doc.body.org, agency_proto::org::printable(&doc.body.label), doc.body.version
+                    doc.body.org,
+                    agency_proto::org::printable(&doc.body.label),
+                    doc.body.version
                 ),
                 Joined::Waiting(message) => println!(
                     "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."
