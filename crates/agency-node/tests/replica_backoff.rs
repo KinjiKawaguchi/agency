@@ -132,52 +132,94 @@ fn publish_a_version(alice: &Running, label: &str) {
     .unwrap();
 }
 
+/// When the last read of `team` was tried, as the replica says.
+fn tried_at(alice: &Running, team: &str) -> String {
+    alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id(team))
+        .map(|replica| replica.tried_at)
+        .unwrap()
+}
+
+/// The replica of `team` as it is kept, as text.
+fn kept(alice: &Running, team: &str) -> String {
+    let replica = alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id(team))
+        .unwrap();
+    serde_json::to_string(&replica).unwrap()
+}
+
 #[tokio::test]
-async fn an_outbox_delivery_to_a_node_that_is_back_ends_the_wait_for_its_teams() {
+async fn an_outbox_delivery_to_a_node_that_is_back_has_its_teams_read_at_the_next_pass() {
     let (alice, _) = alice().await;
     let mut bob = bob_hosts_b0_and_is_down(&alice).await;
-    // A team on another node that also waits is left as it is.
+    // A team on another node that also waits is left waiting.
     place_team(&alice, "gone", &closed_origin());
     refresh(&alice.node).await.unwrap();
     assert_eq!(failures(&alice, "gone"), 1);
+    let gone_tried = tried_at(&alice, "gone");
+    let b0_tried = tried_at(&alice, "b0");
 
     bob.start().await;
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        b0_tried,
+        "bob's wait is not over: not read yet"
+    );
+
     publish_a_version(&alice, "Acme, Inc.");
     deliver_due(&alice.node).await.unwrap();
-
-    assert_eq!(
-        failures(&alice, "b0"),
-        0,
-        "bob took the version: no more waiting for him"
-    );
-    assert_eq!(failures(&alice, "gone"), 1, "another node's wait goes on");
+    alice.clock.advance(Duration::seconds(1));
     refresh(&alice.node).await.unwrap();
+
     let replica = alice
         .node
         .store()
         .load_replica(&id("acme"), &id("b0"))
         .unwrap();
-    assert_eq!(replica.error, None, "the next ordinary pass read b0");
+    assert_eq!(
+        replica.error, None,
+        "bob took the version, so b0 was read at once"
+    );
     assert!(replica.view.is_some());
+    assert_eq!(replica.failures, 0);
+    assert_eq!(
+        tried_at(&alice, "gone"),
+        gone_tried,
+        "another node's wait goes on"
+    );
 }
 
 #[tokio::test]
 async fn an_unreachable_delivery_leaves_the_wait_as_it_is() {
     let (alice, _) = alice().await;
     let _bob = bob_hosts_b0_and_is_down(&alice).await;
+    let tried = tried_at(&alice, "b0");
     publish_a_version(&alice, "Acme, Inc.");
 
     deliver_due(&alice.node).await.unwrap();
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
 
-    assert_eq!(failures(&alice, "b0"), 1, "bob did not answer");
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        tried,
+        "bob did not answer: still waiting"
+    );
 }
 
 #[tokio::test]
-async fn a_node_that_refuses_a_parcel_has_answered_and_its_wait_ends() {
+async fn a_node_that_refuses_a_parcel_has_answered_and_its_teams_are_read() {
     use agency_core::outbox::{enqueue, Parcel, ParcelBody};
     let (alice, _) = alice().await;
     let mut bob = bob_hosts_b0_and_is_down(&alice).await;
     bob.start().await;
+    let tried = tried_at(&alice, "b0");
     // A version bob refuses: signed by no key of the org.
     let mut forged = alice.node.store().load_org(&id("acme")).unwrap();
     forged.body.label = "Forged".into();
@@ -187,44 +229,69 @@ async fn a_node_that_refuses_a_parcel_has_answered_and_its_wait_ends() {
         &alice.node.now_text(),
     );
     enqueue(&alice.node, &parcel).unwrap();
+    // The refusal comes after the read that failed, by a second.
+    alice.clock.advance(Duration::seconds(1));
 
     deliver_due(&alice.node).await.unwrap();
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
 
-    assert_eq!(failures(&alice, "b0"), 0, "a refusal is an answer");
+    assert_ne!(
+        tried_at(&alice, "b0"),
+        tried,
+        "a refusal is an answer: b0 was read"
+    );
+    assert_eq!(failures(&alice, "b0"), 0);
 }
 
 #[tokio::test]
-async fn a_node_that_tells_its_about_again_ends_the_wait_for_its_teams() {
+async fn a_node_that_tells_its_about_again_has_its_teams_read_at_the_next_pass() {
     let (alice, _) = alice().await;
     let mut bob = bob_hosts_b0_and_is_down(&alice).await;
     bob.start().await;
-    alice.clock.advance(Duration::minutes(11));
-    bob.clock.advance(Duration::minutes(11));
-    // alice's last read of bob's about failed with him, so it is read again at the next pass, and he answers it.
-    let mut kept = alice.node.store().peer_abouts(&id("acme"));
-    for entry in kept.values_mut() {
+    // alice's last read of bob's about failed, so it is read again at the next pass, and he answers it.
+    let mut about = alice.node.store().peer_abouts(&id("acme"));
+    for entry in about.values_mut() {
         entry.error = Some("did not answer".into());
         entry.tried_at = agency_proto::clock::format(alice.node.now() - Duration::minutes(11));
     }
     alice
         .node
         .store()
-        .save_peer_abouts(&id("acme"), &kept)
+        .save_peer_abouts(&id("acme"), &about)
         .unwrap();
-    // The wait of b0 is not over yet.
-    let mut waiting = alice
-        .node
-        .store()
-        .load_replica(&id("acme"), &id("b0"))
-        .unwrap();
-    waiting.tried_at = alice.node.now_text();
-    alice
-        .node
-        .store()
-        .save_replica(&id("acme"), &id("b0"), &waiting)
-        .unwrap();
+    let tried = tried_at(&alice, "b0");
+    alice.clock.advance(Duration::seconds(1));
 
     refresh(&alice.node).await.unwrap();
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        tried,
+        "this pass read bob's about; b0 was skipped"
+    );
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
 
-    assert_eq!(failures(&alice, "b0"), 0, "he told his about: he is there");
+    assert_ne!(
+        tried_at(&alice, "b0"),
+        tried,
+        "the next pass read b0: he is there"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_is_noted_without_writing_any_replica() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    let before = kept(&alice, "b0");
+
+    publish_a_version(&alice, "Acme, Inc.");
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(
+        kept(&alice, "b0"),
+        before,
+        "a read's replica is never overwritten by the outbox"
+    );
 }

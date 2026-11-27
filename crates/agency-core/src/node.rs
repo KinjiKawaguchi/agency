@@ -35,6 +35,15 @@ pub struct Node {
     bound_readers_lock: Mutex<()>,
     /// Whether the owner has been told that the file of those accounts cannot be read.
     is_unreadable_said: AtomicBool,
+    /// When each other node (by its origin as the node writes it) last answered this node, other than to a read of a
+    /// team's view: a replica waiting for such a node is read at the next pass (`views`). Kept in memory only, and
+    /// never written to a replica, so it cannot overwrite what a read saved.
+    answers: Mutex<HashMap<String, OffsetDateTime>>,
+}
+
+/// An origin as the node writes it (`home_node_origin`), or as it was given when it is no such origin.
+fn answer_key(origin: &str) -> String {
+    agency_proto::client::home_node_origin(origin).unwrap_or_else(|| origin.to_owned())
 }
 
 /// What the journal says of a file of the accounts that read bound which cannot be read.
@@ -59,6 +68,7 @@ impl Node {
             reads: Mutex::default(),
             bound_readers_lock: Mutex::default(),
             is_unreadable_said: AtomicBool::new(false),
+            answers: Mutex::default(),
         })
     }
 
@@ -128,6 +138,25 @@ impl Node {
                 ),
             );
         }
+    }
+
+    /// Notes that the node at `origin` has just answered this node.
+    pub(crate) fn note_answer(&self, origin: &str) {
+        let key = answer_key(origin);
+        let mut answers = self
+            .answers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        answers.insert(key, self.now());
+    }
+
+    /// When the node at `origin` last answered this node, other than to a read of a team's view.
+    pub(crate) fn answered_at(&self, origin: &str) -> Option<OffsetDateTime> {
+        let answers = self
+            .answers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        answers.get(&answer_key(origin)).copied()
     }
 
     pub fn store(&self) -> &dyn Store {

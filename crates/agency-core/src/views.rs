@@ -464,51 +464,6 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
-/// Whether two places name the same node, as the node writes an origin (`home_node_origin`); places that are no such
-/// origin are compared as written.
-fn is_same_origin(one: &str, other: &str) -> bool {
-    match (
-        agency_proto::client::home_node_origin(one),
-        agency_proto::client::home_node_origin(other),
-    ) {
-        (Some(one), Some(other)) => one == other,
-        _ => one == other,
-    }
-}
-
-/// The node at `origin` has just answered this node (it took an outbox parcel, even to refuse it, or it told its
-/// `about`): the replicas of its teams that were waiting out a wait that grew while it did not answer are due at the
-/// next pass, so that the desk is not stale for the end of a wait of up to 5 minutes for a node that is back.
-pub(crate) fn note_contact(node: &Node, origin: &str) -> Result<()> {
-    let account = node.account();
-    for doc in node
-        .store()
-        .orgs()
-        .into_iter()
-        .filter(|doc| doc.body.member(&account).is_some())
-    {
-        let org = &doc.body.org;
-        let places =
-            doc.body.teams.iter().filter(|place| {
-                !node.runs_here(org, &place.id) && is_same_origin(&place.node, origin)
-            });
-        for place in places {
-            let Some(replica) = node.store().load_replica(org, &place.id) else {
-                continue;
-            };
-            if replica.failures > 0 {
-                let ended = Replica {
-                    failures: 0,
-                    failing_since: None,
-                    ..replica
-                };
-                node.store().save_replica(org, &place.id, &ended)?;
-            }
-        }
-    }
-    Ok(())
-}
-
 /// What `agency status` says of the teams whose node is being waited for: one line each, with since when its reads
 /// fail, how many failed, and when it is read next.
 pub fn waiting_lines(node: &Node) -> Vec<String> {
@@ -568,14 +523,25 @@ enum Due {
     All,
 }
 
-/// Whether the team's replica should be read now.
-fn is_due(node: &Node, org: &Id, team: &Id, due: Due) -> bool {
-    due == Due::All
-        || node
-            .store()
-            .load_replica(org, team)
-            .and_then(|replica| replica.next_read_at())
-            .is_none_or(|next| next <= node.now())
+/// Whether the team's replica should be read now: it is read when its node answered last time, when its wait after
+/// failing is over, and when the team's node has answered this node in another way since the read that failed (an
+/// outbox parcel it took or refused, its `about`: `Node::note_answer`).
+fn is_due(node: &Node, org: &Id, place: &TeamPlace, due: Due) -> bool {
+    if due == Due::All {
+        return true;
+    }
+    let Some(replica) = node.store().load_replica(org, &place.id) else {
+        return true;
+    };
+    let Some(next) = replica.next_read_at() else {
+        return true;
+    };
+    let tried_at = clock::parse(&replica.tried_at);
+    let has_answered_since = node
+        .answered_at(&place.node)
+        .zip(tried_at)
+        .is_some_and(|(answered, tried)| answered > tried);
+    next <= node.now() || has_answered_since
 }
 
 async fn refresh_teams(node: &Node, due: Due) -> Result<()> {
@@ -595,7 +561,7 @@ async fn refresh_teams(node: &Node, due: Due) -> Result<()> {
                 .teams
                 .iter()
                 .filter(|place| !node.runs_here(org, &place.id))
-                .filter(|place| is_due(node, org, &place.id, due))
+                .filter(|place| is_due(node, org, place, due))
                 .map(|place| (org.clone(), place.clone()))
         })
         .collect();
