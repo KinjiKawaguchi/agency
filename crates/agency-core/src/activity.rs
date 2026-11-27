@@ -88,7 +88,8 @@ pub async fn team_activity(
 }
 
 /// The events from the node a team runs on, read live. A node that cannot be reached, or whose answer is
-/// malformed, is unavailable; a node that does not report activity (or does not serve the route) is not found.
+/// malformed, is unavailable; a node that does not report activity (or does not serve the route) is not found;
+/// a node that refuses the reader (403) is passed through.
 async fn remote_activity(
     node: &Node,
     org: &Id,
@@ -104,6 +105,10 @@ async fn remote_activity(
         .await
         .map_err(|error| match error {
             PeerError::Status { status: 404, .. } => Error::not_found(error.to_string()),
+            PeerError::Status { status: 403, .. } => Error::new(
+                ErrorKind::Forbidden,
+                "the team's node does not let this account read the team's activity",
+            ),
             _ => Error::new(
                 ErrorKind::Unavailable,
                 format!("the team's node did not report activity: {error}"),
