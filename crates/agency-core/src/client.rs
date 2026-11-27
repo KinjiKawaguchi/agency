@@ -353,6 +353,7 @@ pub fn decision_log_of(node: &Node, caller: &Caller, limit: Option<usize>) -> De
             choice: record.payload.choice,
             choice_label: record.choice_label,
             relayed_for: record.relayed_for,
+            signer: record.signer,
             decided_at,
             state,
         })

@@ -7,6 +7,8 @@ use serde::Deserialize;
 
 /// The board status whose first appearance on an issue is when work on it started.
 const STARTED_STATUS: &str = "In Progress";
+/// The label of an issue whose fix is incident work. GitHub label names ignore case, so does the match.
+const INCIDENT_LABEL: &str = "incident";
 const PAGES_AT_MOST: usize = 20;
 
 const QUERY: &str = "query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){\
@@ -14,7 +16,7 @@ pullRequests(states:MERGED,first:50,after:$after,orderBy:{field:UPDATED_AT,direc
 pageInfo{hasNextPage endCursor}\
 nodes{number title body createdAt mergedAt updatedAt \
 commits(first:1){nodes{commit{authoredDate}}} \
-closingIssuesReferences(first:5){nodes{timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){\
+closingIssuesReferences(first:5){nodes{labels(first:20){nodes{name}} timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){\
 nodes{... on ProjectV2ItemStatusChangedEvent{createdAt status}}}}}}}}}";
 
 #[derive(Deserialize)]
@@ -79,7 +81,13 @@ struct Commit {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Issue {
+    labels: Nodes<Label>,
     timeline_items: Nodes<Event>,
+}
+
+#[derive(Deserialize)]
+struct Label {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +111,14 @@ fn issue_started_at(issues: &[Issue]) -> Option<OffsetDateTime> {
         .min()
 }
 
+/// Whether an issue a pull request closes carries the label that says the work was an incident.
+fn closes_incident(issues: &[Issue]) -> bool {
+    issues
+        .iter()
+        .flat_map(|issue| &issue.labels.nodes)
+        .any(|label| label.name.eq_ignore_ascii_case(INCIDENT_LABEL))
+}
+
 /// The pull request, if it was merged and its times can be read.
 fn merged_pull_request(repo: &str, node: &Node) -> Option<MergedPullRequest> {
     Some(MergedPullRequest {
@@ -119,6 +135,7 @@ fn merged_pull_request(repo: &str, node: &Node) -> Option<MergedPullRequest> {
             .and_then(|commit| time(&commit.commit.authored_date)),
         has_issue: !node.closing_issues_references.nodes.is_empty(),
         issue_started_at: issue_started_at(&node.closing_issues_references.nodes),
+        closes_incident: closes_incident(&node.closing_issues_references.nodes),
     })
 }
 
@@ -218,7 +235,12 @@ mod tests {
     }
 
     fn issue(events: serde_json::Value) -> serde_json::Value {
-        json!({"timelineItems": {"nodes": events}})
+        labeled_issue(&[], events)
+    }
+
+    fn labeled_issue(labels: &[&str], events: serde_json::Value) -> serde_json::Value {
+        let labels: Vec<_> = labels.iter().map(|name| json!({"name": name})).collect();
+        json!({"labels": {"nodes": labels}, "timelineItems": {"nodes": events}})
     }
 
     #[test]
@@ -424,5 +446,29 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_pull_request_that_closes_an_issue_labeled_incident_says_so() {
+        let merged = Some("2026-11-22T02:00:00Z");
+        let nodes = vec![
+            node(
+                "fix: a",
+                merged,
+                "2026-11-22T02:00:00Z",
+                json!([labeled_issue(&["bug", "Incident"], json!([]))]),
+            ),
+            node(
+                "fix: b",
+                merged,
+                "2026-11-22T02:00:00Z",
+                json!([labeled_issue(&["bug", "incident-review"], json!([]))]),
+            ),
+            node("fix: c", merged, "2026-11-22T02:00:00Z", json!([])),
+        ];
+        let (found, _) =
+            read_page("acme/web", &page(nodes, None), at("2026-11-01T00:00:00Z")).unwrap();
+        let flags: Vec<bool> = found.iter().map(|one| one.closes_incident).collect();
+        assert_eq!(flags, [true, false, false]);
     }
 }
