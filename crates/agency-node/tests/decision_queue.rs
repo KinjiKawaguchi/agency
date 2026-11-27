@@ -395,6 +395,19 @@ async fn reads_one_decision_by_its_id() {
 }
 
 #[tokio::test]
+async fn a_kept_decision_says_which_device_signed_it_before_and_after_it_is_applied() {
+    let (alice, _, _, key) = with_runtime().await;
+    let device = json!(key.public().device_id().as_str());
+    send(&alice, &answer_with_id(&alice, &key, 0x49, "r-1", "go")).await;
+    assert_eq!(entry(&alice, 0x49).await.1["signer"], device, "queued");
+
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(state(&alice, 0x49).await, json!({ "kind": "applied" }));
+    assert_eq!(entry(&alice, 0x49).await.1["signer"], device, "applied");
+}
+
+#[tokio::test]
 async fn says_503_and_when_to_retry_when_it_cannot_keep_the_decision() {
     let (alice, runtime, _, key) = with_runtime().await;
     let outbox = alice.data_dir().join("outbox");

@@ -276,7 +276,11 @@ async fn logs_the_device_that_signed_each_decision() {
             .send()
             .await
             .unwrap();
-        assert_eq!(sent.status(), 200, "{target}");
+        assert_eq!(
+            sent.status(),
+            202,
+            "{target}: kept, applied in the background"
+        );
     }
     let log = decisions(&alice, "").await;
     let signer_of = |target: &str| {
@@ -309,7 +313,7 @@ async fn logs_the_device_of_a_decision_that_waits_to_be_sent() {
         .send()
         .await
         .unwrap();
-    assert_eq!(sent.status(), 200);
+    assert_eq!(sent.status(), 202);
     let entry = decisions(&bob, "").await["entries"][0].clone();
     assert_eq!(entry["state"]["kind"], "queued");
     assert_eq!(entry["signer"], json!(key.public().device_id().as_str()));
