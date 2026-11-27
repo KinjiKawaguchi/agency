@@ -281,10 +281,10 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
 }
 
 /// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
-/// move only spelled the same origin another way.
+/// move only spelled the same origin another way or renamed this node's own origin.
 const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
 whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
-the default port) changes nothing.";
+the default port), or that renames this node's own origin to one it was configured with, changes nothing.";
 
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \

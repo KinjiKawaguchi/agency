@@ -12,7 +12,7 @@ use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
     AboutStore, AppliedLog, BoundReaderStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
     DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    OwnOriginStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
@@ -384,6 +384,17 @@ impl ClientsSeenStore for DataDir {
 
     fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()> {
         write_json(&self.0.join("clients-seen.json"), seen)
+    }
+}
+
+impl OwnOriginStore for DataDir {
+    /// `own-origins.json`: origins only, no key and no secret.
+    fn own_origins(&self) -> Vec<String> {
+        read_json(&self.0.join("own-origins.json")).unwrap_or_default()
+    }
+
+    fn save_own_origins(&self, origins: &[String]) -> Result<()> {
+        write_json(&self.0.join("own-origins.json"), origins)
     }
 }
 

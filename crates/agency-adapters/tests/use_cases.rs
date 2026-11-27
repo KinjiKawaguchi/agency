@@ -466,3 +466,70 @@ async fn a_first_copy_must_be_signed_by_the_trusted_root_key() {
         .unwrap();
     assert!(carol.node.store().load_org(&id("acme")).is_some());
 }
+
+#[tokio::test]
+async fn a_node_keeps_the_origins_it_was_configured_with_at_each_start_and_the_last_twenty() {
+    use agency_core::ports::ConfigStore as _;
+    let dir = TempDir::new().unwrap();
+    let data = DataDir::new(dir.path().join("node"));
+    data.create_key().unwrap();
+    let open = |url: &str| {
+        let account = Account {
+            id: id("alice"),
+            label: "ALICE".into(),
+        };
+        data.save_config(&NodeConfig::new(
+            url.to_owned(),
+            "127.0.0.1:0",
+            account,
+            "scrum",
+        ))
+        .unwrap();
+        let ports = Ports {
+            store: Arc::new(DataDir::new(dir.path().join("node"))),
+            peers: Arc::new(HttpPeers::new().unwrap()),
+            runtime: Arc::new(MemoryRuntime::default()),
+            clock: Arc::new(ManualClock::at(T0)),
+            random: Arc::new(CountingRandom::default()),
+            lock: Arc::new(TokioWriteLock::default()),
+            funding: Arc::new(UsageFiles::new(dir.path().join("node"))),
+            delivery: Arc::new(agency_adapters::memory::MemoryDelivery::default()),
+            notifier: Arc::new(NoNotifier),
+            journal: Arc::new(agency_adapters::memory::NoJournal),
+            root_keys: Arc::new(agency_adapters::memory::MemoryRootKeys::default()),
+        };
+        Node::open(ports, data.load_key().unwrap()).unwrap()
+    };
+
+    assert_eq!(
+        open("https://One.Example.com:443/").own_origins(),
+        ["https://one.example.com"]
+    );
+    assert_eq!(
+        open("https://two.example.com").own_origins(),
+        ["https://one.example.com", "https://two.example.com"],
+        "added at the start, as written one way"
+    );
+    assert_eq!(
+        open("https://one.example.com").own_origins().len(),
+        2,
+        "an origin it had is not added again"
+    );
+    assert_eq!(
+        open("not an origin").own_origins().len(),
+        2,
+        "a url that is no origin is not kept"
+    );
+
+    for n in 0..25 {
+        open(&format!("https://node-{n}.example.com"));
+    }
+    let kept = open("https://last.example.com").own_origins();
+    assert_eq!(kept.len(), 20, "{kept:?}");
+    assert_eq!(kept[19], "https://last.example.com");
+    assert_eq!(
+        kept[0], "https://node-6.example.com",
+        "the oldest are forgotten first"
+    );
+    assert!(!kept.contains(&"https://one.example.com".to_owned()));
+}

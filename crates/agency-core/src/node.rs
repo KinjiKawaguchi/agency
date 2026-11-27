@@ -44,6 +44,10 @@ fn unreadable_line(error: &crate::error::Error) -> String {
     )
 }
 
+/// How many of the origins the node has been configured with are kept: the most recent. A node is renamed
+/// rarely, and a version of the org that names an origin older than these is read as naming another node.
+pub const MOST_OWN_ORIGINS: usize = 20;
+
 /// At most this many recent signed reads are remembered. A signature is remembered only once it is
 /// valid, so only members fill it; beyond it, the oldest are forgotten first.
 const READS_KEPT: usize = 10_000;
@@ -52,14 +56,44 @@ impl Node {
     /// `key` is this node's account key; it never leaves the node.
     pub fn open(ports: Ports, key: AccountKey) -> Result<Self> {
         let config = ports.store.load_config()?;
-        Ok(Self {
+        let node = Self {
             ports,
             key,
             config: RwLock::new(config),
             reads: Mutex::default(),
             bound_readers_lock: Mutex::default(),
             is_unreadable_said: AtomicBool::new(false),
-        })
+        };
+        node.remember_own_origin()?;
+        Ok(node)
+    }
+
+    /// Adds the origin this node is configured with now to those it has been configured with (kept: see
+    /// `own_origins`). A `url` that is no origin a client could use is not kept.
+    fn remember_own_origin(&self) -> Result<()> {
+        let Some(origin) = agency_proto::client::home_node_origin(&self.url()) else {
+            return Ok(());
+        };
+        let mut kept = self.store().own_origins();
+        if kept.contains(&origin) {
+            return Ok(());
+        }
+        kept.push(origin);
+        let start = kept.len().saturating_sub(MOST_OWN_ORIGINS);
+        self.store().save_own_origins(&kept[start..])
+    }
+
+    /// The origins this node has been configured with, as `home_node_origin` writes them: the ones kept at each
+    /// start, and the one it is configured with now. A team's place that names any of them is this node, so a
+    /// version that only renames the node's own origin moves no team.
+    pub fn own_origins(&self) -> Vec<String> {
+        let mut origins = self.store().own_origins();
+        if let Some(now) = agency_proto::client::home_node_origin(&self.url()) {
+            if !origins.contains(&now) {
+                origins.push(now);
+            }
+        }
+        origins
     }
 
     /// Accepts a valid signed read once. A signed read is good for `SKEW_SECONDS` either way of its
@@ -202,7 +236,9 @@ impl Node {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         edit(&mut guard);
-        self.ports.store.save_config(&guard)
+        self.ports.store.save_config(&guard)?;
+        drop(guard);
+        self.remember_own_origin()
     }
 
     /// The team, if this node serves it: it is in the node's own hosted-team configuration, and in the
