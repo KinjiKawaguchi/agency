@@ -204,6 +204,7 @@ enum Command {
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
+    Export(agency_node::export::ExportArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -599,6 +600,11 @@ async fn run(cli: Cli) -> Result<()> {
     if let Command::Metrics(args) = &cli.command {
         return metrics_cli::run(&data, args);
     }
+    if let Command::Export(args) = &cli.command {
+        if let Some(dir) = args.only_verifies() {
+            return agency_node::export::verify_dir(dir);
+        }
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
@@ -792,6 +798,7 @@ async fn run(cli: Cli) -> Result<()> {
             );
         }
         Command::Status => status(&node),
+        Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }
     Ok(())

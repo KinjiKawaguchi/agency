@@ -195,6 +195,24 @@ A root key that asks for the owner's presence (the macOS keychain) never signs b
 - **Limits:** at most 5 changes are held for one account in one org (409 beyond). A joiner's label must be 1 to 80 characters with no control character. A held change is dropped 7 days after it came (`PENDING_ROOT_DAYS`), by the node's own loop as well, which frees a held join's invite.
 - **The owner sees them:** `/api/me` gives the owner `rootChanges`, oldest first and absent when none: `{ id, org, kind, member, label?, device?, what, receivedAt }`, where `kind` is `addMember` (`label` the new member's name), `addDevice` (`label` and `device`, the device's id), or `removeDevice` (`device`), and `member` is the joiner or the device's owner. A client words it from `kind` in the screen's language and shows the English `what` only for a kind it does not know, and `agency status` counts them per org.
 
+## Exporting an org's records
+
+A company that adopts Agency asks how to get its data out: for an audit, for an archive when a project ends, or to leave. `agency export` writes an org's records out of a node, in files that check on their own.
+
+```
+agency export --org <org> --to <dir>
+agency export --verify <dir>
+```
+
+- **What it writes**, into a directory that is absent or empty (a directory that holds anything is refused and left as it is; the files and directories are readable by their owner only):
+  - `versions/000001.json`, `versions/000002.json`, and so on: every signed version of the org this node kept, each as it was signed, so that nothing is removed. A node that joined the org later keeps the versions from the one it joined at, and its export starts there.
+  - `decisions.json`: this node's decision log for the org, oldest first (the records of the Client API's decision log, including those of a hosted member, and the `signer` device id of each).
+  - `outcomes.json`: the numbers entered for the org's KPIs, in the order they were entered, when this node keeps any. They are kept on the owner's node only, so no other node's export has the file.
+  - `manifest.json`: `format` (1), the org, the `release` of the node that made it, `exportedAt`, the fingerprint of the root key of the last version (`rootFingerprint`), the first and last version, and for each other file its path, its `sha256` and its size in bytes.
+- **What it never writes:** a key or a secret. The account key, the CLI device's key and the org's root key are in no record it reads; the versions hold public keys only. What people typed in a decision's text is written as it was.
+- **`--verify`** needs no node and no key. It checks that the manifest is of a format it reads (a higher number is refused: it was made by a newer node), that every listed file is there with its size and SHA-256 and that no other file is, that the versions are the ones the manifest names, in order, that version 1 is signed by the root key and each next version as the one before it allows (an export of a member's node starts at the version it joined at, and its first version is checked against its own root key), that the last version's root key is the one the manifest names, and that the decisions and numbers read.
+- **What verification proves, and what it does not.** It proves that the files are the ones the manifest lists and that the org's versions are a chain the root key signed. The manifest is not signed, so someone who changes a file and the manifest together is caught only where a signature stands in the way: in the versions. The decisions and the numbers are the node's own records, which no one else signed. To fix an export in time, keep the SHA-256 of `manifest.json` somewhere else, and compare the root key fingerprint that `--verify` prints with the one you know the org by.
+
 ## Federation routes
 
 | Method | Path | Checked |
