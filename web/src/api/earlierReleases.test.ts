@@ -48,13 +48,20 @@ const TYPE_OF: Record<string, string> = {
   usage: 'TokenUsage',
 }
 /**
- * Answers that do not fit today's type, and why. This list is exact: an entry that no longer fails is an
- * error too, so that it is removed when the difference is.
+ * Answers that do not fit today's type, and why. This list is exact twice over: an entry whose file fits now is
+ * an error, so that it is removed when the difference is, and every complaint about the file must hold the
+ * message the entry expects, so that another break in the same file is not taken for the known one.
  */
-const KNOWN_DIFFERENCES: Record<string, string> = {
-  'v0.3.0/push-token':
-    '`id` was added after v0.3.0 (#453); the web client only reads its own node, and the Apple apps do not decode `id`. A client that reads other releases\' push tokens is when the type changes (AgencyCore, #580)',
-  'v0.3.0/push-token-list': 'the same: each token of the list has no `id` in v0.3.0',
+const KNOWN_DIFFERENCES: Record<string, { reason: string; expects: string }> = {
+  'v0.3.0/push-token': {
+    reason:
+      '`id` was added after v0.3.0 (#453); the web client only reads its own node, and the Apple apps do not decode `id`. A client that reads other releases\' push tokens is when the type changes (AgencyCore, #580)',
+    expects: "Property 'id' is missing",
+  },
+  'v0.3.0/push-token-list': {
+    reason: 'the same: each token of the list has no `id` in v0.3.0',
+    expects: "Property 'id' is missing",
+  },
 }
 /** An error answer is `{ "error": text }`, which the client reads by hand and has no generated type for. */
 const READ_BY_HAND = new Set(['error'])
@@ -88,6 +95,7 @@ function keptAnswers(): KeptAnswer[] {
 const PRELUDE = `type DeepWritable<T> = T extends readonly (infer U)[] ? DeepWritable<U>[] : T extends object ? { -readonly [K in keyof T]: DeepWritable<T[K]> } : T
 declare function answer<T>(value: T): DeepWritable<T>
 declare function reads<T>(value: T): void
+reads<string>(5) // the canary: the compiler must complain of this line, or it did not run
 `
 
 /** One line for each answer, in order, so that the compiler's line number says which one failed. */
@@ -101,8 +109,36 @@ function program(answers: KeptAnswer[]): string {
   return [...imports, ...PRELUDE.trimEnd().split('\n'), ...lines].join('\n') + '\n'
 }
 
-/** The compiler's complaints, by the answer they are about: `<tag>/<name>: <message>`. */
-function typeErrors(answers: KeptAnswer[]): string[] {
+interface Complaint {
+  line: number
+  text: string
+}
+
+/** The compiler's complaints as it wrote them, a message with its continuation lines in one. */
+function complaintsOf(output: string): Complaint[] {
+  const found: Complaint[] = []
+  for (const line of output.split('\n')) {
+    const at = /answers\.ts\((\d+),\d+\): error (.*)$/.exec(line)
+    if (at) found.push({ line: Number(at[1]), text: at[2] ?? '' })
+    else if (/^\s/.test(line) && found.length > 0) found[found.length - 1]!.text += ` ${line.trim()}`
+  }
+  return found
+}
+
+/** What `tsc` said, when it ran: it exits 1 or 2 when it has complaints and 0 when it has none. */
+function compile(dir: string): string {
+  const tsc = join(process.cwd(), 'node_modules', 'typescript', 'lib', 'tsc.js')
+  try {
+    return execFileSync(process.execPath, [tsc, '-p', dir, '--pretty', 'false'], { encoding: 'utf8', stdio: 'pipe' })
+  } catch (error) {
+    const failure = error as { status?: number; stdout?: string }
+    if (failure.status === 1 || failure.status === 2) return failure.stdout ?? ''
+    throw error
+  }
+}
+
+/** The compiler's complaints about the answers, by the answer they are about: `<tag>/<name>`. */
+function typeErrors(answers: KeptAnswer[]): { answer: string; text: string }[] {
   const dir = mkdtempSync(join(tmpdir(), 'earlier-releases-'))
   try {
     const source = program(answers)
@@ -122,21 +158,16 @@ function typeErrors(answers: KeptAnswer[]): string[] {
         files: ['answers.ts'],
       }),
     )
-    const tsc = join(process.cwd(), 'node_modules', 'typescript', 'lib', 'tsc.js')
-    let output = ''
-    try {
-      execFileSync(process.execPath, [tsc, '-p', dir, '--pretty', 'false'], { encoding: 'utf8', stdio: 'pipe' })
-    } catch (error) {
-      output = String((error as { stdout?: string }).stdout ?? error)
-    }
+    const complaints = complaintsOf(compile(dir))
     const firstAnswerLine = source.split('\n').length - answers.length
-    return output
-      .split('\n')
-      .filter((line) => line.includes('error TS'))
-      .map((line) => {
-        const at = /answers\.ts\((\d+),/.exec(line)
-        const kept = at ? answers[Number(at[1]) - firstAnswerLine] : undefined
-        return `${kept ? `${kept.tag}/${kept.name}` : 'program'}: ${line.replace(/^.*error /, '')}`
+    if (!complaints.some(({ line }) => line === firstAnswerLine - 1)) {
+      throw new Error('the compiler did not complain of the canary line: it did not check the answers')
+    }
+    return complaints
+      .filter(({ line }) => line >= firstAnswerLine)
+      .map(({ line, text }) => {
+        const kept = answers[line - firstAnswerLine]
+        return { answer: kept ? `${kept.tag}/${kept.name}` : 'program', text }
       })
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -154,9 +185,9 @@ describe('the answers of earlier nodes, read with this client', () => {
 
   it('fit the generated types, except the differences named above', () => {
     const errors = typeErrors(answers)
-    const unexpected = errors.filter((error) => !Object.keys(KNOWN_DIFFERENCES).some((key) => error.startsWith(`${key}:`)))
+    const unexpected = errors.filter(({ answer, text }) => !text.includes(KNOWN_DIFFERENCES[answer]?.expects ?? '\u0000'))
     expect(unexpected).toEqual([])
-    const gone = Object.keys(KNOWN_DIFFERENCES).filter((key) => !errors.some((error) => error.startsWith(`${key}:`)))
+    const gone = Object.keys(KNOWN_DIFFERENCES).filter((key) => !errors.some(({ answer }) => answer === key))
     expect(gone, 'these answers fit now: remove them from KNOWN_DIFFERENCES').toEqual([])
   })
 

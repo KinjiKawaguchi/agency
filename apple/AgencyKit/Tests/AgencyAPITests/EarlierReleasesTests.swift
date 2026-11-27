@@ -65,8 +65,8 @@ struct EarlierReleasesTests {
         #expect(failures == [])
     }
 
-    /// Whether `read` names a type for the file: with no bytes, a name it knows fails to decode, and one it does not know
-    /// returns false.
+    /// Whether `read` names a type for the file: with no bytes, a name it knows fails to decode (empty data is not JSON,
+    /// whatever the type), and one it does not know returns false.
     private func isNamed(_ name: String) -> Bool {
         do { return try read(name, Data()) } catch { return true }
     }
