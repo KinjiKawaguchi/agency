@@ -1,0 +1,47 @@
+{
+  "at": "2026-11-24T12:00:00Z",
+  "departments": [],
+  "label": "Acme",
+  "org": "acme",
+  "people": [
+    {
+      "account": "alice",
+      "department": null,
+      "devices": [
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-dbc298251c51",
+          "label": "Laptop",
+          "publicKey": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg="
+        }
+      ],
+      "id": "alice",
+      "label": "ALICE",
+      "publicKey": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
+      "role": "member"
+    },
+    {
+      "account": "bob",
+      "department": null,
+      "id": "bob",
+      "label": "BOB",
+      "publicKey": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+      "role": "member"
+    }
+  ],
+  "prev": "06aa62e22cb0a7d46650820f188b8a3bf06f604de61dd64007b0a192e454ff76",
+  "revoked": [],
+  "root": {
+    "account": "alice",
+    "publicKey": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w="
+  },
+  "teams": [
+    {
+      "department": null,
+      "id": "app",
+      "label": "app",
+      "node": "http://127.0.0.1:7701"
+    }
+  ],
+  "version": 4
+}
