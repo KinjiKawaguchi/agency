@@ -366,6 +366,11 @@ impl GuestStore for DataDir {
         remove(&self.guest_path(email))
     }
 
+    /// The records in `guests/`, one file each (the notified lists are in a directory of their own).
+    fn guests(&self) -> Vec<Guest> {
+        read_all(&self.dir("guests"))
+    }
+
     /// `guests/notified/<sha256 of org/member>.json`.
     fn guest_notified(&self, guest: &GuestRef) -> Option<Vec<String>> {
         read_json(&self.guest_notified_path(guest))

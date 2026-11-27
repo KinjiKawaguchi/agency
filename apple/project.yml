@@ -102,6 +102,10 @@ targets:
         # A push with `content-available` wakes the app to read the desk for the widgets (agency#261).
         UIBackgroundModes:
           - remote-notification
+          # A later run for the decisions kept on the device that could not be sent (BGAppRefreshTask).
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - $(PRODUCT_BUNDLE_IDENTIFIER).outbox
         # The app only uses HTTPS, which needs no export compliance paperwork.
         ITSAppUsesNonExemptEncryption: false
         # Lets a node on this device or the local network be opened over plain http.
