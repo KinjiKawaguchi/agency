@@ -6,10 +6,11 @@ use super::period::Period;
 use super::red::red_spans;
 use agency_proto::clock::{OffsetDateTime, UtcOffset};
 use agency_proto::evaluation::{
-    median, p90, DayEvaluation, EvaluationSummary, MergedCounts, TeamEvaluation,
+    median, p90, DayEvaluation, EvaluationSummary, MergedCounts, RepositoryEvaluation,
+    TeamEvaluation,
 };
 use agency_proto::{Date, Id};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Everything one team's numbers are worked out from.
 pub struct Input<'a> {
@@ -156,6 +157,60 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
     }
 }
 
+/// The summary of each repository that had a merged pull request or a CI run in the period, by name: its own
+/// pull requests and the runs of its own default branch, and no cost (the cost is the team's tokens by day).
+/// None unless at least two repositories had one, where a repository's summary would repeat the team's.
+fn by_repository(input: &Input, period: &Period) -> Vec<RepositoryEvaluation> {
+    let active = input
+        .pull_requests
+        .iter()
+        .filter(|one| period.contains(one.merged_at))
+        .map(|one| &one.repo)
+        .chain(
+            input
+                .runs
+                .iter()
+                .filter(|one| period.contains(one.finished_at))
+                .map(|one| &one.repo),
+        )
+        .collect::<BTreeSet<_>>();
+    if active.len() < 2 {
+        return vec![];
+    }
+    active
+        .into_iter()
+        .map(|repo| {
+            let pull_requests: Vec<MergedPullRequest> = input
+                .pull_requests
+                .iter()
+                .filter(|one| &one.repo == repo)
+                .cloned()
+                .collect();
+            let runs: Vec<MainRun> = input
+                .runs
+                .iter()
+                .filter(|one| &one.repo == repo)
+                .cloned()
+                .collect();
+            let own = Input {
+                pull_requests: &pull_requests,
+                runs: &runs,
+                cost_by_day: &[],
+                ..*input
+            };
+            let mut days = BTreeMap::new();
+            add_pull_requests(&mut days, period, &own);
+            let longest = add_red(&mut days, period, &own);
+            let mut summary = summarize(&days, longest);
+            summary.cost_per_merged_pr_usd = None;
+            RepositoryEvaluation {
+                repo: repo.clone(),
+                summary,
+            }
+        })
+        .collect()
+}
+
 /// The team's delivery numbers over the last `input.days` calendar days.
 pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
     let period = Period::new(input.now, input.offset, input.days);
@@ -164,6 +219,7 @@ pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
     let longest = add_red(&mut days, &period, input);
     add_costs(&mut days, &period, input);
     let summary = summarize(&days, longest);
+    let by_repository = by_repository(input, &period);
     let by_day = days
         .into_iter()
         .filter(|(_, day)| !day.is_empty())
@@ -185,5 +241,6 @@ pub fn evaluate(team: Id, input: &Input) -> TeamEvaluation {
         by_day,
         participants: vec![],
         unattributed_merged: 0,
+        by_repository,
     }
 }

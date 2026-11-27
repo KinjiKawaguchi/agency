@@ -361,7 +361,10 @@ fn is_repository(name: &str) -> bool {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
     };
-    name.len() <= MAX_REPOSITORY_BYTES && name.split_once('/').is_some_and(|(owner, repo)| part(owner) && part(repo))
+    name.len() <= MAX_REPOSITORY_BYTES
+        && name
+            .split_once('/')
+            .is_some_and(|(owner, repo)| part(owner) && part(repo))
 }
 
 /// Checks a team's repositories: named `owner/name`, in order and once, with no cost, and adding up to the
@@ -406,7 +409,10 @@ fn check_by_repository(team: &TeamEvaluation) -> Result<(), String> {
     {
         return Err("reported repositories whose pull requests do not add up to the team's".into());
     }
-    let red: Vec<u64> = found.iter().map(|one| one.summary.main_red_seconds).collect();
+    let red: Vec<u64> = found
+        .iter()
+        .map(|one| one.summary.main_red_seconds)
+        .collect();
     let total = red.iter().fold(0u64, |sum, part| sum.saturating_add(*part));
     let longest = red.iter().copied().max().unwrap_or(0);
     if team.summary.main_red_seconds < longest || team.summary.main_red_seconds > total {
@@ -524,6 +530,66 @@ mod tests {
         let read: Evaluation = serde_json::from_value(old).unwrap();
         assert_eq!(read.check(&acme(), 14), Ok(()));
         assert!(read.teams[0].participants.is_empty());
+    }
+
+    #[test]
+    fn a_team_with_two_repositories_breaks_its_numbers_down_and_a_team_with_one_does_not() {
+        let value = serde_json::to_value(sample()).unwrap();
+        let repos = value["teams"][0]["byRepository"].as_array().unwrap();
+        assert_eq!(repos.len(), 2);
+        assert!(repos[0]["summary"].get("costPerMergedPrUsd").is_none());
+        assert!(value["teams"][1].get("byRepository").is_none());
+        // An answer of a node that does not know of it still reads.
+        let mut old = value.clone();
+        old["teams"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("byRepository");
+        let read: Evaluation = serde_json::from_value(old).unwrap();
+        assert_eq!(read.check(&acme(), 14), Ok(()));
+        assert!(read.teams[0].by_repository.is_empty());
+    }
+
+    #[test]
+    fn refuses_repositories_that_are_not_well_formed_or_do_not_add_up_to_the_team() {
+        let refused = |change: &dyn Fn(&mut TeamEvaluation)| {
+            let mut report = sample();
+            change(&mut report.teams[0]);
+            report.check(&acme(), 14).unwrap_err()
+        };
+        assert!(refused(&|t| t.by_repository[0].summary.merged.feat += 1).contains("do not add up"));
+        assert!(refused(&|t| t.by_repository[1].summary.reverts = 0).contains("do not add up"));
+        assert!(refused(&|t| t.by_repository.reverse()).contains("out of order"));
+        assert!(refused(&|t| t.by_repository[1].repo = "acme/app".into())
+            .contains("out of order or twice"));
+        for bad in ["acme", "acme/", "/web", "acme/we b", "acme/web/x", ""] {
+            let bad = bad.to_owned();
+            assert!(
+                refused(&|t| t.by_repository[1].repo = bad.clone()).contains("owner/name"),
+                "{bad}"
+            );
+        }
+        assert!(
+            refused(&|t| t.by_repository[0].summary.cost_per_merged_pr_usd = Some(1.0))
+                .contains("has none")
+        );
+        assert!(
+            refused(&|t| t.by_repository[0].summary.main_red_seconds = 1799).contains("red time")
+        );
+        assert!(
+            refused(&|t| t.by_repository[0].summary.main_red_seconds = 1801).contains("red time")
+        );
+        assert!(refused(&|t| t.summary.main_red_seconds = 3601).contains("red time"));
+        assert!(refused(&|t| {
+            let one = t.by_repository[0].clone();
+            t.by_repository = (0..=MAX_REPOSITORIES)
+                .map(|n| RepositoryEvaluation {
+                    repo: format!("acme/r{n:03}"),
+                    ..one.clone()
+                })
+                .collect();
+        })
+        .contains("more repositories"));
     }
 
     #[test]

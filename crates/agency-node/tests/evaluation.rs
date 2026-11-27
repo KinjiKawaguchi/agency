@@ -121,6 +121,51 @@ async fn a_member_reads_the_evaluation_of_a_team_that_has_repositories() {
     );
 }
 
+#[tokio::test]
+async fn a_team_with_two_repositories_reports_each_ones_numbers_beside_its_own() {
+    let (alice, _) = alice().await;
+    alice
+        .node
+        .update_config(|config| {
+            let team = config.teams.remove(0);
+            config.teams.insert(
+                0,
+                team.with_delivery(vec!["acme/app".into(), "acme/web".into()]),
+            );
+        })
+        .unwrap();
+    let mut both = facts();
+    let mut in_web = both.pull_requests[0].clone();
+    in_web.repo = "acme/web".into();
+    in_web.number = 7;
+    in_web.title = "fix(web): a crash".into();
+    both.pull_requests.push(in_web);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(both));
+    let bob = joined_bob(&alice).await;
+
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let evaluation: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!(evaluation.check(&id("acme"), 14), Ok(()));
+    let team = &evaluation.teams[0];
+    let [app, web] = &team.by_repository[..] else {
+        panic!("two repositories: {:?}", team.by_repository);
+    };
+    assert_eq!(
+        (app.repo.as_str(), web.repo.as_str()),
+        ("acme/app", "acme/web")
+    );
+    assert_eq!((app.summary.merged.feat, app.summary.merged.fix), (1, 0));
+    assert_eq!((web.summary.merged.feat, web.summary.merged.fix), (0, 1));
+    assert_eq!(
+        (app.summary.main_red_seconds, web.summary.main_red_seconds),
+        (3600, 0),
+        "the red run is acme/app's"
+    );
+    assert_eq!(team.summary.merged.feat + team.summary.merged.fix, 2);
+    assert_eq!(team.summary.main_red_seconds, 3600);
+}
+
 const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
 
 /// alice's evaluation of `acme/app` over 14 days as bob reads it, and what her runtime was asked.
