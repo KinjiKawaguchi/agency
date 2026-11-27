@@ -429,6 +429,10 @@
   background: var(--ink);
 }
 
+.ev-meter span.warning {
+  background: var(--hold);
+}
+
 .ev-meter span.over {
   background: var(--seal);
 }

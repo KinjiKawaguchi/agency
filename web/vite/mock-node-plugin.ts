@@ -40,6 +40,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
+    // The weekly budget is the node's answer, which the evaluation screen shows beside the effort.
+    ...(evaluation === '1' ? { budget: true as const } : {}),
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',

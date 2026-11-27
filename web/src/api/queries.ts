@@ -92,6 +92,13 @@ export const numberHistoryQuery = (api: ApiClient, org: string, kpi: string) =>
 export const readingsQuery = (api: ApiClient, org: string) =>
   queryOptions({ queryKey: ['readings', org], queryFn: () => api.readings(org), staleTime: 2 * POLL_MS })
 
+/** What the node says about itself: read once, since its capabilities change only when it is replaced. */
+export const aboutQuery = (api: ApiClient) => queryOptions({ queryKey: ['about'], queryFn: () => api.about(), staleTime: 10 * 60_000 })
+
+/** A team's weekly budget as the node computes it. */
+export const budgetQuery = (api: ApiClient, org: string, team: string) =>
+  queryOptions({ queryKey: ['budget', org, team], queryFn: () => api.budget(org, team), staleTime: 2 * POLL_MS })
+
 export const effortQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['effort', org, days], queryFn: () => api.effort(org, days), staleTime: 2 * POLL_MS })
 
