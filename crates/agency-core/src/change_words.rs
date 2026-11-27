@@ -214,6 +214,26 @@ fn all_changes(before: &OrgDefinition, after: &OrgDefinition) -> Vec<Change> {
     changes
 }
 
+/// Every change from `before` to `after` in words, one each, none left out: what an audit of the org lists
+/// (`audit`). A change these words do not know yet is said as such, never left unsaid.
+pub fn every_change(before: &OrgDefinition, after: &OrgDefinition) -> Vec<String> {
+    let changes: Vec<String> = all_changes(before, after)
+        .into_iter()
+        .map(|one| one.words)
+        .collect();
+    if !changes.is_empty() {
+        return changes;
+    }
+    let mut same_place = after.clone();
+    same_place.version = before.version;
+    same_place.prev = before.prev.clone();
+    same_place.at = before.at.clone();
+    if &same_place == before {
+        return vec![];
+    }
+    vec!["change something these words do not name".to_owned()]
+}
+
 /// The changes from `before` to `after`, for org `after.org`: up to `MOST_NAMED` named one by one, and the
 /// rest counted with their kinds, so nothing a press signs goes unsaid.
 pub fn describe(before: Option<&OrgDefinition>, after: &OrgDefinition) -> String {

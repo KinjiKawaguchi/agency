@@ -4,6 +4,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod audit;
 pub mod budget;
 pub mod capabilities;
 pub mod change_words;
