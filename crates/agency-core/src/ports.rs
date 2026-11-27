@@ -243,6 +243,8 @@ pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
+    /// Every guest record this node keeps.
+    fn guests(&self) -> Vec<crate::guests::Guest>;
     /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
     fn guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Option<Vec<String>>;
     fn save_guest_notified(

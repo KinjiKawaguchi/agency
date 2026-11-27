@@ -26,6 +26,7 @@ pub mod guests;
 pub mod invites;
 pub mod kpis;
 pub mod logging_config;
+pub mod members;
 pub mod metrics_config;
 pub mod node;
 pub mod notice;
