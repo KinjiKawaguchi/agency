@@ -104,9 +104,28 @@ describe('the weekly budget, as the node computed it', () => {
     expect(screen.getByText('組織の使用量に読めなかったものがあります: 今週は $500 のうち、少なくとも $311。')).toBeInTheDocument()
   })
 
-  it('draws nothing for a team with no cap: it has no plan', () => {
+  it('draws no meter for a team with no cap, and nothing at all while its org is within its budget', () => {
     const { container } = draw({ spentUsd: 40, state: 'ok' })
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it.each([
+    ['over', 'The org is over its weekly budget: $640 of $500.'],
+    ['warning', 'The org is close to its weekly budget: $411 of $500.'],
+  ] as const)('says the org is %s for a team with no cap, which is over with it, and draws no meter', (state, words) => {
+    const { container } = draw({ spentUsd: 40, state: state === 'over' ? 'over' : 'ok' }, { capUsd: 500, spentUsd: state === 'over' ? 640 : 411, state })
+    expect(screen.getByText(words)).toBeInTheDocument()
+    expect(container.querySelector('.ev-meter')).toBeNull()
+  })
+
+  it('says the org’s lower bound for a team with no cap when part of the org’s usage was not read', () => {
+    draw({ spentUsd: 0, state: 'ok' }, { capUsd: 500, spentUsd: 311, state: 'ok', partial: true })
+    expect(screen.getByText('Some of the org’s usage could not be read: at least $311 of $500 this week.')).toBeInTheDocument()
+  })
+
+  it('does not fill the bar of a cap of nothing unless the node says over', () => {
+    const { container } = draw({ capUsd: 0, spentUsd: 0, state: 'ok' })
+    expect(fill(container).style.width).toBe('0%')
   })
 
   it('says it in Japanese', () => {

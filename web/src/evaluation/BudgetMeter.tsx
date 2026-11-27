@@ -8,12 +8,13 @@ import { useI18n } from '../i18n'
  * The org's budget is said when the node says it is not `ok`, since an org that is over makes its teams over, and when part of it was not read.
  */
 export function BudgetMeter({ status }: { status: BudgetStatus }) {
-  const { t, fmt } = useI18n()
+  const { t } = useI18n()
+  const money = useMoney()
   const text = t.evaluation.effort.budget
-  const money = (value: number): string => (value === 0 ? '$0' : fmt.money(value))
   const { team, org, weekStart } = status
   const cap = team.capUsd
-  if (cap === undefined) return null
+  // A team with no cap has no meter of its own, but its org's budget is still its own business: an org that is over makes every team over.
+  if (cap === undefined) return <OrgLine org={org} />
   return (
     <div className="ev-budget">
       <p className="card-head">
@@ -24,7 +25,7 @@ export function BudgetMeter({ status }: { status: BudgetStatus }) {
       ) : (
         <>
           <div className="ev-meter" role="img" aria-label={text.meter(money(team.spentUsd), money(cap), text.states[team.state])}>
-            <span className={team.state === 'ok' ? '' : team.state} style={{ width: `${cap === 0 ? 100 : Math.min(team.spentUsd / cap, 1) * 100}%` }} />
+            <span className={team.state === 'ok' ? '' : team.state} style={{ width: `${cap === 0 ? (team.state === 'over' ? 100 : 0) : Math.min(team.spentUsd / cap, 1) * 100}%` }} />
           </div>
           <p className="ev-budget-note">{text.states[team.state]}</p>
         </>
@@ -34,10 +35,16 @@ export function BudgetMeter({ status }: { status: BudgetStatus }) {
   )
 }
 
+/** Money as the budget writes it: a bare `$0` for nothing. */
+function useMoney(): (value: number) => string {
+  const { fmt } = useI18n()
+  return (value) => (value === 0 ? '$0' : fmt.money(value))
+}
+
 function OrgLine({ org }: { org: BudgetPart }) {
-  const { t, fmt } = useI18n()
+  const { t } = useI18n()
+  const money = useMoney()
   const text = t.evaluation.effort.budget
-  const money = (value: number): string => (value === 0 ? '$0' : fmt.money(value))
   if (org.capUsd === undefined) return null
   if (org.state === 'ok') return org.partial === true ? <p className="ev-budget-note">{text.orgPartialOk(money(org.spentUsd), money(org.capUsd))}</p> : null
   return (
