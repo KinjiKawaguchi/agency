@@ -423,10 +423,10 @@ struct DecisionOutboxTests {
         for status in [425, 500, 502, 504, 599] {
             #expect(SendFailure.of(NodeError.http(status: status, message: nil)) == .retry(reason: "HTTP \(status)"), Comment(rawValue: "\(status)"))
         }
-        for status in [400, 403, 404, 409] {
+        for status in [400, 401, 403, 404, 409] {
             #expect(SendFailure.of(NodeError.http(status: status, message: "no")) == .final(reason: "no"), Comment(rawValue: "\(status)"))
         }
-        #expect(SendFailure.of(NodeError.http(status: 401, message: "no token")) == .signInEnded, "the gate does not know the token")
+        #expect(SendFailure.of(NodeError.http(status: 401, message: "device not allowed")) == .final(reason: "device not allowed"), "a device that was removed signs for nobody: sending again cannot mend it")
         #expect(SendFailure.of(NodeError.notSignedIn) == .signInEnded && SendFailure.of(NodeError.sessionExpired) == .signInEnded)
         #expect(SendFailure.of(NodeError.unreadable("x")) == .taken)
         #expect([1, 2, 3, 4, 5, 9].map(SendFailure.delay(afterAttempts:)) == [5, 15, 60, 300, 300, 300])

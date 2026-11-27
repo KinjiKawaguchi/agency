@@ -38,7 +38,7 @@ private struct ShellChrome: ViewModifier {
                 if scenePhase == .active { await model.watchOutbox() }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .background { Task { await model.keepSending() } }
+                if phase == .background { model.keepSending() }
             }
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }

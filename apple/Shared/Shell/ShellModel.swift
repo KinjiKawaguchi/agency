@@ -147,9 +147,9 @@ final class ShellModel {
     }
 
     /// The app has left the screen: what is due is sent in the time the system gives, and a later run is asked for what still waits.
-    func keepSending() async {
+    func keepSending() {
         guard let outbox = session?.desk.outbox else { return }
-        await OutboxBackground.finish(outbox)
+        OutboxBackground.finish(outbox)
     }
 
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
