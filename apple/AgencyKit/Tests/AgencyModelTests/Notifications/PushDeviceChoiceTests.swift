@@ -9,23 +9,28 @@ struct PushDeviceChoiceTests {
 
     @Test("a node that lists pushDevice is sent this phone's id once it is in the list")
     func named() {
-        #expect(PushDeviceChoice.device(about: capable, thisDeviceID: "d-me", registered: nil) == "d-me")
+        #expect(PushDeviceChoice.decide(about: capable, thisDeviceID: "d-me", registered: nil) == .withDevice("d-me"))
     }
 
-    @Test("a node that does not list it, or has not been read, is sent none: any other answers 400 for the field")
-    func notNamed() {
-        #expect(PushDeviceChoice.device(about: older, thisDeviceID: "d-me", registered: nil) == nil)
-        #expect(PushDeviceChoice.device(about: nil, thisDeviceID: "d-me", registered: nil) == nil)
-        #expect(PushDeviceChoice.device(about: older, thisDeviceID: "d-me", registered: "d-me") == nil)
+    @Test("a node that does not list it is sent none: any other answers 400 for the field")
+    func notCapable() {
+        #expect(PushDeviceChoice.decide(about: older, thisDeviceID: "d-me", registered: nil) == .withoutDevice)
+        #expect(PushDeviceChoice.decide(about: older, thisDeviceID: nil, registered: "d-me") == .withoutDevice)
+        #expect(PushDeviceChoice.decide(about: About(capabilities: []), thisDeviceID: nil, registered: nil) == .withoutDevice)
     }
 
-    @Test("a phone that is not in the list yet names none: the node refuses a device that is not the account's")
+    @Test("what the node says of itself is waited for, not guessed")
+    func unread() {
+        #expect(PushDeviceChoice.decide(about: nil, thisDeviceID: "d-me", registered: nil) == .notYet)
+    }
+
+    @Test("a phone that is not in the list is not registered on a node that ties registrations to devices: an unnamed one would outlive its removal")
     func notAddedYet() {
-        #expect(PushDeviceChoice.device(about: capable, thisDeviceID: nil, registered: nil) == nil)
+        #expect(PushDeviceChoice.decide(about: capable, thisDeviceID: nil, registered: nil) == .notYet)
     }
 
     @Test("a phone that was named and has left the list keeps its registration's device, and is not registered again without it")
     func removed() {
-        #expect(PushDeviceChoice.device(about: capable, thisDeviceID: nil, registered: "d-me") == "d-me")
+        #expect(PushDeviceChoice.decide(about: capable, thisDeviceID: nil, registered: "d-me") == .withDevice("d-me"))
     }
 }

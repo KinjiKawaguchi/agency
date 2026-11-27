@@ -136,13 +136,31 @@ final class NativeSession {
         widgets.publish(items: desk.items)
     }
 
+    /// What the node says of itself, read until it has answered: a node that has no such route (404) has no capabilities, once and for good,
+    /// and any other failure is tried again at the next registration.
+    private func readAbout() async {
+        guard nodeAbout == nil else { return }
+        do {
+            nodeAbout = try await client.about()
+        } catch NodeError.http(let status, _) where status == 404 {
+            nodeAbout = About(capabilities: [])
+        } catch {
+            // Not registered until it has been read.
+        }
+    }
+
     /// Tells the node this phone's push token and the kinds of notification the owner wants, once the desk can be
     /// read. Registering a known token only updates it, so a change of the kinds is told the same way.
     func registerPush(_ registration: PushRegistration) async {
         ownPushToken.value = registration.token
         guard desk.loading == .loaded else { return }
-        if nodeAbout == nil { nodeAbout = try? await client.about() }
-        let device = PushDeviceChoice.device(about: nodeAbout, thisDeviceID: devices?.thisDeviceID, registered: registeredPush?.device)
+        await readAbout()
+        let device: String?
+        switch PushDeviceChoice.decide(about: nodeAbout, thisDeviceID: devices?.thisDeviceID, registered: registeredPush?.device) {
+        case .notYet: return
+        case .withoutDevice: device = nil
+        case .withDevice(let id): device = id
+        }
         let state = RegisteredPush(registration: registration, events: notifications.preferences.pushEventNames, device: device)
         guard state != registeredPush else { return }
         do {
@@ -153,7 +171,8 @@ final class NativeSession {
             registeredPush = state
             nodeSendsPushKinds = outcome == .withKinds
         } catch NodeError.http(let status, _) where status == 400 && device != nil {
-            // The node refused the device: it is not one of the account's now, and the list is read again. Not registered without it.
+            // The node refused the device: it is not one of the account's now, and the list is read again. Not registered without it. A 400
+            // for another reason reads the list again at each try, which is a read and nothing more.
             await devices?.refresh()
         } catch {
             // Tried again at the next change or the next launch.
