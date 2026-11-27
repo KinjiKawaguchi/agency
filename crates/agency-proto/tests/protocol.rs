@@ -9,6 +9,7 @@ use agency_proto::outcome::{
     Aim, Currency, GoodWhen, Kpi, KpiKind, KpiUnit, EPIC, MAX_AIMS, MAX_KPIS,
 };
 use agency_proto::seat::{External, Seat};
+use agency_proto::signed::{is_node_id, read_text, read_text_for};
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
     Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
@@ -824,6 +825,79 @@ fn a_plan_allocation_adds_up_to_100() {
     assert!(body.validate().is_err(), "no overflow to 100");
 }
 
+const READ_PATH: &str = "/fed/v1/teams/acme/app/view";
+const READ_DATE: &str = "2026-11-24T12:00:00.123Z";
+const READ_AUDIENCE: &str = "02ae509c6b20999646d3c600687ee1bf";
+const OTHER_AUDIENCE: &str = "0881dc11d90faa5bd241e84dd481c251";
+
+/// A signed read as the account key (seed 7) makes it for a node, in the two texts a node reads: the one that
+/// names no node (`agency/v1/read`) and the one bound to the node it is made for (`agency/v2/read`).
+fn signed_read(key: &AccountKey) -> serde_json::Value {
+    let alice = id("alice");
+    let unbound = read_text("GET", READ_PATH, READ_DATE, &alice);
+    let bound = read_text_for("GET", READ_PATH, READ_DATE, &alice, READ_AUDIENCE);
+    serde_json::json!({
+        "audience": READ_AUDIENCE,
+        "unbound": { "text": unbound, "signature": key.sign(&Kind::Read.message(&unbound)) },
+        "bound": { "text": bound, "signature": key.sign(&Kind::ReadFor.message(&bound)) },
+    })
+}
+
+#[test]
+fn a_read_bound_to_a_node_is_no_read_for_another_node_and_no_unbound_read() {
+    let key = AccountKey::from_seed([7u8; 32]);
+    let alice = id("alice");
+    let public = key.public();
+    let bound = |audience: &str| {
+        Kind::ReadFor.message(&read_text_for(
+            "GET", READ_PATH, READ_DATE, &alice, audience,
+        ))
+    };
+    let unbound = Kind::Read.message(&read_text("GET", READ_PATH, READ_DATE, &alice));
+    let signature = key.sign(&bound(READ_AUDIENCE));
+    assert!(public.verify(&bound(READ_AUDIENCE), &signature));
+    assert!(
+        !public.verify(&bound(OTHER_AUDIENCE), &signature),
+        "another node's id"
+    );
+    assert!(
+        !public.verify(&unbound, &signature),
+        "the signature is not one over the unbound text"
+    );
+    let unbound_signature = key.sign(&unbound);
+    assert!(public.verify(&unbound, &unbound_signature));
+    assert!(
+        !public.verify(&bound(READ_AUDIENCE), &unbound_signature),
+        "an unbound signature is no bound one"
+    );
+    let v1_kind_over_bound_lines = Kind::Read.message(&read_text_for(
+        "GET",
+        READ_PATH,
+        READ_DATE,
+        &alice,
+        READ_AUDIENCE,
+    ));
+    assert!(
+        !public.verify(&v1_kind_over_bound_lines, &signature),
+        "the kind line differs, so the bound lines under the v1 kind are not the bound text"
+    );
+}
+
+#[test]
+fn a_node_id_is_thirty_two_lowercase_hex_characters() {
+    assert!(is_node_id(READ_AUDIENCE));
+    for refused in [
+        "",
+        "02AE509C6B20999646D3C600687EE1BF",
+        "02ae509c6b20999646d3c600687ee1b",
+        "02ae509c6b20999646d3c600687ee1bff",
+        "02ae509c6b20999646d3c600687ee1bg",
+        "02ae509c6b20999646d3c600687ee1b\n",
+    ] {
+        assert!(!is_node_id(refused), "{refused:?}");
+    }
+}
+
 #[test]
 fn vectors_match_testdata() {
     let key = AccountKey::from_seed([7u8; 32]);
@@ -872,6 +946,7 @@ fn vectors_match_testdata() {
         "rootRecovery": root_recovery(&key, &org),
         "orgWithOutcomes": org_with_outcomes(&key, &org),
         "deviceChangeP256": device_change_p256(),
+        "signedRead": signed_read(&key),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
     if std::env::var("AGENCY_WRITE_VECTORS").is_ok() {

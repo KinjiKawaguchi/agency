@@ -21,6 +21,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Machine** (マシン). The computer a node runs on. A machine can run several nodes (each with its own data directory).
 - **Node** (ノード). One running `agency` with its data directory: its account key, its replicas, its outbox, its configuration. It serves federation routes, the Client API, and the web client on one port.
 - **Node origin**. The URL other nodes reach a node at (`url` in `config.json`, `teams[].node`, an invite's `node`).
+- **Node id**. The first 16 bytes of the SHA-256 of `agency-node:` and the node's origin, as 32 lowercase hex characters (`testdata/node-id.json`). A node puts it in its pushes (`agency.node`), and a node that reads another names it in a signed read (`x-agency-audience`), so that the read is good for that node only. It is not a secret and not the host name. A node whose `url` is not a node origin has none. Not shown to people.
 - **Public host name** (ホスト名). The name a node is reached at from outside, through Cloudflare (`access.publicHost`). It is a name, never a machine. The node's origin and its public host name can be the same host name, but they are two settings.
 
 ## Orgs and teams

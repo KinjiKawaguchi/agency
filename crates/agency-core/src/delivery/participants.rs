@@ -123,6 +123,7 @@ mod tests {
             first_commit_at: None,
             has_issue: false,
             issue_started_at: None,
+            closes_incident: false,
         }
     }
 

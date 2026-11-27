@@ -19,6 +19,7 @@ pub mod directory;
 pub mod effort;
 pub mod error;
 pub mod evaluation;
+pub mod federation_config;
 pub mod funding_pick;
 pub mod guest_push;
 pub mod guest_reads;

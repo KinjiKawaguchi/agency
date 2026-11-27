@@ -274,6 +274,12 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     if !is_node_origin(&config.url) {
         bail!("--url must be http(s)://host[:port]");
     }
+    if agency_proto::runtime::is_reserved_name(&config.account.id) {
+        bail!(
+            "--account {} is a name a team runtime reserves; choose another account id",
+            config.account.id
+        );
+    }
     let key = data.create_key()?;
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
@@ -303,6 +309,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::read_auth::status_lines(node) {
+        println!("{line}");
+    }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
     }
