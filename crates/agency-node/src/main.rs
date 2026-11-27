@@ -68,6 +68,10 @@ enum Command {
         /// The path of the harness CLI (scrum)
         #[arg(long, default_value = "scrum")]
         scrum: PathBuf,
+        /// Refuse every direct local request to the Client API and the web client (`"localClients": false`),
+        /// for a machine that other accounts log in to. Federation keeps working
+        #[arg(long)]
+        no_local_clients: bool,
     },
     /// Creates an org (this node's account becomes its root key)
     OrgCreate {
@@ -247,37 +251,45 @@ fn harness_command(scrum: &Path) -> Result<PathBuf> {
     }
 }
 
-fn init(
-    data: &DataDir,
-    account: &str,
-    label: &str,
-    url: &str,
-    listen: &str,
-    scrum: PathBuf,
-) -> Result<()> {
+fn owner_of(account: &str, label: &str) -> Result<Account> {
+    Ok(Account {
+        id: id(account)?,
+        label: label.to_owned(),
+    })
+}
+
+fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
-    if !is_node_origin(url) {
+    if !is_node_origin(&config.url) {
         bail!("--url must be http(s)://host[:port]");
     }
-    let account_id = id(account)?;
-    if agency_proto::runtime::is_reserved_name(&account_id) {
-        bail!("--account {account} is a name a team runtime reserves; choose another account id");
+    if agency_proto::runtime::is_reserved_name(&config.account.id) {
+        bail!(
+            "--account {} is a name a team runtime reserves; choose another account id",
+            config.account.id
+        );
     }
     let key = data.create_key()?;
-    let owner = Account {
-        id: account_id,
-        label: label.to_owned(),
-    };
-    data.save_config(&NodeConfig::new(url, listen, owner, scrum))?;
+    let account = config.account.id.clone();
+    let admits_local_clients = config.local_clients;
+    data.save_config(&config)?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
         key.public().fingerprint()
     );
+    if admits_local_clients {
+        println!("{LOCAL_CLIENTS_HINT}");
+    }
     Ok(())
 }
+
+/// What `init` says when the node admits local clients, as every node does unless told otherwise.
+const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
+If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
+--no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
 
 fn status(node: &Node) {
     let config = node.config();
@@ -288,6 +300,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    if !config.local_clients {
+        println!("Local clients: refused (localClients is false); reach this node through federation or Access");
+    }
     for doc in node.store().orgs() {
         let role = if orgs::is_root(node, &doc) {
             "root key"
@@ -573,9 +588,17 @@ async fn run(cli: Cli) -> Result<()> {
         url,
         listen,
         scrum,
+        no_local_clients,
     } = &cli.command
     {
-        return init(&data, account, label, url, listen, harness_command(scrum)?);
+        let config = NodeConfig::new(
+            url,
+            listen,
+            owner_of(account, label)?,
+            harness_command(scrum)?,
+        )
+        .with_local_clients(!no_local_clients);
+        return init(&data, config);
     }
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;

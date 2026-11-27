@@ -266,6 +266,8 @@ async fn an_answerer_answers_and_reads_only_what_is_addressed_to_them() {
         .await
         .unwrap();
     assert_eq!(evaluation.status(), 403, "nor the delivery evaluation");
+    let effort = read("/fed/v1/teams/acme/app/effort?days=7").await.unwrap();
+    assert_eq!(effort.status(), 403, "nor where the tokens went");
     let through_the_client_api = reqwest::Client::new()
         .get(format!("{}/api/orgs/acme/evaluation", carol.url()))
         .send()
@@ -276,6 +278,12 @@ async fn an_answerer_answers_and_reads_only_what_is_addressed_to_them() {
         403,
         "nor through her own node's Client API"
     );
+    let effort_through_the_client_api = reqwest::Client::new()
+        .get(format!("{}/api/orgs/acme/effort", carol.url()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(effort_through_the_client_api.status(), 403);
 
     let bob = joined_bob(&alice).await;
     let auth = sign_read(
