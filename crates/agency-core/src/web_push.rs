@@ -258,6 +258,10 @@ pub fn remove_subscription_as(node: &Node, caller: &crate::guests::Caller, id: &
 }
 
 pub(crate) fn remove_subscriptions(node: &Node, gone: &[String]) -> Result<()> {
+    // Nothing to remove writes nothing: a send to a destination that took it changes no file.
+    if gone.is_empty() {
+        return Ok(());
+    }
     let kept: Vec<WebSubscription> = node
         .store()
         .web_subscriptions()

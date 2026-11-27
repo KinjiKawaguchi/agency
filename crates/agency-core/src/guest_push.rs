@@ -77,21 +77,37 @@ async fn notify_guest(
             badge,
             ..one.notice
         };
-        let delivery = send_to_all(node, &notice, Some(guest), pass).await?;
+        let delivery = match send_to_all(node, &notice, Some(guest), pass).await {
+            Ok(delivery) => delivery,
+            Err(error) => {
+                // What was sent before this notice is kept, so the next pass does not send it again.
+                keep_notified(node, guest, &notified)?;
+                return Err(error);
+            }
+        };
         if delivery.is_done {
             pass.sent += 1;
             notified.push(one.key);
         }
     }
+    keep_notified(node, guest, &notified)
+}
+
+fn keep_notified(node: &Node, guest: &GuestRef, notified: &[String]) -> Result<()> {
     let start = notified.len().saturating_sub(NOTIFIED_KEPT);
     node.store().save_guest_notified(guest, &notified[start..])
 }
 
 /// Tells every guest with a destination here of its new requests.
+/// One guest that cannot be told now does not hold the others: each is tried, and the first failure is
+/// returned after all of them.
 pub(crate) async fn notify_guests(node: &Node, pass: &mut Pass) -> Result<()> {
     let is_hidden = is_hiding_titles(node);
+    let mut first_failure = None;
     for guest in with_destinations(node) {
-        notify_guest(node, &guest, is_hidden, pass).await?;
+        if let Err(error) = notify_guest(node, &guest, is_hidden, pass).await {
+            first_failure.get_or_insert(error);
+        }
     }
-    Ok(())
+    first_failure.map_or(Ok(()), Err)
 }

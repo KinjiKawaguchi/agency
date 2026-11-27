@@ -163,6 +163,10 @@ pub fn remove_push_token_as(node: &Node, caller: &Caller, raw: &str) -> Result<(
 }
 
 pub(crate) fn remove_tokens(node: &Node, gone: &[String]) -> Result<()> {
+    // Nothing to remove writes nothing: a send to a destination that took it changes no file.
+    if gone.is_empty() {
+        return Ok(());
+    }
     let kept: Vec<PushToken> = node
         .store()
         .push_tokens()
