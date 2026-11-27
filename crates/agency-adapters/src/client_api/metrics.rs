@@ -34,11 +34,14 @@ async fn require_owner(
     next.run(request).await
 }
 
+/// The routes below, by method and path, for the tests that walk every route.
+pub(super) const ROUTES: &[(&str, &str)] = &[("GET", "/api/metrics"), ("GET", "/metrics")];
+
 pub(super) fn routes(api: Arc<ClientApi>) -> Router<Arc<ClientApi>> {
     let owner_only = Router::new()
-        .route("/api/metrics", get(get_metrics))
+        .route(ROUTES[0].1, get(get_metrics))
         .route_layer(middleware::from_fn_with_state(api, require_owner));
-    owner_only.route("/metrics", get(get_prometheus))
+    owner_only.route(ROUTES[1].1, get(get_prometheus))
 }
 
 /// `GET /api/metrics?days=<1 to 30>&kind=&name=`: the measurements of the last `days` days (1 unless it says),

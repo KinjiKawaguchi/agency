@@ -37,7 +37,7 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Extension, Path, Query, Reque
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, MethodRouter};
 use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::json;
@@ -643,42 +643,79 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
 }
 
 /// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
+/// The routes behind the guard that this module serves itself, by method and path: the one list the router
+/// is built from (`method_router` gives each path its handlers) and that the tests walk.
+const ROUTES: &[(&str, &str)] = &[
+    ("GET", "/api/about"),
+    ("GET", "/api/me"),
+    ("GET", "/api/session"),
+    ("GET", "/api/decisions"),
+    ("GET", "/api/devices"),
+    ("GET", "/api/push/tokens"),
+    ("POST", "/api/push/tokens"),
+    ("DELETE", "/api/push/tokens/{token}"),
+    ("GET", "/api/push/vapid"),
+    ("GET", "/api/push/subscriptions"),
+    ("POST", "/api/push/subscriptions"),
+    ("DELETE", "/api/push/subscriptions/{id}"),
+    ("POST", "/api/devices/requests"),
+    ("POST", "/api/devices/changes"),
+    ("GET", "/api/orgs/{org}"),
+    ("GET", "/api/orgs/{org}/teams/{team}/view"),
+    ("GET", "/api/orgs/{org}/teams/{team}/usage"),
+    ("GET", "/api/orgs/{org}/evaluation"),
+    ("GET", "/api/orgs/{org}/teams/{team}/activity"),
+    ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
+    ("GET", HANDOFF_PATH),
+    ("GET", CALLBACK_PATH),
+];
+
+/// The routes a guest may reach (`guests::GUEST_ROUTES`), by method and path, for the tests.
+pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
+    guests::GUEST_ROUTES.to_vec()
+}
+
+/// Every route behind the guard, this module's and its parts' (outcomes, metrics), by method and path.
+pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
+    let parts = outcomes::ROUTES.iter().chain(metrics::ROUTES);
+    ROUTES.iter().chain(parts).copied().collect()
+}
+
+/// The handlers of one path of `ROUTES`, for the methods listed there.
+fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
+    match path {
+        "/api/about" => get(get_about),
+        "/api/me" => get(get_me),
+        "/api/session" => get(get_session),
+        "/api/decisions" => get(get_decisions),
+        "/api/devices" => get(get_devices),
+        "/api/push/tokens" => get(get_push_tokens).post(post_push_token),
+        "/api/push/tokens/{token}" => delete(delete_push_token),
+        "/api/push/vapid" => get(get_vapid_key),
+        "/api/push/subscriptions" => get(get_push_subscriptions).post(post_push_subscription),
+        "/api/push/subscriptions/{id}" => delete(delete_push_subscription),
+        "/api/devices/requests" => post(post_device_request),
+        "/api/devices/changes" => post(post_device_change),
+        "/api/orgs/{org}" => get(get_org),
+        "/api/orgs/{org}/teams/{team}/view" => get(get_team),
+        "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
+        "/api/orgs/{org}/evaluation" => get(get_evaluation),
+        "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
+        "/api/orgs/{org}/teams/{team}/envelopes" => post(post_envelope),
+        HANDOFF_PATH => get(handoff::handoff),
+        CALLBACK_PATH => get(handoff::callback),
+        other => unreachable!("no handlers for {other}, which ROUTES lists"),
+    }
+}
+
 pub fn router(api: Arc<ClientApi>) -> Router {
-    Router::new()
-        .route("/api/about", get(get_about))
-        .route("/api/me", get(get_me))
-        .route("/api/session", get(get_session))
-        .route("/api/decisions", get(get_decisions))
-        .route("/api/devices", get(get_devices))
-        .merge(outcomes::routes(api.clone()))
+    let mut paths: Vec<&str> = ROUTES.iter().map(|(_, path)| *path).collect();
+    paths.dedup();
+    let own = paths.into_iter().fold(Router::new(), |router, path| {
+        router.route(path, method_router(path))
+    });
+    own.merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
-        .route(
-            "/api/push/tokens",
-            get(get_push_tokens).post(post_push_token),
-        )
-        .route("/api/push/tokens/{token}", delete(delete_push_token))
-        .route("/api/push/vapid", get(get_vapid_key))
-        .route(
-            "/api/push/subscriptions",
-            get(get_push_subscriptions).post(post_push_subscription),
-        )
-        .route(
-            "/api/push/subscriptions/{id}",
-            delete(delete_push_subscription),
-        )
-        .route("/api/devices/requests", post(post_device_request))
-        .route("/api/devices/changes", post(post_device_change))
-        .route("/api/orgs/{org}", get(get_org))
-        .route("/api/orgs/{org}/teams/{team}/view", get(get_team))
-        .route("/api/orgs/{org}/teams/{team}/usage", get(get_usage))
-        .route("/api/orgs/{org}/evaluation", get(get_evaluation))
-        .route("/api/orgs/{org}/teams/{team}/activity", get(get_activity))
-        .route(
-            "/api/orgs/{org}/teams/{team}/envelopes",
-            post(post_envelope),
-        )
-        .route(HANDOFF_PATH, get(handoff::handoff))
-        .route(CALLBACK_PATH, get(handoff::callback))
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))

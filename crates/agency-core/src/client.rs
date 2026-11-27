@@ -253,7 +253,13 @@ pub async fn submit_signed_decision(
     team: &Id,
     input: SignedDecisionInput,
 ) -> Result<DecisionResult> {
-    membership_of(node, caller, org)?;
+    let (doc, _) = membership_of(node, caller, org)?;
+    // A guest decides only in a team on this node that addresses it, as it reads only those.
+    if let Caller::Guest(guest) = caller {
+        if !crate::guest_reads::addresses(node, &doc.body, team, &guest.member) {
+            return Err(Error::not_found("not found"));
+        }
+    }
     let note = DecisionNote {
         title: note_text(input.title, "title")?,
         choice_label: note_text(input.choice_label, "choiceLabel")?,

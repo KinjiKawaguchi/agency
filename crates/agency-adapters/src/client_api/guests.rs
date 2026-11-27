@@ -28,16 +28,28 @@ fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
         })
 }
 
-/// Whether a guest may make this request at all. HEAD goes with GET.
+/// Whether `path` is the web client itself (its page and files), which holds none of the node's data: not
+/// under `/api`, not the node's own measurements (`/metrics`), and not the app sign-in (`/app`).
+fn is_the_client(path: &str) -> bool {
+    let reserved = ["/api", "/metrics", "/app"];
+    !reserved
+        .iter()
+        .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
+}
+
+/// Whether a guest may make this request at all. HEAD goes with GET. A guest loads the web client too, so
+/// that its shell runs; the client reads the node only through the routes above.
 pub(super) fn may(guest: &Guest, method: &Method, path: &str) -> bool {
     let method = if method == Method::HEAD {
         "GET"
     } else {
         method.as_str()
     };
-    GUEST_ROUTES
-        .iter()
-        .any(|(allowed, pattern)| *allowed == method && fits(pattern, path, guest))
+    let is_page = method == "GET" && is_the_client(path);
+    is_page
+        || GUEST_ROUTES
+            .iter()
+            .any(|(allowed, pattern)| *allowed == method && fits(pattern, path, guest))
 }
 
 /// Whether the request is a write a guest may make: the write half of the table.
@@ -82,5 +94,15 @@ mod tests {
             "/api/orgs/acme/teams/app/view/extra"
         ));
         assert!(!may_write(&guest, &Method::GET, "/api/me"));
+        assert!(may(&guest, &Method::GET, "/"), "the web client");
+        assert!(may(&guest, &Method::GET, "/desk"));
+        assert!(may(&guest, &Method::GET, "/assets/index.js"));
+        assert!(!may(&guest, &Method::GET, "/metrics"));
+        assert!(!may(&guest, &Method::GET, "/app/handoff"));
+        assert!(!may(&guest, &Method::GET, "/api"));
+        assert!(
+            !may(&guest, &Method::POST, "/desk"),
+            "only reading the client"
+        );
     }
 }

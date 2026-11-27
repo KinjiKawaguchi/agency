@@ -52,7 +52,10 @@ pub async fn decide_signed(
     let record = DecisionRecord::of(envelope, note, is_local);
     if !is_local {
         let record = DecisionRecord {
-            relayed_for: remote_relayed_for(node, &doc.body, org, team, envelope),
+            // The replica is read as the node's own account's: for anyone else it says nothing of them.
+            relayed_for: (account == &node.account())
+                .then(|| remote_relayed_for(node, &doc.body, org, team, envelope))
+                .flatten(),
             ..record
         };
         return send_envelope(node, place.node, signed, record).await;

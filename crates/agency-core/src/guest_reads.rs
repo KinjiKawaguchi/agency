@@ -17,7 +17,7 @@ use agency_proto::Id;
 
 /// Whether the team `place` runs on this node and addresses `member`: by a runtime name, or through a seat
 /// or external party it answers for.
-fn addresses(
+pub(crate) fn addresses(
     node: &Node,
     definition: &agency_proto::OrgDefinition,
     team: &Id,

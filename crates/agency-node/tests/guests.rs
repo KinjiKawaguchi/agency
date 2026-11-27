@@ -18,7 +18,7 @@ const CAROL: &str = "carol@example.com";
 /// Alice's org with team `app` on her node, addressing `carol` (a hosted member with one device) as
 /// `finance`, with request r-2 for carol and r-1 for the owner; and carol's guest record.
 async fn with_guest() -> (Running, AccountKey) {
-    let (alice, memory) = behind_access_with_runtime(None).await;
+    let (alice, memory) = behind_access_with_runtime(Some("ABCDE12345.dev.example.agency")).await;
     {
         let mut state = memory.lock().unwrap();
         state
@@ -124,34 +124,103 @@ async fn a_guest_reads_its_own_member_org_and_requests_and_nothing_of_the_owners
     );
 }
 
+/// A path of the route table with its parameters filled in for alice's org.
+fn filled(pattern: &str) -> String {
+    pattern
+        .replace("{org}", "acme")
+        .replace("{team}", "app")
+        .replace("{token}", &"ab12".repeat(16))
+        .replace("{id}", "x")
+}
+
 #[tokio::test]
-async fn every_route_outside_the_guest_table_answers_a_guest_403() {
+async fn every_route_outside_the_guest_table_answers_a_guest_403_and_the_owner_something_real() {
     let (alice, _) = with_guest().await;
-    let owner_routes: [(Method, &str); 18] = [
-        (Method::GET, "/api/orgs/acme"),
-        (Method::GET, "/api/orgs/acme/teams/app/usage"),
-        (Method::GET, "/api/orgs/acme/evaluation"),
-        (Method::GET, "/api/orgs/acme/teams/app/activity"),
-        (Method::GET, "/api/push/tokens"),
-        (Method::POST, "/api/push/tokens"),
-        (Method::DELETE, "/api/push/tokens/abcd"),
-        (Method::GET, "/api/push/vapid"),
-        (Method::GET, "/api/push/subscriptions"),
-        (Method::POST, "/api/push/subscriptions"),
-        (Method::DELETE, "/api/push/subscriptions/x"),
-        (Method::POST, "/api/devices/requests"),
-        (Method::GET, "/api/outcomes/acme"),
-        (Method::POST, "/api/outcomes/acme/observations"),
-        (Method::GET, "/api/metrics/acme"),
+    let guest_routes = agency_adapters::client_api::guest_routes();
+    let owners: Vec<(&str, &str)> = agency_adapters::client_api::routes_behind_the_guard()
+        .into_iter()
+        .filter(|route| !guest_routes.contains(route))
+        .collect();
+    assert!(owners.len() >= 15, "{owners:?}");
+    for (method, pattern) in owners {
+        let method = Method::from_bytes(method.as_bytes()).unwrap();
+        let path = filled(pattern);
+        let body = (method != Method::GET).then(|| json!({}));
+        let (status, answer) = call(&alice, method.clone(), &path, CAROL, body.clone()).await;
+        assert_eq!(status, 403, "a guest: {method} {path}: {answer}");
+        let (mut status, mut answer): (u16, Value) =
+            call(&alice, method.clone(), &path, "alice@example.com", body).await;
+        // A route of the node's own machine only (`/metrics`) is reached by a local read instead.
+        if status == 403 && method == Method::GET {
+            let (local, read) =
+                common::body(common::get(&alice, &path).send().await.unwrap()).await;
+            (status, answer) = (local.as_u16(), read);
+        }
+        // A route that is not there answers "no such route" (or 405 for a method it lacks); a real one may
+        // answer 404 for a reason of its own (no Web Push set up), but never that.
+        let is_missing = status == 405 || (status == 404 && answer["error"] == "no such route");
+        assert!(
+            status != 403 && !is_missing,
+            "the owner reaches {method} {path}, so the route is real: {status} {answer}"
+        );
+    }
+    let elsewhere: [(Method, &str); 4] = [
         (Method::GET, "/api/orgs/other/teams/app/view"),
         (Method::POST, "/api/orgs/other/teams/app/envelopes"),
-        (Method::GET, "/app/handoff"),
+        (Method::GET, "/api/me/"),
+        (Method::HEAD, "/api/orgs/acme"),
     ];
-    for (method, path) in owner_routes {
-        let body = (method != Method::GET).then(|| json!({}));
+    for (method, path) in elsewhere {
+        let body = (method == Method::POST).then(|| json!({}));
         let (status, answer) = call(&alice, method.clone(), path, CAROL, body).await;
-        assert_eq!(status, 403, "{method} {path}: {answer}");
+        assert_eq!(status, 403, "a guest: {method} {path}: {answer}");
     }
+}
+
+#[tokio::test]
+async fn a_guest_changes_no_device_of_another_org_or_member() {
+    use agency_proto::device::{DeviceChange, DeviceOp};
+    use agency_proto::{Kind, Signed};
+    let (alice, laptop) = with_guest().await;
+    for (org, account) in [("other", "carol"), ("acme", "alice")] {
+        let change = DeviceChange {
+            org: id(org),
+            account: id(account),
+            op: DeviceOp::Remove {
+                device: laptop.public().device_id(),
+            },
+            at: Timestamp::parse(&alice.node.now_text()).unwrap(),
+        };
+        let signed =
+            Signed::sign(Kind::Device, change, laptop.public().device_id(), &laptop).unwrap();
+        let (status, answer) = call(
+            &alice,
+            Method::POST,
+            "/api/devices/changes",
+            CAROL,
+            Some(json!(signed)),
+        )
+        .await;
+        assert_eq!(status, 403, "{org}/{account}: {answer}");
+    }
+}
+
+#[tokio::test]
+async fn a_guest_loads_the_web_client_but_not_the_app_sign_in() {
+    let (alice, _) = with_guest().await;
+    let page = reqwest::Client::new()
+        .get(format!("{}/desk", alice.url()))
+        .header("host", PUBLIC_HOST)
+        .header("cf-ray", "1")
+        .header("cf-access-jwt-assertion", access_token(CAROL, |_| {}))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        page.status().as_u16(),
+        403,
+        "the page lets the guest shell run"
+    );
 }
 
 #[tokio::test]
@@ -246,4 +315,78 @@ async fn me_has_no_guest_key_at_all_for_the_owner_a_local_request_or_another_sig
     }
     let (_, local) = common::body(common::get(&alice, "/api/me").send().await.unwrap()).await;
     assert!(local.as_object().unwrap().get("guest").is_none(), "{local}");
+}
+
+#[tokio::test]
+async fn a_guest_decides_in_no_team_on_another_node_so_nothing_is_logged_for_a_seat_it_does_not_answer(
+) {
+    use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Kind, Payload, Signed};
+    let (alice, laptop) = with_guest().await;
+    // bob's node is read already and speaks everything this release does.
+    let read_at = agency_proto::clock::format(alice.node.now());
+    let entry = agency_core::peer_about::PeerAbout {
+        about: Some(agency_proto::about::About::of_release("0.3.0")),
+        read_at: Some(read_at.clone()),
+        tried_at: read_at,
+        ..agency_core::peer_about::PeerAbout::default()
+    };
+    alice
+        .node
+        .store()
+        .save_peer_abouts(
+            &id("acme"),
+            &BTreeMap::from([("https://bob.example".to_owned(), entry)]),
+        )
+        .unwrap();
+    orgs::add_team(
+        &alice.node,
+        &id("acme"),
+        TeamPlace::new(id("web"), "Web", "https://bob.example"),
+    )
+    .unwrap();
+    let envelope = Envelope {
+        id: EnvelopeId::from_bytes([0x83; 16]),
+        org: id("acme"),
+        team: id("web"),
+        kind: EnvelopeKind::Answer,
+        target: "r-9".into(),
+        payload: Payload {
+            text: "ok".into(),
+            choice: None,
+        },
+        account: id("carol"),
+        at: alice.node.now_text(),
+    };
+    let body = json!({ "envelope": Signed::sign(Kind::Envelope, envelope, laptop.public().device_id(), &laptop).unwrap() });
+    let (status, answer) = call(
+        &alice,
+        Method::POST,
+        "/api/orgs/acme/teams/web/envelopes",
+        CAROL,
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, 404, "{answer}");
+    let (_, log) = call(&alice, Method::GET, "/api/decisions", CAROL, None).await;
+    assert_eq!(log["entries"], json!([]), "{log}");
+}
+
+#[tokio::test]
+async fn a_record_on_a_node_that_is_not_the_roots_admits_no_one() {
+    let (alice, _) = with_guest().await;
+    let (_, me) = call(&alice, Method::GET, "/api/me", CAROL, None).await;
+    assert!(
+        me.get("guest").is_some(),
+        "carol is a guest while alice is root: {me}"
+    );
+    // The org as a node that is not its root holds it: bob's root, kept as read.
+    let mut doc = alice.node.store().load_org(&id("acme")).unwrap();
+    doc.body.root.account = id("bob");
+    doc.body.root.public_key = AccountKey::from_seed([0x84; 32]).public();
+    alice.node.store().save_org(&doc).unwrap();
+    let (_, me) = call(&alice, Method::GET, "/api/me", CAROL, None).await;
+    assert!(
+        me.get("guest").is_none(),
+        "only the root's node hosts members: {me}"
+    );
 }

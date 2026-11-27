@@ -36,6 +36,10 @@ pub fn keep(node: &Node, guest: &Guest) -> Result<()> {
 pub fn admit(node: &Node, email: &str) -> Option<Guest> {
     let guest = node.store().guest(&email.trim().to_lowercase())?;
     let doc = node.store().load_org(&guest.org)?;
+    // Only the root's node hosts members.
+    if !crate::orgs::is_root(node, &doc) {
+        return None;
+    }
     let member = doc.body.member(&guest.member)?;
     member.is_hosted().then_some(guest)
 }
