@@ -190,7 +190,8 @@ pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<
 /// timeout, not the whole outbox.
 pub const NODES_AT_ONCE: usize = 8;
 
-/// Delivers every parcel whose next attempt is due: to each receiving node in the order the parcels were queued
+/// Delivers every parcel whose next attempt is due: to each receiving node (each team's runtime, for a team on this
+/// node) in the order the parcels were queued
 /// (so that versions of an org arrive in order), and to several nodes at once. Once a node is unreachable, its
 /// other parcels wait for their next attempt instead of each waiting for the same timeout now; and a version that
 /// is waiting for its next attempt holds back the later versions of its org for that node.
@@ -198,7 +199,7 @@ pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
     use futures_util::stream::{self, StreamExt};
     let mut by_node: std::collections::BTreeMap<String, Vec<Parcel>> = Default::default();
     for parcel in pending(node) {
-        by_node.entry(parcel.to.clone()).or_default().push(parcel);
+        by_node.entry(lane(node, &parcel)).or_default().push(parcel);
     }
     let delivered: Vec<Result<Vec<Outcome>>> = stream::iter(by_node.into_values())
         .map(|parcels| deliver_in_order(node, parcels))
@@ -210,6 +211,17 @@ pub async fn deliver_due(node: &Node) -> Result<Vec<Outcome>> {
         outcomes.extend(one?);
     }
     Ok(outcomes)
+}
+
+/// The parcels that wait for one another: those for one receiving node, except that a decision for a team on this
+/// node waits only for that team's runtime, so a runtime that does not answer holds back no other team's decisions.
+fn lane(node: &Node, parcel: &Parcel) -> String {
+    match &parcel.body {
+        ParcelBody::Envelope(signed) if is_applied_here(node, parcel) => {
+            format!("{} {}/{}", parcel.to, signed.body.org, signed.body.team)
+        }
+        _ => parcel.to.clone(),
+    }
 }
 
 /// The org whose version a parcel carries, if it carries one.
