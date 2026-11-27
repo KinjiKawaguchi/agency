@@ -6,6 +6,9 @@ export const sharedHidden = JSON.parse(readFileSync(join(process.cwd(), '..', 't
   mark: string
   hidden: Array<[string, string]>
   cases: Array<{ text: string; printable: string }>
+  /** A text an agent or a person wrote hides `hidden` minus these (a tab and the line breaks stay), and the cases of such texts. */
+  textKeeps: string[]
+  textCases: Array<{ text: string; printable: string }>
 }
 
 /** The inclusive ranges of code points of the set. */

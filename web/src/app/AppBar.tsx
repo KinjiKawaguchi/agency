@@ -88,10 +88,10 @@ export function AppBar() {
   const path = useRouterState({ select: (state) => state.location.pathname })
   const outcomes = useOutcomesAccess()
   // The owner's page is in the menu only once the owner's read has answered: no entry while it is read, and none for anyone else.
-  const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => page.to !== '/outcomes' || outcomes.status === 'available')
+  const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => page.to !== '/outcomes' /* shown-ok(route): a path */ || outcomes.status === 'available')
   // Until the node has said who the viewer is, no entry is shown: a guest is not offered the owner's pages for a moment.
   const groups = standing.status === 'guest' ? GUEST_GROUPS : standing.status === 'loading' ? [] : GROUPS
-  const current = groups.find((group) => pagesOf(group).some((page) => isOn(path, page.to)))
+  const current = groups.find((group) => pagesOf(group).some((page) => isOn(path, page.to /* shown-ok(route): a path */)))
 
   useEffect(() => {
     document.title = waiting.status === 'known' && waiting.count > 0 ? `(${waiting.count}) ${t.app.name}` : t.app.name
@@ -107,7 +107,7 @@ export function AppBar() {
         {nodeName === undefined ? null : <Link className="node-chip" to="/devices" title={t.devices.homeNodes.title}>{nodeName}</Link>}
         <nav className="mainnav" aria-label={t.nav.label}>
           {groups.map((group) => (
-            <Link key={group.key} to={pagesOf(group)[0]?.to ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
+            <Link key={group.key} to={pagesOf(group)[0]?.to /* shown-ok(route): a path */ ?? '/desk'} aria-current={group === current ? 'page' : undefined}>
               {group.label(t)}
               {group.key === 'desk' ? <WaitingCount waiting={waiting} /> : null}
             </Link>
@@ -132,7 +132,7 @@ export function AppBar() {
         {current === undefined || pagesOf(current).length < 2 ? null : (
           <nav className="subnav" aria-label={t.nav.section(current.label(t))}>
             {pagesOf(current).map((page) => (
-              <Link key={page.to} to={page.to}>
+              <Link key={page.to /* shown-ok(route): a path */} to={page.to}>
                 {page.label(t)}
               </Link>
             ))}
