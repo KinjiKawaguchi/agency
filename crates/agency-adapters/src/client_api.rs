@@ -22,11 +22,9 @@ use agency_core::devices::{device_list, request_device};
 use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
-use agency_core::push::{push_tokens_of, register_push_token_as, remove_push_token_as};
+use agency_core::push::{push_tokens, register_push_token, remove_push_token};
 use agency_core::usage::team_usage;
-use agency_core::web_push::{
-    register_subscription_as, remove_subscription_as, subscriptions_of, vapid_key,
-};
+use agency_core::web_push::{register_subscription, remove_subscription, subscriptions, vapid_key};
 use agency_core::{Error, Node};
 use agency_proto::client::{
     DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
@@ -541,31 +539,19 @@ async fn post_device_change(
     respond(result.await)
 }
 
-async fn get_push_tokens(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
-    json_response(
-        StatusCode::OK,
-        &push_tokens_of(&api.node, &caller_of(&admitted)),
-    )
+async fn get_push_tokens(State(api): Shared) -> Response {
+    json_response(StatusCode::OK, &push_tokens(&api.node))
 }
 
 /// Registers an APNs device token for the owner's notifications (or updates its environment and label).
-async fn post_push_token(
-    State(api): Shared,
-    Extension(admitted): Extension<Admitted>,
-    bytes: Bytes,
-) -> Response {
-    let caller = caller_of(&admitted);
+async fn post_push_token(State(api): Shared, bytes: Bytes) -> Response {
     let result = json_body::<PushTokenInput>(&bytes, "push token")
-        .and_then(|input| register_push_token_as(&api.node, &caller, input));
+        .and_then(|input| register_push_token(&api.node, input));
     respond(result)
 }
 
-async fn delete_push_token(
-    State(api): Shared,
-    Extension(admitted): Extension<Admitted>,
-    Path(token): Path<String>,
-) -> Response {
-    match remove_push_token_as(&api.node, &caller_of(&admitted), &token) {
+async fn delete_push_token(State(api): Shared, Path(token): Path<String>) -> Response {
+    match remove_push_token(&api.node, &token) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }
@@ -576,31 +562,19 @@ async fn get_vapid_key(State(api): Shared) -> Response {
     respond(vapid_key(&api.node).ok_or_else(|| Error::not_found("this node has no Web Push")))
 }
 
-async fn get_push_subscriptions(
-    State(api): Shared,
-    Extension(admitted): Extension<Admitted>,
-) -> Response {
-    respond(subscriptions_of(&api.node, &caller_of(&admitted)))
+async fn get_push_subscriptions(State(api): Shared) -> Response {
+    respond(subscriptions(&api.node))
 }
 
 /// Registers a browser's Web Push subscription for the owner's notifications (or updates it).
-async fn post_push_subscription(
-    State(api): Shared,
-    Extension(admitted): Extension<Admitted>,
-    bytes: Bytes,
-) -> Response {
-    let caller = caller_of(&admitted);
+async fn post_push_subscription(State(api): Shared, bytes: Bytes) -> Response {
     let result = json_body::<PushSubscriptionInput>(&bytes, "push subscription")
-        .and_then(|input| register_subscription_as(&api.node, &caller, input));
+        .and_then(|input| register_subscription(&api.node, input));
     respond(result)
 }
 
-async fn delete_push_subscription(
-    State(api): Shared,
-    Extension(admitted): Extension<Admitted>,
-    Path(id): Path<String>,
-) -> Response {
-    match remove_subscription_as(&api.node, &caller_of(&admitted), &id) {
+async fn delete_push_subscription(State(api): Shared, Path(id): Path<String>) -> Response {
+    match remove_subscription(&api.node, &id) {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => refuse(status_of(error.kind), &error.message),
     }

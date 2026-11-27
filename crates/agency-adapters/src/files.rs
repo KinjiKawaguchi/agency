@@ -18,7 +18,7 @@ use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
-use agency_proto::client::{GuestRef, PushToken};
+use agency_proto::client::PushToken;
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
@@ -173,17 +173,6 @@ impl DataDir {
                 file.sync_all()
             })
             .map_err(|error| io_error(path, error))
-    }
-
-    fn guest_notified_path(&self, guest: &GuestRef) -> PathBuf {
-        let name: String =
-            sha2::Sha256::digest(format!("{}/{}", guest.org, guest.member).as_bytes())
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect();
-        self.dir("guests")
-            .join("notified")
-            .join(format!("{name}.json"))
     }
 
     fn guest_path(&self, email: &str) -> PathBuf {
@@ -364,15 +353,6 @@ impl GuestStore for DataDir {
 
     fn remove_guest(&self, email: &str) -> Result<()> {
         remove(&self.guest_path(email))
-    }
-
-    /// `guests/notified/<sha256 of org/member>.json`.
-    fn guest_notified(&self, guest: &GuestRef) -> Option<Vec<String>> {
-        read_json(&self.guest_notified_path(guest))
-    }
-
-    fn save_guest_notified(&self, guest: &GuestRef, keys: &[String]) -> Result<()> {
-        write_json(&self.guest_notified_path(guest), &keys)
     }
 }
 

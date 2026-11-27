@@ -232,13 +232,6 @@ pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
-    /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
-    fn guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Option<Vec<String>>;
-    fn save_guest_notified(
-        &self,
-        guest: &agency_proto::client::GuestRef,
-        keys: &[String],
-    ) -> Result<()>;
 }
 
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.

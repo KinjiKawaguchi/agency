@@ -1,5 +1,5 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { canMakeDeviceKeys, deviceKeyOf, generateKeyPair, loadDeviceKey, type DeviceKey, type KeyStore } from './deviceKey'
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react'
+import { canMakeDeviceKeys, loadDeviceKey, type DeviceKey, type KeyStore } from './deviceKey'
 import { recordKeyLoad } from './keyKeeping'
 import { useKeyStore } from './context'
 
@@ -32,8 +32,6 @@ interface Held {
   state: DeviceKeyState
   /** Resolves once the key is made or known to be impossible; for code that must not act before then. */
   settled: () => Promise<DeviceKeyState>
-  /** Makes a new key and keeps it in place of this one, for a browser whose key the org has revoked. */
-  replace: () => Promise<void>
 }
 
 const DeviceKeyContext = createContext<Held | null>(null)
@@ -49,15 +47,7 @@ export function DeviceKeyProvider({ children }: { children: ReactNode }) {
       isCurrent = false
     }
   }, [store])
-  const replace = useCallback(async () => {
-    const pair = await generateKeyPair()
-    await store.save(pair)
-    const key = await deviceKeyOf(pair)
-    // Whoever asks for the key from now on gets the new one, not the one that was loaded before.
-    loadings.set(store, Promise.resolve<DeviceKeyState>({ status: 'ready', key }))
-    setState({ status: 'ready', key })
-  }, [store])
-  return createElement(DeviceKeyContext.Provider, { value: { state, settled: () => settledDeviceKey(store), replace } }, children)
+  return createElement(DeviceKeyContext.Provider, { value: { state, settled: () => settledDeviceKey(store) } }, children)
 }
 
 function useHeld(): Held {
@@ -69,6 +59,3 @@ function useHeld(): Held {
 export const useDeviceKey = (): DeviceKeyState => useHeld().state
 
 export const useSettledDeviceKey = (): (() => Promise<DeviceKeyState>) => useHeld().settled
-
-/** Makes a new device key in place of the one this browser holds: for a key that was removed from the account, and so is revoked. */
-export const useReplaceDeviceKey = (): (() => Promise<void>) => useHeld().replace

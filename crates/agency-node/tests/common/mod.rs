@@ -2,7 +2,6 @@
 //! at T0 and an in-memory team runtime.
 #![allow(dead_code)]
 pub mod access;
-pub mod guests;
 
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;

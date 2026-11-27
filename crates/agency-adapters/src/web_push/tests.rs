@@ -46,7 +46,6 @@ impl Browser {
             last_succeeded_at: None,
             last_failure: None,
             device: None,
-            guest: None,
         }
     }
 

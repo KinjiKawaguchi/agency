@@ -1,43 +1,21 @@
-//! Push registrations follow the devices of whoever registered them (docs/protocol.md, "Push notifications"):
-//! the account's for the owner's, and the member's in its org for a guest's. A registration may name the
-//! device it belongs to; it is accepted only for a current device of its own, and it is dropped when a
+//! Push registrations follow the account's devices (docs/protocol.md, "Push notifications"). A registration
+//! may name the device it belongs to; it is accepted only for a current device, and it is dropped when a
 //! definition no longer has that device, so that a removed or lost device gets no more notices.
-use crate::devices::{current_device_ids, my_devices};
+use crate::devices::current_device_ids;
 use crate::error::{Error, Result};
 use crate::node::Node;
 use crate::push::remove_tokens;
 use crate::web_push::remove_subscriptions;
-use agency_proto::client::GuestRef;
 use agency_proto::org::SignedOrg;
 use agency_proto::Id;
 use std::collections::BTreeMap;
 
-/// The current devices of whoever a registration is of: the account's (`None`), or a guest's, which are the
-/// member's in the guest's org.
-fn device_ids_of(node: &Node, whose: Option<&GuestRef>) -> Vec<Id> {
-    let Some(guest) = whose else {
-        return current_device_ids(node);
-    };
-    node.store()
-        .load_org(&guest.org)
-        .map_or_else(Vec::new, |doc| {
-            my_devices(&doc.body, &guest.member)
-                .iter()
-                .map(|device| device.id.clone())
-                .collect()
-        })
-}
-
-/// The device a registration names, if it is one of the current devices of whoever registers it.
-pub(crate) fn check_device(
-    node: &Node,
-    whose: Option<&GuestRef>,
-    device: Option<Id>,
-) -> Result<Option<Id>> {
+/// The device a registration names, if it is one of the account's current devices.
+pub(crate) fn check_device(node: &Node, device: Option<Id>) -> Result<Option<Id>> {
     let Some(device) = device else {
         return Ok(None);
     };
-    if device_ids_of(node, whose).contains(&device) {
+    if current_device_ids(node).contains(&device) {
         return Ok(Some(device));
     }
     Err(Error::bad_request(
@@ -60,27 +38,16 @@ struct Dropped {
 }
 
 fn drop_removed_devices(node: &Node) -> Result<()> {
-    // The devices of each owner of a registration, read once: the account's, and each guest's.
-    let mut current: Vec<(Option<GuestRef>, Vec<Id>)> = Vec::new();
-    let mut removed = |whose: Option<GuestRef>, device: Option<Id>| {
-        let device = device?;
-        if !current.iter().any(|(one, _)| *one == whose) {
-            let ids = device_ids_of(node, whose.as_ref());
-            current.push((whose.clone(), ids));
-        }
-        let is_current = current
-            .iter()
-            .any(|(one, ids)| *one == whose && ids.contains(&device));
-        (!is_current).then_some(device)
-    };
+    let current = current_device_ids(node);
+    let removed = |device: Option<Id>| device.filter(|id| !current.contains(id));
     let mut dropped: BTreeMap<Id, Dropped> = BTreeMap::new();
     for one in node.store().push_tokens() {
-        if let Some(device) = removed(one.guest, one.device) {
+        if let Some(device) = removed(one.device) {
             dropped.entry(device).or_default().tokens.push(one.token);
         }
     }
     for one in node.store().web_subscriptions() {
-        if let Some(device) = removed(one.guest, one.device) {
+        if let Some(device) = removed(one.device) {
             dropped
                 .entry(device)
                 .or_default()

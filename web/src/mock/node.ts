@@ -94,8 +94,6 @@ interface MockNodeOptions {
   activityClock?: () => number
   /** Devices the account already has in its org, so a test can decide without going through adding one. */
   devices?: ReadonlyArray<Pick<Device, 'id' | 'label' | 'publicKey'>>
-  /** The orgs that list the account's devices, where it is more than the one org (each lists the same devices). */
-  deviceOrgs?: readonly string[]
   /** False to leave out the node's own command for approving a device, as the node does for anyone but its owner. */
   deviceCommand?: boolean
   /** Starts with no request waiting on anyone, as a desk that has been cleared. */
@@ -248,7 +246,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
-  const devices = createMockDevices(options.deviceOrgs ?? [ORG_DEFINITION.org], me.account.id, options.devices ?? [])
+  const devices = createMockDevices([ORG_DEFINITION.org], me.account.id, options.devices ?? [])
 
   const decideSigned = async (request: Request, view: TeamView): Promise<Response> => {
     const write = await readWrite(request)

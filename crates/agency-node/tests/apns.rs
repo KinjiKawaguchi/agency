@@ -83,7 +83,6 @@ fn token(prefix: &str, environment: PushEnvironment) -> PushToken {
         last_succeeded_at: None,
         last_failure: None,
         device: None,
-        guest: None,
     }
 }
 
