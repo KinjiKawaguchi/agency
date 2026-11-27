@@ -40,8 +40,16 @@ pub fn seat_invite(node: &Node, org: &Id, seat: Id, email: &str) -> Result<SeatI
         return Err(Error::not_found(format!("no seat {seat} in org {org}")));
     }
     let email = check_email(email)?;
-    if node.config().access.as_ref().is_some_and(|access| access.owner_email.trim().eq_ignore_ascii_case(&email)) {
-        return Err(Error::new(ErrorKind::Conflict, "that email is the node owner's"));
+    if node
+        .config()
+        .access
+        .as_ref()
+        .is_some_and(|access| access.owner_email.trim().eq_ignore_ascii_case(&email))
+    {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "that email is the node owner's",
+        ));
     }
     if node.store().guest(&email).is_some() {
         return Err(Error::new(

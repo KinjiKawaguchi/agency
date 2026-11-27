@@ -12,9 +12,8 @@ use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
     AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
-    DecisionLogStore,
-    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
