@@ -2,9 +2,10 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Dependency updates for this repository (Cargo, npm, GitHub Actions, Swift packages, XcodeGen packages).",
-    "Ordinary updates wait 2 days after a release, come grouped by ecosystem, and merge by themselves when CI is green if they are patch or minor. A major update needs a person.",
+    "Ordinary updates wait 2 days after a release (an update from a registry that gives no release time waits to be offered) and come grouped by ecosystem.",
+    "Only what does not reach the shipped node, the web client, or the release builds merges by itself when CI is green: dev-only npm packages and the GitHub Actions that only CI uses, patch and minor. Every other update, and the weekly lock file refresh, is a pull request for a person to read.",
     "A security fix skips the wait and merges when CI is green.",
-    "Every GitHub Action stays pinned to a commit SHA with its tag in a comment."
+    "Every GitHub Action stays pinned to a commit SHA with its tag in a comment. A branch is rebased when it falls behind main, so an up-to-date rule does not leave it behind."
   ],
   "extends": [
     "config:recommended",
@@ -18,8 +19,9 @@
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
   "minimumReleaseAge": "2 days",
-  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "minimumReleaseAgeBehaviour": "timestamp-required",
   "automergeStrategy": "squash",
+  "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 6,
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
@@ -34,11 +36,28 @@
     "schedule": [
       "before 6am on monday"
     ],
-    "automerge": true
+    "automerge": false
   },
   "packageRules": [
     {
-      "description": "Patch and minor updates: one pull request for each ecosystem, merged when CI is green.",
+      "description": "Dev-only npm packages (test and build tools): patch and minor merge when CI is green. The page does not import them, and CI builds and tests with them; a person reads every other update.",
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions that only CI uses: patch, minor, and pin updates merge when CI is green. The ones a release workflow uses are the next rule.",
+      "matchManagers": [
+        "github-actions"
+      ],
       "matchUpdateTypes": [
         "minor",
         "patch",
@@ -128,6 +147,19 @@
       "matchPackageNames": [
         "dtolnay/rust-toolchain"
       ],
+      "automerge": false
+    },
+    {
+      "description": "The GitHub Actions that the release workflows use run with the release's permissions and build what people install: a person reads their updates, as one pull request.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchFileNames": [
+        ".github/workflows/release.yml",
+        ".github/workflows/release-please.yml"
+      ],
+      "groupName": "GitHub Actions used by releases",
+      "groupSlug": "github-actions-release",
       "automerge": false
     }
   ]
