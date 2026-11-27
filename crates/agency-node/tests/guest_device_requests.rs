@@ -230,7 +230,11 @@ async fn the_guest_approves_with_its_device_and_the_new_device_then_decides_as_i
         Some(body),
     )
     .await;
-    assert_eq!(status, 200, "the new device decides as carol: {answer}");
+    assert_eq!(
+        (status, answer),
+        (202, json!({ "outcome": "queued" })),
+        "the new device's decision is kept as carol's, and applied in the background"
+    );
 }
 
 #[tokio::test]
