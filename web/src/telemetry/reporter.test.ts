@@ -74,6 +74,16 @@ describe('sending the waiting samples', () => {
     expect(reports).toEqual([[sample(1)]])
   })
 
+  it('does not take a 403 about the write token (the node started again) for a refusal of the viewer: it keeps the samples and tries again', async () => {
+    const { queue, reports, reporter, moveClock } = reporting(new ApiError('missing or wrong write token', 403))
+    queue.add(sample(1))
+    await reporter.flush()
+    expect(reporter.hasStopped()).toBe(false)
+    moveClock(PAUSE_MS)
+    await reporter.flush()
+    expect(reports).toEqual([[sample(1)], [sample(1)]])
+  })
+
   it('forgets the samples that came while the report that made it stop was on its way', async () => {
     const queue = createSampleQueue()
     let refuse: (error: Error) => void = () => undefined

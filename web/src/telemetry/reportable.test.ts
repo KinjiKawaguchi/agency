@@ -28,7 +28,7 @@ const NOT_REPORTED: Readonly<Record<string, string>> = {
   'POST /api/telemetry': 'the report itself is never timed',
   'GET /api/claim': 'a person claiming a seat has none yet, and is not the owner',
   'POST /api/claim': 'a person claiming a seat has none yet, and is not the owner',
-  'GET /api/orgs/{org}/effort': 'not in the node’s table yet: add it there, and take it out of this list',
+  'GET /api/orgs/{org}/effort': 'the node does not serve it yet (the screen reads the mock until it does): when the node has the route and its table, take it out of this list',
 }
 
 describe('the routes the page may name in a report', () => {

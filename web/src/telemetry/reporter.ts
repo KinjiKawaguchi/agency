@@ -1,7 +1,7 @@
 // Sends the waiting samples to the node, one report at a time, and does what the node's answer says: a report it refuses as it is made
 // (400, 413) is not sent again; a node that has no such route or does not take this viewer's reports (404, 405, 403) is not asked again
 // by this page; anything else (a busy node, no answer, a sign-in that ended) is tried again after a pause, with the samples kept.
-import { ApiError } from '../api/client'
+import { ApiError, STALE_TOKEN } from '../api/client'
 import type { Sample, SampleQueue } from './samples'
 
 /** How long a report waits for the next, while the page is shown. */
@@ -18,6 +18,9 @@ type Verdict = 'drop' | 'stop' | 'later'
 function verdictOf(error: unknown): Verdict {
   if (!(error instanceof ApiError)) return 'later'
   if (error.status === 400 || error.status === 413) return 'drop'
+  // A 403 is the node saying this viewer is not its owner, or that the write token is wrong (it started again): the client renews that token
+  // and sends once more, so one that still says so is a node that started again in between, and is no verdict on the viewer.
+  if (error.status === 403 && error.message.includes(STALE_TOKEN)) return 'later'
   if (error.status === 403 || error.status === 404 || error.status === 405) return 'stop'
   return 'later'
 }

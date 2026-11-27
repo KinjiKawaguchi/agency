@@ -121,7 +121,8 @@ export function forLog(text: string): string {
 }
 
 /** What the node says when a write's token is not the one it holds. */
-const STALE_TOKEN = 'write token'
+/** What the node's 403 says when the write token is missing or wrong (it starts again with a new one), as against a refusal of the viewer. */
+export const STALE_TOKEN = 'write token'
 
 /** The node puts a token for this page in its served index.html; every write sends it back. */
 function readToken(): string {
