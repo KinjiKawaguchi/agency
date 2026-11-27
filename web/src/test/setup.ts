@@ -2,6 +2,10 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach, beforeEach } from 'vitest'
 import { MOCK_TOKEN } from '../mock/node'
+import { installShiftedClock } from './shiftedClock'
+
+// Run as if it were another day, when asked to (`AGENCY_TEST_NOW`, see shiftedClock.ts); nothing changes without it.
+installShiftedClock(globalThis, process.env.AGENCY_TEST_NOW)
 
 // Making the device key (WebCrypto) can take longer than a second on a busy machine, as it does the first
 // time after a build. Waiting longer costs nothing when the answer comes sooner.

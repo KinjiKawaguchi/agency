@@ -75,7 +75,10 @@ function series(raw: unknown): LatencySeries | null {
   }
 }
 
-const STATES: readonly ObjectiveState[] = ['met', 'notMet', 'unknown']
+/** The states this client knows: a new one in the generated type is a compile error here, to be worded and drawn. */
+const KNOWN_STATES: Record<ObjectiveState, true> = { met: true, notMet: true, undetermined: true, unknown: true }
+
+const stateOf = (value: unknown): ObjectiveState => (typeof value === 'string' && Object.hasOwn(KNOWN_STATES, value) ? (value as ObjectiveState) : 'unknown')
 
 function objective(raw: unknown): Objective {
   const given = asObject(raw, 'objective')
@@ -83,7 +86,7 @@ function objective(raw: unknown): Objective {
   return {
     group: text(given.group, 'objective group'),
     p95Ms: count(given.p95Ms, 'objective p95'),
-    state: STATES.find((one) => one === given.state) ?? 'unknown',
+    state: stateOf(given.state),
     ...(measuredP95Ms === undefined ? {} : { measuredP95Ms }),
   }
 }
@@ -92,7 +95,7 @@ export function readMetrics(raw: unknown): Metrics {
   const given = asObject(raw, 'answer')
   const budget = optional(given.budget, (value) => count(asObject(value, 'budget').inNodeReadP95Ms, 'budget'))
   return {
-    from: time(given.from, 'from'),
+    from: time(given.from, 'from'), // shown-ok(period): the start of a range
     until: time(given.until, 'until'),
     generatedAt: time(given.generatedAt, 'time'),
     ...(budget === undefined ? {} : { budgetInNodeReadP95Ms: budget }),

@@ -42,7 +42,7 @@ struct RequestRow: View {
 
     /// Who drafted it, the team, and when.
     static func meta(of item: DeskItem, now: Date) -> String {
-        let drafter = item.drafter?.label ?? item.request.from
+        let drafter = item.drafterName
         let when = Ago.text(from: item.request.createdAt.date, now: now)
         return [Ja.Desk.drafter(drafter), item.teamLabel, when].joined(separator: " · ")
     }
