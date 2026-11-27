@@ -5,6 +5,7 @@ use crate::error::Result;
 use crate::node::Node;
 use crate::ports::PeerError;
 use crate::routes;
+use agency_proto::client::home_node_origin;
 use agency_proto::clock::{self, Duration};
 use agency_proto::digest::sha256_hex;
 use agency_proto::org::SignedOrg;
@@ -153,25 +154,53 @@ pub const EXPIRED_REASON: &str = "expired before it was delivered";
 
 /// Whether a parcel can no longer be of use, and so is not retried any more. An envelope more than 7 days old
 /// is refused by every node, so it moves to the refused box with `EXPIRED_REASON` (the decision log and the desk
-/// show it as refused, as for any refusal). A version of an org is of no use to a node that a newer version this
-/// node holds places no team on: the node leaves the org, and is not told of the versions after the one that
-/// removed it, so the earlier one (whose delivery may be all that holds the later ones back) is dropped. The
-/// newest version stays, even for a node it places no team on: that is the one that tells the node it was removed.
+/// show it as refused, as for any refusal). A version of an org is of no use to a node that the org's latest version
+/// places no team on, once a newer version is waiting for that node: the node left the org, and nothing is queued
+/// for it after the version that removed it, so that version is the newest that is waiting, and it stays however many
+/// versions the root signs after it (it is what tells the node it was removed). Only the older ones are dropped.
 enum Stale {
     Expired,
     Superseded,
 }
 
-fn staleness(node: &Node, parcel: &Parcel) -> Option<Stale> {
+/// The newest version of each org that is waiting for the node the parcels are for.
+fn newest_waiting(parcels: &[Parcel]) -> std::collections::BTreeMap<agency_proto::Id, u64> {
+    let mut newest = std::collections::BTreeMap::new();
+    for parcel in parcels {
+        if let ParcelBody::Org(doc) = &parcel.body {
+            let version = newest.entry(doc.body.org.clone()).or_insert(0);
+            *version = (*version).max(doc.body.version);
+        }
+    }
+    newest
+}
+
+/// Whether two origins name the same node, written however each was: as a client compares a home node's.
+fn is_same_node(one: &str, other: &str) -> bool {
+    let plain = |origin: &str| home_node_origin(origin).unwrap_or_else(|| origin.to_owned());
+    plain(one) == plain(other)
+}
+
+fn staleness(
+    node: &Node,
+    parcel: &Parcel,
+    newest: &std::collections::BTreeMap<agency_proto::Id, u64>,
+) -> Option<Stale> {
     match &parcel.body {
         ParcelBody::Envelope(signed) => {
             signed.body.is_expired(node.now()).then_some(Stale::Expired)
         }
         ParcelBody::Org(doc) => {
             let latest = node.store().load_org(&doc.body.org)?;
-            let is_newer = latest.body.version > doc.body.version;
-            let is_placed = latest.body.teams.iter().any(|team| team.node == parcel.to);
-            (is_newer && !is_placed).then_some(Stale::Superseded)
+            let is_placed = latest
+                .body
+                .teams
+                .iter()
+                .any(|team| is_same_node(&team.node, &parcel.to));
+            let is_older_than_a_waiting_one = newest
+                .get(&doc.body.org)
+                .is_some_and(|version| *version > doc.body.version);
+            (!is_placed && is_older_than_a_waiting_one).then_some(Stale::Superseded)
         }
         ParcelBody::Device(_) => None,
     }
@@ -179,9 +208,10 @@ fn staleness(node: &Node, parcel: &Parcel) -> Option<Stale> {
 
 /// Settles the parcels that are of no use any more, and answers the others, and the refusals made.
 fn sweep(node: &Node, parcels: Vec<Parcel>) -> Result<(Vec<Parcel>, Vec<Outcome>)> {
+    let newest = newest_waiting(&parcels);
     let (mut kept, mut refused) = (vec![], vec![]);
     for parcel in parcels {
-        match staleness(node, &parcel) {
+        match staleness(node, &parcel, &newest) {
             Some(Stale::Expired) => {
                 let outcome = Outcome::Refused(EXPIRED_REASON.to_owned());
                 settle(node, &parcel, &outcome)?;

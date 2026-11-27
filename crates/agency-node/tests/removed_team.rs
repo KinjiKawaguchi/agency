@@ -75,6 +75,45 @@ async fn the_version_that_removes_a_team_is_sent_to_the_teams_own_node_too() {
     assert!(body_of(&bob).team(&id("web")).is_none());
 }
 
+#[tokio::test]
+async fn the_version_that_removes_a_team_waits_for_its_node_whatever_the_root_signs_after_it() {
+    let (alice, _) = alice().await;
+    let mut bob = joined_bob(&alice).await;
+    orgs::add_team(&alice.node, &id("acme"), place("web", &bob.url())).unwrap();
+    deliver_due(&alice.node).await.unwrap();
+    assert!(body_of(&bob).team(&id("web")).is_some());
+
+    // bob is down when the team is removed, and the root signs another version after it: nothing is queued for
+    // bob after the removal, which is the newest that waits for him and must not be dropped.
+    bob.stop().await;
+    teams::remove(&alice.node, &id("acme"), &id("web")).unwrap();
+    orgs::amend(&alice.node, &id("acme"), |definition| {
+        definition.label = "Acme Inc".into();
+        Ok(())
+    })
+    .unwrap();
+    deliver_due(&alice.node).await.unwrap();
+    let bob_url = bob.url();
+    let to_bob = |running: &Running| {
+        pending(&running.node)
+            .into_iter()
+            .filter(|parcel| parcel.to == bob_url)
+            .count()
+    };
+    assert_eq!(to_bob(&alice), 1, "the removal still waits for bob");
+
+    bob.start().await;
+    alice
+        .clock
+        .advance(agency_proto::clock::Duration::minutes(10));
+    deliver_due(&alice.node).await.unwrap();
+    assert!(
+        body_of(&bob).team(&id("web")).is_none(),
+        "bob heard that the team was removed"
+    );
+    assert_eq!(to_bob(&alice), 0);
+}
+
 fn body_of(running: &Running) -> agency_proto::OrgDefinition {
     running.node.store().load_org(&id("acme")).unwrap().body
 }

@@ -555,7 +555,7 @@ async fn an_envelope_that_waited_past_its_life_is_refused_as_expired_and_not_a_s
 }
 
 #[tokio::test]
-async fn an_org_version_for_a_node_that_no_newer_version_places_a_team_on_is_dropped_and_the_newest_stays(
+async fn of_the_versions_waiting_for_a_node_the_org_no_longer_places_a_team_on_only_the_newest_stays(
 ) {
     let alice = alice();
     let (org, far) = (id("acme"), id("far"));
@@ -580,10 +580,14 @@ async fn an_org_version_for_a_node_that_no_newer_version_places_a_team_on_is_dro
     .unwrap();
     assert_eq!(versions(&pending(&alice.node)).len(), 2);
     deliver_due(&alice.node).await.unwrap();
-    let left = versions(&pending(&alice.node));
-    assert_eq!(left.len(), 1, "the older version is dropped: {left:?}");
+    let removal = versions(&pending(&alice.node));
+    assert_eq!(
+        removal.len(),
+        1,
+        "the older version is dropped: {removal:?}"
+    );
     assert!(
-        left[0] > placed[0],
+        removal[0] > placed[0],
         "and the one that removes far stays: it tells the node it was removed"
     );
     assert!(
@@ -591,17 +595,19 @@ async fn an_org_version_for_a_node_that_no_newer_version_places_a_team_on_is_dro
         "a dropped version is not a refusal"
     );
 
-    // A newer version still places no team there: the removal's turn to be dropped.
-    orgs::amend(&alice.node, &org, |body| {
-        body.label = "Acme Inc".into();
-        Ok(())
-    })
-    .unwrap();
-    alice.clock.advance(Duration::seconds(20));
-    deliver_due(&alice.node).await.unwrap();
-    assert!(versions(&pending(&alice.node)).is_empty());
+    // The root signs more versions, none queued for far's node. The removal is still the newest that waits
+    // for it, so it stays however many come after it: far's node must still hear that it was removed.
+    for label in ["Acme Inc", "Acme Ltd"] {
+        orgs::amend(&alice.node, &org, |body| {
+            body.label = label.into();
+            Ok(())
+        })
+        .unwrap();
+        alice.clock.advance(Duration::minutes(10));
+        deliver_due(&alice.node).await.unwrap();
+        assert_eq!(versions(&pending(&alice.node)), removal, "after {label}");
+    }
 }
-
 #[tokio::test]
 async fn versions_for_a_node_that_a_newer_version_still_places_a_team_on_are_all_kept() {
     let alice = alice();
@@ -617,5 +623,36 @@ async fn versions_for_a_node_that_a_newer_version_still_places_a_team_on_are_all
         versions(&pending(&alice.node)).len(),
         2,
         "both wait for the node, in order"
+    );
+}
+
+#[tokio::test]
+async fn an_origin_written_another_way_is_still_the_node_a_newer_version_places_a_team_on() {
+    let alice = alice();
+    let org = id("acme");
+    // The team is placed at one spelling of its node's origin, and the versions are queued under it.
+    let (written, other) = ("http://LOCALHOST:1", "http://localhost:1");
+    orgs::add_team(&alice.node, &org, TeamPlace::new(id("far"), "Far", written)).unwrap();
+    orgs::amend(&alice.node, &org, |body| {
+        body.label = "Acme Inc".into();
+        Ok(())
+    })
+    .unwrap();
+    // The latest version spells the same node's origin the other way: it is still the node it places the team on.
+    orgs::amend(&alice.node, &org, |body| {
+        let team = body.teams.iter_mut().find(|team| team.id == id("far"));
+        team.unwrap().node = other.into();
+        Ok(())
+    })
+    .unwrap();
+    deliver_due(&alice.node).await.unwrap();
+    let under_the_first: Vec<Parcel> = pending(&alice.node)
+        .into_iter()
+        .filter(|parcel| parcel.to == written)
+        .collect();
+    assert_eq!(
+        versions(&under_the_first).len(),
+        2,
+        "not dropped as if nothing placed a team there"
     );
 }
