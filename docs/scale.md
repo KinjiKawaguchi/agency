@@ -16,7 +16,7 @@ production. The home node is the org's root; each other node joins the org and h
 holds 20 requests. A "silent" node accepts connections and never answers, so each read of a team on it waits for
 the reader's 8-second timeout.
 
-Times are the median of three passes after a first one. CPU is the whole process's, so it counts the team nodes
+Times are the median of three passes after a first one, 30 seconds apart on the node's clock (so each pass's signed reads are its own), and every pass must read every answering team. CPU is the whole process's, so it counts the team nodes
 answering as well as the home node reading, at a resolution of 10 ms. "Views" is the size of the views read in
 one pass. "Decision" is one decision sent from the home node to a team node and applied there. "Home data" is the
 home node's data directory after the run.
@@ -27,16 +27,17 @@ Machine: AMD EPYC 9115 (16 cores, 32 threads), 1.5 TB of memory, Linux 6.8. Code
 
 | team nodes | teams each | silent teams | remote teams | refresh ms | push ms | outbox ms | CPU ms per pass | views KiB per pass | decision ms | home data KiB |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 2 | 10 | 0 | 20 | 4 | 1 | 0 | 0 | 84 | 0 | 181 |
-| 5 | 50 | 0 | 250 | 99 | 14 | 0 | 110 | 1058 | 1 | 2188 |
-| 10 | 200 | 0 | 2000 | 2866 | 124 | 0 | 3210 | 8474 | 3 | 18810 |
-| 2 | 10 | 5 | 25 | 40017 | 1 | 0 | 10 | 84 | 1 | 196 |
+| 2 | 10 | 0 | 20 | 5 | 1 | 0 | 10 | 84 | 0 | 181 |
+| 5 | 50 | 0 | 250 | 99 | 14 | 0 | 110 | 1058 | 1 | 2185 |
+| 10 | 200 | 0 | 2000 | 2940 | 128 | 0 | 3230 | 8474 | 2 | 18785 |
+| 2 | 10 | 5 | 25 | 40013 | 1 | 8002 | 20 | 84 | 1 | 196 |
 
 ## What the numbers say
 
 - **One team node that does not answer costs 8 seconds per team on it, every pass.** Five such teams make a pass
   take 40 seconds instead of 4 ms, and two are enough to exceed the 15-second loop. The push pass and the outbox
-  run after `refresh` in the same loop, so the owner's notifications and every queued decision wait that long.
+  run after `refresh` in the same loop, so the owner's notifications and every queued decision wait that long. The
+  outbox also waits one timeout a pass for a version it keeps trying to send to the silent node.
   This is the first limit, and it doesn't depend on load (agency#530, agency#531).
 - **Reading every remote team every pass grows linearly.** At 2,000 remote teams, `refresh` takes about 2.9 s and
   reads about 8.3 MiB of views per pass, which is about 33 MiB a minute even when nothing changed (agency#532).

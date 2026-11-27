@@ -146,6 +146,18 @@ async fn org_of(shape: &Shape) -> (Running, Vec<Running>, Option<TcpListener>) {
     (alice, members, silent.map(|(_, listener)| listener))
 }
 
+/// How many teams on an answering node (`t…`) the last pass failed to read.
+fn failed_reads(alice: &Running) -> usize {
+    let doc = alice.node.store().load_org(&id("acme")).unwrap();
+    doc.body
+        .teams
+        .iter()
+        .filter(|place| place.id.as_str().starts_with('t'))
+        .filter_map(|place| alice.node.store().load_replica(&id("acme"), &place.id))
+        .filter(|replica| replica.error.is_some())
+        .count()
+}
+
 async fn timed<F: std::future::Future>(work: F) -> Duration {
     let started = Instant::now();
     work.await;
@@ -162,6 +174,11 @@ async fn measure(shape: &Shape) -> Measured {
     let (mut refreshes, mut pushes, mut outboxes) = (vec![], vec![], vec![]);
     let mut cpu = None;
     for pass in 0..4 {
+        // A pass every 30 s, as the node's loop: each pass's signed reads carry their own time, so none is refused as a
+        // copy of the last pass's.
+        alice
+            .clock
+            .advance(agency_proto::clock::Duration::seconds(30));
         let before = cpu_time();
         let refreshed = timed(async { refresh(&alice.node).await.unwrap() }).await;
         let pushed = timed(async { notify_waiting(&alice.node).await.unwrap() }).await;
@@ -170,6 +187,11 @@ async fn measure(shape: &Shape) -> Measured {
             continue;
         }
         cpu = before.zip(cpu_time()).map(|(before, after)| after - before);
+        assert_eq!(
+            failed_reads(&alice),
+            0,
+            "pass {pass}: every answering team was read"
+        );
         refreshes.push(refreshed);
         pushes.push(pushed);
         outboxes.push(delivered);
