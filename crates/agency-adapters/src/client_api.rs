@@ -57,9 +57,11 @@ mod history;
 mod members;
 mod metrics;
 mod outcomes;
+mod route;
 mod telemetry;
 
-pub use telemetry::REPORTABLE_ROUTES;
+pub use route::Route;
+pub use telemetry::{reportable_routes, route_templates};
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -108,10 +110,10 @@ pub(crate) enum Admitted {
     Local,
     Access(Identity),
     /// A member this node hosts, signed in through Access with the email its record names. It reaches only
-    /// the routes in `guests::GUEST_ROUTES`, scoped to its member.
+    /// the routes declared `for_guests`, scoped to its member.
     Guest(Guest),
     /// A person signed in through Access with the address of a claim link, who is not yet a guest: the address
-    /// (lowercased) is all there is of them. It reaches only the claim routes (`claimants::CLAIMANT_ROUTES`) and the
+    /// (lowercased) is all there is of them. It reaches only the claim routes (declared `for_claimants`) and the
     /// web client's pages, and acts as no one.
     Claimant(String),
 }
@@ -835,59 +837,85 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
     }
 }
 
-/// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
-/// The routes behind the guard that this module serves itself, by method and path: the one list the router
-/// is built from (`method_router` gives each path its handlers) and that the tests walk.
-const ROUTES: &[(&str, &str)] = &[
-    ("GET", "/api/about"),
-    ("GET", "/api/me"),
-    ("GET", "/api/session"),
-    ("GET", "/api/decisions"),
-    ("GET", "/api/decisions/{id}"),
-    ("GET", "/api/devices"),
-    ("GET", "/api/claim"),
-    ("POST", "/api/claim"),
-    ("GET", "/api/push/tokens"),
-    ("POST", "/api/push/tokens"),
-    ("DELETE", "/api/push/tokens/{token}"),
-    ("GET", "/api/push/vapid"),
-    ("GET", "/api/push/subscriptions"),
-    ("POST", "/api/push/subscriptions"),
-    ("DELETE", "/api/push/subscriptions/{id}"),
-    ("POST", "/api/devices/requests"),
-    ("POST", "/api/devices/changes"),
-    ("GET", "/api/orgs/{org}"),
-    ("GET", "/api/orgs/{org}/teams/{team}/view"),
-    ("GET", "/api/orgs/{org}/teams/{team}/usage"),
-    ("GET", "/api/orgs/{org}/teams/{team}/budget"),
-    ("GET", "/api/orgs/{org}/evaluation"),
-    ("GET", "/api/orgs/{org}/effort"),
-    ("GET", "/api/orgs/{org}/teams/{team}/activity"),
-    ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
-    ("GET", HANDOFF_PATH),
-    ("GET", CALLBACK_PATH),
+/// The routes behind the guard that this module serves itself: the one list the router is built from
+/// (`method_router` gives each path its handlers) and that the guard's tables and the tests read.
+const ROUTES: &[Route] = &[
+    Route::get("/api/about").for_guests().reported(),
+    Route::get("/api/me").for_guests().reported(),
+    Route::get("/api/session").for_guests().reported(),
+    Route::get("/api/decisions").for_guests().reported(),
+    Route::get("/api/decisions/{id}"),
+    Route::get("/api/devices").for_guests().reported(),
+    Route::get("/api/claim").for_claimants().reported(),
+    Route::post("/api/claim").for_claimants().reported(),
+    Route::get("/api/push/tokens").for_guests().reported(),
+    Route::post("/api/push/tokens").for_guests().reported(),
+    Route::delete("/api/push/tokens/{token}")
+        .for_guests()
+        .reported(),
+    Route::get("/api/push/vapid").for_guests().reported(),
+    Route::get("/api/push/subscriptions")
+        .for_guests()
+        .reported(),
+    Route::post("/api/push/subscriptions")
+        .for_guests()
+        .reported(),
+    Route::delete("/api/push/subscriptions/{id}")
+        .for_guests()
+        .reported(),
+    Route::post("/api/devices/requests").for_guests().reported(),
+    Route::post("/api/devices/changes").for_guests().reported(),
+    Route::get("/api/orgs/{org}").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/view")
+        .for_guests()
+        .reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/usage").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/budget").reported(),
+    Route::get("/api/orgs/{org}/evaluation").reported(),
+    Route::get("/api/orgs/{org}/effort").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/activity").reported(),
+    Route::post("/api/orgs/{org}/teams/{team}/envelopes")
+        .for_guests()
+        .reported(),
+    Route::get(HANDOFF_PATH),
+    Route::get(CALLBACK_PATH),
 ];
 
-/// The routes a claimant may reach (`claimants::CLAIMANT_ROUTES`), by method and path, for the tests.
+/// Every part's routes, this module's first: a new part of the Client API adds its table here.
+const PARTS: [&[Route]; 7] = [
+    ROUTES,
+    history::ROUTES,
+    outcomes::ROUTES,
+    members::ROUTES,
+    metrics::ROUTES,
+    telemetry::ROUTES,
+    claims::ROUTES,
+];
+
+/// Every route behind the guard, as declared.
+pub(super) fn declared() -> impl Iterator<Item = &'static Route> {
+    PARTS.into_iter().flatten()
+}
+
+/// The routes a claimant may reach, by method and path, for the tests.
 pub fn claimant_routes() -> Vec<(&'static str, &'static str)> {
-    claimants::CLAIMANT_ROUTES.to_vec()
+    declared()
+        .filter(|route| route.is_for_claimants())
+        .map(Route::pair)
+        .collect()
 }
 
-/// The routes a guest may reach (`guests::GUEST_ROUTES`), by method and path, for the tests.
+/// The routes a guest may reach, by method and path, for the tests.
 pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
-    guests::GUEST_ROUTES.to_vec()
+    declared()
+        .filter(|route| route.is_for_guests())
+        .map(Route::pair)
+        .collect()
 }
 
-/// Every route behind the guard, this module's and its parts' (history, outcomes, metrics, telemetry), by method and path.
+/// Every route behind the guard, this module's and its parts', by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = history::ROUTES
-        .iter()
-        .chain(outcomes::ROUTES)
-        .chain(members::ROUTES)
-        .chain(metrics::ROUTES)
-        .chain(telemetry::ROUTES)
-        .chain(claims::ROUTES);
-    ROUTES.iter().chain(parts).copied().collect()
+    declared().map(Route::pair).collect()
 }
 
 /// The handlers of one path of `ROUTES`, for the methods listed there.
@@ -921,8 +949,9 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
     }
 }
 
+/// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
 pub fn router(api: Arc<ClientApi>) -> Router {
-    let mut paths: Vec<&str> = ROUTES.iter().map(|(_, path)| *path).collect();
+    let mut paths: Vec<&str> = ROUTES.iter().map(|route| route.path).collect();
     paths.dedup();
     let own = paths.into_iter().fold(Router::new(), |router, path| {
         router.route(path, method_router(path))
