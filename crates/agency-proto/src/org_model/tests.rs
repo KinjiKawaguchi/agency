@@ -141,3 +141,44 @@ fn a_person_reports_to_the_head_of_the_unit_it_is_in_and_a_head_to_the_head_abov
         "a person in no unit reports to the org's head"
     );
 }
+
+#[test]
+fn the_org_s_head_is_found_by_the_root_s_account_not_by_a_person_s_id() {
+    let mut org = acme();
+    let key = AccountKey::from_seed([1; 32]).public();
+    let root_person =
+        Person::new(id("alice-p"), "Alice", id("alice"), key).with_department(Some(id("product")));
+    org = org.with_people(vec![root_person, person("bob", 2, Some("dev"))]);
+    assert_eq!(
+        org.head(),
+        Some(&id("alice-p")),
+        "the person whose account is the root's"
+    );
+}
+
+#[test]
+fn a_report_walks_up_every_level_to_the_nearest_head() {
+    let mut org = acme();
+    org.departments_mut()[0].head = Some(id("erin"));
+    let mut people = org.people.clone();
+    people.push(person("erin", 5, Some("product")));
+    let org = org.with_people(people);
+    let reports = |name: &str| org.reports_to(&id(name));
+    assert_eq!(reports("carol"), Some(id("bob")), "dev's head");
+    assert_eq!(
+        reports("bob"),
+        Some(id("erin")),
+        "dev's head reports to product's head"
+    );
+    assert_eq!(
+        reports("dave"),
+        Some(id("erin")),
+        "ops has none: the head above it"
+    );
+    assert_eq!(
+        reports("erin"),
+        Some(id("alice")),
+        "product's head reports to the org's head"
+    );
+    assert_eq!(reports("alice"), None);
+}
