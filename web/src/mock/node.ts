@@ -16,6 +16,7 @@ import type { MeWithGuest } from '../guest/provisional.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
 import { budgetOf } from './budget.ts'
 import { effortReport, withPlans } from './effort.ts'
+import { historyOf, pageOf } from './history.ts'
 import { membersOf } from './members.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
@@ -109,6 +110,8 @@ interface MockNodeOptions {
   pushDevice?: boolean
   /** A node that computes the weekly budget (it lists the `budget` capability and serves the route): `true` for the default figures of each team, or the answer of each team by its id (a team with none answers 404). */
   budget?: true | Readonly<Record<string, BudgetStatus>>
+  /** A node that serves the org's change history to its owner (`GET /api/orgs/{org}/history`) and lists the `history` capability: the number of versions the org has; otherwise the route answers 404. */
+  history?: number
   /** A node with the evaluation also serves where a team's tokens went by work type (`GET /api/orgs/{org}/effort`) and says so with the `effort` capability; `false` makes it a node without it: not listed, and the route answers 404. */
   effort?: boolean
   /** A node that serves the org's members, devices and open seats to its owner (`GET /api/orgs/{org}/members`) and lists the `members` capability; otherwise the route answers 404. */
@@ -179,12 +182,13 @@ const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const BUDGET_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/budget$/
 const MEMBERS_PATH = /^\/api\/orgs\/([^/]+)\/members$/
+const HISTORY_PATH = /^\/api\/orgs\/([^/]+)\/history$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; budget?: unknown; effort?: boolean; members?: boolean }): About => ({
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; budget?: unknown; effort?: boolean; members?: boolean; history?: number }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.budget === undefined ? [] : ['budget']), ...(options.effort === true ? ['effort'] : []), ...(options.members === true ? ['members'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...(options.budget === undefined ? [] : ['budget']), ...(options.effort === true ? ['effort'] : []), ...(options.members === true ? ['members'] : []), ...(options.history === undefined ? [] : ['history']), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -346,6 +350,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return members === undefined ? failure(404, 'No such organization.') : json(members)
   }
 
+  const handleHistory = (org: string, url: URL): Response => {
+    if (options.history === undefined) return failure(404, 'No such route.')
+    if (org !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
+    const page = pageOf(historyOf(options.history), url)
+    return 'refused' in page ? failure(400, page.refused) : json(page)
+  }
+
   const handleBudget = (team: string): Response => {
     if (options.budget === undefined) return failure(404, 'No such route.')
     const answer = options.budget === true ? budgetOf(team, now) : options.budget[team]
@@ -465,6 +476,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (budgetMatch !== null && request.method === 'GET') return handleBudget(budgetMatch[2] ?? '')
     const membersMatch = MEMBERS_PATH.exec(url.pathname)
     if (membersMatch !== null && request.method === 'GET') return handleMembers(membersMatch[1] ?? '')
+    const historyMatch = HISTORY_PATH.exec(url.pathname)
+    if (historyMatch !== null && request.method === 'GET') return handleHistory(historyMatch[1] ?? '', url)
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) {
       const extra = options.moreOrgs === true ? MORE_ORGS.find((org) => org.id === orgMatch[1]) : undefined

@@ -5,6 +5,8 @@ export interface NodeOptions {
   budgetState?: string
   /** Serve the org's members, devices and open seats, as a node that lists the `members` capability does. */
   members?: boolean
+  /** Serve the org's change history of this many versions, as a node that lists the `history` capability does. */
+  history?: number
   /** Serve the mock token use (the real node does not yet). */
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
@@ -55,6 +57,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.evaluation === true) query.set('evaluation', '1')
   if (options.budgetState !== undefined) query.set('budgetState', options.budgetState)
   if (options.members === true) query.set('members', '1')
+  if (options.history !== undefined) query.set('history', String(options.history))
   if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)

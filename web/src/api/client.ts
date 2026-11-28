@@ -3,11 +3,12 @@ import { labelsMadePrintable } from '../shared/printable'
 import { at, type Target } from './routes'
 import { statusOf, wholeMs, type Sample } from '../telemetry/samples'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { About, BudgetStatus, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, OrgMembers, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, PushTokenList, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
+import type { About, BudgetStatus, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, OrgHistory, OrgMembers, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, PushTokenList, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
 import { readBudget } from './budgetAnswers'
 import { readMembers } from './membersAnswers'
+import { readHistory } from './historyAnswers'
 import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
 import type { Metrics } from './metricsApi'
@@ -91,6 +92,8 @@ export interface ApiClient {
   /** The numbers of the org's KPIs over the last `days` days: owner only (403 for anyone else, which is "nothing to show", not a failure). */
   /** The org's members with their devices, its open seats and external parties, and what waits for the root key: the owner's alone (403 for anyone else, 404 for an org that is not theirs). */
   orgMembers: (org: string) => Promise<OrgMembers>
+  /** The org's change history, oldest first, as the node works it out: at most `limit` entries after the version `after` (none: from the first), and `more` when the node left later ones out. The owner's alone (403 for anyone else, 404 for an org that is not theirs). */
+  orgHistory: (org: string, page: { after?: number; limit?: number }) => Promise<OrgHistory>
   outcomes: (org: string, days: number) => Promise<Outcomes>
   /** How each aim's KPI stands around the day its epic shipped: owner only, as `outcomes`. */
   readings: (org: string) => Promise<Readings>
@@ -286,6 +289,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     metrics: (days, hourBuckets = false) => get<unknown>(at('GET /api/metrics', {}, { days, hourBuckets: hourBuckets ? 1 : undefined })).then(checked(readMetrics)),
     activity: (org, team, since, signal) => get<unknown>(at('GET /api/orgs/{org}/teams/{team}/activity', { org, team }, { since }), signal).then(checked(readActivity)),
     orgMembers: (org) => get<unknown>(at('GET /api/orgs/{org}/members', { org })).then(checked(readMembers)),
+    orgHistory: (org, { after, limit }) => get<unknown>(at('GET /api/orgs/{org}/history', { org }, { after, limit })).then(checked(readHistory)),
     outcomes: (org, days) => get<unknown>(at('GET /api/orgs/{org}/outcomes', { org }, { days })).then(checked(readOutcomes)),
     readings: (org) => get<unknown>(at('GET /api/orgs/{org}/outcomes/readings', { org })).then(checked(readReadings)),
     numberHistory: (org, kpi, limit) => get<unknown>(at('GET /api/orgs/{org}/outcomes/observations', { org }, { kpi, limit })).then(checked(readNumberHistory)),
