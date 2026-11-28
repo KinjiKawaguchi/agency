@@ -1,0 +1,53 @@
+name: sbom
+
+# What the node is made of: its Rust crates and the npm packages of the web client it embeds, as CycloneDX
+# lists (SBOMs). The script fails on a list with no components. The release workflow calls this for a release
+# (and for a pull request that changes the release workflow); a pull request that changes a lock file, such as a
+# dependency update, runs only this, not the release builds.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag of the release the lists are made for; empty for a pull request or a manual run.
+        required: false
+        default: ''
+        type: string
+  pull_request:
+    paths:
+      - Cargo.lock
+      - web/package-lock.json
+      - scripts/release/sbom.sh
+      - .github/workflows/sbom.yml
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-cyclonedx@0.5.10
+      - name: Write the SBOMs
+        env:
+          RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
+        run: |
+          args=()
+          [ -z "$RELEASE_FLAG" ] || args+=(--release)
+          scripts/release/sbom.sh dist "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
