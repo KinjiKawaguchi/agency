@@ -32,6 +32,7 @@ fn merged(number: u64, title: &str, merged_at: &str) -> MergedPullRequest {
         issue_started_at: None,
         closes_incident: false,
         work_type: None,
+        board: vec![],
     }
 }
 

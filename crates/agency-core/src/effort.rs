@@ -3,7 +3,7 @@
 //! passed on to other nodes over a signed read. Nothing is stored here.
 use crate::client::membership;
 use crate::config::HostedTeam;
-use crate::delivery::{effort, EffortInput, Period};
+use crate::delivery::{effort, of_team, EffortInput, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::peer_about::note_not_found;
@@ -81,7 +81,7 @@ pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Ef
         hosted.team.clone(),
         &EffortInput {
             period,
-            pull_requests: &facts.pull_requests,
+            pull_requests: &of_team(hosted.delivery.as_ref(), facts.pull_requests),
             cost_by_day: &cost_by_day,
             tokens,
         },

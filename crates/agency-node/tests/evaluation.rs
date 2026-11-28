@@ -32,6 +32,7 @@ fn facts() -> DeliveryFacts {
             issue_started_at: Some(at("2026-11-24T06:00:00Z")),
             closes_incident: false,
             work_type: None,
+            board: vec![],
         }],
         runs: vec![MainRun {
             repo: "acme/app".into(),
