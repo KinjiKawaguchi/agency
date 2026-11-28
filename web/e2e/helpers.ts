@@ -36,7 +36,7 @@ export interface NodeOptions extends AskedOfFeatures {
   outcomes?: boolean
   /** The evaluation carries each team's participants, as it does for the team's owner. */
   participants?: boolean
-  /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
+  /** Adds the orgs Lab and Club: a stuck team, a stale copy, a large team, and one that cannot be read. */
   moreOrgs?: boolean
   /** The account has a second device, Work laptop, which can be removed. */
   laptop?: boolean
