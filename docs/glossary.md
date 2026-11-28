@@ -83,7 +83,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 - **Ticket** (チケット). One piece of work on a team's board, open or closed, as the team's runtime reports it in `tickets` (an issue, for a board on GitHub). It is named by its item reference. A *work item* (`WorkItem`) is a ticket as a team's view has it: an open one only.
 - **Epic** (エピック). A ticket that holds others, its *children* (子チケット *(proposed)*): the sub-issues of an issue, for a board on GitHub. An epic is answered for by the team whose board Team it has, with every child whatever the child's own Team. A ticket can be in at most one epic; one in none is listed by itself.
-- **Priority** (優先度). The order in which work is handed out, set on an epic or a ticket: highest (最優先), high (高), medium (中), low (低), or deferred (後回し *(proposed)*). Work with no priority, or deferred, is not handed out. On the wire `priority` is a ticket's own value.
+- **Priority** (優先度). The order in which work is handed out, set on an epic or a ticket: highest (最優先), high (高), medium (中), low (低), or deferred (後回し *(proposed)*). The leads hand out work in this order, and a harness that orders its work reads the same value; work with no effective priority, or deferred, is not handed out. On the wire `priority` is a ticket's own value.
 - **Effective priority** (実効優先度 *(proposed)*). What a ticket's work is ordered by: its own priority, else its epic's (`effectivePriority`). The team's runtime works it out, since its dispatch orders work by the same rule; the node and the screens show it and never work it out.
 
 ## How data moves

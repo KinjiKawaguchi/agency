@@ -4,7 +4,7 @@
 //! An optional field is left out when absent, never written as `null`.
 use crate::envelope::is_target;
 use crate::ids::Id;
-use crate::org::printable;
+use crate::org::{is_hidden_char, printable};
 use crate::participant_metrics::valid_repo;
 use crate::timestamp::Timestamp;
 use crate::view::{limits, WorkStatus};
@@ -185,6 +185,12 @@ impl Ticket {
         let reference = &self.reference;
         if reference.is_empty() || reference.chars().count() > limits::NAME {
             return Err("reported a ticket without a usable ref".into());
+        }
+        if reference.chars().any(is_hidden_char) {
+            return Err(format!(
+                "reported a ref that hides or reorders text: {}",
+                printable(reference)
+            ));
         }
         if self.title.chars().count() > limits::TITLE {
             return Err(format!("the title of {reference} is too long"));
