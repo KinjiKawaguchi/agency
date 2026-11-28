@@ -1,0 +1,17 @@
+{
+  "url": "http://127.0.0.1:4792",
+  "listen": "127.0.0.1:4792",
+  "account": {
+    "id": "bob",
+    "label": "Bob"
+  },
+  "scrum": "/fixture/runtime.sh",
+  "teams": [],
+  "trusted": [
+    {
+      "org": "acme",
+      "rootFingerprint": "15061d929d979e55b3d5022be0be4981",
+      "rootNode": "http://127.0.0.1:4791"
+    }
+  ]
+}

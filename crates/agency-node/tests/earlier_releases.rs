@@ -7,7 +7,8 @@ use agency_adapters::files::DataDir;
 use agency_adapters::memory::{ManualClock, MemoryDelivery, MemoryRootKeys, MemoryRuntime};
 use agency_core::config::NodeConfig;
 use agency_core::ports::{
-    AppliedLog, ConfigStore, DecisionLogStore, InviteStore, OrgStore, PushStore, ReplicaStore,
+    AboutStore, AppliedLog, ConfigStore, DecisionLogStore, InviteStore, OrgStore, OwnOriginStore,
+    PushStore, ReplicaStore,
 };
 use agency_node::Overrides;
 use agency_proto::org::{verify_genesis, verify_successor, SignedOrg};
@@ -20,16 +21,22 @@ use std::sync::Arc;
 /// What a node's data directory holds at its top level, as each release writes it. A name that is not
 /// here fails the check, so that a snapshot of a release that writes something new is read too.
 const READ_BELOW: &[&str] = &[
+    "about",
     "account.key",
     "applied.json",
     "cli-device.key",
     "config.json",
     "decisions.json",
     "desk-refresh.json",
+    // read by opening the node, which refuses a layout newer than its own
+    "format",
     "invites",
     "notified.json",
     "orgs",
+    "own-origins.json",
+    "push-retries.json",
     "replicas",
+    "runtime-releases.json",
 ];
 
 fn releases_dir() -> PathBuf {
@@ -288,6 +295,86 @@ fn check_push_state(store: &dyn PushStore, data: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `own-origins.json`: the origins the node reads are those on disk.
+fn check_own_origins(store: &dyn OwnOriginStore, data: &Path) -> Result<(), String> {
+    let path = data.join("own-origins.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let written = parse_file(&path)?;
+    let written = written.as_array().ok_or("own-origins.json is not a list")?;
+    let read = store
+        .own_origins()
+        .map_err(|error| format!("own-origins.json: {error}"))?;
+    if read.len() != written.len() {
+        return Err(format!(
+            "own-origins.json holds {} origins and the node reads {}",
+            written.len(),
+            read.len()
+        ));
+    }
+    Ok(())
+}
+
+/// `push-retries.json`: the notices waiting to be sent again that the node reads are those on disk.
+fn check_push_retries(store: &dyn PushStore, data: &Path) -> Result<(), String> {
+    let path = data.join("push-retries.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let written = parse_file(&path)?;
+    let written = written
+        .as_array()
+        .ok_or("push-retries.json is not a list")?;
+    let read = store.push_retries().len();
+    if read != written.len() {
+        return Err(format!(
+            "push-retries.json holds {} retries and the node reads {read}",
+            written.len()
+        ));
+    }
+    Ok(())
+}
+
+/// `runtime-releases.json`: the teams whose runtime release the node reads are those on disk.
+fn check_runtime_releases(store: &DataDir, data: &Path) -> Result<(), String> {
+    let path = data.join("runtime-releases.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let written = parse_file(&path)?;
+    let written = written
+        .as_object()
+        .ok_or("runtime-releases.json is not a map")?;
+    let read = agency_adapters::runtime_releases::read(store).len();
+    if read != written.len() {
+        return Err(format!(
+            "runtime-releases.json holds {} teams and the node reads {read}",
+            written.len()
+        ));
+    }
+    Ok(())
+}
+
+/// `about/<org>.json`: the nodes whose answer to `about` the node kept are those on disk.
+fn check_peer_abouts(store: &dyn AboutStore, data: &Path) -> Result<(), String> {
+    for path in json_files(&data.join("about")) {
+        let org = id(&stem(&path))?;
+        let written = parse_file(&path)?;
+        let written = written
+            .as_object()
+            .ok_or_else(|| format!("about/{org}.json is not a map"))?;
+        let read = store.peer_abouts(&org).len();
+        if read != written.len() {
+            return Err(format!(
+                "about/{org}.json holds {} nodes and the node reads {read}",
+                written.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn check_nothing_unread(data: &Path) -> Result<(), String> {
     let known: BTreeSet<&str> = READ_BELOW.iter().copied().collect();
     for entry in sorted_entries(data) {
@@ -346,6 +433,10 @@ async fn read_everything(data: &Path) -> Result<usize, String> {
     check_replicas(&store, data)?;
     check_invites(&store, data)?;
     check_push_state(&store, data)?;
+    check_own_origins(&store, data)?;
+    check_push_retries(&store, data)?;
+    check_runtime_releases(&store, data)?;
+    check_peer_abouts(&store, data)?;
     let decisions = check_decisions(&store, data)?;
     check_client_api(&opened, decisions).await?;
     Ok(decisions)
@@ -419,10 +510,15 @@ async fn today_s_node_reads_what_each_earlier_release_wrote() {
 
 /// The snapshot of the first release, copied, so that a test can break one thing in it.
 fn damaged(node: &str, damage: impl FnOnce(&Path)) -> Result<usize, String> {
+    damaged_in("v0.3.0", node, damage)
+}
+
+/// The snapshot of a release, copied, so that a test can break one thing in it.
+fn damaged_in(release: &str, node: &str, damage: impl FnOnce(&Path)) -> Result<usize, String> {
     let snapshot = snapshots()
         .into_iter()
-        .find(|(tag, name, _)| tag == "v0.3.0" && name == node)
-        .expect("the v0.3.0 snapshot")
+        .find(|(tag, name, _)| tag == release && name == node)
+        .unwrap_or_else(|| panic!("the {release} snapshot"))
         .2;
     let copy = copy_of(&snapshot);
     damage(copy.path());
@@ -613,4 +709,57 @@ fn the_note_of_a_recovery_start_is_read_and_is_not_a_version() {
         error.contains("recovery start of acme version 3 does not read"),
         "{error}"
     );
+}
+
+#[test]
+fn a_layout_newer_than_the_node_fails() {
+    let error = damaged_in("v0.4.0", "alice", |data| {
+        std::fs::write(data.join("format"), "99\n").unwrap();
+    })
+    .unwrap_err();
+    assert!(
+        error.contains("format") || error.contains("layout"),
+        "{error}"
+    );
+}
+
+#[test]
+fn own_origins_the_node_cannot_read_fail() {
+    let error = damaged_in("v0.4.0", "alice", |data| {
+        std::fs::write(data.join("own-origins.json"), "{\"not\": \"a list\"}").unwrap();
+    })
+    .unwrap_err();
+    assert!(error.contains("own-origins.json"), "{error}");
+}
+
+#[test]
+fn push_retries_the_node_cannot_read_fail() {
+    let error = damaged_in("v0.4.0", "alice", |data| {
+        std::fs::write(data.join("push-retries.json"), "[{\"key\": 1}]").unwrap();
+    })
+    .unwrap_err();
+    assert!(error.contains("push-retries.json holds 1"), "{error}");
+}
+
+#[test]
+fn a_runtime_release_the_node_cannot_read_fails() {
+    let error = damaged_in("v0.4.0", "alice", |data| {
+        rewrite(&data.join("runtime-releases.json"), |kept| {
+            kept["acme/app"]["readAt"] = Value::from(5);
+        });
+    })
+    .unwrap_err();
+    assert!(error.contains("runtime-releases.json holds 1"), "{error}");
+}
+
+#[test]
+fn what_a_node_said_about_itself_that_cannot_be_read_fails() {
+    let error = damaged_in("v0.4.0", "bob", |data| {
+        rewrite(&data.join("about/acme.json"), |abouts| {
+            let origin = abouts.as_object().unwrap().keys().next().unwrap().clone();
+            abouts[origin.as_str()] = Value::String("not an about".into());
+        });
+    })
+    .unwrap_err();
+    assert!(error.contains("about/acme.json holds 1"), "{error}");
 }
