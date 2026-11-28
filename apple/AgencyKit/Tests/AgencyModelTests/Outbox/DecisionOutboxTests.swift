@@ -210,11 +210,20 @@ struct DecisionOutboxTests {
         storage.failsToRead = true
         let (outbox, _, _) = outbox([], storage: storage)
         #expect(!outbox.isReadable)
+        #expect(outbox.hasSignedEntries, "what is in the file is not known to be empty: a device that signed it is not removed")
         #expect(throws: OutboxError.notKept) { try outbox.keep(decision(2)) }
         #expect(storage.entries.map(\.id) == ["id-1"], "the file was not written over")
         storage.failsToRead = false
         try outbox.keep(decision(2))
         #expect(outbox.isReadable && storage.entries.map(\.id) == ["id-1", "id-2"], "what was kept is there, and the new one with it")
+    }
+
+    @Test("a decision is kept for a device's removal only while one is kept or cannot be read: nothing kept and readable is free")
+    func signedEntries() throws {
+        let (outbox, _, _) = outbox([])
+        #expect(!outbox.hasSignedEntries && outbox.isReadable)
+        try outbox.keep(decision(1))
+        #expect(outbox.hasSignedEntries)
     }
 
     @Test("kept decisions are not read again in the middle of a send: the send has its own view of them")

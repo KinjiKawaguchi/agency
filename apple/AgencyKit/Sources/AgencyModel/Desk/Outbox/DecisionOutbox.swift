@@ -63,8 +63,9 @@ public final class DecisionOutbox {
     /// The desk items that have a decision kept: they do not come back on the pile, and the counts leave them.
     public var decidedItemIDs: Set<String> { Set(entries.map(\.itemID)).union(justTaken) }
 
-    /// Whether a signed decision is kept: the key that signed it must not be taken away (a device is not removed) until it is taken.
-    public var hasSignedEntries: Bool { !entries.isEmpty }
+    /// Whether a signed decision may be kept: the key that signed it must not be taken away (a device is not removed) until it is taken.
+    /// Kept decisions that cannot be read now count as kept: what is in the file is not known to be empty.
+    public var hasSignedEntries: Bool { !entries.isEmpty || !isReadable }
 
     /// Whether a kept decision was signed by the device `deviceID` (its id in the org, as the decision names it): removing that device would
     /// make the node refuse the decision for good. After a key reset these are the old device's, which stays listed until it is removed.
