@@ -8,10 +8,8 @@
 //! Writes also need the page's token in `x-agency-token` and a JSON body. A page on another site cannot
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
 //! also need the owner's email, because writes act for the node's account.
-use crate::access::{AccessVerifier, Identity};
-use crate::handoff::{
-    self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH,
-};
+use crate::access::{Identity, SignInVerifier};
+use crate::handoff::{self, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH};
 use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
@@ -30,6 +28,7 @@ use agency_core::web_push::{
     register_subscription_as, remove_subscription_as, subscriptions_of, vapid_key,
 };
 use agency_core::{Error, ErrorKind, Node};
+use agency_proto::claim::ClaimInput;
 use agency_proto::client::{
     DecisionOutcome, DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput,
     PushTokenInput, Session, SignedDecisionInput,
@@ -51,12 +50,18 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
+mod claimants;
+mod claims;
 mod guests;
+mod history;
+mod members;
 mod metrics;
 mod outcomes;
+mod route;
 mod telemetry;
 
-pub use telemetry::REPORTABLE_ROUTES;
+pub use route::Route;
+pub use telemetry::{reportable_routes, route_templates};
 
 pub const TOKEN_HEADER: &str = "x-agency-token";
 const BODY_LIMIT: usize = 64 * 1024;
@@ -80,7 +85,8 @@ pub struct ClientApi {
     pub token: String,
     /// The port the node listens on, for the `Host` check.
     pub port: u16,
-    pub access: Option<Arc<AccessVerifier>>,
+    /// The sign-in provider in front of the Client API (Access or OIDC), when one is set and well formed.
+    pub access: Option<Arc<SignInVerifier>>,
     pub assets: Arc<dyn Assets>,
     /// The running program and its data directory, for the command a client shows the owner. `None`
     /// when they cannot be written out as text; clients then show their own wording.
@@ -89,7 +95,12 @@ pub struct ClientApi {
     pub client_notes: Mutex<HashMap<(Platform, String), OffsetDateTime>>,
     /// The codes the app handoff made and that wait to be redeemed.
     pub handoff: handoff::Codes,
+    /// The tries of each client address to redeem a claim link's code.
+    pub claim_attempts: Mutex<crate::attempts::Attempts>,
 }
+
+/// How many redeems of a claim link one client address may try in a minute.
+const CLAIM_TRIES_PER_MINUTE: usize = 20;
 
 pub(crate) type Shared = State<Arc<ClientApi>>;
 
@@ -99,8 +110,12 @@ pub(crate) enum Admitted {
     Local,
     Access(Identity),
     /// A member this node hosts, signed in through Access with the email its record names. It reaches only
-    /// the routes in `guests::GUEST_ROUTES`, scoped to its member.
+    /// the routes declared `for_guests`, scoped to its member.
     Guest(Guest),
+    /// A person signed in through Access with the address of a claim link, who is not yet a guest: the address
+    /// (lowercased) is all there is of them. It reaches only the claim routes (declared `for_claimants`) and the
+    /// web client's pages, and acts as no one.
+    Claimant(String),
 }
 
 pub(crate) fn refuse(status: StatusCode, message: &str) -> Response {
@@ -140,7 +155,7 @@ async fn admit(
     let is_public = api
         .access
         .as_ref()
-        .is_some_and(|access| access.config().public_host == host);
+        .is_some_and(|access| access.provider().public_host() == host);
     if !is_via_cloudflare(headers) && !is_public {
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
@@ -157,31 +172,53 @@ async fn admit(
     let access = api
         .access
         .as_ref()
-        .ok_or((StatusCode::FORBIDDEN, "this node has no Access setting"))?;
-    match access.verify(header_text(headers, ACCESS_HEADER)).await {
+        .ok_or((StatusCode::FORBIDDEN, "this node has no sign-in setting"))?;
+    match access.verify(access.provider().token(headers)).await {
         // Only a known identity is admitted: the owner's email, which always wins, or a current guest's.
         // Any other sign-in, one without an email included, is refused.
         Ok(identity) if is_owner(api, &identity) => Ok(Admitted::Access(identity)),
         Ok(identity) => identity
             .email
             .as_deref()
-            .and_then(|email| agency_core::guests::admit(&api.node, email))
-            .map(Admitted::Guest)
+            .and_then(|email| admitted_as_other(api, email))
             .ok_or_else(|| {
-                (api.log)("refused an Access sign-in that is neither the owner nor a guest");
+                let why = if identity.has_unverified_email {
+                    "whose email the provider did not say it verified, so it names no guest"
+                } else {
+                    "that is neither the owner, a guest, nor a claim link's address"
+                };
+                (api.log)(&format!(
+                    "refused an {} sign-in {why}",
+                    access.provider().name()
+                ));
                 (
                     StatusCode::FORBIDDEN,
                     "this sign-in is not the node's owner or a guest of it",
                 )
             }),
         Err(reason) => {
-            (api.log)(&format!("refused an Access request ({reason})"));
+            let name = access.provider().name();
+            (api.log)(&format!("refused an {name} request ({reason})"));
             Err((
                 StatusCode::FORBIDDEN,
-                "not signed in through Cloudflare Access",
+                if access.provider().access_config().is_some() {
+                    "not signed in through Cloudflare Access"
+                } else {
+                    "not signed in through the node's OpenID Connect provider"
+                },
             ))
         }
     }
+}
+
+/// What an Access sign-in that is not the owner's is admitted as: a current guest, else a person whose address a
+/// claim link was made for (and no more than that), else nothing.
+fn admitted_as_other(api: &ClientApi, email: &str) -> Option<Admitted> {
+    if let Some(guest) = agency_core::guests::admit(&api.node, email) {
+        return Some(Admitted::Guest(guest));
+    }
+    agency_core::claims::is_claimant(&api.node, email)
+        .then(|| Admitted::Claimant(email.trim().to_lowercase()))
 }
 
 /// Constant-time comparison, so the token cannot be guessed byte by byte from response times.
@@ -218,12 +255,16 @@ fn check_write(
         ));
     }
     match admitted {
-        // With an access setting the owner is who Access says it is, so a process of the same OS user
-        // on this machine cannot write as the owner. Checked against the setting itself, so a malformed
-        // one (which disables Access) does not make loopback the owner again.
-        Admitted::Local if api.node.config().access.is_some() => Err((
+        // With a sign-in setting (`access` or `oidc`) the owner is who the provider says it is, so a process
+        // of the same OS user on this machine cannot write as the owner. Checked against the setting itself,
+        // so a malformed one (which disables the provider) does not make loopback the owner again.
+        Admitted::Local if api.node.config().has_sign_in() => Err((
             StatusCode::FORBIDDEN,
-            "this node is behind Access: writes come through its public host name, signed in as the owner",
+            if api.node.config().access.is_some() {
+                "this node is behind Access: writes come through its public host name, signed in as the owner"
+            } else {
+                "this node is behind its OpenID Connect provider: writes come through its public host name, signed in as the owner"
+            },
         )),
         Admitted::Local => Ok(()),
         Admitted::Access(identity) if is_owner(api, identity) => Ok(()),
@@ -231,20 +272,17 @@ fn check_write(
         // A guest never writes as the owner: only the writes of its own table, scoped to its member there.
         Admitted::Guest(guest) if guests::may_write(guest, method, path) => Ok(()),
         Admitted::Guest(_) => Err((StatusCode::FORBIDDEN, "a guest may not do this")),
+        // A claimant never writes as anyone: only the claim, in its own arm.
+        Admitted::Claimant(_) if claimants::may_write(method, path) => Ok(()),
+        Admitted::Claimant(_) => Err((StatusCode::FORBIDDEN, "a claimant may not do this")),
     }
 }
 
-/// Whether the Access sign-in is the configured owner's.
+/// Whether the sign-in is the configured owner's.
 pub(crate) fn is_owner(api: &ClientApi, identity: &Identity) -> bool {
-    let owner = api
-        .access
+    api.access
         .as_ref()
-        .map(|access| access.config().owner_email.as_str());
-    identity
-        .email
-        .as_deref()
-        .zip(owner)
-        .is_some_and(|(email, owner)| email.eq_ignore_ascii_case(owner))
+        .is_some_and(|access| access.provider().is_owner(identity))
 }
 
 async fn guard(
@@ -263,6 +301,12 @@ async fn guard(
         if !is_write && !guests::may(guest, request.method(), request.uri().path()) {
             return refuse(StatusCode::FORBIDDEN, "a guest may not do this");
         }
+    }
+    if matches!(admitted, Admitted::Claimant(_))
+        && !is_write
+        && !claimants::may(request.method(), request.uri().path())
+    {
+        return refuse(StatusCode::FORBIDDEN, "a claimant may not do this");
     }
     if is_write {
         let path = request.uri().path().to_owned();
@@ -388,6 +432,10 @@ async fn get_team(
                 agency_core::guest_reads::team_snapshot(&api.node, guest, &org, &team).await
             }
             Admitted::Local | Admitted::Access(_) => team_snapshot(&api.node, &org, &team).await,
+            Admitted::Claimant(_) => Err(Error::new(
+                agency_core::ErrorKind::Forbidden,
+                "a claimant may not do this",
+            )),
         }
     };
     respond(result.await)
@@ -405,6 +453,14 @@ async fn get_usage(
         Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
     };
     let result = async { team_usage(&api.node, &parse_id(&org)?, &parse_id(&team)?, days).await };
+    respond(result.await)
+}
+
+/// A team's weekly budget status: this week's spend of the team and of the org against their caps.
+async fn get_budget(State(api): Shared, Path((org, team)): Path<(String, String)>) -> Response {
+    let result = async {
+        crate::budget::budget_status(&api.node, &parse_id(&org)?, &parse_id(&team)?).await
+    };
     respond(result.await)
 }
 
@@ -508,6 +564,9 @@ fn caller_of(admitted: &Admitted) -> Caller {
     match admitted {
         Admitted::Guest(guest) => Caller::Guest(guest.clone()),
         Admitted::Local | Admitted::Access(_) => Caller::Owner,
+        // The guard lets a claimant reach only the claim routes, which do not ask who the caller is; one that got
+        // here would otherwise be taken for the owner.
+        Admitted::Claimant(_) => unreachable!("a claimant reaches only the claim routes"),
     }
 }
 
@@ -518,7 +577,7 @@ fn is_owner_request(api: &ClientApi, admitted: &Admitted) -> bool {
     match admitted {
         Admitted::Local => true,
         Admitted::Access(identity) => is_owner(api, identity),
-        Admitted::Guest(_) => false,
+        Admitted::Guest(_) | Admitted::Claimant(_) => false,
     }
 }
 
@@ -544,6 +603,55 @@ async fn get_devices(State(api): Shared, Extension(admitted): Extension<Admitted
         return respond(agency_core::guest_reads::device_list(&api.node, guest));
     }
     respond(device_list(&api.node).map(|list| with_node_info(&api, &admitted, list)))
+}
+
+/// Where the claim of the person who signed in with the address of a claim link stands.
+async fn get_claim(State(api): Shared, Extension(admitted): Extension<Admitted>) -> Response {
+    let Admitted::Claimant(email) = &admitted else {
+        // The owner and a local request have no claim: there is nothing here, as for an address that redeemed none.
+        return refuse(StatusCode::NOT_FOUND, "no claim");
+    };
+    respond(agency_core::claims::state(&api.node, email))
+}
+
+/// A claimant's browser redeems the code of its link with the device key it made. The write token and the JSON body
+/// are checked before, as for every write; the authority is the Access sign-in and the code. Each client address gets
+/// a few tries a minute, even with a good code, from the table the app's sign-in code has (`attempts`).
+async fn post_claim(
+    State(api): Shared,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Extension(admitted): Extension<Admitted>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    let Admitted::Claimant(email) = &admitted else {
+        return refuse(StatusCode::NOT_FOUND, "no claim");
+    };
+    let client = crate::handoff::client_of(peer, &headers);
+    let tried = api.claim_attempts.lock().map_or(Ok(()), |mut table| {
+        table.try_once(api.node.now(), &client, CLAIM_TRIES_PER_MINUTE)
+    });
+    if let Err(seconds) = tried {
+        let mut limited = refuse(StatusCode::TOO_MANY_REQUESTS, "too many tries");
+        if let Ok(value) = HeaderValue::from_str(&seconds.to_string()) {
+            limited.headers_mut().insert(header::RETRY_AFTER, value);
+        }
+        return limited;
+    }
+    let result = match json_body::<ClaimInput>(&bytes, "claim") {
+        Ok(input) => {
+            agency_core::claims::redeem(
+                &api.node,
+                &input.code,
+                email,
+                &input.public_key,
+                &input.label,
+            )
+            .await
+        }
+        Err(error) => Err(error),
+    };
+    respond(result)
 }
 
 /// A new device asks to be added, for the owner's account or for the guest's hosted member; the answer
@@ -729,48 +837,85 @@ async fn page(State(api): Shared, uri: Uri) -> Response {
     }
 }
 
-/// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
-/// The routes behind the guard that this module serves itself, by method and path: the one list the router
-/// is built from (`method_router` gives each path its handlers) and that the tests walk.
-const ROUTES: &[(&str, &str)] = &[
-    ("GET", "/api/about"),
-    ("GET", "/api/me"),
-    ("GET", "/api/session"),
-    ("GET", "/api/decisions"),
-    ("GET", "/api/decisions/{id}"),
-    ("GET", "/api/devices"),
-    ("GET", "/api/push/tokens"),
-    ("POST", "/api/push/tokens"),
-    ("DELETE", "/api/push/tokens/{token}"),
-    ("GET", "/api/push/vapid"),
-    ("GET", "/api/push/subscriptions"),
-    ("POST", "/api/push/subscriptions"),
-    ("DELETE", "/api/push/subscriptions/{id}"),
-    ("POST", "/api/devices/requests"),
-    ("POST", "/api/devices/changes"),
-    ("GET", "/api/orgs/{org}"),
-    ("GET", "/api/orgs/{org}/teams/{team}/view"),
-    ("GET", "/api/orgs/{org}/teams/{team}/usage"),
-    ("GET", "/api/orgs/{org}/evaluation"),
-    ("GET", "/api/orgs/{org}/effort"),
-    ("GET", "/api/orgs/{org}/teams/{team}/activity"),
-    ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
-    ("GET", HANDOFF_PATH),
-    ("GET", CALLBACK_PATH),
+/// The routes behind the guard that this module serves itself: the one list the router is built from
+/// (`method_router` gives each path its handlers) and that the guard's tables and the tests read.
+const ROUTES: &[Route] = &[
+    Route::get("/api/about").for_guests().reported(),
+    Route::get("/api/me").for_guests().reported(),
+    Route::get("/api/session").for_guests().reported(),
+    Route::get("/api/decisions").for_guests().reported(),
+    Route::get("/api/decisions/{id}"),
+    Route::get("/api/devices").for_guests().reported(),
+    Route::get("/api/claim").for_claimants().reported(),
+    Route::post("/api/claim").for_claimants().reported(),
+    Route::get("/api/push/tokens").for_guests().reported(),
+    Route::post("/api/push/tokens").for_guests().reported(),
+    Route::delete("/api/push/tokens/{token}")
+        .for_guests()
+        .reported(),
+    Route::get("/api/push/vapid").for_guests().reported(),
+    Route::get("/api/push/subscriptions")
+        .for_guests()
+        .reported(),
+    Route::post("/api/push/subscriptions")
+        .for_guests()
+        .reported(),
+    Route::delete("/api/push/subscriptions/{id}")
+        .for_guests()
+        .reported(),
+    Route::post("/api/devices/requests").for_guests().reported(),
+    Route::post("/api/devices/changes").for_guests().reported(),
+    Route::get("/api/orgs/{org}").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/view")
+        .for_guests()
+        .reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/usage").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/budget").reported(),
+    Route::get("/api/orgs/{org}/evaluation").reported(),
+    Route::get("/api/orgs/{org}/effort").reported(),
+    Route::get("/api/orgs/{org}/teams/{team}/activity").reported(),
+    Route::post("/api/orgs/{org}/teams/{team}/envelopes")
+        .for_guests()
+        .reported(),
+    Route::get(HANDOFF_PATH),
+    Route::get(CALLBACK_PATH),
 ];
 
-/// The routes a guest may reach (`guests::GUEST_ROUTES`), by method and path, for the tests.
-pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
-    guests::GUEST_ROUTES.to_vec()
+/// Every part's routes, this module's first: a new part of the Client API adds its table here.
+const PARTS: [&[Route]; 7] = [
+    ROUTES,
+    history::ROUTES,
+    outcomes::ROUTES,
+    members::ROUTES,
+    metrics::ROUTES,
+    telemetry::ROUTES,
+    claims::ROUTES,
+];
+
+/// Every route behind the guard, as declared.
+pub(super) fn declared() -> impl Iterator<Item = &'static Route> {
+    PARTS.into_iter().flatten()
 }
 
-/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
+/// The routes a claimant may reach, by method and path, for the tests.
+pub fn claimant_routes() -> Vec<(&'static str, &'static str)> {
+    declared()
+        .filter(|route| route.is_for_claimants())
+        .map(Route::pair)
+        .collect()
+}
+
+/// The routes a guest may reach, by method and path, for the tests.
+pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
+    declared()
+        .filter(|route| route.is_for_guests())
+        .map(Route::pair)
+        .collect()
+}
+
+/// Every route behind the guard, this module's and its parts', by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = outcomes::ROUTES
-        .iter()
-        .chain(metrics::ROUTES)
-        .chain(telemetry::ROUTES);
-    ROUTES.iter().chain(parts).copied().collect()
+    declared().map(Route::pair).collect()
 }
 
 /// The handlers of one path of `ROUTES`, for the methods listed there.
@@ -782,6 +927,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/decisions" => get(get_decisions),
         "/api/decisions/{id}" => get(get_decision),
         "/api/devices" => get(get_devices),
+        "/api/claim" => get(get_claim).post(post_claim),
         "/api/push/tokens" => get(get_push_tokens).post(post_push_token),
         "/api/push/tokens/{token}" => delete(delete_push_token),
         "/api/push/vapid" => get(get_vapid_key),
@@ -792,6 +938,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}" => get(get_org),
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
+        "/api/orgs/{org}/teams/{team}/budget" => get(get_budget),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
         "/api/orgs/{org}/effort" => get(get_effort),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
@@ -802,15 +949,19 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
     }
 }
 
+/// The Client API and the pages. Serve it with `into_make_service_with_connect_info::<SocketAddr>()`.
 pub fn router(api: Arc<ClientApi>) -> Router {
-    let mut paths: Vec<&str> = ROUTES.iter().map(|(_, path)| *path).collect();
+    let mut paths: Vec<&str> = ROUTES.iter().map(|route| route.path).collect();
     paths.dedup();
     let own = paths.into_iter().fold(Router::new(), |router, path| {
         router.route(path, method_router(path))
     });
-    own.merge(outcomes::routes(api.clone()))
+    own.merge(history::routes(api.clone()))
+        .merge(outcomes::routes(api.clone()))
+        .merge(members::routes())
         .merge(metrics::routes(api.clone()))
         .merge(telemetry::routes())
+        .merge(claims::routes())
         .fallback(page)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(api.clone(), guard))

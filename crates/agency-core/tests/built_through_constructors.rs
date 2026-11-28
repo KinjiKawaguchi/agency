@@ -5,9 +5,11 @@
 use std::path::{Path, PathBuf};
 
 /// The types built through `Type::new` and its `with_*` methods.
-const CONSTRUCTED: [&str; 5] = [
+const CONSTRUCTED: [&str; 7] = [
+    "DeliverySite",
     "HostedTeam",
     "NodeConfig",
+    "OidcConfig",
     "OrgDefinition",
     "Person",
     "TeamPlace",

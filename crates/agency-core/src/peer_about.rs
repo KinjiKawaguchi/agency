@@ -103,6 +103,10 @@ pub async fn refresh(node: &Node, definition: &OrgDefinition) -> Result<()> {
     for origin in &origins {
         if is_due(kept.get(origin), node.now()) {
             let next = read_one(node, org, origin, kept.get(origin)).await;
+            if next.error.is_none() {
+                // It answered: the replicas of its teams that wait for it are read at the next pass.
+                node.note_answer(origin);
+            }
             kept.insert(origin.clone(), next);
         }
     }
@@ -137,6 +141,21 @@ pub fn note_not_found(node: &Node, org: &Id, origin: &str) -> Result<()> {
 /// What this node has read of the other nodes of `org`, by origin.
 pub fn peers_of(node: &Node, org: &Id) -> BTreeMap<String, PeerAbout> {
     node.store().peer_abouts(org)
+}
+
+/// Whether `origin`, a node of `org`, listed `capability` in the `about` this node last kept of it. A node never
+/// read lists nothing.
+pub(crate) fn lists(
+    node: &Node,
+    org: &Id,
+    origin: &str,
+    capability: agency_proto::about::Capability,
+) -> bool {
+    node.store()
+        .peer_abouts(org)
+        .get(origin)
+        .and_then(|kept| kept.about.as_ref())
+        .is_some_and(|about| about.lists(capability))
 }
 
 #[cfg(test)]

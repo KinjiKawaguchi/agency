@@ -283,19 +283,45 @@ struct DeviceRemovalStoreTests {
         #expect(remover.plans.isEmpty && store.removalFailures[target.id]?.hasPrefix("端末を削除できませんでした") == true)
     }
 
-    @Test("this device is not removed while decisions signed with its key are kept on it; another device is")
+    @Test("a device is not removed while decisions signed with its key are kept; another device is, and the sentence says to send or discard them")
     func keptDecisions() async throws {
+        let source = ListSource(list([("acme", [device(Keys.own, "This phone"), device(Keys.phone, "Old phone"), device(Keys.laptop, "Laptop")])]))
+        let remover = ScriptedRemover()
+        let keptFor = Keys.id(Keys.phone)
+        let store = DevicesStore(source: source, adder: NoAdd(), ownKey: Keys.own.publicKey, remover: remover, keptDecisions: { $0 == keptFor ? .kept : .noneKept })
+        await store.refresh()
+        let signer = try row(store, Keys.phone)
+        #expect(store.removalPlan(for: signer)?.canConfirm == false && store.removalPlan(for: signer)?.message == Ja.Devices.Remove.keptDecisions)
+        #expect(Ja.Devices.Remove.keptDecisions == "まだ届いていない決定が残っています。削除する端末の鍵で署名したものは、削除するとすべて無効になります。送るか破棄してから削除してください。")
+        await store.remove(signer)
+        #expect(remover.plans.isEmpty && store.removalFailures[signer.id]?.contains("送るか破棄") == true)
+        #expect(store.removalPlan(for: try row(store, Keys.laptop))?.canConfirm == true, "a device that signed none is removed as before")
+        await store.remove(try row(store, Keys.laptop))
+        #expect(remover.plans.count == 1)
+    }
+
+    @Test("a device is not removed while the kept decisions cannot be read, and the sentence says so, not to send or discard what cannot be seen")
+    func keptDecisionsUnreadable() async throws {
         let source = ListSource(list([("acme", both)]))
         let remover = ScriptedRemover()
-        let store = DevicesStore(source: source, adder: NoAdd(), ownKey: Keys.own.publicKey, remover: remover, hasKeptDecisions: { true })
+        let store = DevicesStore(source: source, adder: NoAdd(), ownKey: Keys.own.publicKey, remover: remover, keptDecisions: { _ in .unreadable })
         await store.refresh()
-        let own = try row(store, Keys.own)
-        #expect(store.removalPlan(for: own)?.canConfirm == false && store.removalPlan(for: own)?.message == Ja.Devices.Remove.keptDecisions)
-        await store.remove(own)
-        #expect(remover.plans.isEmpty && store.removalFailures[own.id]?.contains("送れていない決定") == true)
-        #expect(store.removalPlan(for: try row(store, Keys.phone))?.canConfirm == true)
-        await store.remove(try row(store, Keys.phone))
-        #expect(remover.plans.count == 1)
+        let target = try row(store, Keys.phone)
+        let plan = try #require(store.removalPlan(for: target))
+        #expect(plan.isBlocked && !plan.canConfirm)
+        #expect(plan.message == Ja.Devices.Remove.keptDecisionsUnreadable)
+        #expect(Ja.Devices.Remove.keptDecisionsUnreadable == "このアプリに残した決定を、いま読めないため、端末を削除できません。端末のロックを解除し、アプリを開き直してから、もう一度削除してください。")
+        #expect(!Ja.Devices.Remove.keptDecisionsUnreadable.contains("送るか破棄"), "nothing the owner can send or discard")
+        await store.remove(target)
+        #expect(remover.plans.isEmpty && store.removalFailures[target.id]?.contains("いま読めないため") == true)
+    }
+
+    @Test("this device is not removed while decisions it signed are kept either")
+    func keptDecisionsOfThisDevice() async throws {
+        let source = ListSource(list([("acme", both)]))
+        let store = DevicesStore(source: source, adder: NoAdd(), ownKey: Keys.own.publicKey, remover: ScriptedRemover(), keptDecisions: { _ in .kept })
+        await store.refresh()
+        #expect(store.removalPlan(for: try row(store, Keys.own))?.isBlocked == true)
     }
 
     @Test("a new key is made only when this device was removed in every org: not while one holds it, and not when one failed")

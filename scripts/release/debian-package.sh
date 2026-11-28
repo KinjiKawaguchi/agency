@@ -59,6 +59,9 @@ while read -r library; do
 done < <(readelf --dynamic --wide "$binary" | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p')
 dependencies=("libc6 (>= $glibc_version)")
 for need in "${needs[@]:1}"; do dependencies+=("$need"); done
+# The node checks the certificates of the services it calls against the system's trusted roots, so a
+# machine without them would fail every TLS connection: apt installs them with the package.
+dependencies+=(ca-certificates)
 depends="$(printf '%s, ' "${dependencies[@]}")"
 depends="${depends%, }"
 

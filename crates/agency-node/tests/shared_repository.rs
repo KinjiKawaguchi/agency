@@ -249,3 +249,50 @@ async fn a_team_field_without_an_option_or_the_other_way_round_stops_the_node_an
         assert!(error.contains(wanted), "{error}");
     }
 }
+
+const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
+
+#[tokio::test]
+async fn the_participants_of_a_team_count_only_the_pull_requests_of_that_team() {
+    let (alice, memory) = alice_with(Some(("Team", "Keel")), Some(("Team", "Web"))).await;
+    // The runtime of the team app says who wrote four of the repository's pull requests: two of Keel's, one
+    // more of Keel's by lead, and the one of the team Web, which is not the team app's to count.
+    let mut report: agency_proto::participant_metrics::ParticipantMetrics =
+        serde_json::from_str(PARTICIPANTS).unwrap();
+    report.days = 14;
+    report.utc_offset_minutes = 0;
+    report.pull_requests = [(1, "backend"), (2, "backend"), (3, "lead"), (4, "lead")]
+        .into_iter()
+        .map(
+            |(number, by)| agency_proto::participant_metrics::PullRequestAuthor {
+                repo: "acme/app".into(),
+                number,
+                by: by.into(),
+            },
+        )
+        .collect();
+    memory.lock().unwrap().participants = Some(report);
+
+    let answer = evaluation(&alice).await;
+    assert_eq!(answer.check(&id("acme"), 14), Ok(()), "{answer:?}");
+    let team = answer
+        .teams
+        .iter()
+        .find(|one| one.team == id("app"))
+        .expect("the team app has numbers");
+    let merged: Vec<(&str, u32)> = team
+        .participants
+        .iter()
+        .map(|one| (one.name.as_str(), one.merged))
+        .collect();
+    assert_eq!(
+        merged,
+        [("backend", 2), ("lead", 1), ("reviewer", 0)],
+        "pull request 4 is the team Web's: lead did not merge it for the team app"
+    );
+    assert_eq!(team.unattributed_merged, 0);
+    assert_eq!(
+        team.summary.merged.feat + team.summary.merged.fix + team.summary.merged.docs,
+        3
+    );
+}

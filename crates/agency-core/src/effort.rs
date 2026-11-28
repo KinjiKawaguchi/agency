@@ -6,11 +6,14 @@ use crate::config::HostedTeam;
 use crate::delivery::{effort, of_team, EffortInput, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
+use crate::peer_about::note_not_found;
+use crate::peer_features::refusal_for_lacking;
 use crate::ports::{DeliveryError, PeerError};
 use crate::read_auth::{sign_read, verify_read_once};
 use crate::routes;
 use crate::unseen;
 use crate::usage::check_days;
+use agency_proto::about::Capability;
 use agency_proto::effort::Effort;
 use agency_proto::evaluation::TeamUnavailable;
 use agency_proto::org::TeamPlace;
@@ -43,25 +46,16 @@ fn unavailable(
     }
 }
 
-/// The repositories of a hosted team, if its configuration names any.
-fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
-    hosted
-        .delivery
-        .as_ref()
-        .map(|delivery| delivery.repos.clone())
-        .filter(|repos| !repos.is_empty())
-}
-
 /// The effort of a team on this node over the last `days` days, as the answer of one team: the team in
 /// `teams`, or in `unavailable` with the reason it has no numbers. A team whose runtime reports no token
 /// usage has none: its effort is not zero, it is not known.
 pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Effort {
     let period = Period::new(node.now(), node.utc_offset(), days);
-    let Some(repos) = repositories(hosted) else {
+    let Some(source) = hosted.delivery_source() else {
         let reason = "no repositories are configured for this team";
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(&repos, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, &reason),
     };
@@ -104,13 +98,19 @@ pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Ef
 }
 
 /// The effort of a team on another node, read live from it. Whatever goes wrong becomes the reason the
-/// team is unavailable: no address and nothing the other node said is passed on.
+/// team is unavailable: no address and nothing the other node said is passed on, except the release of a
+/// node that has been read and does not list the `effort` capability (the route is not called then).
 async fn remote_effort(
     node: &Node,
     org: &Id,
     place: &TeamPlace,
     days: u32,
 ) -> std::result::Result<Effort, String> {
+    if let Some(reason) =
+        refusal_for_lacking(node, org, &place.node, Capability::Effort, "effort numbers")
+    {
+        return Err(reason);
+    }
     let path = routes::effort(org, &place.id, days);
     let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
     let answer = node
@@ -119,6 +119,7 @@ async fn remote_effort(
         .await
         .map_err(|error| match error {
             PeerError::Status { status: 404, .. } => {
+                let _ = note_not_found(node, org, &place.node);
                 "the team's node does not give effort numbers".to_owned()
             }
             PeerError::Status { status: 403, .. } => {

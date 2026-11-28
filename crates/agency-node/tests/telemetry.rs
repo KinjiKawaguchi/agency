@@ -2,7 +2,7 @@
 //! `client` series, and the routes a client may name are one file the clients read too.
 mod common;
 
-use agency_adapters::client_api::REPORTABLE_ROUTES;
+use agency_adapters::client_api::{reportable_routes, route_templates};
 use agency_proto::metrics::{Metrics, Series};
 use agency_proto::telemetry::{TelemetryAnswer, MOST_REPORT_BYTES, MOST_SAMPLES};
 use common::access::{access_token, behind_access, PUBLIC_HOST};
@@ -42,28 +42,35 @@ fn the_file_the_clients_read_is_the_table_of_routes_a_client_may_name() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../testdata/route-templates.json"
     );
-    let file: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    let in_file: Vec<&str> = file["routes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|route| route.as_str().unwrap())
-        .collect();
+    let made = route_templates();
+    if std::env::var("AGENCY_WRITE_FIXTURES").is_ok_and(|value| value == "1") {
+        std::fs::write(path, &made).unwrap();
+    }
     assert_eq!(
-        in_file,
-        REPORTABLE_ROUTES.to_vec(),
-        "testdata/route-templates.json and REPORTABLE_ROUTES say different things"
+        std::fs::read_to_string(path).unwrap(),
+        made,
+        "testdata/route-templates.json is not what the routes declare; run AGENCY_WRITE_FIXTURES=1 cargo test -p agency-node --test telemetry and commit the file"
     );
-    let mut sorted = in_file.clone();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(sorted.len(), in_file.len(), "a route is listed twice");
+    let file: Value = serde_json::from_str(&made).unwrap();
+    assert_eq!(
+        file["routes"].as_array().unwrap().len(),
+        reportable_routes().len()
+    );
+}
+
+#[test]
+fn a_route_is_declared_once() {
+    let mut routes = agency_adapters::client_api::routes_behind_the_guard();
+    let count = routes.len();
+    routes.sort_unstable();
+    routes.dedup();
+    assert_eq!(routes.len(), count, "a route is declared twice");
 }
 
 #[tokio::test]
 async fn every_route_a_client_may_name_is_a_route_with_that_method_on_the_router() {
     let (alice, _) = alice().await;
-    for entry in REPORTABLE_ROUTES {
+    for entry in reportable_routes() {
         let (method, template) = entry.split_once(' ').unwrap();
         let path = template.replace(['{', '}'], "");
         let response = Client::new()
@@ -347,5 +354,5 @@ async fn the_call_that_reports_is_timed_as_a_route_of_the_node_and_is_not_one_a_
         .find(|s| s.name == "POST /api/telemetry")
         .expect("the node times the call like any other");
     assert_eq!(own.group, "metrics");
-    assert!(!REPORTABLE_ROUTES.contains(&"POST /api/telemetry"));
+    assert!(!reportable_routes().contains(&"POST /api/telemetry".to_owned()));
 }

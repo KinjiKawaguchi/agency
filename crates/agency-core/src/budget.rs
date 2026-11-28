@@ -1,50 +1,56 @@
 //! Weekly budget calculation, independent of how team usage is read.
+use crate::client::membership;
+use crate::error::{Error, ErrorKind, Result};
+use crate::node::Node;
+use agency_proto::budget::{BudgetPart, BudgetState, BudgetStatus, OrgBudget};
 use agency_proto::clock::{Duration, OffsetDateTime, UtcOffset};
 use agency_proto::org::OrgDefinition;
-use agency_proto::{Date, Id};
-use serde::Serialize;
+use agency_proto::{Date, Id, Role, TokenUsage};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BudgetState {
-    Ok,
-    Warning,
-    Over,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BudgetPart {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cap_usd: Option<u32>,
-    pub spent_usd: f64,
-    pub state: BudgetState,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub partial: bool,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BudgetStatus {
-    pub week_start: Date,
-    pub team: BudgetPart,
-    pub org: OrgBudget,
-}
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrgBudget {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cap_usd: Option<u32>,
-    pub spent_usd: f64,
-    pub state: BudgetState,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub partial: bool,
-}
-
+/// The Monday of the week `now` is in, in the node's time zone.
 pub fn week_start(now: OffsetDateTime, offset: UtcOffset) -> Date {
     let day = now.to_offset(offset).date();
     let start = day - Duration::days(day.weekday().number_days_from_monday().into());
     Date::parse(&start.to_string()).unwrap()
 }
+
+/// The calendar day of `now` in the node's time zone.
+pub fn today(now: OffsetDateTime, offset: UtcOffset) -> Date {
+    Date::parse(&now.to_offset(offset).date().to_string())
+        .expect("a calendar date is a valid protocol date")
+}
+
+/// Adds the daily costs reported from the start of this week through today, inclusive.
+///
+/// A runtime's report can reach back to an earlier Sunday when it is asked for seven days on a Monday,
+/// so the caller gives both bounds instead of relying on the number of days it asked for.
+pub fn week_spend(usage: &TokenUsage, start: &Date, today: &Date) -> f64 {
+    usage
+        .by_day
+        .iter()
+        .filter(|day| day.date.as_str() >= start.as_str() && day.date.as_str() <= today.as_str())
+        .flat_map(|day| day.cost_usd.values())
+        .sum()
+}
+
+/// The org's definition, for a read of one team's budget by the node's account: not found when the
+/// account is not a member or the org has no such team, and forbidden for an answerer, who reads no
+/// usage.
+pub fn definition_for_budget(node: &Node, org: &Id, team: &Id) -> Result<OrgDefinition> {
+    let (doc, person) = membership(node, org)?;
+    if person.role == Role::Answerer {
+        return Err(Error::new(
+            ErrorKind::Forbidden,
+            "an answerer does not read the org's budget",
+        ));
+    }
+    match doc.body.team(team) {
+        Some(_) => Ok(doc.body),
+        None => Err(Error::not_found("not found")),
+    }
+}
+
 fn state(cap: Option<u32>, spent: f64) -> BudgetState {
     match cap {
         None => BudgetState::Ok,
@@ -202,6 +208,24 @@ mod tests {
         .unwrap();
         assert_eq!(report.org.state, BudgetState::Over);
         assert_eq!(report.team.state, BudgetState::Over);
+    }
+
+    #[test]
+    fn a_team_without_a_plan_is_over_when_its_org_is() {
+        let report = status(
+            &org(&[("app", Some(200)), ("free", None)]),
+            start(),
+            &id("free"),
+            &spends(&[("app", Some(250.0)), ("free", Some(5.0))]),
+        )
+        .unwrap();
+        assert_eq!(report.team.cap_usd, None);
+        assert_eq!(report.org.state, BudgetState::Over);
+        assert_eq!(
+            report.team.state,
+            BudgetState::Over,
+            "whatever its own spend"
+        );
     }
 
     #[test]

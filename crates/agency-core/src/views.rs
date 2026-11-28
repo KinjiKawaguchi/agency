@@ -4,10 +4,12 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::orgs;
 use crate::peer_about;
-use crate::ports::{DefinitionAccess, PeerError};
+use crate::ports::{DefinitionAccess, PeerError, ViewRead};
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
+use agency_proto::about::Capability;
+use agency_proto::clock::{self, Duration, OffsetDateTime};
 use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::view::{AnswersFor, FederatedView, Request, WaitingOn};
 use agency_proto::{Id, OrgDefinition, Role, TeamView};
@@ -28,6 +30,33 @@ pub struct Replica {
     /// reported them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub answers_for: Vec<AnswersFor>,
+    /// How many reads in a row have failed; 0 once one succeeds. The next read waits as the outbox does
+    /// (`outbox::BACKOFF_SECONDS`), counted from `tried_at`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub failures: u32,
+    /// When the first of those failed reads was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failing_since: Option<String>,
+    /// The tag the team's node gave the answer this replica holds (`FederatedView::tag`), sent back to a node that
+    /// lists `viewUnchanged` so that it answers `304` while nothing changed. Left out when the node gave none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
+}
+
+impl Replica {
+    /// When the team's node is read next: at once after a success, else after the backoff for the failures so far.
+    pub fn next_read_at(&self) -> Option<OffsetDateTime> {
+        if self.failures == 0 {
+            return None;
+        }
+        let steps = &crate::outbox::BACKOFF_SECONDS;
+        let wait = steps[(self.failures as usize - 1).min(steps.len() - 1)];
+        clock::parse(&self.tried_at).map(|tried| tried + Duration::seconds(wait))
+    }
 }
 
 /// A person's name in a hosted team's runtime: their entry in `people`, or `owner` for the team's owner.
@@ -112,13 +141,14 @@ pub fn addressed_party<'a>(
 }
 
 /// The seat or external party a request is addressed to on a team elsewhere, as the team's node said the
-/// reader answers for it, with its id and its label as `definition` has it. When the definition has no such
-/// seat or external party yet (this node has not read the version that added it), the label is the id: the
-/// request is still the reader's to answer, and what it is for can still be said. `None` when `to` names no
-/// party the reader answers for, or a seat the reader took: the request is their own, and answers for no one.
+/// reader answers for it, with its id and label as `definition` has it. Only what this node's own definition
+/// confirms is said: a seat or external party the org has and whose `relays` name the reader (or a seat with
+/// none). `None` otherwise, when `to` names no party the reader answers for, or a seat the reader took. The
+/// request may still be the reader's to answer (the team's node decides that); it is then said to be for no one.
 pub fn remote_addressed_party<'a>(
     definition: &'a OrgDefinition,
-    answers_for: &'a [AnswersFor],
+    answers_for: &[AnswersFor],
+    reader: &Id,
     to: Option<&str>,
 ) -> Option<(&'a Id, &'a str)> {
     let answered = answers_for
@@ -127,14 +157,22 @@ pub fn remote_addressed_party<'a>(
     if is_taken_seat(definition, &answered.id) {
         return None;
     }
-    let seat = definition.seats.iter().find(|one| one.id == answered.id);
-    let external = definition
-        .externals
+    // Only what this node's own definition says: a seat or external party of the org that the reader answers
+    // for. A seat with no relays is answered by the team's owner, whom only the team's node knows.
+    let seat = definition
+        .seats
         .iter()
-        .find(|one| one.id == answered.id);
-    seat.map(|one| (&one.id, one.label.as_str()))
-        .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
-        .or(Some((&answered.id, answered.id.as_str())))
+        .find(|one| one.id == answered.id)
+        .filter(|one| one.relays.is_empty() || one.relays.contains(reader))
+        .map(|one| (&one.id, one.label.as_str()));
+    let external = || {
+        definition
+            .externals
+            .iter()
+            .find(|one| one.id == answered.id && one.relays.contains(reader))
+            .map(|one| (&one.id, one.label.as_str()))
+    };
+    seat.or_else(external)
 }
 
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team
@@ -300,16 +338,24 @@ struct FetchFailure {
     is_not_found: bool,
 }
 
+/// What a read of a team's view came to: the answer, checked, and the tag the node gave it; or that the answer this
+/// node holds is still the one.
+enum Fetched {
+    Changed(Box<FederatedView>, Option<String>),
+    Unchanged,
+}
+
 async fn fetch_view(
     node: &Node,
     org: &Id,
     place: &TeamPlace,
-) -> Result<FederatedView, FetchFailure> {
+    have: Option<&str>,
+) -> Result<Fetched, FetchFailure> {
     let path = routes::view(org, &place.id);
     let auth = sign_for_peer(node, org, &place.node, &path);
-    let fetched = node
+    let read = node
         .peers()
-        .get_view(&place.node, &path, &auth)
+        .get_view(&place.node, &path, &auth, have)
         .await
         .map_err(|error| FetchFailure {
             is_not_found: matches!(error, PeerError::Status { status: 404, .. }),
@@ -319,15 +365,27 @@ async fn fetch_view(
         message,
         is_not_found: false,
     };
+    let (fetched, tag) = match read {
+        ViewRead::Unchanged if have.is_some() => return Ok(Fetched::Unchanged),
+        ViewRead::Unchanged => {
+            return Err(other(
+                "answered that the view is unchanged to a read that held none".into(),
+            ))
+        }
+        ViewRead::Answer { answer, tag } => (answer, tag),
+    };
     fetched
         .check_answers_for()
         .map_err(|over| other(format!("sent an answer beyond the limits: {over}")))?;
     let view = check_view(fetched.view, org, &place.id).map_err(other)?;
-    Ok(FederatedView {
-        view,
-        viewer: fetched.viewer,
-        answers_for: fetched.answers_for,
-    })
+    Ok(Fetched::Changed(
+        Box::new(FederatedView {
+            view,
+            viewer: fetched.viewer,
+            answers_for: fetched.answers_for,
+        }),
+        tag,
+    ))
 }
 
 async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()> {
@@ -336,20 +394,40 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
         .load_replica(org, &place.id)
         .unwrap_or_default();
     let now = node.now_text();
-    let next = match fetch_view(node, org, place).await {
-        Ok(fetched) => Replica {
+    // The tag is sent only for a view this node holds, to a node that lists `viewUnchanged`.
+    let have = previous.tag.as_deref().filter(|_| {
+        previous.view.is_some()
+            && peer_about::lists(node, org, &place.node, Capability::ViewUnchanged)
+    });
+    let next = match fetch_view(node, org, place, have).await {
+        Ok(Fetched::Changed(fetched, tag)) => Replica {
             fetched_at: Some(now.clone()),
             tried_at: now,
             error: None,
             view: Some(fetched.view),
             viewer: fetched.viewer,
             answers_for: fetched.answers_for,
+            failures: 0,
+            failing_since: None,
+            tag,
+        },
+        // The view this node holds is still the answer: nothing to keep but that it was read just now, and that the
+        // team's node answered (which ends a wait).
+        Ok(Fetched::Unchanged) => Replica {
+            fetched_at: Some(now.clone()),
+            tried_at: now,
+            error: None,
+            failures: 0,
+            failing_since: None,
+            ..previous
         },
         Err(failure) => {
             if failure.is_not_found {
                 peer_about::note_not_found(node, org, &place.node)?;
             }
             Replica {
+                failures: previous.failures.saturating_add(1),
+                failing_since: previous.failing_since.clone().or_else(|| Some(now.clone())),
                 tried_at: now,
                 error: Some(failure.message),
                 ..previous
@@ -359,14 +437,25 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
     node.store().save_replica(org, &place.id, &next)
 }
 
-/// Takes a newer org definition from one of the org's other nodes, if it has one.
+/// Takes a newer org definition from one of the org's other nodes, if it has one: a node whose team was last read
+/// without an error, so that a node that does not answer is not the one asked every time.
 async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     let org = &doc.body.org;
-    let Some(place) = doc
+    let elsewhere: Vec<&TeamPlace> = doc
         .body
         .teams
         .iter()
-        .find(|place| !node.runs_here(org, &place.id))
+        .filter(|place| !node.runs_here(org, &place.id))
+        .collect();
+    let answered = |place: &&&TeamPlace| {
+        node.store()
+            .load_replica(org, &place.id)
+            .is_some_and(|replica| replica.error.is_none() && replica.fetched_at.is_some())
+    };
+    let Some(place) = elsewhere
+        .iter()
+        .find(answered)
+        .or_else(|| elsewhere.first())
     else {
         return;
     };
@@ -384,24 +473,124 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
-/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to.
-pub async fn refresh(node: &Node) -> Result<()> {
+/// What `agency status` says of the teams whose node is being waited for: one line each, with since when its reads
+/// fail, how many failed, and when it is read next.
+pub fn waiting_lines(node: &Node) -> Vec<String> {
     let account = node.account();
-    for doc in node
+    let mut lines = vec![];
+    for doc in node.store().orgs() {
+        if doc.body.member(&account).is_none() {
+            continue;
+        }
+        let org = &doc.body.org;
+        for place in doc
+            .body
+            .teams
+            .iter()
+            .filter(|place| !node.runs_here(org, &place.id))
+        {
+            let Some(replica) = node.store().load_replica(org, &place.id) else {
+                continue;
+            };
+            let Some(next) = replica.next_read_at() else {
+                continue;
+            };
+            lines.push(format!(
+                "Team {org}/{} on {}: not answering since {} ({} tries); next try at {}",
+                place.id,
+                place.node,
+                replica.failing_since.as_deref().unwrap_or("?"),
+                replica.failures,
+                clock::format(next)
+            ));
+        }
+    }
+    lines
+}
+
+/// How many teams on other nodes are read at once. A team node that does not answer holds one of these for its
+/// timeout, not the whole pass.
+pub const READS_AT_ONCE: usize = 8;
+
+/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to, at most
+/// `READS_AT_ONCE` at a time, and, at the same time, org by org, what the org's other nodes say about themselves
+/// and the org's definition. The first failure to keep what was read is returned once everything was tried.
+pub async fn refresh(node: &Node) -> Result<()> {
+    refresh_teams(node, Due::Only).await
+}
+
+/// `refresh`, reading every team now, those whose node is being waited for included (`agency sync`).
+pub async fn refresh_now(node: &Node) -> Result<()> {
+    refresh_teams(node, Due::All).await
+}
+
+/// Which teams on other nodes a pass reads.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Due {
+    /// Those whose node answered last time, or whose wait after failing is over.
+    Only,
+    All,
+}
+
+/// Whether the team's replica should be read now: it is read when its node answered last time, when its wait after
+/// failing is over, and when the team's node has answered this node in another way since the read that failed (an
+/// outbox parcel it took or refused, its `about`: `Node::note_answer`).
+fn is_due(node: &Node, org: &Id, place: &TeamPlace, due: Due) -> bool {
+    if due == Due::All {
+        return true;
+    }
+    let Some(replica) = node.store().load_replica(org, &place.id) else {
+        return true;
+    };
+    let Some(next) = replica.next_read_at() else {
+        return true;
+    };
+    let tried_at = clock::parse(&replica.tried_at);
+    let has_answered_since = node
+        .answered_at(&place.node)
+        .zip(tried_at)
+        .is_some_and(|(answered, tried)| answered > tried);
+    next <= node.now() || has_answered_since
+}
+
+async fn refresh_teams(node: &Node, due: Due) -> Result<()> {
+    use futures_util::stream::{self, StreamExt};
+    let account = node.account();
+    let orgs: Vec<SignedOrg> = node
         .store()
         .orgs()
         .into_iter()
         .filter(|doc| doc.body.member(&account).is_some())
-    {
-        let org = &doc.body.org;
-        let elsewhere = doc.body.teams.iter();
-        for place in elsewhere.filter(|place| !node.runs_here(org, &place.id)) {
-            refresh_replica(node, org, place).await?;
-        }
-        peer_about::refresh(node, &doc.body).await?;
-        refresh_definition(node, &doc).await;
-    }
-    Ok(())
+        .collect();
+    let elsewhere: Vec<(Id, TeamPlace)> = orgs
+        .iter()
+        .flat_map(|doc| {
+            let org = &doc.body.org;
+            doc.body
+                .teams
+                .iter()
+                .filter(|place| !node.runs_here(org, &place.id))
+                .filter(|place| is_due(node, org, place, due))
+                .map(|place| (org.clone(), place.clone()))
+        })
+        .collect();
+    let replicas = stream::iter(elsewhere)
+        .map(|(org, place)| async move { refresh_replica(node, &org, &place).await })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let peers = stream::iter(orgs)
+        .map(|doc| async move {
+            let (about, ()) = futures_util::future::join(
+                peer_about::refresh(node, &doc.body),
+                refresh_definition(node, &doc),
+            )
+            .await;
+            about
+        })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let (replicas, peers) = futures_util::future::join(replicas, peers).await;
+    replicas.into_iter().chain(peers).collect()
 }
 
 #[cfg(test)]

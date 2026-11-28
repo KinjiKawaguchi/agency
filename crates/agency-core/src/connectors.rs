@@ -5,7 +5,7 @@
 //! entered once: a later correction of what GitHub said is not written over it.
 use crate::config::HostedTeam;
 use crate::delivery::{day_numbers, of_team, DayNumbers, Input, Period};
-use crate::evaluation::{known_daily_costs, repositories};
+use crate::evaluation::known_daily_costs;
 use crate::node::Node;
 use crate::outcomes::record_new;
 use crate::outcomes_config::{Connector, Metric};
@@ -89,11 +89,13 @@ struct Read {
 }
 
 async fn read(node: &Node, hosted: &HostedTeam, days: u32) -> Result<Read, String> {
-    let repos = repositories(hosted).ok_or("no repositories are configured for this team")?;
+    let source = hosted
+        .delivery_source()
+        .ok_or("no repositories are configured for this team")?;
     let period = Period::new(node.now(), node.utc_offset(), days);
     let facts = node
         .delivery()
-        .facts(&repos, period.start())
+        .facts(&source, period.start())
         .await
         .map_err(|DeliveryError(reason)| reason)?;
     let costs = known_daily_costs(node, hosted, days).await;

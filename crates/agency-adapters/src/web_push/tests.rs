@@ -9,7 +9,8 @@ use hkdf::Hkdf;
 use p256::ecdh::diffie_hellman;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
+use p256::elliptic_curve::Generate;
 use p256::{PublicKey, SecretKey};
 use std::sync::Mutex;
 
@@ -24,7 +25,7 @@ struct Browser {
 impl Browser {
     fn new() -> Self {
         Self {
-            secret: SecretKey::random(&mut rand_core::OsRng),
+            secret: SecretKey::generate(),
             auth: [3u8; 16],
         }
     }
@@ -72,7 +73,7 @@ impl Browser {
         keys.expand(b"Content-Encoding: nonce\0", &mut nonce)
             .unwrap();
         let mut plain = Aes128Gcm::new((&cek).into())
-            .decrypt(Nonce::from_slice(&nonce), record)
+            .decrypt(&Nonce::from(nonce), record)
             .unwrap();
         assert_eq!(plain.pop(), Some(0x02), "the delimiter of the last record");
         plain
@@ -133,6 +134,31 @@ use axum::response::IntoResponse;
 
 fn web_push() -> WebPush {
     WebPush::for_tests(Arc::new(ManualClock::at(T0)))
+}
+
+/// The first 16 octets of an aes128gcm body are the salt (RFC 8188).
+#[tokio::test]
+async fn each_message_has_a_fresh_salt_and_sender_key() {
+    let (url, seen) = stand_in().await;
+    let browser = Browser::new();
+    let sender = web_push();
+    let subscription = browser.subscription(&format!("{url}/status/201"));
+    for _ in 0..2 {
+        sender.send(&subscription, &request_notice()).await.unwrap();
+    }
+    let bodies: Vec<Vec<u8>> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|one| one.2.clone())
+        .collect();
+    assert_ne!(bodies[0][..16], bodies[1][..16], "the salts differ");
+    assert_ne!(bodies[0][..16], [0u8; 16], "a salt is not all zeros");
+    assert_ne!(
+        bodies[0][21..],
+        bodies[1][21..],
+        "the sender key and the ciphertext differ"
+    );
 }
 
 #[tokio::test]
@@ -389,13 +415,7 @@ fn keys_are_checked_to_be_a_browsers() {
     assert!(check_keys(&public, &auth).is_ok());
     let off_curve = B64.encode([4u8; 65]);
     // The same key as a compressed point (33 octets, 0x02 or 0x03 first) is on the curve and still refused.
-    let compressed = B64.encode(
-        browser
-            .secret
-            .public_key()
-            .to_encoded_point(true)
-            .as_bytes(),
-    );
+    let compressed = B64.encode(browser.secret.public_key().to_sec1_point(true).as_bytes());
     let short_auth = B64.encode([1u8; 15]);
     for (p256dh, secret) in [
         (off_curve.as_str(), auth.as_str()),
