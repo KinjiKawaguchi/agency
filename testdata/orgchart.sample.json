@@ -1,0 +1,93 @@
+{
+  "org": "acme",
+  "label": "Acme",
+  "version": 14,
+  "head": "alice",
+  "units": [
+    {
+      "id": "product",
+      "label": "Product",
+      "head": "alice",
+      "holds": { "people": 1, "agents": 0 }
+    },
+    {
+      "id": "dev",
+      "label": "Development",
+      "parent": "product",
+      "head": "dev-lead",
+      "holds": { "people": 0, "agents": 1 }
+    },
+    {
+      "id": "app",
+      "label": "App",
+      "parent": "dev",
+      "head": "app-lead",
+      "team": { "node": "https://node.example.com" },
+      "holds": { "people": 0, "agents": 1 },
+      "waiting": 3
+    },
+    {
+      "id": "web",
+      "label": "Web",
+      "parent": "dev",
+      "head": "dev-lead",
+      "team": { "node": "https://node.example.com" },
+      "holds": { "people": 1, "agents": 0 },
+      "runtimeLead": { "name": "lead", "party": "carol" }
+    },
+    {
+      "id": "studio",
+      "label": "Studio",
+      "parent": "product",
+      "holds": { "people": 1, "agents": 0 }
+    }
+  ],
+  "members": [
+    {
+      "id": "alice",
+      "label": "Alice",
+      "kind": "person",
+      "unit": "product",
+      "heads": ["product"]
+    },
+    {
+      "id": "dev-lead",
+      "label": "Development lead",
+      "kind": "agent",
+      "unit": "dev",
+      "reportsTo": "alice",
+      "heads": ["dev", "web"]
+    },
+    {
+      "id": "app-lead",
+      "label": "App lead",
+      "kind": "agent",
+      "unit": "app",
+      "reportsTo": "dev-lead",
+      "heads": ["app"]
+    },
+    {
+      "id": "carol",
+      "label": "Carol",
+      "kind": "person",
+      "unit": "web",
+      "reportsTo": "dev-lead",
+      "heads": []
+    },
+    {
+      "id": "bob",
+      "label": "Bob",
+      "kind": "person",
+      "unit": "studio",
+      "reportsTo": "alice",
+      "heads": []
+    },
+    {
+      "id": "erin",
+      "label": "Erin",
+      "kind": "person",
+      "reportsTo": "alice",
+      "heads": []
+    }
+  ]
+}
