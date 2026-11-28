@@ -84,7 +84,7 @@ final class NativeSession {
         devices = signer.map { signer in
             let sender = DeviceChangeSender(poster: client, signer: signer)
             return DevicesStore(
-                source: client, adder: sender, ownKey: signer.publicKey, remover: sender, hasKeptDecisions: { _ in outbox.hasSignedEntries }
+                source: client, adder: sender, ownKey: signer.publicKey, remover: sender, keptDecisions: { _ in outbox.keptDecisions }
             )
         }
         let ownToken = ownPushToken
