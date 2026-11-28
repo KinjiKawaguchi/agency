@@ -26,8 +26,6 @@ const usedTemplates = (): Set<string> => {
  */
 const NOT_REPORTED: Readonly<Record<string, string>> = {
   'POST /api/telemetry': 'the report itself is never timed',
-  'GET /api/claim': 'a person claiming a seat has none yet, and is not the owner',
-  'POST /api/claim': 'a person claiming a seat has none yet, and is not the owner',
 }
 
 describe('the routes the page may name in a report', () => {

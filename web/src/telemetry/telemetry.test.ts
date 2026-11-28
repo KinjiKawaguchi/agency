@@ -19,7 +19,7 @@ describe('what the page keeps of how long its calls took, and when it sends it',
     const telemetry = createTelemetry()
     const { reports, report } = taken()
     telemetry.record(known)
-    telemetry.record({ route: 'GET /api/claim', status: '2xx', ms: 3 })
+    telemetry.record({ route: 'POST /api/telemetry', status: '2xx', ms: 3 })
     telemetry.record({ route: 'GET /api/orgs/acme/teams/app/view', status: '2xx', ms: 3 })
     const stop = telemetry.start(report)
     await vi.advanceTimersByTimeAsync(REPORT_EVERY_MS)
