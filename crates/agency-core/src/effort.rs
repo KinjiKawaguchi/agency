@@ -6,11 +6,14 @@ use crate::config::HostedTeam;
 use crate::delivery::{effort, EffortInput, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
+use crate::peer_about::note_not_found;
+use crate::peer_features::refusal_for_lacking;
 use crate::ports::{DeliveryError, PeerError};
 use crate::read_auth::{sign_read, verify_read_once};
 use crate::routes;
 use crate::unseen;
 use crate::usage::check_days;
+use agency_proto::about::Capability;
 use agency_proto::effort::Effort;
 use agency_proto::evaluation::TeamUnavailable;
 use agency_proto::org::TeamPlace;
@@ -104,13 +107,19 @@ pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Ef
 }
 
 /// The effort of a team on another node, read live from it. Whatever goes wrong becomes the reason the
-/// team is unavailable: no address and nothing the other node said is passed on.
+/// team is unavailable: no address and nothing the other node said is passed on, except the release of a
+/// node that has been read and does not list the `effort` capability (the route is not called then).
 async fn remote_effort(
     node: &Node,
     org: &Id,
     place: &TeamPlace,
     days: u32,
 ) -> std::result::Result<Effort, String> {
+    if let Some(reason) =
+        refusal_for_lacking(node, org, &place.node, Capability::Effort, "effort numbers")
+    {
+        return Err(reason);
+    }
     let path = routes::effort(org, &place.id, days);
     let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
     let answer = node
@@ -119,6 +128,7 @@ async fn remote_effort(
         .await
         .map_err(|error| match error {
             PeerError::Status { status: 404, .. } => {
+                let _ = note_not_found(node, org, &place.node);
                 "the team's node does not give effort numbers".to_owned()
             }
             PeerError::Status { status: 403, .. } => {

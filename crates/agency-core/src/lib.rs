@@ -39,6 +39,7 @@ pub mod outbox;
 pub mod outcome_readings;
 pub mod outcomes;
 pub mod peer_about;
+pub mod peer_features;
 pub mod pending_root;
 pub mod ports;
 pub mod push;
