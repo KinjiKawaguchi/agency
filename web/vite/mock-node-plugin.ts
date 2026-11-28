@@ -25,7 +25,7 @@ const PUSH_TOKENS_PATH = '/__mock/push-tokens'
  */
 const isClaimFailure = (value: string | null | undefined): boolean => value === 'unknown' || value === 'expired' || value === 'other-email' || value === 'taken'
 
-function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof createMockNode>[0] {
+export function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof createMockNode>[0] {
   const usage = query?.get('usage') ?? process.env.AGENCY_MOCK_USAGE
   const evaluation = query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION
   const activity = query?.get('activity') ?? process.env.AGENCY_MOCK_ACTIVITY
@@ -42,7 +42,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     usage: usage === '1',
     evaluation: evaluation === '1',
     // What each feature of the Client API takes (its own module says how it is asked for).
-    ...optionsFromQuery(query),
+    ...optionsFromQuery(query, { evaluation: evaluation === '1' }),
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',

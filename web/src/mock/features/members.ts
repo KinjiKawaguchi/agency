@@ -15,13 +15,15 @@ export const membersOf = (org: string): OrgMembers | undefined => (org === sampl
 
 export const membersFeature: MockFeature<MembersOptions, MembersOptions> = {
   capability: 'members',
-  isOn: (options) => options.members === true,
-  answer: (request, url) => {
-    const matched = PATH.exec(url.pathname)
-    if (matched === null || request.method !== 'GET') return undefined
-    const members = membersOf(matched[1] ?? '')
-    return members === undefined ? failure(404, 'No such organization.') : json(members)
-  },
+  select: (options) =>
+    options.members !== true
+      ? undefined
+      : (request, url) => {
+          const matched = PATH.exec(url.pathname)
+          if (matched === null || request.method !== 'GET') return undefined
+          const members = membersOf(matched[1] ?? '')
+          return members === undefined ? failure(404, 'No such organization.') : json(members)
+        },
   isOwnerRoute: (pathname) => PATH.test(pathname),
   fromQuery: (query) => (query?.get('members') === '1' ? { members: true } : {}),
   toQuery: ({ members }) => (members === true ? [['members', '1']] : []),

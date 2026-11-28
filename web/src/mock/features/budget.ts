@@ -44,18 +44,20 @@ export function budgetFor(name: string | null | undefined): true | Readonly<Reco
 
 export const budgetFeature: MockFeature<BudgetOptions, { budgetState?: string }> = {
   capability: 'budget',
-  isOn: (options) => options.budget !== undefined,
-  answer: (request, url, options, { now }) => {
-    const matched = PATH.exec(url.pathname)
-    if (matched === null || request.method !== 'GET' || options.budget === undefined) return undefined
-    const team = matched[2] ?? ''
-    const answer = options.budget === true ? budgetOf(team, now) : options.budget[team]
-    return answer === undefined ? failure(404, 'No such team.') : json(answer)
-  },
+  select: ({ budget }) =>
+    budget === undefined
+      ? undefined
+      : (request, url, { now }) => {
+          const matched = PATH.exec(url.pathname)
+          if (matched === null || request.method !== 'GET') return undefined
+          const team = matched[2] ?? ''
+          const answer = budget === true ? budgetOf(team, now) : budget[team]
+          return answer === undefined ? failure(404, 'No such team.') : json(answer)
+        },
   isOwnerRoute: (pathname) => PATH.test(pathname),
   // The budget is the node's answer that the evaluation screen shows beside the effort, so it is on with the evaluation; `budgetState` fixes where the
   // app team stands (for the screenshots).
-  fromQuery: (query) => ((query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION) === '1' ? { budget: budgetFor(query?.get('budgetState')) } : {}),
+  fromQuery: (query, { evaluation }) => (evaluation ? { budget: budgetFor(query?.get('budgetState')) } : {}),
   /** Where the app team stands (`ok`, `over`, `partial`). */
   toQuery: ({ budgetState }) => (budgetState === undefined ? [] : [['budgetState', budgetState]]),
 }
