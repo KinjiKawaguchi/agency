@@ -103,6 +103,12 @@ public actor NodeClient {
         try await get("/api/metrics?days=\(days)" + (hourBuckets ? "&hourBuckets=1" : ""))
     }
 
+    /// Where this week's spend of a team stands against its plan's weekly budget, as the node works it out. A node without the capability
+    /// `budget` answers 404; an answerer of the org is told 403.
+    public func budget(org: String, team: String) async throws -> BudgetStatus {
+        try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/budget")
+    }
+
     /// Tells the node what this app observed of its own calls (`POST /api/telemetry`, "Metrics" in `docs/protocol.md`). Owner only: anyone else
     /// is told 403, and a node without the route 404 (405 for one that has the path and not the method).
     public func reportTelemetry(_ report: TelemetryReport) async throws -> TelemetryAnswer {

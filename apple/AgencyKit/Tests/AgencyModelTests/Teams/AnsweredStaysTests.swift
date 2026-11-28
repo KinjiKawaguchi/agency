@@ -32,6 +32,8 @@ private final class EmptyAccountSource: OverviewSource, OrgChartSource, Evaluati
     func evaluation(org: String, days: Int) async throws -> Evaluation { throw NodeError.http(status: 404, message: nil) }
     func effort(org: String, days: Int) async throws -> Effort { throw NodeError.http(status: 404, message: nil) }
     func orgPlans(org: String) async throws -> OrgPlans { throw NodeError.http(status: 404, message: nil) }
+    func about() async throws -> About { throw NodeError.http(status: 404, message: nil) }
+    func budget(org: String, team: String) async throws -> BudgetStatus { throw NodeError.http(status: 404, message: nil) }
 }
 
 /// What a screen reads of a store: whether it has answered, and what it is doing.

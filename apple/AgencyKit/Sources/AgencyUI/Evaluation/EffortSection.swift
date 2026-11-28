@@ -6,6 +6,8 @@ import SwiftUI
 /// Where each team's effort goes, by work type, against the plan in the org definition.
 struct EffortSection: View {
     let state: EffortState
+    /// How each team's week stands against its weekly budget, by team, as the node said.
+    var budgets: [String: BudgetRead] = [:]
     var onTryAgain: (() -> Void)?
     var selectedDay: String?
 
@@ -21,7 +23,7 @@ struct EffortSection: View {
             case .couldNotAnswer(let reason), .failed(let reason):
                 FailedRegion(what: Ja.Effort.title, why: reason, onTryAgain: onTryAgain)
             case .ready(let reports, let unavailable):
-                ForEach(reports) { TeamEffortView(report: $0, selectedDay: selectedDay).padding(.top, 8) }
+                ForEach(reports) { TeamEffortView(report: $0, budget: budgets[$0.team], selectedDay: selectedDay).padding(.top, 8) }
                 ForEach(unavailable) { note in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(note.title).font(.headline).wrapping()
@@ -37,6 +39,8 @@ struct EffortSection: View {
 /// One team's effort: its cost by work type against the plan, its weekly budget, and its cost by day.
 struct TeamEffortView: View {
     let report: TeamEffortReport
+    /// What the node said of the team's week; `nil` before it has been asked.
+    var budget: BudgetRead?
     var selectedDay: String?
 
     var body: some View {
@@ -57,7 +61,7 @@ struct TeamEffortView: View {
             if let note = report.planNote { Text(note).font(.footnote).foregroundStyle(.secondary).wrapping() }
             ForEach(report.rows) { AllocationRowView(row: $0) }
             Text(Ja.Effort.unclassifiedNote).font(.caption).foregroundStyle(.secondary).wrapping()
-            if let budget = report.budget { BudgetMeter(budget: budget) }
+            if let budget { WeeklyBudgetView(read: budget) }
         }
         .card()
     }
@@ -93,26 +97,67 @@ private struct AllocationRowView: View {
     }
 }
 
-/// The last seven days' spend against the weekly budget the org set. Over the budget the fill turns red and the
-/// text says by how much.
-private struct BudgetMeter: View {
-    let budget: TeamEffortReport.Budget
+/// A team's weekly budget as the node says it: this week from Monday, what was spent of the cap, and the node's own state. Nothing is compared
+/// here: the fill's width is spent over the cap for the eye, and its color and the sentence are the state's. A team whose usage could not be
+/// read has no spend and no state, and says so with no bar.
+struct WeeklyBudgetView: View {
+    let read: BudgetRead
 
     var body: some View {
+        switch read {
+        case .loading:
+            SkeletonCard().padding(.top, 6)
+        case .none:
+            EmptyView()
+        case .plain(let note):
+            Text(note).font(.footnote).foregroundStyle(.secondary).wrapping().padding(.top, 6)
+        case .failed(let reason):
+            Text(Ja.Effort.budgetFailed(reason)).font(.footnote).foregroundStyle(Theme.danger).wrapping().padding(.top, 6)
+        case .reported(let report):
+            if !report.isEmpty { reported(report) }
+        }
+    }
+
+    private func reported(_ report: BudgetReport) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(Ja.Effort.budgetTitle).font(.subheadline.weight(.semibold)).wrapping()
-            Text(budget.line).font(.caption).foregroundStyle(.secondary).wrapping()
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.hairline)
-                    Capsule().fill(budget.isOver ? Theme.danger : Color.accentColor).frame(width: proxy.size.width * budget.fraction)
-                }
+            if let line = report.line {
+                Text(Ja.Effort.budgetTitle).font(.subheadline.weight(.semibold)).wrapping()
+                Text(line).font(.caption).foregroundStyle(.secondary).wrapping()
             }
-            .frame(height: 10)
-            .accessibilityLabel(budget.spoken)
-            Text(budget.note).font(.footnote).foregroundStyle(budget.isOver ? Theme.danger : .secondary).wrapping()
+            if let meter = report.meter { Meter(meter: meter) }
+            if let note = report.teamNote { Text(note).font(.footnote).foregroundStyle(.secondary).wrapping() }
+            if let note = report.orgNote { Text(note).font(.footnote).foregroundStyle(.secondary).wrapping() }
         }
         .padding(.top, 6)
+    }
+
+    private struct Meter: View {
+        let meter: BudgetReport.Meter
+
+        private var fill: Color {
+            switch meter.state {
+            case .over: Theme.danger
+            case .warning: Theme.warning
+            case .ok, .unknown: Color.accentColor
+            }
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 4) {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.hairline)
+                        Capsule().fill(fill).frame(width: proxy.size.width * meter.fraction)
+                    }
+                }
+                .frame(height: 10)
+                .accessibilityElement()
+                .accessibilityLabel(meter.spoken)
+                if let text = meter.stateText {
+                    Text(text).font(.footnote).foregroundStyle(meter.state == .ok ? Color.secondary : fill).wrapping()
+                }
+            }
+        }
     }
 }
 
