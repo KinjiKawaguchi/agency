@@ -114,10 +114,10 @@ test('costs: token use by day and by person when the node serves it', async ({ p
 test('switches the language and keeps it across a reload', async ({ page }) => {
   await page.goto('/desk')
   await page.getByRole('combobox', { name: 'Language' }).selectOption('ja')
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('参加者 1 人があなたの返事を待っています。')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('メンバー 1 人があなたの返事を待っています。')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ja')
   await page.reload()
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('参加者 1 人があなたの返事を待っています。')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('メンバー 1 人があなたの返事を待っています。')
 })
 
 test('follows the theme the viewer picks', async ({ page }) => {

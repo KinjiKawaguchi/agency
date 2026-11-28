@@ -46,7 +46,7 @@ describe('a notice pushed by the node', () => {
   it('says only what kind it is when the node left the text out, in the viewer’s language', async () => {
     const hidden = { agency: request.agency, badge: 1 }
     expect((await pushed(payload(hidden))).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'A request is waiting for you', tag: 'request/acme/app/r-1' } })
-    expect((await pushed(payload(hidden), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'あなたを待っている依頼があります' } })
+    expect((await pushed(payload(hidden), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'あなたを待っているリクエストがあります' } })
   })
 
   it('words a device and a refused decision by kind, with the node’s label after it, and tags them as the page does', async () => {
@@ -204,7 +204,7 @@ describe('a recovery of an org that was started', () => {
   })
 
   it('says it in Japanese', async () => {
-    expect((await pushed(payload(recovery), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme のルート鍵の回復が始まりました。机で確認してください。', tag: 'recovery/acme' } })
+    expect((await pushed(payload(recovery), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme のルートキーの回復が始まりました。机で確認してください。', tag: 'recovery/acme' } })
   })
 
   it('carries the times, in the viewer’s locale, when the node gives them', async () => {
@@ -212,7 +212,7 @@ describe('a recovery of an org that was started', () => {
     const offset = { agency: { ...recovery.agency, finishesAt: '2026-12-04T18:30:00.5+09:00' }, badge: 0 }
     expect((await pushed(payload(offset), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
     expect((await pushed(payload(timed), [], 'en-US')).shown[0]?.options.body).toBe(`A recovery of acme was started at ${shownAt(START, 'en-US')}. It takes effect at ${shownAt(FINISH, 'en-US')}. Open the desk to see it.`)
-    expect((await pushed(payload(timed), [], 'ja-JP')).shown[0]?.options.body).toBe(`acme のルート鍵の回復が始まりました（${shownAt(START, 'ja-JP')}）。${shownAt(FINISH, 'ja-JP')} に有効になります。机で確認してください。`)
+    expect((await pushed(payload(timed), [], 'ja-JP')).shown[0]?.options.body).toBe(`acme のルートキーの回復が始まりました（${shownAt(START, 'ja-JP')}）。${shownAt(FINISH, 'ja-JP')} に有効になります。机で確認してください。`)
   })
 
   it('leaves out a time that is not one, and says the one that is', async () => {
@@ -247,12 +247,12 @@ describe('a change that waits for the root key', () => {
     const many = { agency: { ...held.agency, waiting: 3 }, badge: 0 }
     expect((await pushed(payload({ agency: { ...held.agency, waiting: 9999 }, badge: 0 }))).shown[0]?.options.body).toContain('9999 changes to acme wait')
     expect((await pushed(payload(many))).shown[0]?.options.body).toBe('3 changes to acme wait for the root key’s signature. Open the desk to see them.')
-    expect((await pushed(payload(many), [], 'ja-JP')).shown[0]?.options.body).toBe('acme の変更 3 件が、ルート鍵の署名を待っています。机で確認してください。')
+    expect((await pushed(payload(many), [], 'ja-JP')).shown[0]?.options.body).toBe('acme の変更 3 件が、組織のルートキーの署名を待っています。机で確認してください。')
     for (const bad of [0, -2, 1.5, '3', null, 1e21, 10_000, 10_000_000]) expect((await pushed(payload({ agency: { ...held.agency, waiting: bad }, badge: 0 }))).shown[0]?.options.body, String(bad)).toBe('A change to acme waits for the root key’s signature. Open the desk to see it.')
   })
 
   it('says it in Japanese', async () => {
-    expect((await pushed(payload(held), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme の変更が、ルート鍵の署名を待っています。机で確認してください。', tag: 'root/0123456789abcdef' } })
+    expect((await pushed(payload(held), [], 'ja-JP')).shown[0]).toMatchObject({ title: 'Agency', options: { body: 'acme の変更が、組織のルートキーの署名を待っています。机で確認してください。', tag: 'root/0123456789abcdef' } })
   })
 
   it('names no org, and has no tag, when the identifiers are not plain ones', async () => {

@@ -131,7 +131,7 @@ describe('the owner’s outcomes page', () => {
 
   it('reads in Japanese, with the wording of the glossary', async () => {
     renderApp({ path: '/outcomes', node: createTestNode({ outcomes: true }), enrolled: true, locale: 'ja' })
-    expect(await screen.findByRole('heading', { level: 1, name: '成果の指標' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'KPI' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 2, name: '読み取り' })).toBeInTheDocument()
     expect(document.body.textContent).toContain('完了のあとで数値が動きました。この仕事が動かしたとは言えません。')
     expect(document.body.textContent).toContain('完了した日が分からないため、比べられません。')

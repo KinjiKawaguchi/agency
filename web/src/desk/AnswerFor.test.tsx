@@ -23,9 +23,9 @@ describe('a request addressed to a seat or an external party the viewer answers 
     expect(screen.getAllByText(/^Answer for /)).toHaveLength(2)
   })
 
-  it('says it in Japanese with the glossary’s word, 代理で答える', async () => {
+  it('says it in Japanese with the glossary’s word, 代理回答', async () => {
     renderApp({ node: nodeFor('Erin'), path: '/desk', enrolled: true, locale: 'ja' })
-    expect(within(await pileRow()).getByText('Erin の代理で答える')).toBeInTheDocument()
+    expect(within(await pileRow()).getByText('Erin の代理回答')).toBeInTheDocument()
   })
 
   it('shows the label as text: a label with markup is not markup', async () => {

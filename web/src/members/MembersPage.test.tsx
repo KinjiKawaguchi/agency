@@ -157,8 +157,8 @@ describe('the owner’s members page', () => {
 
   it('says it in Japanese', async () => {
     renderApp({ path: '/members', node: createTestNode({ members: true }), enrolled: true, locale: 'ja' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'メンバー' })).toBeInTheDocument()
-    expect(await screen.findByText('ルート鍵の署名待ち')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '組織のメンバー' })).toBeInTheDocument()
+    expect(await screen.findByText('組織のルートキーの署名待ち')).toBeInTheDocument()
     expect(screen.getByText('このノードが預かっています', { exact: false })).toBeInTheDocument()
   })
 })
