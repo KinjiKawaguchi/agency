@@ -374,6 +374,25 @@ pub async fn confirm(node: &Node, org: &Id, seat: &Id, pairing: &str) -> Result<
     Ok(doc)
 }
 
+/// `confirm` for the owner's client: when the root key asks for the owner's presence it is the node's terminal
+/// that is present, not the client, so the answer is a conflict that says to confirm there
+/// (`agency claim-confirm`); holding the confirmation for the owner's presence is a change of its own.
+pub async fn confirm_from_client(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    pairing: &str,
+) -> Result<SignedOrg> {
+    let doc = load(node, org)?;
+    if crate::pending_root::must_hold(node, &doc) {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "this node's root key asks for your presence: confirm at the node's terminal with `agency claim-confirm`",
+        ));
+    }
+    confirm(node, org, seat, pairing).await
+}
+
 /// The owner refuses the claim of `seat`: the pending claim is dropped, and the link stays spent (a new link is
 /// needed). Not found when none waits.
 pub async fn reject(node: &Node, org: &Id, seat: &Id) -> Result<()> {

@@ -80,7 +80,7 @@ fn route_group(template: &str) -> &'static str {
         "metrics"
     } else if starts("/api/push") {
         "push"
-    } else if starts("/api/devices") || template == "/api/claim" {
+    } else if starts("/api/devices") || template == "/api/claim" || starts("/api/claims") {
         "devices"
     } else if starts("/api/orgs/{org}/outcomes") {
         "outcomes"
