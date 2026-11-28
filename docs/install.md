@@ -104,7 +104,7 @@ agency status
 - `--state-dir` is the team's state directory for the harness. A relative path is stored as an absolute one.
 - `org-create` makes a root key for the new org and makes this node its root's node. `team-add` without `--node` runs the team on this node, owned by this node's account.
 
-`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`.
+`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`. `agency audit --org acme` lists every version of the org, who signed it, and what it changed, oldest first.
 
 The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
 The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
@@ -285,12 +285,61 @@ Add `access` to `~/.agency/config.json` and restart the node:
 - `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
 - A member this node hosts reads and answers only the requests of teams that run on this node; a team on another node does not show them its requests.
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
-- For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
+- For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. `appId` alone is enough only for a host that is in the app build's associated domains: the app then signs in through a universal link of the node's own host, which only the app the association file names receives. If you build the app yourself, put your host in `AGENCY_ASSOCIATED_HOST` and leave `allowSchemeSignIn` off: that is the safe way. With an app build whose associated domains you do not control, your host is not in them: either set `"allowSchemeSignIn": true` in `access`, beside `appId` (off by default, and it does nothing without `appId`), or do not sign in to the node from the app (the page at the node's address still works in the browser, and so do notices). The scheme is delivered to the app that started the sign-in, whatever app that is. Turn it on only if every app on every device you sign in from is one you trust. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
-- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; the push services (Google, Mozilla, Apple, Microsoft) read it, so it tells them which node this is: use an alias made for this if you do not want that to be the node's host name; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
+- To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` tells that push service's operator how to contact the node's operator. By default it is `https://<publicHost>` when `access` has a public host name, or the node origin without `access`; Google, Mozilla, Apple, and Microsoft can read it, so it names this node to them. To name it less specifically, set `"subject"` to a contact such as `"mailto:push@example.com"` or `"https://example.com/contact"`. The setting refuses an empty value, whitespace, or a value that does not begin with `mailto:` or `https://`. Without `access`, Apple's push service refuses the node's own `http` origin, so set a `mailto:` contact. `"extraHosts"` (more push services to allow) is optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
 
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
+
+## Reaching a node from outside with an OpenID Connect provider
+
+Use this when your organization signs people in with its own OpenID Connect provider and not with Cloudflare Access. A node signs people in from outside in one way, `access` or `oidc`, never both: it does not start with both set, nor with either malformed, and says which field is wrong.
+
+### What you need
+
+- An application registered with the provider for this node. Its client id is the audience of its tokens, and its tokens are RS256-signed JWTs. The owner is named by the token's `sub`. A guest is named by an email in a claim (`email` unless you say another) that the provider marks verified (`email_verified` true). The provider's issuer is exactly the `iss` of those tokens.
+- A gateway your organization approves (a reverse proxy or an access proxy) at the node's public host name, which signs people in with the provider and sends the signed token to the node in a header on every request. The node checks each token itself and trusts nothing about how the request came, so the gateway does not tell the node who is asking; it only carries the token.
+- A node `url` and a public host name as in "Change the node's address", whatever they are called in your network.
+
+### The oidc setting
+
+Add `oidc` to `~/.agency/config.json` (and no `access`), and restart the node:
+
+```json
+"oidc": {
+  "publicHost": "agency.example.com",
+  "issuer": "https://login.example.com/realms/acme",
+  "audience": "agency-node",
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
+}
+```
+
+- `issuer` and `keysUrl` are `https://<host>[:<port>][/<path>]`, with no user information, query or fragment. The node finds the provider's keys at `keysUrl`; when you leave it out, it asks `<issuer>/.well-known/openid-configuration` for `jwks_uri`. It follows no redirect, waits at most 10 seconds, and asks again for an unknown key id at most once a minute, so a provider that rotates its keys is followed.
+- `tokenHeader` (default `authorization`, read as `Bearer <token>`) is the header the gateway puts the token in. `emailClaim` (default `email`) is the claim that holds the email.
+- `ownerSubject` is the owner's `sub` in the provider's tokens. The node takes a token as the owner's only when its `iss` is `issuer` and its `sub` is `ownerSubject`; both are compared exactly, a trailing slash included. An email does not name the owner here, since a provider may let people type their own. Find the `sub` by signing in once through this node's own application registration (through the gateway) and reading it from that token, or from the provider's userinfo endpoint. With the token in `$TOKEN`:
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  A `sub` taken from another application's token will not match: some providers give each application registration its own `sub` for the same person.
+- Guests (the members this node hosts) are named by an email, and only by one the token marks verified: `email_verified` is `true`, or the text `true`. A token with an email that is not marked so names no guest, and the log says that. A provider that sends no `email_verified` (some send none unless you turn it on) can sign the owner in by `sub`, but cannot admit a guest by email: turn the claim on at the provider, or the node's guests will not work with it. Any other token gets 403, and so does a request with none. Only the owner may write as the owner (decide, add devices).
+- As with Access, once `oidc` is set, `http://127.0.0.1:4400/` on the node's machine is for reading only: write through the public host name, signed in.
+- The iPhone app's own sign-in (`appId`) is Cloudflare Access's and is not available with `oidc`; use the web client in the browser.
+
+### What the path must keep
+
+Whatever stands between the browser and the node is your deployment's choice, but it must keep these:
+
+- TLS from the browser to the gateway, and from the gateway to the node unless they are on one machine: the node itself serves plain `http`.
+- The token header, unchanged: not rewritten, not stripped, and not replaced by a token the gateway made.
+- The host name the browser used (`Host`), and the path as sent: the node refuses a path with an encoded separator or a dot segment.
+- `/fed/*` reaching the node with no sign-in: other nodes authenticate with signatures, not with your provider.
+
+### Check that it works
+
+With a token from the provider for the owner, `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" https://agency.example.com/api/me` prints `200`; without the header, or with another person's token, it prints `403`. The start-up messages for a wrong setting are in "Log lines".
 
 ## Adding a phone or a browser
 
@@ -324,6 +373,25 @@ Each browser and phone that decides for you has its own key, which it makes and 
 
 A request waits for an hour, and the node keeps at most 10.
 A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`); elsewhere the page says it cannot.
+
+### End a person's access
+
+A person who left, or whose device was lost, is ended on the root's node. List the members this node hosts, with how many devices each has (no email), then end one:
+
+```sh
+agency guests --org acme
+agency guest-remove --org acme --member carol
+```
+
+One signed version takes the member out of the org and revokes the keys of their devices, so nothing they signed is taken on any node of the org. The node drops their sign-in, their push registrations and its list of the requests they were told of. The decision log keeps what they decided.
+
+The command is refused while something still names the member: a team on this node that addresses them, a seat they answer for, a department they head. To end a person's access without losing the requests addressed to them, add `--to-seat`: a seat of the member's id takes their place in the same version (with their label, department and what to ask about), and so does one seat for each seat they had taken, as it was in the node's last kept version that still had it (the command says when none does and the seat takes the member's label instead), and a claim link made before for one of those seats stops working.
+
+```sh
+agency guest-remove --org acme --member carol --to-seat --answered-by bob
+```
+
+`--answered-by` names the members who answer for the seat, in order of preference (repeat it for more); without it, the team's owner answers. Their Access email stays in your Access policy until you remove it there: the node does not change Access.
 
 ## Installing the web client as an app
 
@@ -466,10 +534,25 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
-- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- A team whose repositories are on a GitHub Enterprise Server names its host in `delivery.host`: a host name with no scheme, path or port, and `github.com` when it is left out.
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  `owner/name` is then a repository on that host. A host that is not a host name (letters, digits, hyphens and dots, with no scheme, port or path) stops the node at start, naming `teams[n].delivery.host`. The node tells `gh` the host (`gh api --hostname`, which wins over `GH_HOST`) and asks the same questions as for github.com, so the host has to know the types of the board's projects that they read. To check, run the command below as the account that runs the node: both `a` and `b` must answer a name, and a `null` means the Server is too old for that type, so its numbers show the reason that the host did not answer the request.
+
+  ```sh
+  gh api --hostname git.example.com graphql -f query='{ a: __type(name: "ProjectV2ItemStatusChangedEvent") { name } b: __type(name: "ProjectV2ItemFieldSingleSelectValue") { name } }'
+  ```
+
+  The login the node needs is the host's own: run `gh auth login --hostname git.example.com` as the account that runs the node, with the same advice as below. A team that names no host, or `github.com`, is read exactly as before. The reasons below that say "the GitHub host the team names" never name it, since they go to everyone who reads the team.
+- `delivery.repos` holds at most 50 repositories, each written `owner/name`, none twice (names ignore case); a node that finds otherwise stops at start and names `teams[n].delivery.repos`. A team that works in two or more repositories is also shown the numbers of each (`byRepository`, see [protocol.md](protocol.md#evaluation)).
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
 - What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- For the effort screen to tell improvement from new feature, give the board a single-select field named `Work type` with the options `New feature`, `Improvement`, `Maintenance`, `Tech debt`, and `Incident`, and set it on the issues. A pull request that closes an issue with no value is split by its title's type, and a fix of an issue labeled `incident` is incident.
 - The effort screen (where a team's tokens went, by work type, at `/api/orgs/<org>/effort`) is worked out from the same repositories and from the token usage the team's runtime reports (`tokenUsage`). It is an estimate: the runtime reports cost by day, so a day's cost is shared out among the types of the pull requests merged that day, or, on a day nothing merged, among those of the next day that has some ([protocol.md](protocol.md#evaluation) has the rule). A team whose runtime does not report token usage is listed with a reason, never with zero.
 - A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
 
@@ -480,6 +563,9 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
 | GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
 | GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | Run `gh auth login --hostname <host>` as the account that runs that node. |
+| the rate limit of the GitHub host the team names is used up for now | Wait; the node asks again after ten minutes. |
+| the GitHub host the team names did not answer in time, or did not answer the request | Check that machine's network to the host, that the login can read the repositories, and that the host can answer the same questions as github.com. |
 | the team's node does not give delivery numbers | That node is older than this feature: update it. |
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
 | the team's runtime does not report token usage | Use a runtime that lists `tokenUsage`; until then the team's effort is not shown. |
@@ -604,9 +690,11 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
-| `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
+| The node does not start and says `access.<field> …` or `oidc.<field> …` | That field of the setting is wrong: fix it in `config.json`. |
+| The node does not start and says `access and oidc are both set …` | Keep one of them. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
+| The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |
 | `agency: refused an Access request (wrong audience)` | `audience` is not the application's AUD tag. |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` is not your team domain. |
@@ -635,8 +723,8 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `421` `wrong host` | The page was opened at an address other than `127.0.0.1:<port>` or `localhost:<port>`. |
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
-| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`. |
-| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail`, nor a guest's, nor the address of a claim link that can still be used, or with a service token. |
+| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`, or through an OpenID Connect provider with a `sub` other than `ownerSubject`. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail`, nor a guest's, nor the address of a claim link that can still be used, or with a service token; or through an OpenID Connect provider with a `sub` that is not `ownerSubject` and an email that is not a guest's or that the token does not mark verified. |
 
 ## The team runtime
 

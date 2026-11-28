@@ -111,12 +111,15 @@ async fn a_404_from_a_peer_makes_the_next_read_early() {
         .update_config(|config| config.teams.retain(|team| team.team != id("app")))
         .unwrap();
     pass(&alice, &bob, Duration::minutes(1));
+    // The pass that gets the 404 reads the peer's `about` at the same time as the views, so the early read is the
+    // next pass's.
+    refresh(&bob.node).await.unwrap();
     refresh(&bob.node).await.unwrap();
     let after = kept(&bob, &alice);
     assert_eq!(
         after.read_at,
         Some(bob.node.now_text()),
-        "read at once, a day early"
+        "read on the next pass, a day early"
     );
     assert!(!after.should_read_again, "and the request is answered");
 }

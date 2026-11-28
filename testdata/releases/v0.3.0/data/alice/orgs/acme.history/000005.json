@@ -1,0 +1,59 @@
+{
+  "body": {
+    "org": "acme",
+    "label": "Acme",
+    "version": 5,
+    "prev": "5a333de4b76f42e611d591b4aeabbb4a035dcf5ff80c06f818de9dce1877c294",
+    "root": {
+      "account": "alice",
+      "publicKey": "5h103Pkr1NZaSjD41OdzVmyOxJbUUrcbSGhchUvrk98="
+    },
+    "departments": [],
+    "people": [
+      {
+        "id": "alice",
+        "label": "Alice",
+        "account": "alice",
+        "publicKey": "5h103Pkr1NZaSjD41OdzVmyOxJbUUrcbSGhchUvrk98=",
+        "department": null,
+        "role": "member",
+        "devices": [
+          {
+            "id": "d-0edf63898826",
+            "label": "CLI",
+            "publicKey": "gGq7mq34Hyae7uLVugAzwvBdY/wlTdm8rS8Gf/bLsDc=",
+            "addedAt": "2026-11-27T22:33:43Z"
+          }
+        ]
+      },
+      {
+        "id": "bob",
+        "label": "Bob",
+        "account": "bob",
+        "publicKey": "Hj9QfZcBXQ0f7/lsAcAKvKp3h83IcmEpLA5lEzRqlGU=",
+        "department": null,
+        "role": "member",
+        "devices": [
+          {
+            "id": "d-a346705c45b1",
+            "label": "CLI",
+            "publicKey": "wGCt/x7j9hoz0Qa+i1o2qwAxmI+Bz+wIDalpEEkgCwQ=",
+            "addedAt": "2026-11-27T22:33:43Z"
+          }
+        ]
+      }
+    ],
+    "teams": [
+      {
+        "id": "app",
+        "label": "App",
+        "department": null,
+        "node": "http://127.0.0.1:4791"
+      }
+    ],
+    "revoked": [],
+    "at": "2026-11-27T22:33:43Z"
+  },
+  "signer": "alice",
+  "signature": "XLq+YJ8Eka4feg04FeBt7iIiukb/WvryYjslmeHAydyJtrtcmCbAA3kxy+4r+qm/gkXKf9bzX2lKmnlRoREMBA=="
+}

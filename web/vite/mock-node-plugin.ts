@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 import type { Connect, Plugin } from 'vite'
+import { optionsFromQuery } from '../src/mock/features/index.ts'
 import { createMockNode, MOCK_TOKEN } from '../src/mock/node.ts'
 
 async function readBody(message: IncomingMessage): Promise<Buffer> {
@@ -40,6 +41,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
+    // What each feature of the Client API takes (its own module says how it is asked for).
+    ...optionsFromQuery(query),
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',

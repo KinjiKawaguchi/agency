@@ -43,6 +43,8 @@ const CODE_LIFETIME_SECONDS: i64 = 60;
 const MOST_PENDING: usize = 64;
 /// How many redeems one client address may try in a minute (the table of addresses is `attempts`).
 const REDEEMS_PER_MINUTE: usize = 20;
+/// Why `via=scheme` is refused: the answer a browser session shows the person who sees it.
+const SCHEME_REFUSED: &str = "this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)";
 const CALLBACK_PAGE: &str =
     "<!doctype html><meta charset=\"utf-8\"><title>Agency</title><p>Return to the Agency app.</p>";
 
@@ -65,7 +67,7 @@ pub fn app_id(config: &AccessConfig) -> Option<&str> {
 }
 
 fn configured_app(api: &ClientApi) -> Option<(&AccessConfig, &str)> {
-    let config = api.access.as_ref()?.config();
+    let config = api.access.as_ref()?.provider().access_config()?;
     Some((config, app_id(config)?))
 }
 
@@ -216,6 +218,9 @@ pub(crate) async fn handoff(
     };
     let location = match (exchange, legacy) {
         (Some((state, challenge, via)), _) => {
+            if via == Via::Scheme && !config.allow_scheme_sign_in {
+                return refuse(StatusCode::BAD_REQUEST, SCHEME_REFUSED);
+            }
             let Some(code) = api.handoff.mint(api.node.now(), token, challenge) else {
                 return refuse(
                     StatusCode::SERVICE_UNAVAILABLE,

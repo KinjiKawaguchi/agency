@@ -1,5 +1,6 @@
 //! Claim links for seats. The secret code is returned once and is stored only as a SHA-256 digest.
 use crate::error::{Error, ErrorKind, Result};
+use crate::guests::check_email;
 use crate::node::Node;
 use crate::orgs::{is_root, load};
 use agency_proto::claim::{ClaimProgress, ClaimStatus};
@@ -64,7 +65,18 @@ pub fn seat_invite(node: &Node, org: &Id, seat: Id, email: &str) -> Result<SeatI
     if !current.body.seats.iter().any(|one| one.id == seat) {
         return Err(Error::not_found(format!("no seat {seat} in org {org}")));
     }
-    let email = checked_email(email)?;
+    let email = check_email(email)?;
+    if node
+        .config()
+        .access
+        .as_ref()
+        .is_some_and(|access| access.owner_email.trim().eq_ignore_ascii_case(&email))
+    {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "that email is the node owner's",
+        ));
+    }
     if node.store().guest(&email).is_some() {
         return Err(Error::new(
             ErrorKind::Conflict,
@@ -94,19 +106,6 @@ pub fn seat_invite(node: &Node, org: &Id, seat: Id, email: &str) -> Result<SeatI
         email,
         local_only,
     })
-}
-
-fn checked_email(raw: &str) -> Result<String> {
-    let email = raw.to_lowercase();
-    let parts: Vec<_> = email.split('@').collect();
-    if email.chars().count() > 254
-        || email.chars().any(char::is_control)
-        || parts.len() != 2
-        || parts.iter().any(|part| part.is_empty())
-    {
-        return Err(Error::bad_request("--email must have one @, text on both sides, at most 254 characters, and no control character"));
-    }
-    Ok(email)
 }
 
 fn unknown() -> Error {

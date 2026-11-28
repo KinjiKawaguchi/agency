@@ -1,6 +1,6 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::clients_seen::ClientsSeen;
-use crate::config::{FundingConfig, HostedTeam, NodeConfig};
+use crate::config::{DeliverySite, FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
 use crate::devices::DeviceRequestRecord;
@@ -153,6 +153,8 @@ pub trait ClaimStore {
     fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
     fn remove_claim(&self, digest: &str) -> Result<()>;
     fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()>;
+    /// Drops the open claim link of `seat` and the index entry that names it. Nothing to drop is not an error.
+    fn remove_claim_for_seat(&self, org: &Id, seat: &Id) -> Result<()>;
 }
 
 /// The envelopes already applied, for replay protection.
@@ -176,6 +178,14 @@ pub trait DecisionLogStore {
     fn append_decision(&self, record: &DecisionRecord) -> Result<()>;
     /// At most `limit` records, newest first.
     fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
+    /// Replaces the record with the same id, if the log still has it.
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()>;
+}
+
+/// Tells the task that delivers the outbox that a parcel is waiting, so that it does not wait for its
+/// next round.
+pub trait OutboxBell: Send + Sync {
+    fn ring(&self);
 }
 
 /// Devices waiting to be added, newest last.
@@ -256,6 +266,8 @@ pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
+    /// Every guest record this node keeps.
+    fn guests(&self) -> Vec<crate::guests::Guest>;
     /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
     fn guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Option<Vec<String>>;
     fn save_guest_notified(
@@ -263,6 +275,8 @@ pub trait GuestStore {
         guest: &agency_proto::client::GuestRef,
         keys: &[String],
     ) -> Result<()>;
+    /// Drops the list of requests a guest was told of. Nothing to drop is not an error.
+    fn remove_guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Result<()>;
 }
 
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.
@@ -276,6 +290,15 @@ pub trait ReplicaStore {
     fn save_replica(&self, org: &Id, team: &Id, replica: &Replica) -> Result<()>;
     /// Removes a team's replica. A replica that is not there is not an error.
     fn delete_replica(&self, org: &Id, team: &Id) -> Result<()>;
+}
+
+/// The origins this node has been configured with (`url`), so that a team's place that names any of them is this
+/// node, however the node was reached when a version of the org was made.
+pub trait OwnOriginStore {
+    /// As `agency_proto::client::home_node_origin` writes them, the oldest first. A file that is not there is no
+    /// origins; one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>>;
+    fn save_own_origins(&self, origins: &[String]) -> Result<()>;
 }
 
 pub trait Store:
@@ -295,6 +318,7 @@ pub trait Store:
     + AboutStore
     + BoundReaderStore
     + ClientsSeenStore
+    + OwnOriginStore
     + GuestStore
     + Send
     + Sync
@@ -318,6 +342,7 @@ impl<
             + AboutStore
             + BoundReaderStore
             + ClientsSeenStore
+            + OwnOriginStore
             + GuestStore
             + Send
             + Sync,
@@ -351,6 +376,9 @@ pub enum DefinitionAccess {
 }
 
 /// Other nodes, over the federation routes (`/fed/v1`). `node` is the other node's origin.
+///
+/// The decorator that times these calls (`TimedPeers` in `agency-adapters`) must forward every method, so a
+/// method added here is added there too.
 #[async_trait]
 pub trait Peers: Send + Sync {
     async fn get_view(
@@ -431,6 +459,9 @@ pub trait Peers: Send + Sync {
 }
 
 /// The runtimes of the teams this node hosts (agency-runtime/1).
+///
+/// The decorator that times these calls (`TimedRuntime` in `agency-adapters`) must forward every method,
+/// those with a default body too, or the node would run the default instead of the adapter.
 #[async_trait]
 pub trait TeamRuntime: Send + Sync {
     async fn view(&self, team: &HostedTeam) -> Result<TeamView, RuntimeError>;
@@ -475,11 +506,12 @@ pub struct DeliveryError(pub String);
 /// Reads the facts a team's delivery numbers are worked out from (GitHub, through the machine's `gh`).
 #[async_trait]
 pub trait DeliverySource: Send + Sync {
-    /// The pull requests of `repos` merged since `since`, and the runs of CI on their default branches
-    /// from about then on, enough to tell what state each branch was in at `since`.
+    /// The pull requests of the repositories `site` names, on the host it names, merged since `since`,
+    /// and the runs of CI on their default branches from about then on, enough to tell what state each
+    /// branch was in at `since`.
     async fn facts(
         &self,
-        repos: &[String],
+        site: &DeliverySite,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError>;
 }
@@ -501,6 +533,9 @@ pub trait Journal: Send + Sync {
 
 /// Sends a notification to one of the owner's devices: an iPhone through APNs, a browser through its push
 /// service. Without a configured key, it sends nothing.
+///
+/// The decorator that times these sends (`TimedNotifier` in `agency-adapters`) must forward every method,
+/// those with a default body too, or the node would run the default instead of the adapter.
 #[async_trait]
 pub trait Notifier: Send + Sync {
     async fn send(&self, token: &PushToken, notice: &Notice) -> Result<(), PushError>;
