@@ -108,7 +108,7 @@ agency status
 - `--state-dir` は、ハーネスがチームの状態を置くディレクトリです。相対パスを渡しても絶対パスで保存されます。
 - `org-create` は、新しい組織のためのルート鍵を作り、このノードをそのルートのノードにします。`--node` を付けない `team-add` は、このノードのアカウントを持ち主として、チームをこのノードで動かします。
 
-`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。
+`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。`agency audit --org acme` は、組織のすべての版を古い順に、誰が署名し、何を変えたかとともに一覧します。
 
 データディレクトリには、ノードのアカウント鍵である `account.key` ができています。
 この鍵はノードの読み取り、参加の依頼、組織での最初の端末の追加に署名するので、このファイルを読める人は、あなたが読めるものを読めます。

@@ -14,6 +14,7 @@ pub mod directory;
 pub mod effort;
 pub mod envelope;
 pub mod evaluation;
+pub mod history;
 pub mod ids;
 pub mod invite;
 pub mod keys;

@@ -1,4 +1,5 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod audit_cli;
 mod dept_cli;
 mod device_cli;
 mod directory_cli;
@@ -104,6 +105,7 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    Audit(audit_cli::Audit),
     MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
     /// Makes a seven-day claim link for one seat and one email (on the root key's node)
@@ -637,6 +639,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::Audit(args) => audit_cli::audit(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::SeatInvite { org, seat, email } => {
