@@ -18,7 +18,7 @@ jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 # P-256 device keys (ECDSA with SHA-256): the only curve some phones keep keys in hardware for.
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "ecdh", "std"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "ecdh", "std"] }
 # Web Push (RFC 8291): HKDF and AES-128-GCM, from the RustCrypto family p256 belongs to.
 hkdf = "0.12"
 aes-gcm = "0.10"
