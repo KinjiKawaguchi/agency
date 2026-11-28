@@ -20,6 +20,7 @@ const OrgChartPage = lazyPage(() => import('../org/OrgChartPage').then((page) =>
 const CostsPage = lazyPage(() => import('../costs/CostsPage').then((page) => ({ default: page.CostsPage })))
 const EvaluationPage = lazyPage(() => import('../evaluation/EvaluationPage').then((page) => ({ default: page.EvaluationPage })))
 const OutcomesPage = lazyPage(() => import('../outcomes/OutcomesPage').then((page) => ({ default: page.OutcomesPage })))
+const MembersPage = lazyPage(() => import('../members/MembersPage').then((page) => ({ default: page.MembersPage })))
 const HistoryPage = lazyPage(() => import('../history/HistoryPage').then((page) => ({ default: page.HistoryPage })))
 const LivePage = lazyPage(() => import('../live/LivePage').then((page) => ({ default: page.LivePage })))
 
@@ -137,6 +138,17 @@ const outcomesRoute = createRoute({
   },
 })
 
+const membersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/members',
+  validateSearch: (search: Record<string, unknown>): { org?: string } => (nonEmpty(search.org) === undefined ? {} : { org: nonEmpty(search.org) }),
+  component: function MembersRoute() {
+    const { org } = membersRoute.useSearch()
+    const navigate = membersRoute.useNavigate()
+    return <MembersPage org={org} onChange={(next) => void navigate({ search: { org: next }, replace: true })} />
+  },
+})
+
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/history',
@@ -157,7 +169,7 @@ const devicesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/devi
 const claimRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim', component: ClaimPage })
 const claimContinueRoute = createRoute({ getParentRoute: () => rootRoute, path: '/claim/continue', component: ClaimPage })
 
-const routeTree = rootRoute.addChildren([indexRoute, claimRoute, claimContinueRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, historyRoute, costsRoute, evaluationRoute, liveRoute, outcomesRoute, devicesRoute])
+const routeTree = rootRoute.addChildren([indexRoute, claimRoute, claimContinueRoute, deskRoute, overviewRoute, peopleRoute, orgRoute, membersRoute, historyRoute, costsRoute, evaluationRoute, liveRoute, outcomesRoute, devicesRoute])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({ routeTree, ...(history === undefined ? {} : { history }) })

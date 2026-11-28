@@ -83,6 +83,8 @@ export const usageQuery = (api: ApiClient, org: string, team: string, days: numb
 export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['evaluation', org, days], queryFn: () => api.evaluation(org, days), staleTime: 2 * POLL_MS })
 
+/** An org's members, devices, open seats and what waits for the root key: the owner's. */
+export const membersQuery = (api: ApiClient, org: string) => queryOptions({ queryKey: ['members', org], queryFn: () => api.orgMembers(org), staleTime: 2 * POLL_MS })
 /** How many entries of an org's history one read asks for: the node's own default, so a page is what the node gives when asked for none. */
 export const HISTORY_PAGE = 200
 

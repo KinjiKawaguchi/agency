@@ -43,6 +43,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
     evaluation: evaluation === '1',
     // The weekly budget is the node's answer, which the evaluation screen shows beside the effort; `budgetState` fixes where the app team stands (for the screenshots).
     ...(evaluation === '1' ? { budget: budgetFor(query?.get('budgetState')) } : {}),
+    members: query?.get('members') === '1',
     ...(Number.isInteger(Number(query?.get('history'))) && Number(query?.get('history')) > 0 ? { history: Number(query?.get('history')) } : {}),
     activity: activity === '1',
     participants: participants === '1',

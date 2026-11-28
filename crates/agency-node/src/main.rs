@@ -107,6 +107,8 @@ enum Command {
     SeatRemove(seat_cli::SeatRemove),
     Audit(audit_cli::Audit),
     MemberRemove(member_cli::MemberRemove),
+    GuestRemove(member_cli::GuestRemove),
+    Guests(member_cli::Guests),
     SeatMerge(seat_cli::SeatMerge),
     /// Makes a seven-day claim link for one seat and one email (on the root key's node)
     SeatInvite {
@@ -643,6 +645,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
         Command::Audit(args) => audit_cli::audit(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
+        Command::GuestRemove(args) => member_cli::guest_remove(&node, args)?,
+        Command::Guests(args) => member_cli::guests(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::SeatInvite { org, seat, email } => {
             let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;

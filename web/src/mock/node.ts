@@ -3,6 +3,7 @@
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { metricsAnswer, type MetricsVariant } from './metrics'
+import { createMockTelemetry, type KeptSample } from './telemetry'
 import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
@@ -16,6 +17,7 @@ import { activityFor, MAX_EVENTS } from './activity.ts'
 import { budgetOf } from './budget.ts'
 import { effortReport, withPlans } from './effort.ts'
 import { historyOf, pageOf } from './history.ts'
+import { membersOf } from './members.ts'
 import { evaluationReport } from './evaluation.ts'
 import { earlierDecisions, fundingSources, MORE_ORGS, moreOrgDefinition, moreTeamViews, ORG_DEFINITION, siteTeamView, STALE_TEAM, UNREADABLE_TEAM, usageReport } from './fixtures.ts'
 
@@ -38,6 +40,8 @@ export interface MockNode {
   pushTokenEntries: () => ReadonlyArray<PushToken>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
+  /** The samples of how long a client's calls took, as the node kept them from the reports it took (`POST /api/telemetry`). */
+  telemetry: () => readonly KeptSample[]
   /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
   recordPushDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => void
   /** Envelopes that were accepted, oldest first. */
@@ -110,6 +114,8 @@ interface MockNodeOptions {
   history?: number
   /** A node with the evaluation also serves where a team's tokens went by work type (`GET /api/orgs/{org}/effort`) and says so with the `effort` capability; `false` makes it a node without it: not listed, and the route answers 404. */
   effort?: boolean
+  /** A node that serves the org's members, devices and open seats to its owner (`GET /api/orgs/{org}/members`) and lists the `members` capability; otherwise the route answers 404. */
+  members?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
   /** With `webPush`: every browser's push service has refused the last notice it was sent. */
@@ -175,13 +181,14 @@ const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const BUDGET_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/budget$/
+const MEMBERS_PATH = /^\/api\/orgs\/([^/]+)\/members$/
 const HISTORY_PATH = /^\/api\/orgs\/([^/]+)\/history$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; budget?: unknown; effort?: boolean; history?: number }): About => ({
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; budget?: unknown; effort?: boolean; members?: boolean; history?: number }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.budget === undefined ? [] : ['budget']), ...(options.effort === true ? ['effort'] : []), ...(options.history === undefined ? [] : ['history']), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...(options.budget === undefined ? [] : ['budget']), ...(options.effort === true ? ['effort'] : []), ...(options.members === true ? ['members'] : []), ...(options.history === undefined ? [] : ['history']), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -255,6 +262,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
+  const telemetry = createMockTelemetry()
   const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
@@ -336,6 +344,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   /** The owner's measurements of the node itself: 1 to 30 days, and nothing for anyone else. */
+  const handleMembers = (org: string): Response => {
+    if (options.members !== true) return failure(404, 'No such route.')
+    const members = membersOf(org)
+    return members === undefined ? failure(404, 'No such organization.') : json(members)
+  }
+
   const handleHistory = (org: string, url: URL): Response => {
     if (options.history === undefined) return failure(404, 'No such route.')
     if (org !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
@@ -455,9 +469,13 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const answered = webPush.handle(request, url, () => readWrite(request))
       if (answered !== undefined) return answered
     }
+    const reported = telemetry.handle(request, url, () => readWrite(request))
+    if (reported !== undefined) return reported
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const budgetMatch = BUDGET_PATH.exec(url.pathname)
     if (budgetMatch !== null && request.method === 'GET') return handleBudget(budgetMatch[2] ?? '')
+    const membersMatch = MEMBERS_PATH.exec(url.pathname)
+    if (membersMatch !== null && request.method === 'GET') return handleMembers(membersMatch[1] ?? '')
     const historyMatch = HISTORY_PATH.exec(url.pathname)
     if (historyMatch !== null && request.method === 'GET') return handleHistory(historyMatch[1] ?? '', url)
     const orgMatch = ORG_PATH.exec(url.pathname)
@@ -488,6 +506,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     pushTokens: () => pushTokenEntries.map(({ token, environment, label }) => ({ token, environment, label })),
     pushTokenEntries: () => pushTokenEntries,
     pushSubscriptions: () => webPush.subscriptions(),
+    telemetry: telemetry.kept,
     recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
     signRootChanges: () => {
