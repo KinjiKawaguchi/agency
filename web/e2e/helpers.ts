@@ -18,7 +18,7 @@ export interface NodeOptions extends AskedOfFeatures {
   /** The node has Web Push: it gives its key and keeps a subscription for each browser. */
   webPush?: boolean
   /** The owner reads the node's own measurements (`usual`, `empty`, or `slow`); `absent` is a node that does not measure. */
-  metrics?: 'usual' | 'empty' | 'slow' | 'absent'
+  metrics?: 'usual' | 'empty' | 'slow' | 'clients' | 'absent'
   webPushFailing?: boolean
   /** The node has made a claim link for one seat with this code; `claimFails` is how a claim of it ends, when it does not. */
   claim?: { code: string; fails?: 'unknown' | 'expired' | 'other-email' | 'taken' }

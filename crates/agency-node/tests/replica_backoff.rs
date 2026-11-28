@@ -21,7 +21,7 @@ fn closed_origin() -> String {
 
 fn place_team(alice: &Running, team: &str, origin: &str) {
     orgs::amend(&alice.node, &id("acme"), |body| {
-        body.teams
+        body.teams_mut()
             .push(TeamPlace::new(id(team), team, origin.to_owned()));
         Ok(())
     })

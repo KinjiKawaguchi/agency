@@ -47,38 +47,37 @@ fn sign_as(node: &Node, body: OrgDefinition, key: &PublicKey) -> Result<SignedOr
 }
 
 /// Every label of `body`, with what it names.
-fn labels(body: &OrgDefinition) -> Vec<(String, &str)> {
-    let mut all = vec![("the org".to_owned(), body.label.as_str())];
-    let departments = body.departments.iter();
-    all.extend(departments.map(|one| (format!("department {}", one.id), one.label.as_str())));
+fn labels(body: &OrgDefinition) -> Vec<(String, String)> {
+    let mut all = vec![("the org".to_owned(), body.label.clone())];
+    let departments = body.groups();
+    all.extend(departments.map(|one| (format!("department {}", one.id), one.label)));
     all.extend(
         body.people
             .iter()
-            .map(|one| (format!("member {}", one.id), one.label.as_str())),
+            .map(|one| (format!("member {}", one.id), one.label.clone())),
     );
     for person in &body.people {
         let devices = person.devices.iter();
         all.extend(devices.map(|one| {
             (
                 format!("device {} of {}", one.id, person.id),
-                one.label.as_str(),
+                one.label.clone(),
             )
         }));
     }
     all.extend(
-        body.teams
-            .iter()
-            .map(|one| (format!("team {}", one.id), one.label.as_str())),
+        body.teams()
+            .map(|one| (format!("team {}", one.id), one.label)),
     );
     all.extend(
         body.seats
             .iter()
-            .map(|one| (format!("seat {}", one.id), one.label.as_str())),
+            .map(|one| (format!("seat {}", one.id), one.label.clone())),
     );
     let externals = body.externals.iter();
-    all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.as_str())));
+    all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.clone())));
     let kpis = body.kpis.iter();
-    all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.as_str())));
+    all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.clone())));
     all
 }
 
@@ -105,7 +104,7 @@ fn ask_about_texts(body: &OrgDefinition) -> Vec<(String, &str)> {
 /// old org can still be changed.
 fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
     let before = node.store().load_org(&body.org);
-    let kept_labels: std::collections::HashSet<&str> = before
+    let kept_labels: std::collections::HashSet<String> = before
         .as_ref()
         .map(|doc| {
             labels(&doc.body)
@@ -124,7 +123,7 @@ fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
         })
         .unwrap_or_default();
     for (what, label) in labels(body) {
-        if !kept_labels.contains(label) && !agency_proto::org::label_ok_to_write(label) {
+        if !kept_labels.contains(&label) && !agency_proto::org::label_ok_to_write(&label) {
             return Err(Error::bad_request(format!(
                 "the label of {what} has a character that could reorder or hide how it reads"
             )));
@@ -213,10 +212,9 @@ pub(crate) fn publish(node: &Node, doc: &SignedOrg) -> Result<()> {
     let me = node.url();
     let targets = doc
         .body
-        .teams
-        .iter()
+        .teams()
         .filter(|team| !node.runs_here(&doc.body.org, &team.id))
-        .map(|team| team.node.clone())
+        .map(|team| team.node)
         .filter(|url| url != &me)
         .collect();
     queue_for(node, doc, targets)
@@ -237,24 +235,20 @@ fn queue_for(node: &Node, doc: &SignedOrg, mut targets: Vec<String>) -> Result<(
 }
 
 /// The teams `previous` lists and `next` does not.
-fn removed_teams<'a>(previous: &'a OrgDefinition, next: &OrgDefinition) -> Vec<&'a TeamPlace> {
-    let is_listed = |team: &&TeamPlace| next.team(&team.id).is_some();
-    previous
-        .teams
-        .iter()
-        .filter(|team| !is_listed(team))
-        .collect()
+fn removed_teams(previous: &OrgDefinition, next: &OrgDefinition) -> Vec<TeamPlace> {
+    let is_listed = |team: &TeamPlace| next.team(&team.id).is_some();
+    previous.teams().filter(|team| !is_listed(team)).collect()
 }
 
 /// Queues the version that removes a team for that team's own node as well. Versions go to the nodes of
 /// the teams still listed, so without this the node of a removed team would not hear it was removed.
 fn tell_removed(node: &Node, previous: &OrgDefinition, doc: &SignedOrg) -> Result<()> {
     let me = node.url();
-    let kept: Vec<&String> = doc.body.teams.iter().map(|team| &team.node).collect();
+    let kept: Vec<String> = doc.body.teams().map(|team| team.node).collect();
     let targets = removed_teams(previous, &doc.body)
         .into_iter()
-        .map(|team| team.node.clone())
-        .filter(|url| url != &me && !kept.contains(&url))
+        .map(|team| team.node)
+        .filter(|url| url != &me && !kept.contains(url))
         .collect();
     queue_for(node, doc, targets)
 }
@@ -407,7 +401,7 @@ pub(crate) fn amend_with(
 pub fn add_team(node: &Node, org: &Id, team: TeamPlace) -> Result<SignedOrg> {
     amend(node, org, |body| {
         if let Some(department) = &team.department {
-            if !body.departments.iter().any(|one| &one.id == department) {
+            if body.group(department).is_none() {
                 return Err(Error::not_found(format!(
                     "no department {department} in org {org}"
                 )));
@@ -419,7 +413,7 @@ pub fn add_team(node: &Node, org: &Id, team: TeamPlace) -> Result<SignedOrg> {
                 format!("team {} already exists", team.id),
             ));
         }
-        body.teams.push(team);
+        body.teams_mut().push(team);
         Ok(())
     })
 }
@@ -430,7 +424,7 @@ pub fn add_team(node: &Node, org: &Id, team: TeamPlace) -> Result<SignedOrg> {
 pub fn move_team(node: &Node, org: &Id, team: &Id, origin: String) -> Result<SignedOrg> {
     amend(node, org, |body| {
         let place = body
-            .teams
+            .teams_mut()
             .iter_mut()
             .find(|place| &place.id == team)
             .ok_or_else(|| Error::not_found(format!("team {team} is not in org {org}")))?;

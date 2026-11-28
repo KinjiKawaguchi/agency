@@ -240,6 +240,79 @@ describe('the node’s own response time, on the evaluation page', () => {
     expect(found.getAllByText('ルートの区分')).toHaveLength(2)
   })
 
+  describe('what the clients waited', () => {
+    const tableOf = (found: ReturnType<typeof within>, title: string) => within(found.getByRole('heading', { name: title }).closest('.card') as HTMLElement)
+    const cells = (scope: ReturnType<typeof within>, name: string) => within(scope.getByRole('rowheader', { name }).closest('tr') as HTMLElement).getAllByRole('cell').map((cell) => cell.textContent)
+
+    it('draws what the web client waited for and what the iPhone app did apart, each by route group with its routes', async () => {
+      open({ metrics: 'clients' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      const web = tableOf(found, 'What the web client waited for')
+      const groups = web.getAllByRole('rowheader').filter((one) => one.closest('tr')?.classList.contains('mt-group')).map((one) => one.textContent)
+      expect(groups).toEqual(['Desk', 'Teams', 'Usage'])
+      // 1 360 durations: 900 in the 10 ms bucket, 400 in the 50 ms, 60 in the 250 ms.
+      expect(cells(web, 'Desk')).toEqual(['1,360', '0', '≤ 10 ms', '≤ 50 ms', '≤ 250 ms'])
+      expect(web.getByText('GET /api/orgs/{org}/teams/{team}/view')).toBeInTheDocument()
+      const ios = tableOf(found, 'What the iPhone app waited for')
+      expect(cells(ios, 'Teams')).toEqual(['302', '0', '≤ 100 ms', '≤ 250 ms', '≤ 1 s'])
+      expect(ios.queryByRole('rowheader', { name: 'Desk' })).not.toBeInTheDocument()
+    })
+
+    it('puts the web client first, then the iPhone app, then any other, whatever order the node lists them in', async () => {
+      open({ metrics: 'clients' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(found.getAllByRole('heading', { name: /waited for/ }).map((one) => one.textContent)).toEqual(['What the web client waited for', 'What the iPhone app waited for'])
+    })
+
+    it('counts a call that got no answer as an error, and its time as slower than the last bound', async () => {
+      open({ metrics: 'clients' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(cells(tableOf(found, 'What the web client waited for'), 'Usage')).toEqual(['3', '3', 'slower than 30 s', 'slower than 30 s', 'slower than 30 s'])
+    })
+
+    it('does not call a route an in-node read of a client: its time has the network in it, though the node’s own read of the route is one', async () => {
+      open({ metrics: 'clients' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(within(found.getByRole('heading', { name: 'Routes this node answers, by route group' }).closest('.card') as HTMLElement).getAllByText('In-node read', { selector: '.mt-tag' }).length).toBeGreaterThan(0)
+      const web = tableOf(found, 'What the web client waited for')
+      expect(web.getByText('GET /api/me').closest('tr')).not.toHaveTextContent('In-node read')
+      expect(web.queryByText('In-node read')).not.toBeInTheDocument()
+    })
+
+    it('draws nothing for a client when the node holds nothing it observed', async () => {
+      open({ metrics: 'usual' })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(found.queryByRole('heading', { name: /waited for/ })).not.toBeInTheDocument()
+    })
+
+    it('names a client it does not know "another client", never by the text the node gave', async () => {
+      const node = createMockNode({ evaluation: true, metrics: 'clients' })
+      const client = createApiClient(async (request) => {
+        const reply = await node.handle(request)
+        if (new URL(request.url, 'http://mock.local').pathname !== '/api/metrics') return reply
+        const answer = (await reply.json()) as { series: Array<{ kind: string; client?: string }> }
+        return new Response(JSON.stringify({ ...answer, series: answer.series.map((one) => (one.client === 'ios' ? { ...one, client: 'tablet' } : one)) }), { headers: { 'content-type': 'application/json' } })
+      })
+      renderApp({ path: '/evaluation', evaluation: true, node, client })
+      const found = await section()
+      await found.findAllByText('Requests')
+      expect(found.getByRole('heading', { name: 'What another client waited for' })).toBeInTheDocument()
+      expect(found.queryByText(/tablet/)).not.toBeInTheDocument()
+    })
+
+    it('says it in Japanese', async () => {
+      open({ metrics: 'clients' }, { locale: 'ja' })
+      const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
+      expect(await found.findByRole('heading', { name: 'Web クライアントが待った時間' })).toBeInTheDocument()
+      expect(found.getByRole('heading', { name: 'iPhone アプリが待った時間' })).toBeInTheDocument()
+    })
+  })
+
   describe('hour by hour', () => {
     const charts = (found: ReturnType<typeof within>): HTMLElement[] => found.getAllByRole('figure')
     const titleOf = (figure: Element) => figure.querySelector('figcaption')?.textContent

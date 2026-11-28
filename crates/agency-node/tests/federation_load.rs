@@ -133,7 +133,7 @@ async fn org_of(shape: &Shape) -> (Running, Vec<Running>, Option<TcpListener>) {
         }));
     }
     orgs::amend(&alice.node, &id("acme"), |body| {
-        body.teams.extend(places);
+        body.teams_mut().extend(places);
         Ok(())
     })
     .unwrap();
@@ -150,8 +150,7 @@ async fn org_of(shape: &Shape) -> (Running, Vec<Running>, Option<TcpListener>) {
 fn failed_reads(alice: &Running) -> usize {
     let doc = alice.node.store().load_org(&id("acme")).unwrap();
     doc.body
-        .teams
-        .iter()
+        .teams()
         .filter(|place| place.id.as_str().starts_with('t'))
         .filter_map(|place| alice.node.store().load_replica(&id("acme"), &place.id))
         .filter(|replica| replica.error.is_some())
@@ -201,7 +200,7 @@ async fn measure(shape: &Shape) -> Measured {
         .store()
         .orgs()
         .iter()
-        .flat_map(|doc| doc.body.teams.clone())
+        .flat_map(|doc| doc.body.teams().collect::<Vec<_>>())
         .filter_map(|place| alice.node.store().load_replica(&id("acme"), &place.id))
         .filter_map(|replica| replica.view)
         .map(|view| serde_json::to_vec(&view).map_or(0, |bytes| bytes.len() as u64))
@@ -211,7 +210,7 @@ async fn measure(shape: &Shape) -> Measured {
         .store()
         .orgs()
         .iter()
-        .flat_map(|doc| doc.body.teams.clone())
+        .flat_map(|doc| doc.body.teams().collect::<Vec<_>>())
         .filter(|place| {
             let replica = alice.node.store().load_replica(&id("acme"), &place.id);
             replica.is_some_and(|replica| replica.view.is_some())

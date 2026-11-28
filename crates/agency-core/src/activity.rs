@@ -86,7 +86,7 @@ pub async fn team_activity(
     };
     match node.hosted(org, &place.id) {
         Some(hosted) => runtime_activity(node, &hosted, &since, limit).await,
-        None => remote_activity(node, org, place, &since, limit).await,
+        None => remote_activity(node, org, &place, &since, limit).await,
     }
 }
 

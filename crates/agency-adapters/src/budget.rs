@@ -21,8 +21,7 @@ pub async fn budget_status(node: &Node, org: &Id, team: &Id) -> Result<BudgetSta
     let (now, offset) = (node.now(), node.utc_offset());
     let (start, today) = (week_start(now, offset), today(now, offset));
     let mut teams: BTreeSet<Id> = definition
-        .teams
-        .iter()
+        .teams()
         .filter(|place| place.plan.is_some())
         .map(|place| place.id.clone())
         .collect();

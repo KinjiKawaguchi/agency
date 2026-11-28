@@ -71,8 +71,7 @@ pub fn change(node: &Node, org: &Id, id: &Id, change: Change) -> Result<SignedOr
 pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
     amend(node, org, |body| {
         let aimed_by: Vec<String> = body
-            .teams
-            .iter()
+            .teams()
             .filter(|team| {
                 let aims = team.plan.iter().flat_map(|plan| &plan.aims);
                 aims.into_iter().any(|aim| &aim.kpi == id)
@@ -100,7 +99,7 @@ pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
 fn plan_of<'a>(body: &'a mut OrgDefinition, team: &Id) -> Result<&'a mut TeamPlan> {
     let org = body.org.clone();
     let place = body
-        .teams
+        .teams_mut()
         .iter_mut()
         .find(|one| &one.id == team)
         .ok_or_else(|| not_found("team", team, &org))?;
