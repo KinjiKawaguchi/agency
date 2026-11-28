@@ -9,7 +9,7 @@ use agency_core::read_auth::sign_read;
 use agency_proto::clock;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::Id;
-use common::{alice, id, joined_bob, memory_runtime, node_with, Running};
+use common::{alice, id, joined_bob, memory_runtime, node_with, read_delivery_on, Running};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 
@@ -114,11 +114,10 @@ async fn a_member_reads_the_evaluation_of_a_team_that_has_repositories() {
     );
 
     let asked = alice.delivery.0.lock().unwrap().asked.clone();
-    assert_eq!(
-        asked,
-        [(vec!["acme/app".to_string()], at("2026-11-11T00:00:00Z"))],
-        "the period's start"
-    );
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].0.repos, ["acme/app"]);
+    assert_eq!(asked[0].0.host, None, "github.com is not named");
+    assert_eq!(asked[0].1, at("2026-11-11T00:00:00Z"), "the period's start");
 }
 
 #[tokio::test]
@@ -360,6 +359,32 @@ async fn a_team_without_repositories_or_whose_facts_cannot_be_read_is_unavailabl
         "GitHub's rate limit is used up for now"
     );
     assert_eq!(answer["teams"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn a_team_on_a_github_host_of_its_own_is_read_from_that_host() {
+    let (alice, _) = alice().await;
+    read_delivery_on(&alice, "git.example.test");
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    let bob = joined_bob(&alice).await;
+
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let asked = alice.delivery.0.lock().unwrap().asked.clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].0.host.as_deref(), Some("git.example.test"));
+    assert_eq!(asked[0].0.repos, ["acme/app"]);
+
+    bob.clock.advance(clock::Duration::seconds(1));
+    alice.delivery.0.lock().unwrap().facts = Some(Err(
+        "the GitHub host the team names did not answer the request".into(),
+    ));
+    let (_, answer) = federated(&alice, &bob, &id("bob"), &path(7), &path(7)).await;
+    assert_eq!(
+        answer["unavailable"][0]["reason"],
+        "the GitHub host the team names did not answer the request",
+        "the reason a host could not be read goes to the reader as it is"
+    );
 }
 
 #[tokio::test]

@@ -46,25 +46,16 @@ fn unavailable(
     }
 }
 
-/// The repositories of a hosted team, if its configuration names any.
-fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
-    hosted
-        .delivery
-        .as_ref()
-        .map(|delivery| delivery.repos.clone())
-        .filter(|repos| !repos.is_empty())
-}
-
 /// The effort of a team on this node over the last `days` days, as the answer of one team: the team in
 /// `teams`, or in `unavailable` with the reason it has no numbers. A team whose runtime reports no token
 /// usage has none: its effort is not zero, it is not known.
 pub async fn effort_of_hosted(node: &Node, hosted: &HostedTeam, days: u32) -> Effort {
     let period = Period::new(node.now(), node.utc_offset(), days);
-    let Some(repos) = repositories(hosted) else {
+    let Some(source) = hosted.delivery_source() else {
         let reason = "no repositories are configured for this team";
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(&repos, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, &reason),
     };
