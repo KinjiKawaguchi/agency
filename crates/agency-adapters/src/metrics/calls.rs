@@ -9,7 +9,7 @@
 use super::{Recorder, SeriesKey};
 use crate::github::{Gh, GhError};
 use agency_core::config::HostedTeam;
-use agency_core::ports::{DefinitionAccess, Notifier, PeerError, Peers, TeamRuntime};
+use agency_core::ports::{DefinitionAccess, Notifier, PeerError, Peers, TeamRuntime, ViewRead};
 use agency_core::push::{Notice, PushError};
 use agency_core::read_auth::ReadAuth;
 use agency_core::web_push::WebSubscription;
@@ -23,7 +23,6 @@ use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::root_change::RootAnswer;
 use agency_proto::runtime::RuntimeError;
-use agency_proto::view::FederatedView;
 use agency_proto::{
     DeviceChange, Envelope, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp, TokenUsage,
 };
@@ -133,9 +132,14 @@ impl<P: Peers> Peers for TimedPeers<P> {
         node: &str,
         path: &str,
         auth: &ReadAuth,
-    ) -> Result<FederatedView, PeerError> {
-        self.call("peer get_view", node, self.inner.get_view(node, path, auth))
-            .await
+        have: Option<&str>,
+    ) -> Result<ViewRead, PeerError> {
+        self.call(
+            "peer get_view",
+            node,
+            self.inner.get_view(node, path, auth, have),
+        )
+        .await
     }
 
     async fn get_usage(

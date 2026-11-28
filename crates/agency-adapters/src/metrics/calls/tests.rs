@@ -63,7 +63,13 @@ impl FakePeers {
 
 #[async_trait]
 impl Peers for FakePeers {
-    async fn get_view(&self, _: &str, _: &str, _: &ReadAuth) -> Result<FederatedView, PeerError> {
+    async fn get_view(
+        &self,
+        _: &str,
+        _: &str,
+        _: &ReadAuth,
+        _: Option<&str>,
+    ) -> Result<ViewRead, PeerError> {
         self.fail().await
     }
     async fn get_usage(&self, _: &str, _: &str, _: &ReadAuth) -> Result<TokenUsage, PeerError> {
@@ -188,7 +194,9 @@ async fn what_another_node_answered_is_the_class_of_its_status_and_a_failure_is_
     let call = |error: Option<PeerError>, delay: Duration| {
         let peers = TimedPeers::new(FakePeers { error, delay }, recorder.clone(), SHORT);
         async move {
-            let _ = peers.get_view("https://b.example", "/v", &auth()).await;
+            let _ = peers
+                .get_view("https://b.example", "/v", &auth(), None)
+                .await;
         }
     };
     let status = |code: u16| {

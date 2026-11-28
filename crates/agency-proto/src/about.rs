@@ -162,10 +162,12 @@ pub enum Capability {
     Members,
     /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
     ClaimLinks,
+    /// A team's view read with a tag (`ETag`, `If-None-Match`): `304` with no body when it did not change.
+    ViewUnchanged,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 17] = [
+    pub const ALL: [Capability; 18] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -183,6 +185,7 @@ impl Capability {
         Capability::History,
         Capability::Members,
         Capability::ClaimLinks,
+        Capability::ViewUnchanged,
     ];
 
     pub fn name(self) -> &'static str {
@@ -204,6 +207,7 @@ impl Capability {
             Capability::History => "history",
             Capability::Members => "members",
             Capability::ClaimLinks => "claimLinks",
+            Capability::ViewUnchanged => "viewUnchanged",
         }
     }
 

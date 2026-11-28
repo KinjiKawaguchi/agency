@@ -172,6 +172,7 @@ Names start at what came after the first release: every node has what the first 
 | `history` | feature | An org's change history for the node's owner: `GET /api/orgs/<org>/history`, the entries of `agency audit --json`. |
 | `members` | feature | The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`. |
 | `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
+| `viewUnchanged` | feature | A team's view read with a tag: the answer's `ETag`, and `304` with no body for a read whose `If-None-Match` is the tag of the answer (see "TeamView" in protocol.md). A reader sends the tag only to a node that lists it. |
 
 ## Checks in CI
 

@@ -368,6 +368,18 @@ impl std::fmt::Display for PeerError {
     }
 }
 
+/// What a node answered to a read of a team's view.
+#[derive(Clone, Debug)]
+pub enum ViewRead {
+    /// The answer, and the tag the node gave it, when it gave one.
+    Answer {
+        answer: Box<FederatedView>,
+        tag: Option<String>,
+    },
+    /// `304`: the answer the reader holds is still the one.
+    Unchanged,
+}
+
 /// How a request for an org definition proves it may read it.
 #[derive(Clone, Debug)]
 pub enum DefinitionAccess {
@@ -381,12 +393,15 @@ pub enum DefinitionAccess {
 /// method added here is added there too.
 #[async_trait]
 pub trait Peers: Send + Sync {
+    /// Reads a team's view. `have` is the tag of the answer the reader holds (`FederatedView::tag`), sent only to a
+    /// node that lists `viewUnchanged`: the node then answers `Unchanged` when it would answer with that.
     async fn get_view(
         &self,
         node: &str,
         path: &str,
         auth: &ReadAuth,
-    ) -> Result<FederatedView, PeerError>;
+        have: Option<&str>,
+    ) -> Result<ViewRead, PeerError>;
     async fn get_usage(
         &self,
         node: &str,

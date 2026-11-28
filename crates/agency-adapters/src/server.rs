@@ -23,7 +23,7 @@ use agency_proto::root_change::RootAnswer;
 use agency_proto::{DeviceChange, Envelope, Id, JoinRequest, Signed};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
-use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -255,7 +255,45 @@ async fn get_view(
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         hosted_view(&fed.node, &org, &team, &read_auth(&headers), uri.path()).await
     };
-    respond(&fed, &method, &uri, result.await)
+    // Authenticated and shown to be a member first: only then is a tag compared, so a tag tells nothing to a stranger.
+    match result.await {
+        Ok(view) => {
+            let tag = view.tag();
+            let etag = format!("\"{tag}\"");
+            let Ok(etag) = HeaderValue::from_str(&etag) else {
+                return respond(&fed, &method, &uri, Ok(view));
+            };
+            if holds_tag(&headers, &tag) {
+                return (
+                    StatusCode::NOT_MODIFIED,
+                    [
+                        (header::ETAG, etag),
+                        (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+                    ],
+                )
+                    .into_response();
+            }
+            let mut response = respond(&fed, &method, &uri, Ok(view));
+            response.headers_mut().insert(header::ETAG, etag);
+            response
+        }
+        Err(error) => respond::<()>(&fed, &method, &uri, Err(error)),
+    }
+}
+
+/// Whether the request's `If-None-Match` names `tag`: one of its comma-separated entity tags, with or without quotes
+/// or a weak mark, equals it. `*` is not taken for a match: the reader sends a tag it holds.
+fn holds_tag(headers: &HeaderMap, tag: &str) -> bool {
+    headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|one| {
+                let one = one.trim();
+                let one = one.strip_prefix("W/").unwrap_or(one);
+                one.trim_matches('"') == tag
+            })
+        })
 }
 
 /// The token usage of a team on this node, for a signed read by a member of its org. The signature
