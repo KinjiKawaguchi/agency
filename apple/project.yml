@@ -1,35 +1,28 @@
 name: Agency
-
 options:
   developmentLanguage: ja
   deploymentTarget:
-    iOS: "17.4"
+    iOS: '17.4'
   generateEmptyDirectories: true
-
 configFiles:
   Debug: Config/Shared.xcconfig
   Release: Config/Shared.xcconfig
-
 packages:
   AgencyKit:
     path: AgencyKit
-
 settings:
   base:
-    SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
-    TARGETED_DEVICE_FAMILY: "1"
+    SWIFT_VERSION: '6.0'
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: '1'
+    TARGETED_DEVICE_FAMILY: '1'
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Automatic
   configs:
-    # The APNs environment the build is signed for. Release builds, including TestFlight, use
-    # production; builds run from Xcode use development (sandbox).
     Debug:
       APS_ENVIRONMENT: development
     Release:
       APS_ENVIRONMENT: production
-
 targets:
   Agency:
     type: application
@@ -50,19 +43,14 @@ targets:
         product: AgencyUI
       - package: AgencyKit
         product: AgencyWidget
-      # The widgets, embedded in the app.
       - target: AgencyWidgets
-      # The notification service extension, which sets the icon's number to the sum over the home nodes.
       - target: AgencyNotificationService
     entitlements:
       path: App/Agency.entitlements
       properties:
         aps-environment: $(APS_ENVIRONMENT)
-        # The file the app writes for the widgets, which the widget extension reads. Both carry the same group:
-        # the app's bundle ID with `group.` in front.
         com.apple.security.application-groups:
           - group.$(PRODUCT_BUNDLE_IDENTIFIER)
-        # The node's host, for the universal link the Access sign-in returns through.
         com.apple.developer.associated-domains:
           - applinks:$(AGENCY_ASSOCIATED_HOST)
           - applinks:$(AGENCY_ASSOCIATED_HOST_2)
@@ -72,23 +60,16 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Agency
-        # The languages of the alert strings (Shared/<language>.lproj/Localizable.strings).
-        CFBundleLocalizations: [ja, en]
+        CFBundleLocalizations:
+          - ja
+          - en
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        # Read at run time to tell the node which APNs host a device token belongs to.
         AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
-        # The host the app is built to return to after an Access sign-in; the app uses that sign-in
-        # only for a home node on this host.
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
-        # Every host or `*.` wildcard the build has an associated domain for: a node on one of them signs in through a
-        # universal link, any other through the app's own scheme.
         AgencyAssociatedHosts: $(AGENCY_ASSOCIATED_HOST) $(AGENCY_ASSOCIATED_HOST_2)
-        # The source the build was made from: the commit, and `git describe` against the apple-v tags
-        # (apple/scripts/testflight.sh sets them; a build run from Xcode says unknown).
         AgencyBuildCommit: $(AGENCY_BUILD_COMMIT)
         AgencyBuildDescribe: $(AGENCY_BUILD_DESCRIBE)
-        # The app group the widgets' file lives in.
         AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER)
         NSFaceIDUsageDescription: 決裁やコメントを送るとき、本人かどうかを Face ID で確認します。
         UILaunchScreen: {}
@@ -99,23 +80,18 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        # A push with `content-available` wakes the app to read the desk for the widgets (agency#261).
         UIBackgroundModes:
           - remote-notification
-          # A later run for the decisions kept on the device that could not be sent (BGAppRefreshTask).
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - $(PRODUCT_BUNDLE_IDENTIFIER).outbox
-        # The app only uses HTTPS, which needs no export compliance paperwork.
         ITSAppUsesNonExemptEncryption: false
-        # Lets a node on this device or the local network be opened over plain http.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-
   AgencyMac:
     type: application
     platform: macOS
-    deploymentTarget: "14.4"
+    deploymentTarget: '14.4'
     sources:
       - Mac
       - Shared
@@ -130,20 +106,17 @@ targets:
         product: AgencyModel
       - package: AgencyKit
         product: AgencyUI
-      # Shared/Widget writes the widgets' file; the Mac has no widget yet (no app group), so it writes nothing.
       - package: AgencyKit
         product: AgencyWidget
     settings:
       base:
-        # The same name and bundle ID as the iPhone app: one App Store Connect record, the Mac added to it.
         PRODUCT_NAME: Agency
-        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_HARDENED_RUNTIME: 'YES'
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        COMBINE_HIDPI_IMAGES: YES
+        COMBINE_HIDPI_IMAGES: 'YES'
     entitlements:
       path: Mac/Agency.entitlements
       properties:
-        # The Mac App Store (and TestFlight for Mac) require the sandbox. The app needs only the network.
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.developer.aps-environment: $(APS_ENVIRONMENT)
@@ -152,46 +125,40 @@ targets:
           - applinks:$(AGENCY_ASSOCIATED_HOST_2)
           - webcredentials:$(AGENCY_ASSOCIATED_HOST)
           - webcredentials:$(AGENCY_ASSOCIATED_HOST_2)
-        # The data protection keychain holds the Access token and the key's handle.
         keychain-access-groups:
           - $(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
     info:
       path: Mac/Info.plist
       properties:
         CFBundleDisplayName: Agency
-        CFBundleLocalizations: [ja, en]
+        CFBundleLocalizations:
+          - ja
+          - en
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         AgencyAPNsEnvironment: $(APS_ENVIRONMENT)
         AgencyAssociatedHost: $(AGENCY_ASSOCIATED_HOST)
-        # Every host or `*.` wildcard the build has an associated domain for: a node on one of them signs in through a
-        # universal link, any other through the app's own scheme.
         AgencyAssociatedHosts: $(AGENCY_ASSOCIATED_HOST) $(AGENCY_ASSOCIATED_HOST_2)
         ITSAppUsesNonExemptEncryption: false
-        # Lets a node on this Mac or the local network be opened over plain http, as on the iPhone.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-
   AgencyNotificationService:
     type: app-extension
     platform: iOS
     sources:
       - NotificationService
     dependencies:
-      # Only AgencyKit (the ledger and the push's decision): the extension has a small memory limit and no network.
       - package: AgencyKit
         product: AgencyKit
     settings:
       base:
-        # The app's bundle ID, with `.notifications`: an extension's must start with its app's.
         PRODUCT_BUNDLE_IDENTIFIER: $(inherited).notifications
-        TARGETED_DEVICE_FAMILY: "1"
-        SKIP_INSTALL: "YES"
+        TARGETED_DEVICE_FAMILY: '1'
+        SKIP_INSTALL: 'YES'
     entitlements:
       path: NotificationService/AgencyNotificationService.entitlements
       properties:
-        # The app's group: the extension's bundle ID without its `.notifications` suffix, with `group.` in front.
         com.apple.security.application-groups:
           - group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
     info:
@@ -204,30 +171,24 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
-
   AgencyWidgets:
     type: app-extension
     platform: iOS
     sources:
       - Widgets
     dependencies:
-      # Only the widget's own code: a widget extension has a small memory limit, so it does not link the API
-      # client or the signing code.
       - package: AgencyKit
         product: AgencyKit
       - package: AgencyKit
         product: AgencyWidget
     settings:
       base:
-        # The app's bundle ID, with `.widgets`: an extension's must start with its app's.
         PRODUCT_BUNDLE_IDENTIFIER: $(inherited).widgets
-        # An extension has no icon of its own, and runs on the phones the app does.
-        TARGETED_DEVICE_FAMILY: "1"
-        SKIP_INSTALL: "YES"
+        TARGETED_DEVICE_FAMILY: '1'
+        SKIP_INSTALL: 'YES'
     entitlements:
       path: Widgets/AgencyWidgets.entitlements
       properties:
-        # The app's group again: the extension's bundle ID without its `.widgets` suffix, with `group.` in front.
         com.apple.security.application-groups:
           - group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
     info:
