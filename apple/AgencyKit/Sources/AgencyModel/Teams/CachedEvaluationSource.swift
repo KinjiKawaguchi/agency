@@ -16,4 +16,6 @@ public struct CachedEvaluationSource<Client: EvaluationSource>: EvaluationSource
     public func evaluation(org: String, days: Int) async throws -> Evaluation { try await client.evaluation(org: org, days: days) }
     public func effort(org: String, days: Int) async throws -> Effort { try await client.effort(org: org, days: days) }
     public func orgPlans(org: String) async throws -> OrgPlans { try await client.orgPlans(org: org) }
+    public func about() async throws -> About { try await client.about() }
+    public func budget(org: String, team: String) async throws -> BudgetStatus { try await client.budget(org: org, team: team) }
 }

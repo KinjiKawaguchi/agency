@@ -11,6 +11,7 @@ struct EvaluationContent: View {
     let days: Int
     let state: EvaluationState
     var effort: EffortState = .loading
+    var budgets: [String: BudgetRead] = [:]
     var onChooseOrg: ((String) -> Void)?
     var onChooseDays: ((Int) -> Void)?
     var onTryAgain: (() -> Void)?
@@ -24,7 +25,7 @@ struct EvaluationContent: View {
             } else {
                 controls
                 stateView
-                EffortSection(state: effort, onTryAgain: onTryAgain, selectedDay: selectedDay).padding(.top, 20)
+                EffortSection(state: effort, budgets: budgets, onTryAgain: onTryAgain, selectedDay: selectedDay).padding(.top, 20)
             }
         }
     }
