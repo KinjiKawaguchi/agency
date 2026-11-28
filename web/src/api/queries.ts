@@ -1,5 +1,5 @@
 import { HOURS_UP_TO_DAYS } from './metricsApi'
-import { queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { ApiError, type ApiClient } from './client'
 import { useApi } from './context'
 import type { Me, OrgRef, TeamRef } from './clientApi'
@@ -82,6 +82,19 @@ export const usageQuery = (api: ApiClient, org: string, team: string, days: numb
 
 export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['evaluation', org, days], queryFn: () => api.evaluation(org, days), staleTime: 2 * POLL_MS })
+
+/** How many entries of an org's history one read asks for: the node's own default, so a page is what the node gives when asked for none. */
+export const HISTORY_PAGE = 200
+
+/** An org's change history, a page at a time from the oldest: the next page asks for the entries after the last version read, while the node says there are more. */
+export const historyQuery = (api: ApiClient, org: string) =>
+  infiniteQueryOptions({
+    queryKey: ['history', org],
+    queryFn: ({ pageParam }) => api.orgHistory(org, { ...(pageParam === undefined ? {} : { after: pageParam }), limit: HISTORY_PAGE }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => (last.more === true ? last.entries.at(-1)?.version : undefined),
+    staleTime: 2 * POLL_MS,
+  })
 
 export const outcomesQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['outcomes', org, days], queryFn: () => api.outcomes(org, days), staleTime: 2 * POLL_MS })

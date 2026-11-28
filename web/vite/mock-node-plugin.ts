@@ -40,6 +40,7 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
+    ...(Number.isInteger(Number(query?.get('history'))) && Number(query?.get('history')) > 0 ? { history: Number(query?.get('history')) } : {}),
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',

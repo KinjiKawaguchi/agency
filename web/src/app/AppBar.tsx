@@ -1,3 +1,4 @@
+import { useHistoryAccess } from '../history/useHistoryAccess'
 import { useOutcomesAccess } from '../outcomes/useOutcomesAccess'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
@@ -23,7 +24,7 @@ const THEME_LABELS = (t: ReturnType<typeof useI18n>['t']): Record<Theme, string>
   dark: t.settings.themeDark,
 })
 
-type PagePath = '/desk' | '/overview' | '/org' | '/people' | '/costs' | '/evaluation' | '/live' | '/outcomes' | '/devices'
+type PagePath = '/desk' | '/overview' | '/org' | '/history' | '/people' | '/costs' | '/evaluation' | '/live' | '/outcomes' | '/devices'
 
 interface Group {
   key: 'desk' | 'overview' | 'organization' | 'results' | 'devices'
@@ -46,6 +47,7 @@ const GROUPS: readonly Group[] = [
     label: (t) => t.nav.organization,
     pages: [
       { to: '/org', label: (t) => t.nav.org },
+      { to: '/history', label: (t) => t.nav.history },
       { to: '/people', label: (t) => t.nav.people },
     ],
   },
@@ -87,8 +89,9 @@ export function AppBar() {
   const themeLabels = THEME_LABELS(t)
   const path = useRouterState({ select: (state) => state.location.pathname })
   const outcomes = useOutcomesAccess()
+  const history = useHistoryAccess()
   // The owner's page is in the menu only once the owner's read has answered: no entry while it is read, and none for anyone else.
-  const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => page.to !== '/outcomes' /* shown-ok(route): a path */ || outcomes.status === 'available')
+  const pagesOf = (group: Group): Group['pages'] => group.pages.filter((page) => (page.to !== '/outcomes' /* shown-ok(route): a path */ || outcomes.status === 'available') && (page.to !== '/history' /* shown-ok(route): a path */ || history.status === 'available'))
   // Until the node has said who the viewer is, no entry is shown: a guest is not offered the owner's pages for a moment.
   const groups = standing.status === 'guest' ? GUEST_GROUPS : standing.status === 'loading' ? [] : GROUPS
   const current = groups.find((group) => pagesOf(group).some((page) => isOn(path, page.to /* shown-ok(route): a path */)))

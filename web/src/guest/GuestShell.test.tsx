@@ -35,7 +35,7 @@ async function enrol(node: ReturnType<typeof createMockNode>, keyStore: ReturnTy
 }
 
 /** What the owner alone is given: the org's definition and its reads, token use, the activity, and push settings. */
-const OWNERS = /\/api\/orgs\/[^/]+(\/(evaluation|effort|outcomes(\/readings)?)|\/teams\/[^/]+\/(usage|activity))?$|\/api\/push\//
+const OWNERS = /\/api\/orgs\/[^/]+(\/(evaluation|effort|history|outcomes(\/readings)?)|\/teams\/[^/]+\/(usage|activity))?$|\/api\/push\//
 
 /** A client over the node that notes the path of every call it makes. */
 function recording(node: ReturnType<typeof createMockNode>): { client: ReturnType<typeof createApiClient>; paths: string[] } {
@@ -64,7 +64,7 @@ describe('what a member hosted by the node has', () => {
     expect(screen.queryByText(BOBS)).not.toBeInTheDocument()
   })
 
-  it.each(['/', '/overview', '/org', '/people', '/costs', '/evaluation', '/live', '/outcomes', '/nowhere'])('is sent from %s to their decisions, and none of the owner’s reads is made', async (path) => {
+  it.each(['/', '/overview', '/org', '/history', '/people', '/costs', '/evaluation', '/live', '/outcomes', '/nowhere'])('is sent from %s to their decisions, and none of the owner’s reads is made', async (path) => {
     const { client, paths } = recording(guestNode())
     const { history } = renderApp({ node: guestNode(), client, path, enrolled: true })
     await waitFor(() => expect(history.location.pathname).toBe('/desk'))
@@ -244,6 +244,6 @@ describe('how the node says a viewer is a guest', () => {
 
   it('has the desk and the devices as the pages of a guest, with what is under them, and no other', () => {
     expect(['/desk', '/desk/', '/devices', '/devices/x'].map(isGuestPage)).toEqual([true, true, true, true])
-    expect(['/', '/overview', '/org', '/people', '/costs', '/evaluation', '/live', '/outcomes', '/deskx', '/devicesx', '/x/desk'].map(isGuestPage)).toEqual(Array(11).fill(false))
+    expect(['/', '/overview', '/org', '/history', '/people', '/costs', '/evaluation', '/live', '/outcomes', '/deskx', '/devicesx', '/x/desk'].map(isGuestPage)).toEqual(Array(12).fill(false))
   })
 })

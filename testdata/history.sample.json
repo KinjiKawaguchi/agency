@@ -1,0 +1,27 @@
+{
+  "entries": [
+    {
+      "version": 1,
+      "at": "2026-11-24T12:00:00Z",
+      "signature": "valid",
+      "signedBy": "root key 3f9c-a1b2-77d0-e4c5",
+      "follows": true,
+      "changes": ["create the org Acme"],
+      "isKept": true
+    },
+    {
+      "version": 2,
+      "changes": [],
+      "isKept": false
+    },
+    {
+      "version": 3,
+      "at": "2026-11-26T09:30:00Z",
+      "signature": "notChecked",
+      "comparedWith": 1,
+      "changes": ["add member bob (Bob)", "add device Laptop for bob"],
+      "isKept": true
+    }
+  ],
+  "more": true
+}

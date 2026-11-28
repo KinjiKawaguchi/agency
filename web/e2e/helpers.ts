@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 export interface NodeOptions {
+  /** Serve the org's change history of this many versions, as a node that lists the `history` capability does. */
+  history?: number
   /** Serve the mock token use (the real node does not yet). */
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
@@ -49,6 +51,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  if (options.history !== undefined) query.set('history', String(options.history))
   if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
