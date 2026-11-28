@@ -291,6 +291,48 @@ Add `access` to `~/.agency/config.json` and restart the node:
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
 
+## Reaching a node from outside with an OpenID Connect provider
+
+Use this when your organization signs people in with its own OpenID Connect provider and not with Cloudflare Access. A node signs people in from outside in one way, `access` or `oidc`, never both: it does not start with both set, nor with either malformed, and says which field is wrong.
+
+### What you need
+
+- An application registered with the provider for this node. Its client id is the audience of its tokens, and its tokens are RS256-signed JWTs that carry the owner's email in a claim (`email` unless you say another). The provider's issuer is exactly the `iss` of those tokens.
+- A gateway your organization approves (a reverse proxy or an access proxy) at the node's public host name, which signs people in with the provider and sends the signed token to the node in a header on every request. The node checks each token itself and trusts nothing about how the request came, so the gateway does not tell the node who is asking; it only carries the token.
+- A node `url` and a public host name as in "Change the node's address", whatever they are called in your network.
+
+### The oidc setting
+
+Add `oidc` to `~/.agency/config.json` (and no `access`), and restart the node:
+
+```json
+"oidc": {
+  "publicHost": "agency.example.com",
+  "issuer": "https://login.example.com/realms/acme",
+  "audience": "agency-node",
+  "ownerEmail": "alice@example.com"
+}
+```
+
+- `issuer` and `keysUrl` are `https://<host>[:<port>][/<path>]`, with no user information, query or fragment. The node finds the provider's keys at `keysUrl`; when you leave it out, it asks `<issuer>/.well-known/openid-configuration` for `jwks_uri`. It follows no redirect, waits at most 10 seconds, and asks again for an unknown key id at most once a minute, so a provider that rotates its keys is followed.
+- `tokenHeader` (default `authorization`, read as `Bearer <token>`) is the header the gateway puts the token in. `emailClaim` (default `email`) is the claim that holds the email.
+- `ownerEmail` is the owner's email as the token says it. Only it, and the emails of the members this node hosts as guests, are let in; any other token gets 403, and so does a request with none. Only `ownerEmail` may write as the owner (decide, add devices).
+- As with Access, once `oidc` is set, `http://127.0.0.1:4400/` on the node's machine is for reading only: write through the public host name, signed in.
+- The iPhone app's own sign-in (`appId`) is Cloudflare Access's and is not available with `oidc`; use the web client in the browser.
+
+### What the path must keep
+
+Whatever stands between the browser and the node is your deployment's choice, but it must keep these:
+
+- TLS from the browser to the gateway, and from the gateway to the node unless they are on one machine: the node itself serves plain `http`.
+- The token header, unchanged: not rewritten, not stripped, and not replaced by a token the gateway made.
+- The host name the browser used (`Host`), and the path as sent: the node refuses a path with an encoded separator or a dot segment.
+- `/fed/*` reaching the node with no sign-in: other nodes authenticate with signatures, not with your provider.
+
+### Check that it works
+
+With a token from the provider for the owner, `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" https://agency.example.com/api/me` prints `200`; without the header, or with another person's token, it prints `403`. The start-up messages for a wrong setting are in "Log lines".
+
 ## Adding a phone or a browser
 
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
@@ -585,7 +627,8 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
-| `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
+| The node does not start and says `access.<field> …` or `oidc.<field> …` | That field of the setting is wrong: fix it in `config.json`. |
+| The node does not start and says `access and oidc are both set …` | Keep one of them. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |
