@@ -33,7 +33,7 @@ describe('overview', () => {
 
   it('counts the participants who are working out of all of them, the viewer left out', async () => {
     renderApp({ path: '/overview', moreOrgs: true })
-    expect(await (await card('club', 'garden')).findByText('2 of 3 participants working')).toBeInTheDocument()
+    expect(await (await card('club', 'garden')).findByText('6 of 13 participants working')).toBeInTheDocument()
   })
 
   it('shows how old a copy is and why it could not be renewed', async () => {
@@ -47,7 +47,7 @@ describe('overview', () => {
     const shop = await card('club', 'shop')
     expect(await shop.findByText('Could not load this team: The team’s node has not been reached yet.')).toBeInTheDocument()
     expect(shop.getByText('Not loaded')).toBeInTheDocument()
-    expect(await (await card('club', 'garden')).findByText('2 of 3 participants working')).toBeInTheDocument()
+    expect(await (await card('club', 'garden')).findByText('6 of 13 participants working')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -73,7 +73,7 @@ describe('overview', () => {
   it('reads in Japanese', async () => {
     renderApp({ path: '/overview', moreOrgs: true, locale: 'ja' })
     expect(await screen.findByRole('heading', { level: 1, name: '全体の状況' })).toBeInTheDocument()
-    expect(await (await card('club', 'garden')).findByText('参加者 3 人のうち 2 人が作業中')).toBeInTheDocument()
+    expect(await (await card('club', 'garden')).findByText('参加者 13 人のうち 6 人が作業中')).toBeInTheDocument()
     expect(await (await card('club', 'shop')).findByText(/^このチームを読み込めませんでした: /)).toBeInTheDocument()
   })
 })

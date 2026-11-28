@@ -1,0 +1,124 @@
+{
+  "days": 7,
+  "from": "2026-11-18",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "org": "acme",
+  "teams": [
+    {
+      "byDay": [
+        {
+          "costUsd": 9.55,
+          "date": "2026-11-23",
+          "issueLeadSeconds": [
+            14400
+          ],
+          "mainRedSeconds": 3600,
+          "merged": {
+            "chore": 0,
+            "docs": 0,
+            "feat": 1,
+            "fix": 0,
+            "other": 0,
+            "refactor": 0,
+            "test": 0
+          },
+          "prLeadSeconds": [
+            7200
+          ],
+          "reverts": 0
+        },
+        {
+          "costUsd": 3.75,
+          "date": "2026-11-24",
+          "issueLeadSeconds": [],
+          "mainRedSeconds": 0,
+          "merged": {
+            "chore": 0,
+            "docs": 0,
+            "feat": 0,
+            "fix": 1,
+            "other": 0,
+            "refactor": 0,
+            "test": 0
+          },
+          "prLeadSeconds": [
+            1800,
+            600
+          ],
+          "reverts": 1
+        }
+      ],
+      "from": "2026-11-18",
+      "participants": [
+        {
+          "busySeconds": 30600,
+          "costPerMergedPrUsd": 8.45,
+          "costUsd": 8.45,
+          "idleSeconds": 4800,
+          "merged": 1,
+          "name": "backend",
+          "tokens": {
+            "cacheRead": 2400000,
+            "cacheWrite": 180000,
+            "input": 120000,
+            "output": 45000
+          },
+          "waitingSeconds": 2400
+        },
+        {
+          "busySeconds": 10800,
+          "costPerMergedPrUsd": 4.35,
+          "costUsd": 4.35,
+          "idleSeconds": 25200,
+          "merged": 1,
+          "name": "lead",
+          "tokens": {
+            "cacheRead": 1300000,
+            "cacheWrite": 90000,
+            "input": 60000,
+            "output": 21000
+          },
+          "waitingSeconds": 4800
+        },
+        {
+          "busySeconds": 1500,
+          "costUsd": 0.5,
+          "idleSeconds": 300,
+          "merged": 0,
+          "name": "reviewer",
+          "tokens": {
+            "cacheRead": 150000,
+            "cacheWrite": 12000,
+            "input": 8000,
+            "output": 3000
+          },
+          "waitingSeconds": 0
+        }
+      ],
+      "summary": {
+        "costPerMergedPrUsd": 4.43,
+        "issueLeadMedianSeconds": 14400,
+        "issueLeadP90Seconds": 14400,
+        "longestRedSeconds": 3600,
+        "mainRedSeconds": 3600,
+        "merged": {
+          "chore": 0,
+          "docs": 0,
+          "feat": 1,
+          "fix": 1,
+          "other": 0,
+          "refactor": 0,
+          "test": 0
+        },
+        "prLeadMedianSeconds": 1800,
+        "prLeadP90Seconds": 7200,
+        "reverts": 1
+      },
+      "team": "app",
+      "unattributedMerged": 1,
+      "until": "2026-11-24"
+    }
+  ],
+  "unavailable": [],
+  "until": "2026-11-24"
+}

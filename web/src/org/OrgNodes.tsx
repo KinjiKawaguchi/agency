@@ -25,9 +25,6 @@ function OldData({ source }: { source: Team['source'] | undefined }) {
   )
 }
 
-/** How many faces a compact team shows before saying how many more there are. */
-const FACES = 6
-
 export function DepartmentCard({ node, org }: { node: DepartmentNode; org: string }) {
   const { t } = useI18n()
   return (
@@ -40,11 +37,10 @@ export function DepartmentCard({ node, org }: { node: DepartmentNode; org: strin
   )
 }
 
-/** A team of the chart of every org: its signals (waiting on the viewer, stuck, working) and its participants as faces. */
+/** A team of the chart of every org: its signals (waiting on the viewer, stuck, working) and every agent of it as a face, wrapping onto more lines as the team is large. */
 function CompactTeam({ node }: { node: TeamNode }) {
   const { t } = useI18n()
   const { signals } = node
-  const shown = node.agents.slice(0, FACES)
   return (
     <Link className={`oc-node team compact${signals === undefined ? '' : ` attention-${signals.attention}`}`} {...destination(node)}>
       <span className="oc-kind">{t.org.kinds.team}</span>
@@ -62,12 +58,11 @@ function CompactTeam({ node }: { node: TeamNode }) {
           <span className="oc-sub">{signals.participants === 0 ? t.overview.noParticipants : t.overview.working(signals.working, signals.participants)}</span>
         </>
       )}
-      {shown.length === 0 ? null : (
+      {node.agents.length === 0 ? null : (
         <span className="oc-faces">
-          {shown.map((agent) => (
+          {node.agents.map((agent) => (
             <Face key={agent.person.id} label={agent.person.label} kind="agent" state={agent.presence} size="xs" title={`${agent.person.label}: ${agent.person.status}`} />
           ))}
-          {node.agents.length > FACES ? <span className="oc-more">+{node.agents.length - FACES}</span> : null}
         </span>
       )}
     </Link>

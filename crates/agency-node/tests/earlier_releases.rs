@@ -629,3 +629,29 @@ fn the_note_of_a_recovery_start_is_read_and_is_not_a_version() {
         "{error}"
     );
 }
+
+#[test]
+fn a_data_format_file_with_a_number_today_s_node_reads_passes() {
+    let format = |data: &Path| std::fs::write(data.join("format"), "1\n").unwrap();
+    assert_eq!(damaged("alice", format), Ok(1));
+}
+
+#[test]
+fn a_data_format_file_with_a_newer_number_or_none_fails() {
+    let newer = damaged("alice", |data| {
+        std::fs::write(data.join("format"), "999\n").unwrap()
+    })
+    .unwrap_err();
+    assert!(
+        newer.contains("written by a newer release (data format 999"),
+        "{newer}"
+    );
+    let none = damaged("alice", |data| {
+        std::fs::write(data.join("format"), "abc\n").unwrap()
+    })
+    .unwrap_err();
+    assert!(
+        none.contains("the data format file does not hold a number"),
+        "{none}"
+    );
+}
