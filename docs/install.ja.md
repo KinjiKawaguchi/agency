@@ -316,7 +316,7 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 ### 必要なもの
 
-- このノードのためにプロバイダに登録したアプリケーション。そのクライアント ID がトークンの audience で、トークンは、所有者のメールをクレーム（指定しなければ `email`）に持つ、RS256 で署名された JWT です。プロバイダの issuer は、そのトークンの `iss` と完全に同じ文字列です。
+- このノードのためにプロバイダに登録したアプリケーション。そのクライアント ID がトークンの audience で、トークンは、RS256 で署名された JWT です。所有者はトークンの `sub` で、ゲストは、プロバイダが確認済みとしたクレーム（指定しなければ `email`。`email_verified` が true）のメールで決まります。プロバイダの issuer は、そのトークンの `iss` と完全に同じ文字列です。
 - 組織が承認したゲートウェイ（リバースプロキシやアクセスプロキシ）。ノードの公開ホスト名で受け、プロバイダでサインインさせ、署名されたトークンを、すべてのリクエストのヘッダでノードに渡します。ノードはトークンを自分で確かめ、リクエストがどう届いたかを信用しません。ゲートウェイがノードに「誰からか」を伝えるのではなく、トークンを運ぶだけです。
 - 「ノードのアドレスを変える」のとおりのノードの `url` と公開ホスト名（ネットワークでの呼び名は何でも構いません）。
 
@@ -329,13 +329,20 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
   "publicHost": "agency.example.com",
   "issuer": "https://login.example.com/realms/acme",
   "audience": "agency-node",
-  "ownerEmail": "alice@example.com"
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
 }
 ```
 
 - `issuer` と `keysUrl` は `https://<ホスト名>[:<ポート>][/<パス>]` の形で、`user@` のような認証情報、クエリ、フラグメントは付けません。ノードは、プロバイダの鍵を `keysUrl` から取ります。省略すると、`<issuer>/.well-known/openid-configuration` に尋ねて `jwks_uri` を得ます。リダイレクトには従わず、待つのは最長 10 秒で、知らない鍵 ID のときだけ、1 分に 1 回までもう一度取りに行きます。プロバイダが鍵を入れ替えても追えます。
 - `tokenHeader`（既定は `authorization`。`Bearer <トークン>` として読みます）は、ゲートウェイがトークンを入れるヘッダです。`emailClaim`（既定は `email`）は、メールを持つクレームです。
-- `ownerEmail` は、トークンが言う所有者のメールです。通るのはそのメールと、このノードがゲストとして受け持つメンバーのメールだけで、ほかのトークンも、トークンのないリクエストも 403 です。所有者として書き込める（決定する、端末を足す）のは `ownerEmail` だけです。
+- `ownerSubject` は、プロバイダのトークンにある所有者の `sub` です。ノードがトークンを所有者のものとするのは、`iss` が `issuer` で、`sub` が `ownerSubject` のときだけです。どちらも末尾のスラッシュまで含めて、完全に一致する必要があります。ここではメールは所有者を決めません。プロバイダによっては、人が自分でメールを入力できるからです。`sub` は、このノード自身のアプリケーション登録（ゲートウェイ経由）で一度サインインして、そのトークン、またはプロバイダの userinfo エンドポイントから読みます。トークンを `$TOKEN` に入れて次のとおりにします。
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  ほかのアプリケーションのトークンから取った `sub` は一致しません。プロバイダによっては、アプリケーションの登録ごとに、同じ人に別の `sub` を付けます。
+- ゲスト（このノードが受け持つメンバー）はメールで決まりますが、トークンが確認済みとしたメールだけです。`email_verified` が `true`（または文字列の `true`）のときです。メールがあっても確認済みと示されていないトークンは、ゲストを決めず、ログにそう出ます。`email_verified` を送らないプロバイダ（有効にしないと送らないものがあります）は、`sub` で所有者をサインインさせられますが、ゲストをメールで通すことはできません。プロバイダでそのクレームを有効にしてください。しないと、そのノードのゲストは使えません。ほかのトークンも、トークンのないリクエストも 403 です。所有者として書き込める（決定する、端末を足す）のは所有者だけです。
 - Access と同じく、`oidc` を書くと、ノードのマシンの `http://127.0.0.1:4400/` は読み取り専用になります。書き込みは、公開ホスト名からサインインして行います。
 - iPhone アプリ自身のサインイン（`appId`）は Cloudflare Access のもので、`oidc` では使えません。ブラウザの Web クライアントを使います。
 
@@ -694,8 +701,8 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `421` `wrong host` | `127.0.0.1:<ポート>` か `localhost:<ポート>` 以外のアドレスでページを開いています。 |
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
-| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
-| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
+| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしているか、OpenID Connect のプロバイダで `ownerSubject` 以外の `sub` でサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。または、OpenID Connect のプロバイダで、`ownerSubject` ではない `sub` と、ゲストのものではない、またはトークンが確認済みと示していないメールでサインインしています。 |
 
 ## チームランタイム
 

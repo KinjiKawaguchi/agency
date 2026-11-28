@@ -297,7 +297,7 @@ Use this when your organization signs people in with its own OpenID Connect prov
 
 ### What you need
 
-- An application registered with the provider for this node. Its client id is the audience of its tokens, and its tokens are RS256-signed JWTs that carry the owner's email in a claim (`email` unless you say another). The provider's issuer is exactly the `iss` of those tokens.
+- An application registered with the provider for this node. Its client id is the audience of its tokens, and its tokens are RS256-signed JWTs. The owner is named by the token's `sub`. A guest is named by an email in a claim (`email` unless you say another) that the provider marks verified (`email_verified` true). The provider's issuer is exactly the `iss` of those tokens.
 - A gateway your organization approves (a reverse proxy or an access proxy) at the node's public host name, which signs people in with the provider and sends the signed token to the node in a header on every request. The node checks each token itself and trusts nothing about how the request came, so the gateway does not tell the node who is asking; it only carries the token.
 - A node `url` and a public host name as in "Change the node's address", whatever they are called in your network.
 
@@ -310,13 +310,20 @@ Add `oidc` to `~/.agency/config.json` (and no `access`), and restart the node:
   "publicHost": "agency.example.com",
   "issuer": "https://login.example.com/realms/acme",
   "audience": "agency-node",
-  "ownerEmail": "alice@example.com"
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
 }
 ```
 
 - `issuer` and `keysUrl` are `https://<host>[:<port>][/<path>]`, with no user information, query or fragment. The node finds the provider's keys at `keysUrl`; when you leave it out, it asks `<issuer>/.well-known/openid-configuration` for `jwks_uri`. It follows no redirect, waits at most 10 seconds, and asks again for an unknown key id at most once a minute, so a provider that rotates its keys is followed.
 - `tokenHeader` (default `authorization`, read as `Bearer <token>`) is the header the gateway puts the token in. `emailClaim` (default `email`) is the claim that holds the email.
-- `ownerEmail` is the owner's email as the token says it. Only it, and the emails of the members this node hosts as guests, are let in; any other token gets 403, and so does a request with none. Only `ownerEmail` may write as the owner (decide, add devices).
+- `ownerSubject` is the owner's `sub` in the provider's tokens. The node takes a token as the owner's only when its `iss` is `issuer` and its `sub` is `ownerSubject`; both are compared exactly, a trailing slash included. An email does not name the owner here, since a provider may let people type their own. Find the `sub` by signing in once through this node's own application registration (through the gateway) and reading it from that token, or from the provider's userinfo endpoint. With the token in `$TOKEN`:
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  A `sub` taken from another application's token will not match: some providers give each application registration its own `sub` for the same person.
+- Guests (the members this node hosts) are named by an email, and only by one the token marks verified: `email_verified` is `true`, or the text `true`. A token with an email that is not marked so names no guest, and the log says that. A provider that sends no `email_verified` (some send none unless you turn it on) can sign the owner in by `sub`, but cannot admit a guest by email: turn the claim on at the provider, or the node's guests will not work with it. Any other token gets 403, and so does a request with none. Only the owner may write as the owner (decide, add devices).
 - As with Access, once `oidc` is set, `http://127.0.0.1:4400/` on the node's machine is for reading only: write through the public host name, signed in.
 - The iPhone app's own sign-in (`appId`) is Cloudflare Access's and is not available with `oidc`; use the web client in the browser.
 
@@ -659,8 +666,8 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `421` `wrong host` | The page was opened at an address other than `127.0.0.1:<port>` or `localhost:<port>`. |
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
-| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`. |
-| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token. |
+| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`, or through an OpenID Connect provider with a `sub` other than `ownerSubject`. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token; or through an OpenID Connect provider with a `sub` that is not `ownerSubject` and an email that is not a guest's or that the token does not mark verified. |
 
 ## The team runtime
 

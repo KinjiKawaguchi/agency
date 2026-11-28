@@ -19,7 +19,7 @@ fn oidc() -> OidcConfig {
         "agency.example.com",
         "https://login.example.com/realms/acme",
         "agency-node",
-        "alice@example.com",
+        "00000000-0000-0000-0000-00000000a11c",
     )
 }
 
@@ -97,18 +97,13 @@ async fn an_oidc_setting_that_is_not_well_formed_stops_the_node_and_names_the_fi
                 "Agency.example.com",
                 "https://login.example.com",
                 "a",
-                "alice@example.com",
+                "s-1",
             ),
             "oidc.publicHost is not a host name",
         ),
         (
             "an issuer on http",
-            OidcConfig::new(
-                "agency.example.com",
-                "http://login.example.com",
-                "a",
-                "alice@example.com",
-            ),
+            OidcConfig::new("agency.example.com", "http://login.example.com", "a", "s-1"),
             "oidc.issuer is not https://",
         ),
         (
@@ -117,7 +112,7 @@ async fn an_oidc_setting_that_is_not_well_formed_stops_the_node_and_names_the_fi
                 "agency.example.com",
                 "https://login.example.com/?x=1",
                 "a",
-                "alice@example.com",
+                "s-1",
             ),
             "oidc.issuer is not https://",
         ),
@@ -127,18 +122,13 @@ async fn an_oidc_setting_that_is_not_well_formed_stops_the_node_and_names_the_fi
                 "agency.example.com",
                 "https://bob@login.example.com",
                 "a",
-                "alice@example.com",
+                "s-1",
             ),
             "oidc.issuer is not https://",
         ),
         (
             "an empty audience",
-            OidcConfig::new(
-                "agency.example.com",
-                "https://login.example.com",
-                "",
-                "alice@example.com",
-            ),
+            OidcConfig::new("agency.example.com", "https://login.example.com", "", "s-1"),
             "oidc.audience is empty",
         ),
         (
@@ -147,19 +137,24 @@ async fn an_oidc_setting_that_is_not_well_formed_stops_the_node_and_names_the_fi
                 "agency.example.com",
                 "https://login.example.com",
                 "agency node",
-                "alice@example.com",
+                "s-1",
             ),
             "oidc.audience is empty or holds a space",
         ),
         (
-            "an owner that is not an email",
+            "an owner subject with a space",
             OidcConfig::new(
                 "agency.example.com",
                 "https://login.example.com",
                 "a",
-                "alice",
+                "alice smith",
             ),
-            "oidc.ownerEmail is not an email address",
+            "oidc.ownerSubject is empty or holds a space",
+        ),
+        (
+            "an empty owner subject",
+            OidcConfig::new("agency.example.com", "https://login.example.com", "a", ""),
+            "oidc.ownerSubject is empty",
         ),
         (
             "a key set on http",

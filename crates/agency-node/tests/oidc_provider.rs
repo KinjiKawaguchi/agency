@@ -9,7 +9,7 @@ use common::access::{PUBLIC_HOST, TEST_KEY_N};
 use common::guests::{add_carol, CAROL};
 use common::oidc_issuer::{
     behind_oidc, jwk, key_set, token, token_signed_with, Answer, Issuer, AUDIENCE, ISSUER_PATH,
-    ROTATED_KEY_DER, ROTATED_KEY_N,
+    OWNER_EMAIL, OWNER_SUBJECT, ROTATED_KEY_DER, ROTATED_KEY_N,
 };
 use common::{Running, TOKEN};
 use reqwest::Method;
@@ -18,13 +18,19 @@ use serde_json::{json, Value};
 /// The key set's address that discovery names, made from the issuer.
 type Address = Box<dyn Fn(&Issuer) -> String>;
 
-const OWNER: &str = "alice@example.com";
 const T0: i64 = 1_795_521_600;
 const DISCOVERY: &str = "/realms/acme/.well-known/openid-configuration";
 const KEYS: &str = "/realms/acme/keys";
 
 fn owner_token(issuer: &Issuer, edit: impl FnOnce(&mut Value)) -> String {
-    token(&issuer.issuer(), AUDIENCE, OWNER, "k1", edit)
+    token(
+        &issuer.issuer(),
+        AUDIENCE,
+        OWNER_SUBJECT,
+        Some(OWNER_EMAIL),
+        "k1",
+        edit,
+    )
 }
 
 /// `GET /api/me` as a request that came through the gateway: the public host name, and `header` as it is.
@@ -80,79 +86,102 @@ async fn a_key_set_address_in_the_setting_is_used_and_discovery_is_not_asked() {
 async fn only_a_token_with_every_check_passing_is_let_in() {
     let issuer = Issuer::start().await;
     let (running, _) = behind_oidc(&issuer, |setting| setting).await;
-    let ok = |email: &str, kid: &str, edit: &dyn Fn(&mut Value)| {
-        token(&issuer.issuer(), AUDIENCE, email, kid, |claims| {
-            edit(claims)
-        })
+    let ok = |kid: &str, edit: &dyn Fn(&mut Value)| {
+        token(
+            &issuer.issuer(),
+            AUDIENCE,
+            OWNER_SUBJECT,
+            Some(OWNER_EMAIL),
+            kid,
+            |claims| edit(claims),
+        )
+    };
+    let someone = |sub: &str, email: Option<&str>| {
+        token(&issuer.issuer(), AUDIENCE, sub, email, "k1", |_| {})
     };
     let cases: Vec<(&str, String, u16)> = vec![
-        ("the owner", ok(OWNER, "k1", &|_| {}), 200),
+        ("the owner", ok("k1", &|_| {}), 200),
         (
-            "the owner's email in other letters",
-            ok("Alice@Example.COM", "k1", &|_| {}),
+            "the owner with no email at all: an email names no owner",
+            ok("k1", &|c| {
+                let claims = c.as_object_mut().unwrap();
+                claims.remove("email");
+                claims.remove("email_verified");
+            }),
             200,
         ),
         (
-            "another email",
-            ok("mallory@example.com", "k1", &|_| {}),
+            "the owner whose email the provider did not verify: the subject decides",
+            ok("k1", &|c| c["email_verified"] = json!(false)),
+            200,
+        ),
+        (
+            "the owner's verified email under another subject",
+            someone("00000000-0000-0000-0000-00000000dead", Some(OWNER_EMAIL)),
             403,
         ),
         (
-            "no email",
-            ok(OWNER, "k1", &|c| {
-                c.as_object_mut().unwrap().remove("email");
+            "another subject and another email",
+            someone("subject-2", Some("mallory@example.com")),
+            403,
+        ),
+        (
+            "the owner's subject at no issuer's say, with no subject",
+            ok("k1", &|c| {
+                c.as_object_mut().unwrap().remove("sub");
             }),
+            403,
+        ),
+        (
+            "a subject that is not text",
+            ok("k1", &|c| c["sub"] = json!(5)),
             403,
         ),
         (
             "another audience",
-            ok(OWNER, "k1", &|c| c["aud"] = json!("someone-else")),
+            ok("k1", &|c| c["aud"] = json!("someone-else")),
             403,
         ),
         (
             "the audience among others",
-            ok(OWNER, "k1", &|c| c["aud"] = json!(["other", AUDIENCE])),
+            ok("k1", &|c| c["aud"] = json!(["other", AUDIENCE])),
             200,
         ),
         (
             "another issuer",
-            ok(OWNER, "k1", &|c| {
-                c["iss"] = json!("https://evil.example.test")
-            }),
+            ok("k1", &|c| c["iss"] = json!("https://evil.example.test")),
             403,
         ),
         (
             "the issuer with a slash more",
-            ok(OWNER, "k1", &|c| {
-                c["iss"] = json!(format!("{}/", issuer.issuer()))
-            }),
+            ok("k1", &|c| c["iss"] = json!(format!("{}/", issuer.issuer()))),
             403,
         ),
         (
             "expired more than a minute ago",
-            ok(OWNER, "k1", &|c| c["exp"] = json!(T0 - 61)),
+            ok("k1", &|c| c["exp"] = json!(T0 - 61)),
             403,
         ),
         (
             "expired a moment ago, inside the minute allowed",
-            ok(OWNER, "k1", &|c| c["exp"] = json!(T0 - 30)),
+            ok("k1", &|c| c["exp"] = json!(T0 - 30)),
             200,
         ),
         (
             "not valid for more than a minute",
-            ok(OWNER, "k1", &|c| c["nbf"] = json!(T0 + 61)),
+            ok("k1", &|c| c["nbf"] = json!(T0 + 61)),
             403,
         ),
         (
             "no expiry",
-            ok(OWNER, "k1", &|c| {
+            ok("k1", &|c| {
                 c.as_object_mut().unwrap().remove("exp");
             }),
             403,
         ),
         (
             "a key the provider does not publish",
-            ok(OWNER, "k9", &|_| {}),
+            ok("k9", &|_| {}),
             403,
         ),
         (
@@ -161,7 +190,8 @@ async fn only_a_token_with_every_check_passing_is_let_in() {
                 ROTATED_KEY_DER,
                 &issuer.issuer(),
                 AUDIENCE,
-                OWNER,
+                OWNER_SUBJECT,
+                Some(OWNER_EMAIL),
                 "k1",
                 |_| {},
             ),
@@ -179,7 +209,7 @@ async fn a_token_signed_another_way_than_rs256_is_refused() {
     let issuer = Issuer::start().await;
     let (running, _) = behind_oidc(&issuer, |setting| setting).await;
     let claims = json!({
-        "iss": issuer.issuer(), "aud": AUDIENCE, "exp": T0 + 600, "nbf": T0 - 60, "email": OWNER,
+        "iss": issuer.issuer(), "aud": AUDIENCE, "exp": T0 + 600, "nbf": T0 - 60, "sub": OWNER_SUBJECT,
     });
 
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
@@ -248,36 +278,48 @@ async fn a_request_without_the_token_where_the_setting_says_is_refused() {
 #[tokio::test]
 async fn another_header_and_another_claim_are_read_as_the_setting_says() {
     let issuer = Issuer::start().await;
-    let (running, _) = behind_oidc(&issuer, |setting| {
+    let (running, memory) = behind_oidc(&issuer, |setting| {
         setting
             .with_token_header("X-Forwarded-Access-Token")
             .with_email_claim("upn")
     })
     .await;
-    let with_upn = |claims: &mut Value| {
+    add_carol(&running, &memory);
+    let carol = |edit: fn(&mut Value)| {
+        token(
+            &issuer.issuer(),
+            AUDIENCE,
+            "carol-subject",
+            Some(CAROL),
+            "k1",
+            edit,
+        )
+    };
+    let email_in_upn = |claims: &mut Value| {
         let email = claims.as_object_mut().unwrap().remove("email").unwrap();
         claims["upn"] = email;
     };
-    let jwt = owner_token(&issuer, with_upn);
+    let header = "x-forwarded-access-token";
 
     assert_eq!(
-        status(&running, Some(("x-forwarded-access-token", jwt.clone()))).await,
+        status(&running, Some((header, owner_token(&issuer, |_| {})))).await,
         200,
-        "the token alone in the header, the email in `upn`"
+        "the owner's token alone in the header: the subject names the owner, whatever claim holds the email"
     );
     assert_eq!(
-        bearer(&running, jwt).await,
+        status(&running, Some((header, carol(email_in_upn)))).await,
+        200,
+        "a guest's email in the claim the setting names"
+    );
+    assert_eq!(
+        bearer(&running, carol(email_in_upn)).await,
         403,
         "the Authorization header is not read when the setting names another"
     );
     assert_eq!(
-        status(
-            &running,
-            Some(("x-forwarded-access-token", owner_token(&issuer, |_| {})))
-        )
-        .await,
+        status(&running, Some((header, carol(|_| {})))).await,
         403,
-        "a token with the email in `email` has no `upn`"
+        "an email in `email` is not in `upn`, so it names no guest"
     );
 }
 
@@ -286,7 +328,16 @@ async fn keys_that_rotate_are_followed_no_more_than_once_a_minute() {
     let issuer = Issuer::start().await;
     let (running, _) = behind_oidc(&issuer, |setting| setting).await;
     let k1 = || owner_token(&issuer, |_| {});
-    let k2 = || token(&issuer.issuer(), AUDIENCE, OWNER, "k2", |_| {});
+    let k2 = || {
+        token(
+            &issuer.issuer(),
+            AUDIENCE,
+            OWNER_SUBJECT,
+            Some(OWNER_EMAIL),
+            "k2",
+            |_| {},
+        )
+    };
 
     assert_eq!(bearer(&running, k1()).await, 200);
     assert_eq!(issuer.times_asked(KEYS), 1);
@@ -434,40 +485,95 @@ async fn a_key_set_address_in_discovery_that_is_not_https_is_refused_unread() {
 }
 
 #[tokio::test]
-async fn a_guest_is_let_in_to_its_own_routes_and_the_owner_to_all() {
+async fn a_guest_is_let_in_by_a_verified_email_and_the_owner_by_the_subject() {
     let issuer = Issuer::start().await;
     let (running, memory) = behind_oidc(&issuer, |setting| setting).await;
     add_carol(&running, &memory);
-    let as_carol = || token(&issuer.issuer(), AUDIENCE, CAROL, "k1", |_| {});
+    let carol = |edit: fn(&mut Value)| {
+        token(
+            &issuer.issuer(),
+            AUDIENCE,
+            "carol-subject",
+            Some(CAROL),
+            "k1",
+            edit,
+        )
+    };
+    let me = |jwt: String| call(&running, Method::GET, "/api/me", jwt, None);
 
-    let (status, me) = call(&running, Method::GET, "/api/me", as_carol(), None).await;
-    assert_eq!(status, 200, "{me}");
-    assert_eq!(me["guest"], json!({ "member": "carol", "org": "acme" }));
-    let (status, _) = call(&running, Method::GET, "/api/metrics", as_carol(), None).await;
+    let (status, answer) = me(carol(|_| {})).await;
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["guest"], json!({ "member": "carol", "org": "acme" }));
+    let (status, _) = call(&running, Method::GET, "/api/metrics", carol(|_| {}), None).await;
     assert_eq!(status, 403, "the owner's routes are not a guest's");
-    let (status, _) = call(
-        &running,
-        Method::GET,
-        "/api/me",
-        token(&issuer.issuer(), AUDIENCE, "dave@example.com", "k1", |_| {}),
-        None,
-    )
+
+    let (status, _) = me(carol(|c| c["email_verified"] = json!("true"))).await;
+    assert_eq!(status, 200, "some providers say it as text");
+    for (what, edit) in [
+        (
+            "an email the provider did not verify",
+            (|c: &mut Value| c["email_verified"] = json!(false)) as fn(&mut Value),
+        ),
+        ("an email with no word on it", |c| {
+            c.as_object_mut().unwrap().remove("email_verified");
+        }),
+        ("an email verified as another text", |c| {
+            c["email_verified"] = json!("yes")
+        }),
+        ("an email verified as a number", |c| {
+            c["email_verified"] = json!(1)
+        }),
+    ] {
+        let (status, _) = me(carol(edit)).await;
+        assert_eq!(status, 403, "{what} names no guest");
+    }
+
+    let (status, _) = me(token(
+        &issuer.issuer(),
+        AUDIENCE,
+        "dave-subject",
+        Some("dave@example.com"),
+        "k1",
+        |_| {},
+    ))
+    .await;
+    assert_eq!(status, 403, "neither the owner nor a guest");
+    let (status, _) = me(token(
+        &issuer.issuer(),
+        AUDIENCE,
+        "someone-else",
+        Some(OWNER_EMAIL),
+        "k1",
+        |_| {},
+    ))
     .await;
     assert_eq!(
         status, 403,
-        "an email that is neither the owner's nor a guest's"
+        "the owner's email, verified, under another subject, is not the owner"
     );
 
-    let (status, me) = call(
-        &running,
-        Method::GET,
-        "/api/me",
-        owner_token(&issuer, |_| {}),
-        None,
-    )
-    .await;
-    assert_eq!(status, 200, "{me}");
-    assert_eq!(me["account"]["id"], "alice");
+    let (status, answer) = me(owner_token(&issuer, |_| {})).await;
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["account"]["id"], "alice");
+}
+
+#[tokio::test]
+async fn a_discovery_document_for_another_issuer_is_not_taken() {
+    let issuer = Issuer::start().await;
+    issuer.answer(
+        DISCOVERY,
+        Answer::Json(
+            json!({ "issuer": "https://another.example.test", "jwks_uri": issuer.keys_url() }),
+        ),
+    );
+    let (running, _) = behind_oidc(&issuer, |setting| setting).await;
+
+    assert_eq!(bearer(&running, owner_token(&issuer, |_| {})).await, 403);
+    assert_eq!(
+        issuer.times_asked(KEYS),
+        0,
+        "the key set it names is never read"
+    );
 }
 
 /// A request through the gateway, as `jwt`.
@@ -533,11 +639,21 @@ async fn behind_a_provider_a_local_request_reads_but_only_the_signed_in_owner_wr
         &running,
         Method::POST,
         "/api/push/tokens",
-        token(&issuer.issuer(), AUDIENCE, "dave@example.com", "k1", |_| {}),
+        token(
+            &issuer.issuer(),
+            AUDIENCE,
+            "someone-else",
+            Some(OWNER_EMAIL),
+            "k1",
+            |_| {},
+        ),
         Some(write),
     )
     .await;
-    assert_eq!(status, 403, "another email's write");
+    assert_eq!(
+        status, 403,
+        "the owner's email under another subject writes nothing"
+    );
 }
 
 #[tokio::test]

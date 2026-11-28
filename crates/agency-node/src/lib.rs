@@ -148,7 +148,6 @@ pub struct Opened {
     recorder: Recorder,
 }
 
-/// Opens the node whose configuration and account key live in `data`.
 /// A node signs people in from outside in one way, `access` or `oidc`, never both, and with a setting that is
 /// well formed: a typo there would otherwise leave the node running with outside requests refused and nothing
 /// but a log line to say why.
@@ -164,6 +163,7 @@ fn check_sign_in(config: &NodeConfig) -> Result<(), String> {
     }
 }
 
+/// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     data.check_format()?;
     let key = data.load_key()?;

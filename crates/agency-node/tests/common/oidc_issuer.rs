@@ -207,12 +207,19 @@ where
     stream.shutdown().await
 }
 
-/// A token for `email` from this issuer, signed by the key that `kid` names (`k1` is `TEST_KEY_DER`, `k2` is
-/// `ROTATED_KEY_DER`), valid around T0 (2026-11-24T12:00:00Z) unless `edit` changes the claims.
+/// The owner's subject at the test issuer: what the node's setting names (`ownerSubject`).
+pub const OWNER_SUBJECT: &str = "00000000-0000-0000-0000-00000000a11c";
+/// The email the owner's tokens carry. The node does not use it to tell who the owner is.
+pub const OWNER_EMAIL: &str = "alice@example.com";
+
+/// A token for the subject `sub` from this issuer, with `email` (verified: `email_verified` true) when there
+/// is one, signed by the key that `kid` names (`k1` is `TEST_KEY_DER`, `k2` is `ROTATED_KEY_DER`), valid
+/// around T0 (2026-11-24T12:00:00Z) unless `edit` changes the claims.
 pub fn token(
     issuer: &str,
     audience: &str,
-    email: &str,
+    sub: &str,
+    email: Option<&str>,
     kid: &str,
     edit: impl FnOnce(&mut Value),
 ) -> String {
@@ -220,7 +227,7 @@ pub fn token(
         "k2" => ROTATED_KEY_DER,
         _ => TEST_KEY_DER,
     };
-    token_signed_with(key, issuer, audience, email, kid, edit)
+    token_signed_with(key, issuer, audience, sub, email, kid, edit)
 }
 
 /// `token`, signed by `key` whatever `kid` says.
@@ -228,15 +235,19 @@ pub fn token_signed_with(
     key: &[u8],
     issuer: &str,
     audience: &str,
-    email: &str,
+    sub: &str,
+    email: Option<&str>,
     kid: &str,
     edit: impl FnOnce(&mut Value),
 ) -> String {
     let t0 = 1_795_521_600;
     let mut claims = json!({
-        "iss": issuer, "aud": audience, "exp": t0 + 600, "nbf": t0 - 60, "iat": t0 - 60,
-        "sub": "subject-1", "email": email,
+        "iss": issuer, "aud": audience, "exp": t0 + 600, "nbf": t0 - 60, "iat": t0 - 60, "sub": sub,
     });
+    if let Some(email) = email {
+        claims["email"] = json!(email);
+        claims["email_verified"] = json!(true);
+    }
     edit(&mut claims);
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some(kid.to_owned());
@@ -251,7 +262,7 @@ pub fn token_signed_with(
 /// The audience of the tokens of these tests: the client id the node is registered under.
 pub const AUDIENCE: &str = "agency-node";
 
-/// alice's node behind `issuer`, with owner `alice@example.com`, one request (`r-1`) waiting, and its key
+/// alice's node behind `issuer`, whose owner is `OWNER_SUBJECT`, one request (`r-1`) waiting, and its key
 /// fetch (the node's real one) trusting the test CA. `edit` changes the setting before the node starts.
 pub async fn behind_oidc(
     issuer: &Issuer,
@@ -270,7 +281,7 @@ pub async fn behind_oidc(
         PUBLIC_HOST,
         issuer.issuer(),
         AUDIENCE,
-        "alice@example.com",
+        OWNER_SUBJECT,
     ));
     running
         .node

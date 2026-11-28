@@ -4,7 +4,9 @@
 #   oidc-test-leaf.der        the certificate of the loopback issuer ("localhost" and 127.0.0.1), signed by it
 #   oidc-test-leaf-key.der    its private key (PKCS#8)
 #   oidc-rotated-test-key.der a second RSA key (PKCS#1), for the key rotation tests
-# None of them is used anywhere but in these tests. They last 100 years, so nothing needs making again; run this
+# Test only, never reused: the private keys here are published with the repository, and nothing real trusts
+# them (the CA is added to a client only by `HttpCerts::trusting`, which the tests alone call). Do not copy them
+# for anything else. None of them is used anywhere but in these tests. They last 100 years, so nothing needs making again; run this
 # only to replace them, and then put the new modulus of the rotated key in `ROTATED_KEY_N`:
 #   openssl rsa -in oidc-rotated-test-key.der -inform DER -modulus -noout | sed 's/Modulus=//' | xxd -r -p | base64 -w0 | tr '+/' '-_' | tr -d '='
 set -euo pipefail
