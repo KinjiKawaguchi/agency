@@ -75,7 +75,7 @@ type MockNodeOptions = FeatureOptions & {
   view?: TeamView
   /** When set, the node answers every call with this status, to exercise error paths. */
   failWith?: number
-  /** Adds the orgs Lab and Club, with a stuck team, a stale copy, a busy team, and one that cannot be read. */
+  /** Adds the orgs Lab and Club, with a stuck team, a stale copy, a large team, and one that cannot be read. */
   moreOrgs?: boolean
   /** Makes the `site` team a stale copy that could not be refreshed for this reason. */
   siteError?: string

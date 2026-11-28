@@ -195,12 +195,19 @@ describe('org chart', () => {
       await waitFor(async () => expect(await box('Team', 'Shop')).toHaveTextContent('Could not read this team'))
     })
 
-    it('shows participants as faces in the team’s box, six at most, and says how many more', async () => {
-      const extra = ['a', 'b', 'c', 'd'].map((id) => ({ id: `extra-${id}`, label: `Extra ${id}`, kind: 'agent' as const, role: 'member' as const, state: 'idle' as const, status: 'Idle', holding: [] }))
-      renderApp({ path: '/org', moreOrgs: true, view: { ...sampleTeamView, people: [...sampleTeamView.people, ...extra] } })
-      await waitFor(async () => expect((await box('Team', 'App')).querySelectorAll('.oc-faces .face')).toHaveLength(6))
-      expect((await box('Team', 'App')).querySelector('.oc-more')).toHaveTextContent(/^\+\d+$/)
-      expect((await box('Team', 'Site')).querySelector('.oc-more')).toBeNull()
+    it('shows every agent of a team as a face in its box, however many there are, and folds none into a count', async () => {
+      const agentsOf = (view: typeof sampleTeamView) => view.people.filter((person) => person.kind === 'agent')
+      const extra = Array.from({ length: 9 }, (_, index) => ({ id: `extra-${index}`, label: `Extra ${index}`, kind: 'agent' as const, role: 'member' as const, state: 'idle' as const, status: 'Idle', holding: [] }))
+      const view = { ...sampleTeamView, people: [...sampleTeamView.people, ...extra] }
+      renderApp({ path: '/org', moreOrgs: true, view })
+      const crowd = agentsOf(view).length
+      expect(crowd).toBeGreaterThan(6)
+      await waitFor(async () => expect((await box('Team', 'App')).querySelectorAll('.oc-faces .face')).toHaveLength(crowd))
+      const faces = [...(await box('Team', 'App')).querySelectorAll('.oc-faces .face')]
+      expect(faces.map((face) => face.getAttribute('title'))).toEqual(agentsOf(view).map((agent) => `${agent.label}: ${agent.status}`))
+      // The count is said once, in words, and nothing stands in place of the faces that do not fit.
+      expect((await box('Team', 'App')).textContent).not.toMatch(/\+\d/)
+      expect((await box('Team', 'Garden')).querySelectorAll('.oc-faces .face')).toHaveLength(13)
     })
 
     it('opens one org’s own chart from its box, and offers all of them first in the menu', async () => {

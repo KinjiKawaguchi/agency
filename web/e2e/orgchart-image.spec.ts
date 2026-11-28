@@ -103,3 +103,63 @@ test('fits the chart to the width and zooms it', async ({ page }) => {
   await percent.click()
   await expect(percent).toHaveText('100%')
 })
+
+// A large team: the chart of every org gives every agent of it a face in its box, with nothing folded into a count.
+const GARDEN = '.orgchart.all .oc-node.team:has(.oc-name:text-is("Garden"))'
+
+test('a large team shows every agent in its box, which grows to hold them', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.goto('/org')
+  const garden = page.locator(GARDEN)
+  const faces = garden.locator('.oc-faces .face')
+  await expect(faces).toHaveCount(13)
+  await expect(garden.locator('.oc-more')).toHaveCount(0)
+  expect(await garden.innerText()).not.toMatch(/\+\d/)
+  // The agents wrap onto several lines, every face inside the box, and a smaller team's box is shorter.
+  const box = (await garden.boundingBox())!
+  const rows = new Set<number>()
+  for (const face of await faces.all()) {
+    const at = (await face.boundingBox())!
+    rows.add(Math.round(at.y))
+    expect(at.x).toBeGreaterThanOrEqual(box.x)
+    expect(at.x + at.width).toBeLessThanOrEqual(box.x + box.width + 0.5)
+    expect(at.y).toBeGreaterThanOrEqual(box.y)
+    expect(at.y + at.height).toBeLessThanOrEqual(box.y + box.height + 0.5)
+  }
+  expect(rows.size).toBeGreaterThan(1)
+  const research = (await page.locator('.orgchart.all .oc-node.team:has(.oc-name:text-is("Research"))').boundingBox())!
+  expect(box.height).toBeGreaterThan(research.height)
+})
+
+test('the image of a chart with a large team holds every agent of it', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.goto('/org?theme=light')
+  const faces = page.locator(`${GARDEN} .oc-faces .face`)
+  await expect(faces).toHaveCount(13)
+  const titles = await faces.evaluateAll((elements) => elements.map((element) => element.getAttribute('title') ?? ''))
+  expect(titles).toHaveLength(13)
+  const natural = await page.locator('.orgchart').evaluate((element) => ({ width: (element as HTMLElement).offsetWidth, height: (element as HTMLElement).offsetHeight }))
+  const svgDownload = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'SVG' }).click()
+  const svg = readFileSync(((await (await svgDownload).path()) ?? ''), 'utf8')
+  for (const title of titles) expect(svg).toContain(`title="${title}"`)
+  expect(svg).toContain(`height="${natural.height + 48}"`)
+  const pngDownload = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'PNG' }).click()
+  const { width, height } = pngSize(readFileSync(((await (await pngDownload).path()) ?? '')))
+  expect(width / height).toBeCloseTo((natural.width + 48) / (natural.height + 48), 1)
+  expect(height).toBeGreaterThanOrEqual(natural.height + 48)
+})
+
+test('on a phone the large team’s agents wrap inside its box and the page does not scroll sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto('/org')
+  const garden = page.locator(GARDEN)
+  await expect(garden.locator('.oc-faces .face')).toHaveCount(13)
+  const box = (await garden.boundingBox())!
+  for (const face of await garden.locator('.oc-faces .face').all()) {
+    const at = (await face.boundingBox())!
+    expect(at.x + at.width).toBeLessThanOrEqual(box.x + box.width + 0.5)
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+})

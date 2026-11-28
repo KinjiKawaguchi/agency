@@ -1,0 +1,36 @@
+// The org chart screen.
+import type { Messages } from '../en'
+
+export const org: Messages['org'] = {
+  chartLabel: '組織図',
+  allChartLabel: 'すべての組織の図',
+  allOrgs: 'すべての組織',
+  allTitle: 'あなたのすべての組織',
+  orgUnavailable: '読み込めません',
+  someUnread: '読み込めないチームがあります',
+  title: (label) => `${label} の組織`,
+  whole: '組織全体に戻る',
+  chooseOrg: '組織',
+  kinds: { account: 'アカウント', organization: '組織', department: '部署', team: 'チーム', member: 'メンバー', lead: 'リード (エージェント)', agent: 'エージェント' },
+  ledBy: (name) => `長は ${name}`,
+  noHead: '長はいません',
+  you: 'あなた',
+  answerer: '回答のみ',
+  agents: (total, working) => `エージェント ${total} 体、${working} 体が作業中`,
+  oldData: '古いデータ',
+  yourTurn: 'あなたの返事待ち',
+  emptyDepartment: 'この部署にはまだ誰もいません。',
+  teamUnavailable: 'このチームを読み込めませんでした',
+  view: {
+    toolbar: '図の表示',
+    zoom: '拡大縮小',
+    fit: '幅に合わせる',
+    zoomIn: '拡大',
+    zoomOut: '縮小',
+    actualSize: '実寸',
+    download: '画像としてダウンロード',
+    pngHint: '文書やスライドに貼るための画像',
+    svgHint: 'ブラウザで開けます。描画ソフトや資料作成のソフトでは空に見えることがあります',
+    downloadFailed: (format, reason) => `${format.toUpperCase()} を作れませんでした: ${reason}${format === 'png' ? ' SVG を試し、ブラウザで開いてください。' : ''}`,
+  },
+}
