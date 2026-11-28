@@ -149,6 +149,8 @@ pub trait ClaimStore {
     fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
     fn remove_claim(&self, digest: &str) -> Result<()>;
     fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()>;
+    /// Drops the open claim link of `seat` and the index entry that names it. Nothing to drop is not an error.
+    fn remove_claim_for_seat(&self, org: &Id, seat: &Id) -> Result<()>;
 }
 
 /// The envelopes already applied, for replay protection.
@@ -269,6 +271,8 @@ pub trait GuestStore {
         guest: &agency_proto::client::GuestRef,
         keys: &[String],
     ) -> Result<()>;
+    /// Drops the list of requests a guest was told of. Nothing to drop is not an error.
+    fn remove_guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Result<()>;
 }
 
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.

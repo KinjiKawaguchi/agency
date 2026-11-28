@@ -314,6 +314,25 @@ Each browser and phone that decides for you has its own key, which it makes and 
 A request waits for an hour, and the node keeps at most 10.
 A browser makes a key only on `https` or on the node's own machine (`127.0.0.1`); elsewhere the page says it cannot.
 
+### End a person's access
+
+A person who left, or whose device was lost, is ended on the root's node. List the members this node hosts, with how many devices each has (no email), then end one:
+
+```sh
+agency guests --org acme
+agency guest-remove --org acme --member carol
+```
+
+One signed version takes the member out of the org and revokes the keys of their devices, so nothing they signed is taken on any node of the org. The node drops their sign-in, their push registrations and its list of the requests they were told of. The decision log keeps what they decided.
+
+The command is refused while something still names the member: a team on this node that addresses them, a seat they answer for, a department they head. To end a person's access without losing the requests addressed to them, add `--to-seat`: a seat of the member's id takes their place in the same version (with their label, department and what to ask about, and one seat for each seat they had taken), and a claim link made before for one of those seats stops working.
+
+```sh
+agency guest-remove --org acme --member carol --to-seat --answered-by bob
+```
+
+`--answered-by` names the members who answer for the seat, in order of preference (repeat it for more); without it, the team's owner answers. Their Access email stays in your Access policy until you remove it there: the node does not change Access.
+
 ## Installing the web client as an app
 
 The web client can be installed as an app, so that Android, Windows, and Linux have one without a native build: it opens in a window of its own, with its own icon, and keeps the sign-in of the browser it was installed from. On the **Devices** screen, **Install Agency** appears where the browser offers it (Chrome and Edge, on Android, Windows, Linux, and Mac); in Safari on a Mac, choose File, then Add to Dock. The iPhone has its own app ([apple.md](apple.md)).
