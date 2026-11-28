@@ -2,7 +2,7 @@ import AgencyAPI
 import Foundation
 
 extension Ja {
-    /// The participants and work screen, from the web client's Japanese (`people` in `ja.ts`).
+    /// The participants and work screen, from the web client's Japanese (`people` in `ja/people.ts`).
     public enum People {
         public static let title = "参加者と仕事"
         public static let roleLead = "リード"
