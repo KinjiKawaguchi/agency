@@ -69,7 +69,7 @@ final class NativeSession {
         let tap = TelemetryTap()
         let transport = URLSessionTransport(homeNode: homeNode)
         let client = NodeClient(
-            transport: ClientTelemetry.reports(from: ClientIdentity.platform)
+            transport: ClientTelemetry.reports(from: Self.platform)
                 ? TimedTransport(transport) { sample in Task { @MainActor in tap.telemetry?.record(sample) } } : transport,
             accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
         )
@@ -130,6 +130,15 @@ final class NativeSession {
             host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)),
             sink: WidgetAppGroupSink()
         )
+    }
+
+    /// The platform this app was built for.
+    private static var platform: ClientIdentity.Platform {
+        #if os(macOS)
+        .macos
+        #else
+        .ios
+        #endif
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
