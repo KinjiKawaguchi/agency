@@ -1,0 +1,75 @@
+{
+  "org": "acme",
+  "team": "app",
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "epics": [
+    {
+      "ref": "app#10",
+      "title": "Sign in with a passkey",
+      "status": "inProgress",
+      "team": "App",
+      "assignee": "lead",
+      "priority": "high",
+      "effectivePriority": "high",
+      "prioritizeWith": "app#10",
+      "pullRequests": [],
+      "children": [
+        {
+          "ref": "app#12",
+          "title": "Store the passkey's public key",
+          "status": "done",
+          "team": "App",
+          "assignee": "alice",
+          "points": 3,
+          "effectivePriority": "high",
+          "prioritizeWith": "app#12",
+          "pullRequests": []
+        },
+        {
+          "ref": "app#13",
+          "title": "Ask for a passkey on the sign-in page",
+          "status": "inProgress",
+          "team": "App",
+          "assignee": "bob",
+          "points": 5,
+          "effectivePriority": "high",
+          "prioritizeWith": "app#13",
+          "pullRequests": [
+            { "repo": "acme/app", "number": 41, "title": "feat(web): ask for a passkey on the sign-in page" }
+          ]
+        },
+        {
+          "ref": "site#7",
+          "title": "Explain passkeys on the help page",
+          "status": "backlog",
+          "team": "Site",
+          "points": 1,
+          "priority": "low",
+          "effectivePriority": "low",
+          "pullRequests": []
+        }
+      ]
+    }
+  ],
+  "withoutEpic": [
+    {
+      "ref": "app#20",
+      "title": "Fix the date on the invoice page",
+      "status": "next",
+      "team": "App",
+      "points": 1,
+      "prioritizeWith": "app#20",
+      "pullRequests": []
+    },
+    {
+      "ref": "app#21",
+      "title": "Try a dark theme",
+      "status": "backlog",
+      "team": "App",
+      "priority": "deferred",
+      "effectivePriority": "deferred",
+      "prioritizeWith": "app#21",
+      "pullRequests": []
+    }
+  ]
+}
