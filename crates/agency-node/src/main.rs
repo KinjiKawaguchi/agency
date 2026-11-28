@@ -5,6 +5,7 @@ mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
+mod member_cli;
 mod metrics_cli;
 mod outcome_cli;
 mod peer_cli;
@@ -15,7 +16,6 @@ mod seen_cli;
 mod team_cli;
 
 use agency_adapters::files::DataDir;
-use agency_adapters::system::OutboxWake;
 use agency_core::config::{Account, HostedTeam, NodeConfig, RuntimeCommand};
 use agency_core::decisions::Decided;
 use agency_core::invites::{finish_joins, join, Joined};
@@ -23,8 +23,6 @@ use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
-use agency_core::push::notify_waiting;
-use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -107,6 +105,7 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
@@ -259,6 +258,7 @@ fn owner_of(account: &str, label: &str) -> Result<Account> {
 }
 
 fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
+    data.check_format()?;
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
@@ -275,6 +275,7 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
     data.save_config(&config)?;
+    data.ensure_format()?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
@@ -457,9 +458,6 @@ fn confirm_join(definition: &agency_proto::OrgDefinition) -> bool {
     std::io::stdin().read_line(&mut answer).is_ok() && answer.trim().eq_ignore_ascii_case("y")
 }
 
-/// How long the outbox waits for a parcel to be queued before it looks for parcels whose retry is due.
-const OUTBOX_ROUND: Duration = Duration::from_secs(2);
-
 async fn serve(opened: agency_node::Opened) -> Result<()> {
     let node = opened.node.clone();
     let listen = node.config().listen;
@@ -491,64 +489,11 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
-    let wake = std::sync::Arc::new(OutboxWake::default());
-    node.set_outbox_bell(wake.clone());
-    let delivering = node.clone();
-    let delivering_log = logger.clone();
-    tokio::spawn(async move {
-        loop {
-            if let Err(error) = deliver_due(&delivering).await {
-                delivering_log.warn("outbox", &format!("delivering the outbox failed: {error}"));
-            }
-            wake.wait(OUTBOX_ROUND).await;
-        }
-    });
-    let background = node.clone();
-    let background_log = logger.clone();
-    tokio::spawn(async move {
-        let logger = background_log;
-        let mut tick = 0u64;
-        loop {
-            if tick.is_multiple_of(2) {
-                // Expired held changes are dropped, and a held join's invite freed, even when nobody looks.
-                if let Err(error) = agency_core::pending_root::waiting(&background) {
-                    logger.warn("root", &format!("sweeping held changes failed: {error}"));
-                }
-                if let Err(error) = finish_joins(&background).await {
-                    logger.warn("joins", &format!("asking for held joins failed: {error}"));
-                }
-                if let Err(error) = refresh(&background).await {
-                    logger.warn(
-                        "replicas",
-                        &format!("re-reading the replicas failed: {error}"),
-                    );
-                }
-                if let Err(error) = record_all(&background).await {
-                    eprintln!("agency: remembering the days epics shipped failed: {error}");
-                }
-                match notify_waiting(&background).await {
-                    Ok(pass) => {
-                        for recovery in pass.recoveries {
-                            logger.warn("recovery", &recovery);
-                            eprintln!("agency: {recovery}");
-                        }
-                        for failure in pass.failures {
-                            logger.warn(
-                                "push",
-                                &format!("a push notification was not sent: {failure}"),
-                            );
-                        }
-                    }
-                    Err(error) => logger.warn(
-                        "requests",
-                        &format!("checking for new requests failed: {error}"),
-                    ),
-                }
-            }
-            tick += 1;
-            tokio::time::sleep(Duration::from_secs(15)).await;
-        }
-    });
+    agency_node::background::start(
+        node.clone(),
+        logger.clone(),
+        agency_node::background::Schedule::default(),
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -589,6 +534,7 @@ async fn run(cli: Cli) -> Result<()> {
         .with_local_clients(!no_local_clients);
         return init(&data, config);
     }
+    data.check_format()?;
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
@@ -671,6 +617,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,

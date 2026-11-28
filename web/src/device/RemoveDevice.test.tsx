@@ -225,6 +225,28 @@ describe('removing one of the account’s devices', () => {
     expect(await listedBy(node)).toEqual([['acme', ['Work laptop']]])
   })
 
+  it('asks the node for as many entries of the log as it gives, and says "at least" when the answer is full', async () => {
+    const user = userEvent.setup()
+    const node = withLaptop()
+    const asked: string[] = []
+    // A log that is full (200 entries), each one held by the node: the count read is a floor, not the number there are.
+    const client = createApiClient(async (request) => {
+      const url = new URL(request.url, 'http://mock.local')
+      const reply = await node.handle(request)
+      if (url.pathname !== '/api/decisions' || request.method !== 'GET') return reply
+      asked.push(url.search)
+      const log = (await reply.json()) as { entries: Array<{ id: string; state: { kind: string } }> }
+      const [first] = log.entries
+      const many = Array.from({ length: 200 }, (_, index) => ({ ...first, id: `e-${index}`, state: { kind: 'queued', attempts: 1 } }))
+      return new Response(JSON.stringify({ entries: many }), { headers: { 'content-type': 'application/json' } })
+    })
+    renderApp({ path: '/devices', node, client, enrolled: true })
+    await user.click(await screen.findByRole('button', { name: 'Remove Work laptop' }))
+    const panel = await screen.findByRole('group', { name: 'Remove Work laptop?' })
+    expect(await within(panel).findByText('At least 200 decisions are saved, not delivered. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+    expect(asked.some((search) => search.includes('limit=200'))).toBe(true)
+  })
+
   it('says nothing of undelivered decisions when the node holds none', async () => {
     const user = userEvent.setup()
     renderApp({ path: '/devices', node: withLaptop({ earlierDecisions: false }), enrolled: true })

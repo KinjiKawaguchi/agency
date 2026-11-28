@@ -102,6 +102,8 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node that ties a push registration to the device it names (the capability `pushDevice`): it takes `device` on a registration and drops the registrations of a device that is removed. Otherwise a registration that names one is refused as an unknown field, as an older node does. */
   pushDevice?: boolean
+  /** A node with the evaluation also serves where a team's tokens went by work type (`GET /api/orgs/{org}/effort`) and says so with the `effort` capability; `false` makes it a node without it: not listed, and the route answers 404. */
+  effort?: boolean
   /** True for a node with Web Push: it gives its key and keeps a subscription for each browser. Otherwise those routes answer 404, as a node without `webPush`. */
   webPush?: boolean
   /** With `webPush`: every browser's push service has refused the last notice it was sent. */
@@ -168,10 +170,10 @@ const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean }): About => ({
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; effort?: boolean }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...(options.effort === true ? ['effort'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -320,6 +322,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     const all = known.teams.map((team) => team.id)
     const left = options.evaluationUnavailableTeam
     const teams = all.filter((team) => team !== left)
+    if (route === 'effort' && options.effort === false) return failure(404, 'No such route.')
     const report = route === 'effort' ? effortReport(org, teams, days, now) : evaluationReport(org, teams, days, now, options.participants === true)
     return json(left !== undefined && all.includes(left) ? { ...report, unavailable: [{ team: left, reason: 'Its node did not answer.' }] } : report)
   }
@@ -409,7 +412,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     if (options.guest !== undefined && isRefusedToGuest(url.pathname)) return failure(403, 'Not for a hosted member.')
     if (request.method === 'GET' && url.pathname === '/api/me') return json({ ...me, orgs: me.orgs.map((org): OrgRef => (recoveries[org.id] === undefined ? org : { ...org, recovery: recoveries[org.id] })), ...(rootChanges.length === 0 ? {} : { rootChanges }) })
     if (request.method === 'GET' && url.pathname === '/api/session') return json({ writeToken, now: new Date().toISOString() } satisfies Session)
-    if (request.method === 'GET' && url.pathname === '/api/about') return json(aboutOf(options))
+    if (request.method === 'GET' && url.pathname === '/api/about') return json(aboutOf({ ...options, effort: options.evaluation === true && options.effort !== false }))
     if (request.method === 'GET' && url.pathname === DECISIONS_PATH) {
       if (options.decisionLogFailsWith !== undefined) return failure(options.decisionLogFailsWith, 'The decision log could not be read.')
       const limit = Number(url.searchParams.get('limit') ?? DEFAULT_LIMIT)
