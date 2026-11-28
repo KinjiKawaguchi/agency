@@ -235,3 +235,20 @@ fn what_people_wrote_is_served_printable_and_nothing_else_changes() {
     assert_eq!(served.epics[0].ticket.title, shown);
     assert_eq!(sample().printable(), sample(), "plain text stays as it is");
 }
+
+#[test]
+fn a_ref_that_hides_or_reorders_text_is_refused_not_printed() {
+    for hidden in ["app#1\u{202E}2", "app#\u{200B}12", "app#12\n"] {
+        let tickets = changed(|tickets| tickets.without_epic[0].reference = hidden.into());
+        assert!(
+            check(&tickets).unwrap_err().contains("hides or reorders"),
+            "{hidden:?}"
+        );
+    }
+    let joined = changed(|tickets| tickets.without_epic[0].reference = "app#12 \u{200D}".into());
+    assert_eq!(
+        check(&joined),
+        Ok(()),
+        "a joiner a script needs is no hidden character"
+    );
+}
