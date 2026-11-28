@@ -120,97 +120,61 @@ impl About {
     }
 }
 
-/// An optional feature, or an optional field of a signed document that older nodes refuse. Names start at
-/// what came after the first release: every node has what the first release had. The meaning of each is in
-/// docs/compatibility.md ("Discovery"), and a test keeps that table and this list the same.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Capability {
-    /// `teams[].plan` in the org definition.
-    OrgPlan,
-    /// `teams[].plan.aims` in the org definition.
-    OrgAims,
-    /// `kpis` in the org definition.
-    OrgKpis,
-    /// `root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.
-    OrgRecovery,
-    /// `seats` in the org definition: places in the org that no one has taken yet, and the seats a member
-    /// took (`people[].formerly`, `people[].askAbout`).
-    OrgSeats,
-    /// `externals` in the org definition: people the org works with who never take a seat.
-    OrgExternals,
-    /// `people[].hostedBy` in the org definition: members with no node of their own, hosted by the root's
-    /// node, whose `publicKey` is left out.
-    HostedMembers,
-    /// A browser's Web Push subscriptions and the notices sent to them.
-    WebPush,
-    /// A team's activity feed.
-    Activity,
-    /// The owner's numbers and the readings of them.
-    Outcomes,
-    /// `device` in a push registration (an APNs token or a Web Push subscription), and the registrations
-    /// dropped with the device they name.
-    PushDevice,
-    /// Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and the federation read of it.
-    Effort,
-    /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
-    ReadAudience,
-    /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
-    Budget,
-    /// An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.
-    History,
-    /// The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.
-    Members,
-    /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
-    ClaimLinks,
-    /// A team's view read with a tag (`ETag`, `If-None-Match`): `304` with no body when it did not change.
-    ViewUnchanged,
+/// Declares `Capability`, `Capability::ALL` and `Capability::name()` from one line for each capability: its type
+/// name, its wire name and what it is. Adding a capability is one line here (and its row in docs/compatibility.md,
+/// which a test holds to these lines); the order is the order a node lists them in.
+macro_rules! capabilities {
+    (
+        $(#[$meta:meta])*
+        $($variant:ident $wire:literal $doc:literal;)*
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum Capability {
+            $(
+                #[doc = $doc]
+                $variant,
+            )*
+        }
+
+        impl Capability {
+            pub const ALL: [Capability; [$(Capability::$variant),*].len()] =
+                [$(Capability::$variant),*];
+
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Capability::$variant => $wire,)*
+                }
+            }
+        }
+    };
+}
+
+capabilities! {
+    /// An optional feature, or an optional field of a signed document that older nodes refuse. Names start at
+    /// what came after the first release: every node has what the first release had. The meaning of each is in
+    /// docs/compatibility.md ("Discovery"), and a test keeps that table and this list the same.
+    OrgPlan "orgPlan" "`teams[].plan` in the org definition.";
+    OrgAims "orgAims" "`teams[].plan.aims` in the org definition.";
+    OrgKpis "orgKpis" "`kpis` in the org definition.";
+    OrgRecovery "orgRecovery" "`root.recovery` and `root.pending` in the org definition: the recovery key and a started recovery.";
+    OrgSeats "orgSeats" "`seats` in the org definition: places in the org that no one has taken yet, and the seats a member took (`people[].formerly`, `people[].askAbout`).";
+    OrgExternals "orgExternals" "`externals` in the org definition: people the org works with who never take a seat.";
+    HostedMembers "hostedMembers" "`people[].hostedBy` in the org definition: members with no node of their own, hosted by the root's node, whose `publicKey` is left out.";
+    WebPush "webPush" "A browser's Web Push subscriptions and the notices sent to them.";
+    Activity "activity" "A team's activity feed.";
+    Outcomes "outcomes" "The owner's numbers and the readings of them.";
+    PushDevice "pushDevice" "`device` in a push registration (an APNs token or a Web Push subscription), and the registrations dropped with the device they name.";
+    Effort "effort" "Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and the federation read of it.";
+    ReadAudience "readAudience" "A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).";
+    Budget "budget" "A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.";
+    History "history" "An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.";
+    Members "members" "The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.";
+    ClaimLinks "claimLinks" "A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.";
+    ViewUnchanged "viewUnchanged" "A team's view read with a tag (`ETag`, `If-None-Match`): `304` with no body when it did not change.";
 }
 
 impl Capability {
-    pub const ALL: [Capability; 18] = [
-        Capability::OrgPlan,
-        Capability::OrgAims,
-        Capability::OrgKpis,
-        Capability::OrgRecovery,
-        Capability::OrgSeats,
-        Capability::OrgExternals,
-        Capability::HostedMembers,
-        Capability::WebPush,
-        Capability::Activity,
-        Capability::Outcomes,
-        Capability::PushDevice,
-        Capability::Effort,
-        Capability::ReadAudience,
-        Capability::Budget,
-        Capability::History,
-        Capability::Members,
-        Capability::ClaimLinks,
-        Capability::ViewUnchanged,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Capability::OrgPlan => "orgPlan",
-            Capability::OrgAims => "orgAims",
-            Capability::OrgKpis => "orgKpis",
-            Capability::OrgRecovery => "orgRecovery",
-            Capability::OrgSeats => "orgSeats",
-            Capability::OrgExternals => "orgExternals",
-            Capability::HostedMembers => "hostedMembers",
-            Capability::WebPush => "webPush",
-            Capability::Activity => "activity",
-            Capability::Outcomes => "outcomes",
-            Capability::PushDevice => "pushDevice",
-            Capability::Effort => "effort",
-            Capability::ReadAudience => "readAudience",
-            Capability::Budget => "budget",
-            Capability::History => "history",
-            Capability::Members => "members",
-            Capability::ClaimLinks => "claimLinks",
-            Capability::ViewUnchanged => "viewUnchanged",
-        }
-    }
-
     /// The capability a name stands for, or `None` for one this release does not know.
     pub fn parse(raw: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|one| one.name() == raw)
@@ -388,6 +352,28 @@ mod tests {
             }
             _ => {}
         }
+    }
+
+    /// The sample file is what `About::of_release` writes, so that adding a capability never edits it by hand.
+    /// `AGENCY_WRITE_FIXTURES=1` writes the file instead of comparing.
+    #[test]
+    fn the_sample_file_is_what_a_release_writes() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../testdata/about.sample.json"
+        );
+        let written = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&About::of_release("0.3.0")).unwrap()
+        );
+        if std::env::var("AGENCY_WRITE_FIXTURES").is_ok_and(|value| value == "1") {
+            std::fs::write(path, &written).unwrap();
+            return;
+        }
+        assert!(
+            std::fs::read_to_string(path).unwrap() == written,
+            "testdata/about.sample.json is out of date; run AGENCY_WRITE_FIXTURES=1 cargo test -p agency-proto --lib about and commit the file"
+        );
     }
 
     #[test]
