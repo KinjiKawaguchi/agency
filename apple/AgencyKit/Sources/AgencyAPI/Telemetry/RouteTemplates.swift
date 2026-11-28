@@ -3,36 +3,6 @@ import Foundation
 /// The routes a client may name when it reports what it observed (`POST /api/telemetry`), as `testdata/route-templates.json` lists them: a
 /// route is a method and a path whose ids are `{name}` (`GET /api/orgs/{org}/teams/{team}/view`). A call to anything else is not reported.
 public enum RouteTemplates {
-    public static let all: [String] = [
-        "GET /api/about",
-        "GET /api/me",
-        "GET /api/session",
-        "GET /api/decisions",
-        "GET /api/devices",
-        "POST /api/devices/requests",
-        "POST /api/devices/changes",
-        "GET /api/metrics",
-        "GET /api/orgs/{org}",
-        "GET /api/orgs/{org}/effort",
-        "GET /api/orgs/{org}/evaluation",
-        "GET /api/orgs/{org}/outcomes",
-        "GET /api/orgs/{org}/outcomes/observations",
-        "POST /api/orgs/{org}/outcomes/observations",
-        "GET /api/orgs/{org}/outcomes/readings",
-        "GET /api/orgs/{org}/teams/{team}/activity",
-        "GET /api/orgs/{org}/teams/{team}/budget",
-        "POST /api/orgs/{org}/teams/{team}/envelopes",
-        "GET /api/orgs/{org}/teams/{team}/usage",
-        "GET /api/orgs/{org}/teams/{team}/view",
-        "GET /api/push/subscriptions",
-        "POST /api/push/subscriptions",
-        "DELETE /api/push/subscriptions/{id}",
-        "GET /api/push/tokens",
-        "POST /api/push/tokens",
-        "DELETE /api/push/tokens/{token}",
-        "GET /api/push/vapid",
-    ]
-
     private static let segmentsOf: [(template: String, method: Substring, segments: [Substring])] = all.compactMap { template in
         let parts = template.split(separator: " ", maxSplits: 1)
         guard parts.count == 2 else { return nil }
