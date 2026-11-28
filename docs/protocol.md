@@ -190,6 +190,19 @@ Without it, a read made for one node verifies on any node of the org that serves
 
 `agency seat-invite --org <org> --seat <seat> --email <address>` makes one seven-day claim link for one unclaimed seat and one lowercased email. The root node keeps the record under the SHA-256 of its 16-random-byte code; the code is not stored. A newer link for the same seat replaces the older one. With Access, it prints `https://<publicHost>/claim#code=<code>` and the email for the owner to add to the Access policy by hand. Without Access, it prints the node's local claim address and says it works on that machine only. The email is node-local and never enters the org definition.
 
+**Redeeming the link.** The person opens the link, signs in to Access with the address it was made for, and their browser makes a device key (Ed25519 or P-256, as every device key) and redeems the code with it: the code, the key as text, and a label of 1 to 80 characters for the browser (`label_ok_to_write`: nothing that hides or reorders text). The node checks, in this order, and keeps nothing until all hold:
+
+- a code that no link has, and one that is spent, are the same answer: 404, with the same words (so the answer does not say which). A code is spent by a redeem, once, under the node's write lock, so two redeems of one link at once make one claim;
+- the link has expired (7 days): 410;
+- the signed-in address is not the one the link was made for: 403, and the answer names no address; the link is not spent by it;
+- the seat is not in the org any more: 409;
+- the key is not a device key: 400; it is a key the org already has (an account, root, recovery or revoked key, or a member's device) or one another claim holds: 409;
+- the label is not acceptable: 400.
+
+A refusal spends nothing: the same link works after the person fixes what was refused. No answer holds the address, the code, or the key.
+
+The redeem answers `ClaimStatus { state: "waiting" | "in", seat, org, pairingCode }`: `seat` and `org` are the labels the definition has, `pairingCode` the pairing code of the key the browser sent, which the person's browser shows and the owner compares on the node's side. The same shape answers the person's later asks for where it stands (by the signed-in address; 404 when that address redeemed nothing), `waiting` until the owner confirms, then `in`. The seat is still a seat until the owner confirms: confirming is a separate step, and the routes that carry these calls are separate too.
+
 ## Pending root changes
 
 A root key that asks for the owner's presence (the macOS keychain) never signs because someone else asked: a prompt that anyone can make appear teaches the owner to press without reading. So the root's node holds such changes for the owner and signs them in one run that the owner starts.
