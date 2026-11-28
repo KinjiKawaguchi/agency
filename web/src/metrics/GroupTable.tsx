@@ -25,11 +25,14 @@ function Cells({ row }: { row: Row }) {
  * The series of one kind by route group: each group's percentiles come from its buckets put together, and each group
  * opens to its routes. Nothing is drawn for a kind with no measured call.
  */
-export function GroupTable({ series, kind, title }: { series: readonly LatencySeries[]; kind: LatencySeries['kind']; title: string }) {
+export function GroupTable({ series, kind, title, client }: { series: readonly LatencySeries[]; kind: LatencySeries['kind']; title: string; client?: string }) {
   const { t } = useI18n()
   const text = t.metrics.groups
-  const groups = groupsOf(series, kind)
+  // A client's table is that client's series only.
+  const groups = groupsOf(client === undefined ? series : series.filter((one) => one.client === client), kind)
   if (groups.length === 0) return null
+  // Only what the node answered from its own state is an in-node read, and only in the table of what it answered: a client's observation of
+  // the same route has the network in it.
   const inNodeReads = new Set(series.filter((one) => one.isInNodeRead).map((one) => one.name))
   return (
     <div className="card mt-card">
@@ -56,7 +59,7 @@ export function GroupTable({ series, kind, title }: { series: readonly LatencySe
                 <tr key={route.key} className="mt-route" role="row">
                   <th scope="row" role="rowheader">
                     <code>{route.key}</code>
-                    {inNodeReads.has(route.key) ? <span className="mt-tag">{text.inNodeRead}</span> : null}
+                    {kind === 'serve' && inNodeReads.has(route.key) ? <span className="mt-tag">{text.inNodeRead}</span> : null}
                   </th>
                   <Cells row={route} />
                 </tr>
