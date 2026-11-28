@@ -8,7 +8,7 @@ public enum PlanState: Equatable, Sendable {
     case unreadable
 }
 
-/// A team's effort as the screen shows it: its cost by work type against the plan, its weekly budget, and its cost by day.
+/// A team's effort as the screen shows it: its cost by work type against the plan, and its cost by day.
 public struct TeamEffortReport: Equatable, Sendable, Identifiable {
     /// One work type: its share of the period's cost, and the org's intended share beside it.
     public struct AllocationRow: Equatable, Sendable, Identifiable {
@@ -26,16 +26,6 @@ public struct TeamEffortReport: Equatable, Sendable, Identifiable {
         public var id: EffortType { type }
     }
 
-    /// The last seven days' spend against the weekly budget the org set.
-    public struct Budget: Equatable, Sendable {
-        public let line: String
-        public let note: String
-        public let spoken: String
-        /// 0 to 1; a budget of nothing is full.
-        public let fraction: Double
-        public let isOver: Bool
-    }
-
     public struct TableRow: Equatable, Sendable, Identifiable {
         public let label: String
         public let cost: String
@@ -49,7 +39,8 @@ public struct TeamEffortReport: Equatable, Sendable, Identifiable {
     public let rows: [AllocationRow]
     /// Why there is nothing to compare, when there is not.
     public let planNote: String?
-    public let budget: Budget?
+    /// The weekly budget the plan states, in whole US dollars: what the plan intends, not how the week stands (that is the node's, `BudgetReport`).
+    public let plannedBudget: Int?
     public let byDay: EvaluationChart
     public let table: [TableRow]
     public var id: String { team }
@@ -70,7 +61,7 @@ public struct TeamEffortReport: Equatable, Sendable, Identifiable {
         case .unreadable: Ja.Effort.planUnreadable
         }
         rows = EffortType.allCases.map { type in Self.row(type, share: shares[type] ?? 0, intended: plan?.allocation[type]) }
-        budget = plan.map { Self.budget(spent: EffortAnalysis.weekSpend(effort.byDay, last: effort.until), plan: $0) }
+        plannedBudget = plan?.weeklyBudgetUsd
         byDay = Self.chart(effort, days: days)
         table = Self.table(effort, shares: shares, plan: plan)
     }
@@ -91,17 +82,6 @@ public struct TeamEffortReport: Equatable, Sendable, Identifiable {
             type: type, label: Ja.Effort.type(type), slot: slot(type), share: min(share, 100),
             shareText: Ja.Effort.actual(JaFormat.percent(Double(EffortAnalysis.shownShare(share)))),
             intended: intended, intendedText: intendedText
-        )
-    }
-
-    private static func budget(spent: Double, plan: TeamPlan) -> Budget {
-        let budget = Double(plan.weeklyBudgetUsd)
-        let isOver = spent > budget
-        return Budget(
-            line: Ja.Effort.budgetLine(spent: money(spent), of: money(budget)),
-            note: isOver ? Ja.Effort.budgetOver(money(spent - budget)) : Ja.Effort.budgetLeft(money(budget - spent)),
-            spoken: Ja.Effort.budgetMeter(spent: money(spent), of: money(budget)),
-            fraction: budget == 0 ? 1 : min(spent / budget, 1), isOver: isOver
         )
     }
 
