@@ -46,7 +46,7 @@ Writes must carry the page's token: the served `index.html` has `<meta name="age
 
 ## Language and theme
 
-All user-visible text is in `src/i18n/en.ts`; `ja.ts` implements the same `Messages` type, so a missing key fails type-checking. Add a locale by adding a catalog and listing it in `src/i18n/locale.ts`. The locale comes from `?lang=`, then the stored choice, then the browser.
+All user-visible text is in `src/i18n/en/`, one module per area of the app; `src/i18n/ja/` implements the same `Messages` type with the same modules, so a missing key fails type-checking. Add a locale by adding a catalog and listing it in `src/i18n/locale.ts`. The locale comes from `?lang=`, then the stored choice, then the browser.
 
 Colors are tokens in `src/theme/tokens.css`, each a `light-dark()` pair. The theme comes from `?theme=light|dark`, then the stored choice, then the system.
 

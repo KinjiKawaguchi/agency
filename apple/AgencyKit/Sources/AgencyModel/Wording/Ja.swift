@@ -2,7 +2,7 @@ import AgencyAPI
 import AgencyProtocol
 import Foundation
 
-/// The words of the app, in Japanese, taken from the web client (`web/src/i18n/ja.ts`) where it has them.
+/// The words of the app, in Japanese, taken from the web client (`web/src/i18n/ja/`) where it has them.
 /// They are plain Swift so they are tested on every platform, and the screens only place them.
 /// Nothing here describes keys or shortcuts: the phone has no keyboard to explain.
 public enum Ja {

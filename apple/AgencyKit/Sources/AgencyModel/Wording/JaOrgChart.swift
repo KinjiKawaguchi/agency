@@ -1,7 +1,7 @@
 import Foundation
 
 extension Ja {
-    /// The org chart, from the web client's Japanese (`org` in `ja.ts`).
+    /// The org chart, from the web client's Japanese (`org` in `ja/org.ts`).
     public enum OrgChart {
         public static let title = "組織図"
         public static let allTitle = "あなたのすべての組織"
