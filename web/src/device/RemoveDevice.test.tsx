@@ -247,6 +247,96 @@ describe('removing one of the account’s devices', () => {
     expect(asked.some((search) => search.includes('limit=200'))).toBe(true)
   })
 
+  describe('when the node records which device signed each undelivered decision', () => {
+    type Held = { org?: string; signer?: string; state?: { kind: string; attempts?: number } }
+    // The sample log's one entry, made over into the given entries (each one held by the node unless it says otherwise).
+    const clientWith = (node: ReturnType<typeof createTestNode>, held: readonly Held[]) =>
+      createApiClient(async (request) => {
+        const reply = await node.handle(request)
+        if (new URL(request.url, 'http://mock.local').pathname !== '/api/decisions' || request.method !== 'GET') return reply
+        const log = (await reply.json()) as { entries: Array<Record<string, unknown>> }
+        const [first] = log.entries
+        const { signer: _none, ...sample } = first ?? {}
+        const entries = held.map((one, index) => ({ ...sample, id: `e-${index}`, ...(one.org === undefined ? {} : { org: one.org }), ...(one.signer === undefined ? {} : { signer: one.signer }), state: one.state ?? { kind: 'queued', attempts: 1 } }))
+        return new Response(JSON.stringify({ entries }), { headers: { 'content-type': 'application/json' } })
+      })
+    const open = async (held: readonly Held[], name: 'Remove Work laptop' | 'Remove Browser') => {
+      const user = userEvent.setup()
+      const node = withLaptop()
+      renderApp({ path: '/devices', node, client: clientWith(node, held), enrolled: true })
+      await user.click(await screen.findByRole('button', { name }))
+      const panel = await screen.findByRole('group', { name: `${name}?` })
+      await within(panel).findByText(/can never sign again\./)
+      return panel
+    }
+
+    it('counts only the ones the device signed, and says how many have no signer recorded', async () => {
+      const panel = await open([{ signer: OTHER_ID }, { signer: OTHER_ID }, { signer: TEST_DEVICE_ID }, {}], 'Remove Work laptop')
+      expect(await within(panel).findByText('2 decisions saved, not delivered were signed by Work laptop. The node will refuse them once Work laptop is removed.')).toBeInTheDocument()
+      expect(within(panel).getByText('For 1 of the decisions saved, not delivered, the signer is not recorded. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+    })
+
+    it('says "was" and "it" of one', async () => {
+      const panel = await open([{ signer: OTHER_ID }, { signer: TEST_DEVICE_ID }], 'Remove Work laptop')
+      expect(await within(panel).findByText('1 decision saved, not delivered was signed by Work laptop. The node will refuse it once Work laptop is removed.')).toBeInTheDocument()
+      expect(within(panel).queryByText(/signer is not recorded/)).not.toBeInTheDocument()
+    })
+
+    it('says of this browser that they were signed in it', async () => {
+      const panel = await open([{ signer: TEST_DEVICE_ID }, { signer: OTHER_ID }, {}], 'Remove Browser')
+      expect(await within(panel).findByText('1 decision saved, not delivered was signed in this browser. The node will refuse it once this device is removed.')).toBeInTheDocument()
+      expect(within(panel).getByText('For 1 of the decisions saved, not delivered, the signer is not recorded. Any made in this browser will be refused once it is removed.')).toBeInTheDocument()
+    })
+
+    it('says nothing of the ones another device signed when every signer is recorded', async () => {
+      const panel = await open([{ signer: TEST_DEVICE_ID }, { signer: TEST_DEVICE_ID }], 'Remove Work laptop')
+      expect(within(panel).queryByText(/saved, not delivered/)).not.toBeInTheDocument()
+    })
+
+    it('says only that the signer is not recorded when the others are recorded and this device signed none', async () => {
+      const panel = await open([{ signer: TEST_DEVICE_ID }, {}, {}], 'Remove Work laptop')
+      expect(await within(panel).findByText('For 2 of the decisions saved, not delivered, the signer is not recorded. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+      expect(within(panel).queryByText(/were signed by|was signed by/)).not.toBeInTheDocument()
+    })
+
+    it('does not count a decision of an org the device is not listed in, even under the same id', async () => {
+      const panel = await open([{ signer: OTHER_ID, org: 'club' }], 'Remove Work laptop')
+      expect(within(panel).queryByText(/saved, not delivered/)).not.toBeInTheDocument()
+    })
+
+    it('does not count a decision that is no longer held by the node', async () => {
+      const panel = await open([{ signer: OTHER_ID, state: { kind: 'delivered' } }, { signer: OTHER_ID }], 'Remove Work laptop')
+      expect(await within(panel).findByText('1 decision saved, not delivered was signed by Work laptop. The node will refuse it once Work laptop is removed.')).toBeInTheDocument()
+    })
+
+    it('says "at least 1 decision", not "decisions", when one is counted in a full log', async () => {
+      const others = Array.from({ length: 199 }, () => ({ signer: TEST_DEVICE_ID, state: { kind: 'applied' } }))
+      const panel = await open([{ signer: OTHER_ID }, ...others], 'Remove Work laptop')
+      expect(await within(panel).findByText('At least 1 decision saved, not delivered was signed by Work laptop. The node will refuse it once Work laptop is removed.')).toBeInTheDocument()
+    })
+
+    it('says it so of the total too, when no signer is recorded', async () => {
+      const others = Array.from({ length: 199 }, () => ({ state: { kind: 'applied' } }))
+      const panel = await open([{}, ...others], 'Remove Work laptop')
+      expect(await within(panel).findByText('At least 1 decision is saved, not delivered. Any that Work laptop signed will be refused once it is removed.')).toBeInTheDocument()
+    })
+
+    it('says it in Japanese', async () => {
+      const user = userEvent.setup()
+      const node = withLaptop()
+      renderApp({ path: '/devices', node, client: clientWith(node, [{ signer: OTHER_ID }, {}]), enrolled: true, locale: 'ja' })
+      await user.click(await screen.findByRole('button', { name: 'Work laptopを削除' }))
+      const panel = await screen.findByRole('group', { name: 'Work laptopを削除しますか?' })
+      expect(await within(panel).findByText('保存済み・未配達の決定のうち、Work laptopで署名したものが 1 件あります。Work laptopを削除すると、ノードはこれらを拒否します。')).toBeInTheDocument()
+      expect(within(panel).getByText('保存済み・未配達の決定のうち 1 件は、署名した端末が記録されていません。Work laptopで署名したものは、削除すると拒否されます。')).toBeInTheDocument()
+    })
+
+    it('says "at least" of the ones it counts when the log is full', async () => {
+      const panel = await open(Array.from({ length: 200 }, () => ({ signer: OTHER_ID })), 'Remove Work laptop')
+      expect(await within(panel).findByText('At least 200 decisions saved, not delivered were signed by Work laptop. The node will refuse them once Work laptop is removed.')).toBeInTheDocument()
+    })
+  })
+
   it('says nothing of undelivered decisions when the node holds none', async () => {
     const user = userEvent.setup()
     renderApp({ path: '/devices', node: withLaptop({ earlierDecisions: false }), enrolled: true })
