@@ -102,7 +102,8 @@ pub struct ChartMember {
     /// anyone with no head above them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reports_to: Option<Id>,
-    /// The units (`ChartUnit::id`) they head, in the order of `units`. Empty when they head none.
+    /// The units (`ChartUnit::id`) they head, in the order of `units`. Always there, `[]` when they head none, so
+    /// a screen decodes it as required.
     #[serde(default)]
     pub heads: Vec<Id>,
 }
@@ -198,8 +199,43 @@ impl OrgChart {
                     member.id, member.heads
                 ));
             }
+            let expected = self.reports_to(member, &unit_at);
+            if member.reports_to.as_ref() != expected {
+                return Err(format!(
+                    "{} reports to {:?} and the heads say {expected:?}",
+                    member.id, member.reports_to
+                ));
+            }
         }
         self.check_totals(&unit_at)
+    }
+
+    /// Who `member` reports to by the rule of the design: the head of their unit, and for that unit's head the
+    /// nearest head above it, then the org's head; a unit with no head passes its people up, and the org's head
+    /// reports to no one. A head that is the member themselves is passed over. Because it goes up the units
+    /// only, what it gives can never loop.
+    fn reports_to(
+        &self,
+        member: &ChartMember,
+        unit_at: &std::collections::HashMap<&Id, usize>,
+    ) -> Option<&Id> {
+        let mut at = member
+            .unit
+            .as_ref()
+            .and_then(|unit| unit_at.get(unit))
+            .copied();
+        while let Some(index) = at {
+            let unit = &self.units[index];
+            if let Some(head) = unit.head.as_ref().filter(|head| *head != &member.id) {
+                return Some(head);
+            }
+            at = unit
+                .parent
+                .as_ref()
+                .and_then(|parent| unit_at.get(parent))
+                .copied();
+        }
+        self.head.as_ref().filter(|head| *head != &member.id)
     }
 }
 
@@ -292,12 +328,17 @@ mod tests {
         let member = |name: &str| chart.members.iter().find(|one| one.id == id(name)).unwrap();
         assert!(unit("product").parent.is_none(), "a unit at the top");
         assert!(unit("studio").head.is_none(), "a unit that names no head");
-        assert_eq!(unit("app").waiting, Some(3), "a team with what waits");
         assert_eq!(
             unit("dev").waiting,
-            Some(5),
+            Some(7),
             "a unit adds up the teams in it"
         );
+        assert_eq!(
+            unit("app").waiting,
+            Some(5),
+            "a team counts the teams under it too"
+        );
+        assert_eq!(unit("app-ios").waiting, Some(2), "a team under a team");
         assert_eq!(
             unit("product").waiting,
             None,
@@ -344,25 +385,113 @@ mod tests {
             edit(&mut chart);
             chart.check().unwrap_err()
         };
+        let unit = |chart: &mut OrgChart, name: &str| {
+            let at = chart.units.iter().position(|one| one.id == id(name));
+            at.unwrap()
+        };
+        let member = |chart: &mut OrgChart, name: &str| {
+            let at = chart.members.iter().position(|one| one.id == id(name));
+            at.unwrap()
+        };
         assert!(broke(&|c| c.units.swap(0, 1)).contains("before its parent"));
+        assert!(broke(&|c| c.units.push(c.units[0].clone())).contains("listed twice"));
         assert!(broke(&|c| c.units[2].head = Some(id("nobody"))).contains("no one on the chart"));
-        assert!(broke(&|c| c.members[1].heads.clear()).contains("heads"));
+        assert!(broke(&|c| {
+            let at = member(c, "dev-lead");
+            c.members[at].heads.clear();
+        })
+        .contains("heads"));
         assert!(broke(&|c| c.members[0].unit = Some(id("nowhere"))).contains("not listed"));
+        // Who reports to whom is the heads' word, not a screen's or a node's guess.
         assert!(
-            broke(&|c| c.units[4].waiting = Some(1)).contains("waiting"),
+            broke(&|c| {
+                let at = member(c, "carol");
+                c.members[at].reports_to = Some(id("bob"));
+            })
+            .contains("reports to"),
+            "a boss who is not the unit's head"
+        );
+        assert!(
+            broke(&|c| {
+                let at = member(c, "alice");
+                c.members[at].reports_to = Some(id("dev-lead"));
+            })
+            .contains("reports to"),
+            "the org's head reports to no one"
+        );
+        assert!(
+            broke(&|c| {
+                let (dev, app) = (member(c, "dev-lead"), member(c, "app-lead"));
+                c.members[dev].reports_to = Some(c.members[app].id.clone());
+            })
+            .contains("reports to"),
+            "a loop of two"
+        );
+        assert!(
+            broke(&|c| {
+                let at = member(c, "dev-lead");
+                c.members[at].reports_to = Some(id("dev-lead"));
+            })
+            .contains("themselves"),
+            "no one reports to themselves"
+        );
+        assert!(
+            broke(&|c| {
+                let at = member(c, "bob");
+                c.members[at].reports_to = None;
+            })
+            .contains("reports to"),
+            "a unit with no head passes its people up"
+        );
+        assert!(broke(&|c| c.members[1].reports_to = Some(id("nobody")))
+            .contains("no one on the chart"));
+        // What the units hold and what waits in them are the totals of what is under them.
+        assert!(
+            broke(&|c| {
+                let at = unit(c, "studio");
+                c.units[at].waiting = Some(1);
+            })
+            .contains("waiting"),
             "a count where no team is"
         );
         assert!(
-            broke(&|c| c.units[0].waiting = Some(9)).contains("waiting"),
+            broke(&|c| {
+                let at = unit(c, "product");
+                c.units[at].waiting = Some(9);
+            })
+            .contains("waiting"),
             "a count over a team not read"
         );
         assert!(
-            broke(&|c| c.units[1].waiting = Some(4)).contains("waiting"),
+            broke(&|c| {
+                let at = unit(c, "dev");
+                c.units[at].waiting = Some(4);
+            })
+            .contains("waiting"),
             "a sum that is not the teams'"
         );
-        assert!(broke(&|c| c.units[1].holds.agents = 9).contains("holds"));
-        assert!(broke(&|c| c.units.push(c.units[0].clone())).contains("listed twice"));
-        assert!(broke(&|c| c.members[1].reports_to = Some(id("nobody")))
-            .contains("no one on the chart"));
+        assert!(
+            broke(&|c| {
+                // Only this unit is wrong: the unit above adds up what it says.
+                let (app, dev) = (unit(c, "app"), unit(c, "dev"));
+                c.units[app].waiting = Some(1);
+                c.units[dev].waiting = Some(3);
+            })
+            .contains("unit app counts"),
+            "a team that counts less than the teams under it"
+        );
+        assert!(
+            broke(&|c| {
+                let at = unit(c, "app");
+                c.units[at].waiting = None;
+            })
+            .contains("waiting"),
+            "a unit that counts over a team of its own that was read"
+        );
+        assert!(broke(&|c| {
+            let at = unit(c, "dev");
+            c.units[at].holds.agents = 9;
+        })
+        .contains("holds"));
     }
 }

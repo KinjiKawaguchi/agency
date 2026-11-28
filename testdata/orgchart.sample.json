@@ -22,7 +22,7 @@
         "people": 1,
         "agents": 2
       },
-      "waiting": 5
+      "waiting": 7
     },
     {
       "id": "app",
@@ -36,7 +36,20 @@
         "people": 0,
         "agents": 1
       },
-      "waiting": 3
+      "waiting": 5
+    },
+    {
+      "id": "app-ios",
+      "label": "App for iPhone",
+      "parent": "app",
+      "team": {
+        "node": "https://node.example.com"
+      },
+      "holds": {
+        "people": 0,
+        "agents": 0
+      },
+      "waiting": 2
     },
     {
       "id": "web",

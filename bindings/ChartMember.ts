@@ -17,6 +17,7 @@ unit?: Id,
  */
 reportsTo?: Id, 
 /**
- * The units (`ChartUnit::id`) they head, in the order of `units`. Empty when they head none.
+ * The units (`ChartUnit::id`) they head, in the order of `units`. Always there, `[]` when they head none, so
+ * a screen decodes it as required.
  */
 heads: Array<Id>, };
