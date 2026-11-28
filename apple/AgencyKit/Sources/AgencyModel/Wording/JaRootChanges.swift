@@ -7,12 +7,12 @@ extension Ja {
         public static let signTogetherBefore = "まとめて署名するには、組織のルートキーのノードで "
         public static let signTogetherAfter = " を実行してください。"
 
-        public static func title(count: Int) -> String { "ルートキーの署名を待つ変更が \(count) 件あります。" }
+        public static func title(count: Int) -> String { "組織のルートキーの署名を待っている変更が \(count) 件あります。" }
         public static func item(_ what: String, org: String, when: String) -> String { "\(what)（\(org)、\(when)にリクエスト）" }
         /// For a request whose time the node wrote in a form that cannot be read.
         public static func itemWithoutTime(_ what: String, org: String) -> String { "\(what)（\(org)）" }
 
-        public static func addMember(label: String, member: String) -> String { "メンバー \(label)（\(member)）の追加" }
+        public static func addMember(label: String, member: String) -> String { "組織のメンバー \(label)（\(member)）の追加" }
         public static func addDevice(label: String, member: String) -> String { "\(member) の端末「\(label)」の追加" }
         public static func removeDevice(device: String, member: String) -> String { "\(member) の端末 \(device) の削除" }
 

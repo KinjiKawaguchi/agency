@@ -120,6 +120,6 @@ extension Ja {
         public static let budgetOrgNoneRead = "組織の使用量に読めなかったものがあるため、今週の使用額は分かりません。"
         public static func budgetOrgPartialOK(spent: String, of cap: String) -> String { "組織の使用量に読めなかったものがあります: 今週は \(cap) のうち、少なくとも \(spent)。" }
         public static func budgetPlain(_ cap: String) -> String { "週次予算は \(cap) です。このノードは、今週の使用額をまだ返しません。" }
-        public static func budgetFailed(_ reason: String) -> String { "週次予算状況を読み込めませんでした: \(reason)" }
+        public static func budgetFailed(_ reason: String) -> String { "予算状況を読み込めませんでした: \(reason)" }
     }
 }

@@ -130,7 +130,7 @@ public enum Ja {
 
     public enum Recent {
         /// A decision that answered for a seat or an external party (the web's words).
-        public static func answeredFor(_ label: String) -> String { "\(label) の代理で答えました。" }
+        public static func answeredFor(_ label: String) -> String { "\(label) の代理回答をしました。" }
         public static func state(_ state: DecisionState) -> String {
             switch state {
             case .applied: "反映済み"

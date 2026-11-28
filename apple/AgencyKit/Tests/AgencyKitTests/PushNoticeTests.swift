@@ -32,16 +32,16 @@ struct PushNoticeTests {
 
     @Test("a held root change says one waits, or how many, and names the org when there is one")
     func root() {
-        #expect(body(["type": "root", "org": "acme", "id": "h-1", "waiting": 1]) == "acme の変更が、ルートキーの署名を待っています。机で確認してください。")
-        #expect(body(["type": "root", "org": "acme", "id": "h-1", "waiting": 3]) == "acme の変更 3 件が、ルートキーの署名を待っています。机で確認してください。")
-        #expect(body(["type": "root", "waiting": 2]) == "変更 2 件が、ルートキーの署名を待っています。机で確認してください。")
+        #expect(body(["type": "root", "org": "acme", "id": "h-1", "waiting": 1]) == "acme の変更が、組織のルートキーの署名を待っています。机で確認してください。")
+        #expect(body(["type": "root", "org": "acme", "id": "h-1", "waiting": 3]) == "acme の変更 3 件が、組織のルートキーの署名を待っています。机で確認してください。")
+        #expect(body(["type": "root", "waiting": 2]) == "変更 2 件が、組織のルートキーの署名を待っています。机で確認してください。")
         #expect(body(["type": "root", "org": "acme", "waiting": 1], "en") == "A change to acme waits for the root key’s signature. Open the desk to see it.")
         #expect(body(["type": "root", "org": "acme", "waiting": 3], "en-GB") == "3 changes to acme wait for the root key’s signature. Open the desk to see them.")
     }
 
     @Test("a count that is not a whole number counts one change, and what the node's own words name is never used")
     func odd() {
-        #expect(body(["type": "root", "org": "acme", "waiting": "many"]) == "acme の変更が、ルートキーの署名を待っています。机で確認してください。")
+        #expect(body(["type": "root", "org": "acme", "waiting": "many"]) == "acme の変更が、組織のルートキーの署名を待っています。机で確認してください。")
         #expect(body(["type": "root", "org": "acme"], "en") == "A change to acme waits for the root key’s signature. Open the desk to see it.")
         let withLabel: [AnyHashable: Any] = [
             "agency": ["type": "root", "org": "acme", "waiting": 1], "aps": ["alert": ["title": "x", "body": "add member carol (Carol). Run agency root-sign"]],

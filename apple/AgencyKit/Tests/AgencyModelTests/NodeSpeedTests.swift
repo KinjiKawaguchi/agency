@@ -114,7 +114,7 @@ struct NodeSpeedTests {
         let all = [series("GET /api/me", isRead: true, [(100, 20)])]
         let reading = try #require(NodeSpeed(metrics(series: all, budget: 75)).budget)
         #expect(reading.verdict == .undetermined && reading.overRoutes.isEmpty)
-        #expect(reading.verdictLine == "予算に対して判断できません: p95 は 100 ミリ秒 以下 で、予算の 75 ミリ秒 はその範囲の中にあります。")
+        #expect(reading.verdictLine == "上限に対して判断できません: p95 は 100 ミリ秒 以下 で、上限の 75 ミリ秒 はその範囲の中にあります。")
         #expect(reading.requestsLine == "20 件の読み取りを計測しました。")
     }
 
@@ -127,10 +127,10 @@ struct NodeSpeedTests {
         let reading = try #require(NodeSpeed(metrics(series: all)).budget)
         #expect(reading.reads?.count == 21 && reading.reads?.p95 == .atMost(250) && reading.verdict == .over)
         #expect(reading.overRoutes.map(\.key) == ["GET /api/slow"])
-        #expect(reading.verdictLine == "予算を超えています: p95 は 250 ミリ秒 以下。" && reading.requestsLine == "21 件の読み取りを計測しました。")
+        #expect(reading.verdictLine == "上限を超えています: p95 は 250 ミリ秒 以下。" && reading.requestsLine == "21 件の読み取りを計測しました。")
         #expect(reading.lead.hasSuffix("p95 が 100 ミリ秒 以下です。"))
         let within = try #require(NodeSpeed(metrics(series: [series("GET /api/me", isRead: true, [(50, 10)])])).budget)
-        #expect(within.verdictLine == "予算の内です: p95 は 50 ミリ秒 以下。" && within.overRoutes.isEmpty)
+        #expect(within.verdictLine == "上限の内です: p95 は 50 ミリ秒 以下。" && within.overRoutes.isEmpty)
     }
 
     @Test("with no in-node read measured the budget says so, and with no budget named there is no budget card")

@@ -48,7 +48,7 @@ public enum PushNotice {
     }
 
     private static func rootJa(_ org: String?, waiting: Int) -> String {
-        (org.map { "\($0) の" } ?? "") + "変更" + (waiting > 1 ? " \(waiting) 件が" : "が") + "、ルートキーの署名を待っています。机で確認してください。"
+        (org.map { "\($0) の" } ?? "") + "変更" + (waiting > 1 ? " \(waiting) 件が" : "が") + "、組織のルートキーの署名を待っています。机で確認してください。"
     }
 
     private static func rootEn(_ org: String?, waiting: Int) -> String {
