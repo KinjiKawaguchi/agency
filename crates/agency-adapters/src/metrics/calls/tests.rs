@@ -256,6 +256,9 @@ impl TeamRuntime for FakeRuntime {
     ) -> Result<Activity, RuntimeError> {
         self.fail().await
     }
+    async fn tickets(&self, _: &HostedTeam) -> Result<Tickets, RuntimeError> {
+        self.fail().await
+    }
 }
 
 impl FakeRuntime {
@@ -317,6 +320,31 @@ async fn a_call_to_a_runtime_is_ok_error_or_timeout_and_an_op_it_does_not_offer_
         ],
         "the fourth run answers 404: an op the runtime does not offer is no call, so it is not recorded; and a decision \
          is not timed here at all, since the command runtime times each delivery of one itself"
+    );
+}
+
+#[tokio::test]
+async fn a_read_of_a_teams_tickets_is_its_own_call_series() {
+    let (recorder, _dir) = recorder();
+    for (error, delay) in [
+        (failure_of(503), Duration::ZERO),
+        (failure_of(503), SHORT),
+        (failure_of(404), Duration::ZERO),
+    ] {
+        let runtime = TimedRuntime::new(
+            Arc::new(FakeRuntime { error, delay }),
+            recorder.clone(),
+            SHORT,
+        );
+        let _ = runtime.tickets(&team()).await;
+    }
+    assert_eq!(
+        series(&recorder),
+        [
+            row("runtime tickets", "error", None, 1),
+            row("runtime tickets", "timeout", None, 1),
+        ],
+        "a runtime that does not offer tickets (404) is no call"
     );
 }
 

@@ -13,8 +13,10 @@ use agency_proto::clock;
 use agency_proto::metrics::SeriesKind;
 use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::runtime::{
-    Decided, Describe, RuntimeError, ACTIVITY_OP, PARTICIPANT_METRICS_OP, TOKEN_USAGE_OP,
+    Decided, Describe, RuntimeError, ACTIVITY_OP, PARTICIPANT_METRICS_OP, TICKETS_OP,
+    TOKEN_USAGE_OP,
 };
+use agency_proto::tickets::Tickets;
 use agency_proto::{
     Id, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse, TeamView, Timestamp,
     TokenUsage, RUNTIME_VERSION,
@@ -105,6 +107,12 @@ pub const ACTIVITY_KEPT: Duration = Duration::from_secs(10);
 /// A shared activity read starts this long before the first reader's `since`, so readers whose `since`
 /// differ a little (the default is an hour before each read) can share it.
 const ACTIVITY_MARGIN_MINUTES: i64 = 5;
+/// How long a team's tickets are served as they are. The runtime reads its board and several
+/// repositories to answer, and a board changes slowly.
+pub const TICKETS_KEPT: Duration = Duration::from_secs(60);
+/// How long old tickets are still served at once while they are refreshed, and how long a runtime that
+/// fails is covered by its last good answer.
+pub const TICKETS_STALE: Duration = Duration::from_secs(300);
 
 type Team = (Id, Id);
 type Slot<T> = Arc<tokio::sync::Mutex<Option<(Instant, u32, Result<T, RuntimeError>)>>>;
@@ -170,6 +178,8 @@ struct Inner {
     participants: Shared<ParticipantMetrics>,
     /// A window of a team's activity, cut for each reader (see `Window`).
     activity: Swr<Window>,
+    /// A team's tickets, checked and printable.
+    tickets: Swr<Tickets>,
     /// Each team's last failure, or `None` after it last answered. Teams not called yet are absent.
     health: Mutex<HashMap<(Id, Id), Option<String>>>,
     log: Log,
@@ -205,6 +215,7 @@ impl CommandRuntime {
             usage: Shared::new(USAGE_KEPT),
             participants: Shared::new(USAGE_KEPT),
             activity: Swr::new(ACTIVITY_KEPT, MAX_STALE),
+            tickets: Swr::new(TICKETS_KEPT, TICKETS_STALE),
             health: Mutex::default(),
             log,
             recorder: None,
@@ -250,6 +261,13 @@ impl CommandRuntime {
         self
     }
 
+    /// How long tickets are served as they are, and how long old ones are still served while they are
+    /// refreshed (`TICKETS_KEPT` and `TICKETS_STALE` unless set here).
+    pub fn keeping_tickets(mut self, fresh: Duration, stale: Duration) -> Self {
+        self.configuring().tickets = Swr::new(fresh, stale);
+        self
+    }
+
     /// How long an old answer is still served while it is refreshed (`MAX_STALE` unless set here).
     pub fn serving_stale_for(mut self, max_stale: Duration) -> Self {
         let inner = self.configuring();
@@ -266,6 +284,11 @@ impl CommandRuntime {
     /// The same for activity reads.
     pub fn activity_reads(&self) -> ReadCounts {
         self.inner.activity.counts()
+    }
+
+    /// The same for tickets reads.
+    pub fn tickets_reads(&self) -> ReadCounts {
+        self.inner.tickets.counts()
     }
 }
 
@@ -319,6 +342,28 @@ impl Inner {
                 limit,
             };
             call(&team.runtime, &request(team, call_with)).await
+        };
+        let result = run.await;
+        self.observe(team, &result);
+        result
+    }
+
+    /// One run of the team's `tickets` op, if the runtime lists it (404 without running the command
+    /// otherwise): checked as the team's own answer and made printable before it is kept.
+    async fn run_tickets(&self, team: &HostedTeam) -> Result<Tickets, RuntimeError> {
+        let run = async {
+            if !self.ensure_described(team).await?.supports(TICKETS_OP) {
+                return Err(RuntimeError {
+                    status: 404,
+                    message: "the team runtime does not report tickets".into(),
+                });
+            }
+            let tickets: Tickets =
+                call(&team.runtime, &request(team, RuntimeCall::Tickets)).await?;
+            tickets
+                .check(&team.org, &team.team)
+                .map_err(|message| unavailable(format!("the team runtime {message}")))?;
+            Ok(tickets.printable())
         };
         let result = run.await;
         self.observe(team, &result);
@@ -395,6 +440,14 @@ fn view_run(inner: &Arc<Inner>, team: &HostedTeam) -> Run<TeamView> {
     Arc::new(move || {
         let (inner, team) = (inner.clone(), team.clone());
         Box::pin(async move { inner.run_view(&team).await })
+    })
+}
+
+fn tickets_run(inner: &Arc<Inner>, team: &HostedTeam) -> Run<Tickets> {
+    let (inner, team) = (inner.clone(), team.clone());
+    Arc::new(move || {
+        let (inner, team) = (inner.clone(), team.clone());
+        Box::pin(async move { inner.run_tickets(&team).await })
     })
 }
 
@@ -532,5 +585,14 @@ impl TeamRuntime for CommandRuntime {
             Some(answer) => Ok(answer),
             None => self.inner.read_activity(team, since, limit).await,
         }
+    }
+
+    /// Called only if the runtime listed `tickets` in `describe`; otherwise 404. Served from memory and
+    /// refreshed in the background (see `Swr`); an answer of another team or beyond the limits is refused.
+    async fn tickets(&self, team: &HostedTeam) -> Result<Tickets, RuntimeError> {
+        self.inner
+            .tickets
+            .get(team, tickets_run(&self.inner, team))
+            .await
     }
 }
