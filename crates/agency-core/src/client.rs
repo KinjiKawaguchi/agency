@@ -165,6 +165,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         view,
         viewer,
         answers_for,
+        ..
     } = replica;
     let Some(view) = view else {
         let why = error.unwrap_or_else(|| "not read yet".to_owned());
@@ -186,7 +187,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         error,
     };
     Ok(TeamSnapshot {
-        relayed_for: remote_relayed_for(&doc.body, &answers_for, &view, &mine),
+        relayed_for: remote_relayed_for(&doc.body, &answers_for, &node.account(), &view, &mine),
         waiting_on_viewer: waiting_on_viewer(&view, viewer.as_deref()),
         mine,
         view,
@@ -216,6 +217,7 @@ pub(crate) fn relayed_for(
 fn remote_relayed_for(
     definition: &OrgDefinition,
     answers_for: &[AnswersFor],
+    reader: &Id,
     view: &TeamView,
     mine: &[String],
 ) -> BTreeMap<String, String> {
@@ -223,7 +225,7 @@ fn remote_relayed_for(
     requests
         .filter_map(|request| {
             let (_, label) =
-                remote_addressed_party(definition, answers_for, request.to.as_deref())?;
+                remote_addressed_party(definition, answers_for, reader, request.to.as_deref())?;
             Some((request.id.clone(), label.to_owned()))
         })
         .collect()

@@ -3,10 +3,12 @@
 mod common;
 
 use agency_adapters::memory::MemoryRuntimeState;
-use agency_core::config::HostedTeam;
+use agency_core::config::{HostedTeam, RuntimeCommand};
+use agency_core::orgs;
 use agency_core::outbox::{deliver_due, Parcel, ParcelBody};
 use agency_core::ports::TeamRuntime;
 use agency_proto::clock::Duration;
+use agency_proto::org::TeamPlace;
 use agency_proto::runtime::RuntimeError;
 use agency_proto::RuntimeDecision;
 use agency_proto::{AccountKey, Envelope, EnvelopeId, Kind, Payload, Signed};
@@ -26,6 +28,8 @@ struct Scripted {
     next: Mutex<VecDeque<RuntimeError>>,
     always: Mutex<Option<RuntimeError>>,
     hangs: Mutex<bool>,
+    /// A team whose every decision fails as unavailable.
+    down: Mutex<Option<agency_proto::Id>>,
 }
 
 fn failure(status: u16, message: &str) -> RuntimeError {
@@ -55,6 +59,9 @@ impl TeamRuntime for Scripted {
         }
         if let Some(error) = self.always.lock().unwrap().clone() {
             return Err(error);
+        }
+        if self.down.lock().unwrap().as_ref() == Some(&team.team) {
+            return Err(failure(503, "this team's runtime is down"));
         }
         self.inner.decide(team, decision).await
     }
@@ -97,6 +104,7 @@ async fn with_runtime() -> (
         next: Mutex::new(VecDeque::new()),
         always: Mutex::new(None),
         hangs: Mutex::new(false),
+        down: Mutex::new(None),
     });
     let alice = alice_on(node("alice", runtime.clone()).await, &memory);
     let key = device(&alice).await;
@@ -111,11 +119,23 @@ fn answer_with_id(
     target: &str,
     text: &str,
 ) -> Value {
+    answer_in(alice, key, "app", id_byte, target, text)
+}
+
+/// An answer to `target` in `team`, with a fixed envelope id, signed by `key`.
+fn answer_in(
+    alice: &Running,
+    key: &AccountKey,
+    team: &str,
+    id_byte: u8,
+    target: &str,
+    text: &str,
+) -> Value {
     let envelope = Envelope {
         id: EnvelopeId::from_bytes([id_byte; 16]),
         kind: agency_proto::EnvelopeKind::Answer,
         org: id("acme"),
-        team: id("app"),
+        team: id(team),
         target: target.into(),
         payload: Payload {
             text: text.into(),
@@ -129,8 +149,12 @@ fn answer_with_id(
 }
 
 async fn send(alice: &Running, input: &Value) -> (u16, Value) {
+    send_to(alice, ENVELOPES, input).await
+}
+
+async fn send_to(alice: &Running, path: &str, input: &Value) -> (u16, Value) {
     let (status, answer) = body(
-        post(alice, ENVELOPES, input)
+        post(alice, path, input)
             .header("x-agency-token", TOKEN)
             .send()
             .await
@@ -427,4 +451,39 @@ async fn says_503_and_when_to_retry_when_it_cannot_keep_the_decision() {
         "a decision not kept is not logged"
     );
     assert_eq!(runtime.decides(), 0);
+}
+
+#[tokio::test]
+async fn a_team_runtime_that_is_down_holds_back_no_other_team_on_the_node() {
+    let (alice, runtime, memory, key) = with_runtime().await;
+    orgs::add_team(
+        &alice.node,
+        &id("acme"),
+        TeamPlace::new(id("web"), "web", alice.url()),
+    )
+    .unwrap();
+    alice
+        .node
+        .update_config(|config| {
+            let command = RuntimeCommand::of(vec!["/nonexistent".into()]);
+            config
+                .teams
+                .push(HostedTeam::new(id("acme"), id("web"), id("alice"), command))
+        })
+        .unwrap();
+    *runtime.down.lock().unwrap() = Some(id("app"));
+    let first = answer_in(&alice, &key, "app", 0x51, "r-1", "go");
+    let second = answer_in(&alice, &key, "web", 0x52, "r-1", "go");
+    assert_eq!(send(&alice, &first).await.0, 202);
+    let sent = send_to(&alice, "/api/orgs/acme/teams/web/envelopes", &second).await;
+    assert_eq!(sent.0, 202, "{sent:?}");
+
+    deliver_due(&alice.node).await.unwrap();
+    assert_eq!(state(&alice, 0x51).await["kind"], "queued");
+    assert_eq!(
+        state(&alice, 0x52).await,
+        json!({ "kind": "applied" }),
+        "web's decision went in the same pass"
+    );
+    assert_eq!(memory.lock().unwrap().applied.len(), 1);
 }

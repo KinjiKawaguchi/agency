@@ -108,7 +108,7 @@ agency status
 - `--state-dir` は、ハーネスがチームの状態を置くディレクトリです。相対パスを渡しても絶対パスで保存されます。
 - `org-create` は、新しい組織のためのルート鍵を作り、このノードをそのルートのノードにします。`--node` を付けない `team-add` は、このノードのアカウントを持ち主として、チームをこのノードで動かします。
 
-`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。
+`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。`agency audit --org acme` は、組織のすべての版を古い順に、誰が署名し、何を変えたかとともに一覧します。
 
 データディレクトリには、ノードのアカウント鍵である `account.key` ができています。
 この鍵はノードの読み取り、参加の依頼、組織での最初の端末の追加に署名するので、このファイルを読める人は、あなたが読めるものを読めます。
@@ -312,6 +312,16 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 ## スマートフォンやブラウザを端末として追加する
 
+### 席の受け取りリンクを送る
+
+ルートのノードで、まだ誰も受け取っていない 1 つの席と 1 つのメールアドレスの受け取りリンクを作ります。
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+出力には、Access のポリシーへ手で加えるメールアドレスと、7 日間使えるリンクが出ます。ノードは Cloudflare を呼ばず、メールアドレスはこのノードだけに置きます。Access があるときは公開ホスト名のリンクになり、ないときはこのマシンでだけローカルのリンクを使います。同じ席に新しいリンクを作ると、前のリンクは置き換わります。
+
 自分の代わりに決定するブラウザやスマートフォンは、それぞれ自分の鍵を作って持ちます。
 鍵が端末の外に出ることはありません。
 
@@ -480,6 +490,7 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
+- `delivery.repos` には、`owner/name` の形のリポジトリを最大 50 件まで、同じものを 2 度（大文字小文字は区別しません）書かずに並べます。そうでないと、ノードは起動時に止まり、`teams[n].delivery.repos` を挙げて知らせます。2 つ以上のリポジトリで働くチームには、リポジトリごとの数も表示されます（`byRepository`。[protocol.md](protocol.md#evaluation) を参照）。
 - ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。

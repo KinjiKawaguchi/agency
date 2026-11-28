@@ -24,11 +24,12 @@ public struct DeskBackgroundRefresh {
     }
 
     /// One reading: the account, every team once (no waiting for a team that is not ready: a background run has
-    /// seconds), and the file.
-    public func run(now: Date = Date()) async -> Outcome {
+    /// seconds), and the file. `excluding` are the items the owner has already decided and the node has not taken yet: they are not on
+    /// the desk, as in the app.
+    public func run(now: Date = Date(), excluding decided: Set<String>) async -> Outcome {
         guard let (me, teams) = await DeskReading.complete(from: source) else { return .notRead }
         publisher.preferences.nodeSays(hidesTitles: me.hidesTitles)
-        publisher.publish(items: Desk.openItems(teams), now: now)
-        return .written(waiting: Desk.waitingCount(teams))
+        publisher.publish(items: Desk.openItems(teams, excluding: decided), now: now)
+        return .written(waiting: Desk.waitingCount(teams, excluding: decided))
     }
 }

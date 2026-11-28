@@ -104,7 +104,7 @@ agency status
 - `--state-dir` is the team's state directory for the harness. A relative path is stored as an absolute one.
 - `org-create` makes a root key for the new org and makes this node its root's node. `team-add` without `--node` runs the team on this node, owned by this node's account.
 
-`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`.
+`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`. `agency audit --org acme` lists every version of the org, who signed it, and what it changed, oldest first.
 
 The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
 The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
@@ -293,6 +293,16 @@ A malformed setting is reported at start (see [Troubleshooting](#troubleshooting
 
 ## Adding a phone or a browser
 
+### Send a claim link for a seat
+
+On the root's node, make a claim link for one unclaimed seat and one email:
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+It prints the email to add to the Access policy by hand, then a seven-day link. The node never calls Cloudflare and keeps the email only on this node. With Access the link uses the public host; without it, use the local link on this machine only. A newer link for the same seat replaces the old one.
+
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
 
 1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's machine, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).
@@ -445,6 +455,7 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
+- `delivery.repos` holds at most 50 repositories, each written `owner/name`, none twice (names ignore case); a node that finds otherwise stops at start and names `teams[n].delivery.repos`. A team that works in two or more repositories is also shown the numbers of each (`byRepository`, see [protocol.md](protocol.md#evaluation)).
 - The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
