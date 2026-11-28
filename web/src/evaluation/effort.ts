@@ -1,4 +1,4 @@
-import { EFFORT_TYPES, WORK_TYPES, type DayEffort, type EffortType, type TeamEffort, type TeamPlan } from '../api/evaluationApi'
+import { EFFORT_TYPES, WORK_TYPES, type EffortType, type TeamEffort, type TeamPlan } from '../api/evaluationApi'
 
 export { EFFORT_TYPES, WORK_TYPES }
 
@@ -12,7 +12,6 @@ export const EFFORT_COLORS: Record<EffortType, string> = {
   unclassified: 'var(--series-other)',
 }
 
-export const WEEK_DAYS = 7
 
 const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0
 
@@ -37,12 +36,6 @@ export const totalCost = (effort: TeamEffort): number => EFFORT_TYPES.reduce((su
 export function sharesOf(effort: TeamEffort): Record<EffortType, number> {
   const total = totalCost(effort)
   return Object.fromEntries(EFFORT_TYPES.map((type) => [type, total === 0 ? 0 : (effort.byType[type].costUsd / total) * 100])) as Record<EffortType, number>
-}
-
-/** What a team spent over the seven days that end at `last` (the period's last day), at API prices. */
-export function weekSpend(byDay: readonly DayEffort[], last: string): number {
-  const first = Date.parse(`${last}T00:00:00Z`) - (WEEK_DAYS - 1) * 86_400_000
-  return byDay.filter((day) => Date.parse(`${day.date}T00:00:00Z`) >= first).reduce((sum, day) => sum + EFFORT_TYPES.reduce((daySum, type) => daySum + day.costUsd[type], 0), 0)
 }
 
 /** A share as the screen writes it, in whole percent. The bar's figure and the gap to the plan both come from this one rounding. */

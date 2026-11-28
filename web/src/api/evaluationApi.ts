@@ -13,6 +13,7 @@ export type { Evaluation } from '../../../bindings/Evaluation'
 export type { EvaluationSummary } from '../../../bindings/EvaluationSummary'
 export type { MergedCounts, WorkType }
 export type { ParticipantEvaluation } from '../../../bindings/ParticipantEvaluation'
+export type { RepositoryEvaluation } from '../../../bindings/RepositoryEvaluation'
 export type { TeamEffort } from '../../../bindings/TeamEffort'
 export type { TeamEvaluation } from '../../../bindings/TeamEvaluation'
 export type { TeamUnavailable } from '../../../bindings/TeamUnavailable'

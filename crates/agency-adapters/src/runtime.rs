@@ -2,6 +2,7 @@
 //! a runtime's files; it runs the team's configured command once per call, without a shell.
 use crate::activity_window::Window;
 use crate::metrics::{Recorder, SeriesKey};
+use crate::runtime_releases::ReleaseLog;
 use crate::swr::{ReadCounts, Run, Swr};
 use crate::Log;
 use agency_core::config::{HostedTeam, RuntimeCommand};
@@ -174,6 +175,8 @@ struct Inner {
     log: Log,
     /// Where the calls to the team's command are timed (the `call` series `runtime decide`).
     recorder: Option<Recorder>,
+    /// Where the release each runtime says it is, in `describe`, is noted for `agency status`.
+    releases: Option<ReleaseLog>,
 }
 
 /// Runs each hosted team's command. Remembers the description of each team that described
@@ -205,6 +208,7 @@ impl CommandRuntime {
             health: Mutex::default(),
             log,
             recorder: None,
+            releases: None,
         };
         Self {
             inner: Arc::new(inner),
@@ -221,6 +225,12 @@ impl CommandRuntime {
     /// did not answer in time, `error` otherwise.
     pub fn recording(mut self, recorder: Recorder) -> Self {
         self.configuring().recorder = Some(recorder);
+        self
+    }
+
+    /// Notes into `releases` the release that each team's runtime says it is when `describe` is read.
+    pub fn reporting_releases(mut self, releases: ReleaseLog) -> Self {
+        self.configuring().releases = Some(releases);
         self
     }
 
@@ -364,6 +374,9 @@ impl Inner {
         }
         let description: Describe =
             call(&team.runtime, &request(team, RuntimeCall::Describe)).await?;
+        if let Some(releases) = &self.releases {
+            releases.note(&team.org, &team.team, &description);
+        }
         if !description.speaks(RUNTIME_VERSION) {
             return Err(unavailable(format!(
                 "the team runtime does not speak {RUNTIME_VERSION}"

@@ -1,8 +1,12 @@
 //! Agency's node: wires agency-core to its adapters. One node runs per machine; it serves the teams it
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
+pub mod background;
 pub mod budget;
-use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
+pub mod export;
+use agency_adapters::access::{
+    check_config, is_valid_config, CertSource, HttpCerts, Provider, SignInVerifier,
+};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
@@ -21,11 +25,12 @@ use agency_adapters::peers::HttpPeers;
 use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
 use agency_adapters::runtime::CommandRuntime;
+use agency_adapters::runtime_releases::ReleaseLog;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
-use agency_core::config::{NodeConfig, RootKeyStore};
+use agency_core::config::{AccessConfig, NodeConfig, RootKeyStore};
 use agency_core::logging_config::LogLevel;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
@@ -90,8 +95,8 @@ fn token_notifier(
 /// The contact a push service may reach this node's operator at, when the configuration names none: the
 /// node's public host name, else its origin.
 fn web_push_subject(config: &NodeConfig) -> String {
-    match &config.access {
-        Some(access) => format!("https://{}", access.public_host),
+    match config.public_host() {
+        Some(host) => format!("https://{host}"),
         None => config.url.clone(),
     }
 }
@@ -154,16 +159,41 @@ pub struct Opened {
     recorder: Recorder,
 }
 
+/// A node signs people in from outside in one way, `access` or `oidc`, never both, and with a setting that is
+/// well formed: a typo there would otherwise leave the node running with outside requests refused and nothing
+/// but a log line to say why.
+fn check_sign_in(config: &NodeConfig) -> Result<(), String> {
+    match (&config.access, &config.oidc) {
+        (Some(_), Some(_)) => Err(
+            "access and oidc are both set: a node signs people in from outside through one of them"
+                .into(),
+        ),
+        (Some(access), None) => check_config(access),
+        (None, Some(oidc)) => oidc.check(),
+        (None, None) => Ok(()),
+    }
+}
+
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
+    data.check_format()?;
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
     let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let config = data.load_config()?;
+    data.ensure_format()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    check_sign_in(&config).map_err(anyhow::Error::msg)?;
+    for (index, team) in config.teams.iter().enumerate() {
+        if let Some(delivery) = &team.delivery {
+            delivery
+                .check(&format!("teams[{index}].delivery"))
+                .map_err(anyhow::Error::msg)?;
+        }
+    }
     config
         .federation
         .check(&config.url)
@@ -174,6 +204,11 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         Some(notifier) => notifier,
         None => notifier(&config, &data_dir, clock.clone(), &logger, &recorder),
     };
+    let release_log = ReleaseLog::new(
+        &data,
+        clock.clone(),
+        config.teams.iter().map(|team| (&team.org, &team.team)),
+    );
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(TimedPeers::new(
@@ -185,7 +220,8 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
             overrides.runtime.unwrap_or_else(|| {
                 Arc::new(
                     CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
-                        .recording(recorder.clone()),
+                        .recording(recorder.clone())
+                        .reporting_releases(release_log),
                 )
             }),
             recorder.clone(),
@@ -269,26 +305,47 @@ impl Opened {
             .collect()
     }
 
-    fn access(&self) -> anyhow::Result<Option<Arc<AccessVerifier>>> {
-        let Some(config) = self.node.config().access else {
+    /// The sign-in provider in front of the Client API: Access, else OIDC, when it is well formed. A malformed
+    /// one is no provider: requests from outside are then refused.
+    fn access(&self) -> anyhow::Result<Option<Arc<SignInVerifier>>> {
+        let config = self.node.config();
+        let provider = match (config.access, config.oidc) {
+            (Some(access), _) => self.access_provider(access),
+            (None, Some(oidc)) => match oidc.check() {
+                Ok(()) => Some(Provider::oidc(&oidc)),
+                Err(why) => {
+                    self.logger.warn(
+                        "access",
+                        &format!("the oidc setting is malformed ({why}); requests from outside are refused"),
+                    );
+                    None
+                }
+            },
+            (None, None) => None,
+        };
+        let Some(provider) = provider else {
             return Ok(None);
         };
-        if !is_valid_config(&config) {
-            self.logger.warn("access", "the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
-            return Ok(None);
-        }
-        if config.app_id.is_some() && handoff::app_id(&config).is_none() {
-            self.logger.warn("access", "the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
-        }
         let certs = match &self.certs {
             Some(certs) => certs.clone(),
             None => Arc::new(HttpCerts::new()?),
         };
-        Ok(Some(Arc::new(AccessVerifier::new(
-            config,
+        Ok(Some(Arc::new(SignInVerifier::new(
+            provider,
             certs,
             self.clock.clone(),
         ))))
+    }
+
+    fn access_provider(&self, config: AccessConfig) -> Option<Provider> {
+        if !is_valid_config(&config) {
+            self.logger.warn("access", "the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
+            return None;
+        }
+        if config.app_id.is_some() && handoff::app_id(&config).is_none() {
+            self.logger.warn("access", "the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
+        }
+        Some(Provider::access(config))
     }
 
     /// The federation routes, the Client API, and the web client, for a node listening on `port`.

@@ -31,17 +31,17 @@ public struct DeviceRemovalPlan: Equatable, Sendable {
     /// The device to remove is this one: after it, this device cannot sign, and its key cannot be added again.
     public let isThisDevice: Bool
 
-    /// This device is the one to remove and decisions signed with its key are still kept on it, waiting to be sent: removing it would make
-    /// each of them fail for good.
-    public let hasKeptDecisions: Bool
+    /// Decisions signed with the key of the device to remove are still kept on this phone, waiting to be sent: removing the device would make
+    /// each of them fail for good. A device is this phone's own, or an earlier key of it that was made again.
+    public let keptDecisions: KeptDecisions
 
-    /// Whether nothing can be removed: the person's last device in some org, or no org that this device can sign for, or this device while
-    /// decisions signed with it are kept.
-    public var isBlocked: Bool { !lastIn.isEmpty || targets.isEmpty || (isThisDevice && hasKeptDecisions) }
+    /// Whether nothing can be removed: the person's last device in some org, or no org that this device can sign for, or a device that signed
+    /// decisions that are still kept, or kept decisions that cannot be read now.
+    public var isBlocked: Bool { !lastIn.isEmpty || targets.isEmpty || keptDecisions != .noneKept }
 
-    /// - Parameter hasKeptDecisions: whether decisions are kept on this device; it matters only when the device to remove is this one.
-    public init(for row: DeviceFacts.Row, in list: DeviceList, ownKey: String, hasKeptDecisions: Bool = false) {
-        self.hasKeptDecisions = hasKeptDecisions
+    /// - Parameter keptDecisions: what is known of the decisions signed with the key of the device to remove that are kept on this phone.
+    public init(for row: DeviceFacts.Row, in list: DeviceList, ownKey: String, keptDecisions: KeptDecisions = .noneKept) {
+        self.keptDecisions = keptDecisions
         label = row.label
         code = (try? DevicePublicKey(string: row.publicKey))?.fingerprint.pairingCode
         isThisDevice = row.isThisPhone
@@ -88,7 +88,11 @@ public struct DeviceRemovalPlan: Equatable, Sendable {
     /// Why nothing can be removed, when that is so.
     public var refusal: String? {
         if !lastIn.isEmpty { return Ja.Devices.Remove.last(label, orgs: lastIn.joined(separator: "、")) }
-        if isThisDevice && hasKeptDecisions { return Ja.Devices.Remove.keptDecisions }
+        switch keptDecisions {
+        case .kept: return Ja.Devices.Remove.keptDecisions
+        case .unreadable: return Ja.Devices.Remove.keptDecisionsUnreadable
+        case .noneKept: break
+        }
         if targets.isEmpty && !stillIn.isEmpty { return Ja.Devices.Remove.stillIn(stillIn.joined(separator: "、")) }
         return nil
     }
