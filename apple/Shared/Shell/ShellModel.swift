@@ -166,6 +166,12 @@ final class ShellModel {
         OutboxBackground.finish(outbox)
     }
 
+    /// The app has left the screen: what it observed of its calls to the home node is reported once.
+    func reportCalls() {
+        guard let telemetry = session?.telemetry else { return }
+        Task { await telemetry.leftForeground() }
+    }
+
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
     func dismissBannersSoon() async {
         guard let session, !session.news.banners.isEmpty else { return }
