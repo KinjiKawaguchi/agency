@@ -583,3 +583,43 @@ fn a_team_with_one_active_repository_or_none_has_no_breakdown_and_a_quiet_one_is
     assert_eq!(found.len(), 2);
     assert_eq!(found[1].summary.merged, counts(0, 0, 0, 0));
 }
+
+#[test]
+fn a_repository_that_was_red_through_the_whole_period_is_listed_though_nothing_happened_in_it() {
+    let (pull_requests, mut runs) = two_repositories();
+    // acme/web's main went red before the period began, and no run has finished since: its red time is still
+    // counted in the team's, so the repository has to be listed for the numbers to add up.
+    runs.retain(|one| one.repo != "acme/web");
+    runs.push(run_in(
+        "acme/web",
+        "w0",
+        "2026-11-10T00:00:00Z",
+        Verdict::Failed,
+    ));
+    let only_app: Vec<_> = pull_requests
+        .iter()
+        .filter(|one| one.repo == "acme/app")
+        .cloned()
+        .collect();
+    let team = evaluate_three_days(&only_app, &runs);
+    let [app, web] = &team.by_repository[..] else {
+        panic!("the red repository is listed: {:?}", team.by_repository);
+    };
+    assert_eq!(
+        (app.repo.as_str(), web.repo.as_str()),
+        ("acme/app", "acme/web")
+    );
+    assert_eq!(web.summary.merged, counts(0, 0, 0, 0));
+    let whole = 2 * 86_400 + 12 * 3_600;
+    assert_eq!(
+        web.summary.main_red_seconds, whole,
+        "red from the period's start (the 22nd) to now (the 24th at 12:00): {}",
+        web.summary.main_red_seconds
+    );
+    assert!(
+        team.summary.main_red_seconds >= web.summary.main_red_seconds
+            && team.summary.main_red_seconds
+                <= app.summary.main_red_seconds + web.summary.main_red_seconds,
+        "the team's red time is between the longest and the sum"
+    );
+}

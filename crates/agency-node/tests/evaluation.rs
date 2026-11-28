@@ -564,3 +564,44 @@ async fn a_team_of_this_node_without_repositories_is_listed_as_unavailable_with_
         .unwrap()
         .contains("no repositories"));
 }
+
+#[tokio::test]
+async fn a_repository_that_is_not_written_owner_name_stops_the_node_and_names_the_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = agency_adapters::files::DataDir::new(dir.path().join("node"));
+    data.create_key().unwrap();
+    let account = agency_core::config::Account {
+        id: id("alice"),
+        label: "ALICE".into(),
+    };
+    for (repos, wanted) in [
+        (
+            vec!["acme"],
+            "teams[0].delivery.repos[0] is not written owner/name",
+        ),
+        (
+            vec!["acme/app", "ACME/app"],
+            "teams[0].delivery.repos[1] names a repository twice",
+        ),
+    ] {
+        let mut config = agency_core::config::NodeConfig::new(
+            "http://127.0.0.1:1",
+            "127.0.0.1:1",
+            account.clone(),
+            "scrum",
+        );
+        config.teams = vec![agency_core::config::HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            agency_core::config::RuntimeCommand::of(vec!["/nonexistent".into()]),
+        )
+        .with_delivery(repos.into_iter().map(String::from).collect())];
+        agency_core::ports::ConfigStore::save_config(&data, &config).unwrap();
+        let error = match agency_node::open(data.clone(), agency_node::Overrides::default()) {
+            Ok(_) => panic!("the node started"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains(wanted), "{error}");
+    }
+}

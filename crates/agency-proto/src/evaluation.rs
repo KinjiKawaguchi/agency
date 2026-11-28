@@ -354,7 +354,9 @@ fn check_participants(team: &TeamEvaluation, team_days: u32) -> Result<(), Strin
     Ok(())
 }
 
-fn is_repository(name: &str) -> bool {
+/// Whether `name` is a repository as GitHub writes it, `owner/name`: what a report names and what a team's
+/// `delivery.repos` may hold.
+pub fn is_repository(name: &str) -> bool {
     let part = |part: &str| {
         !part.is_empty()
             && part

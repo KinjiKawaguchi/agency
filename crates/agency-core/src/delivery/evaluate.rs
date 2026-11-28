@@ -161,7 +161,7 @@ fn summarize(days: &BTreeMap<String, Day>, longest_red_seconds: u64) -> Evaluati
 /// pull requests and the runs of its own default branch, and no cost (the cost is the team's tokens by day).
 /// None unless at least two repositories had one, where a repository's summary would repeat the team's.
 fn by_repository(input: &Input, period: &Period) -> Vec<RepositoryEvaluation> {
-    let active = input
+    let mut active = input
         .pull_requests
         .iter()
         .filter(|one| period.contains(one.merged_at))
@@ -174,6 +174,26 @@ fn by_repository(input: &Input, period: &Period) -> Vec<RepositoryEvaluation> {
                 .map(|one| &one.repo),
         )
         .collect::<BTreeSet<_>>();
+    // A branch that was red before the period and still is has no run in it, yet its red time is the team's.
+    let repos = input
+        .runs
+        .iter()
+        .map(|one| &one.repo)
+        .collect::<BTreeSet<_>>();
+    for repo in repos {
+        let runs: Vec<MainRun> = input
+            .runs
+            .iter()
+            .filter(|one| &one.repo == repo)
+            .cloned()
+            .collect();
+        let is_red_in_period = red_spans(&runs, input.now)
+            .iter()
+            .any(|(from, until)| *from < period.end() && *until > period.start());
+        if is_red_in_period {
+            active.insert(repo);
+        }
+    }
     if active.len() < 2 {
         return vec![];
     }
