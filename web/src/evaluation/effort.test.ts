@@ -1,7 +1,6 @@
-import type { DayEffort, EffortType, TeamEffort } from '../api/evaluationApi'
-import { EFFORT_TYPES, planOf, pointsFromPlan, sharesOf, totalCost, weekSpend } from './effort'
+import type { EffortType, TeamEffort } from '../api/evaluationApi'
+import { EFFORT_TYPES, planOf, pointsFromPlan, sharesOf, totalCost } from './effort'
 
-const zero = (): Record<EffortType, number> => ({ newFeature: 0, improvement: 0, maintenance: 0, debt: 0, incident: 0, unclassified: 0 })
 const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 const effortOf = (costs: Partial<Record<EffortType, number>>): TeamEffort => ({
   team: 'app',
@@ -55,14 +54,5 @@ describe('shares', () => {
   it('measures the gap to the plan in whole points', () => {
     expect(pointsFromPlan(43.4, 50)).toBe(-7)
     expect(pointsFromPlan(20.4, 20)).toBe(0)
-  })
-})
-
-describe('weekSpend', () => {
-  const day = (date: string, newFeature: number, unclassified = 0): DayEffort => ({ date, costUsd: { ...zero(), newFeature, unclassified } })
-
-  it('adds up the seven days that end at the last day of the period, and no earlier day', () => {
-    const byDay = [day('2026-11-19', 100), day('2026-11-20', 1), day('2026-11-24', 2, 1), day('2026-11-26', 3)]
-    expect(weekSpend(byDay, '2026-11-26')).toBe(7)
   })
 })

@@ -107,6 +107,8 @@ enum Command {
     SeatRemove(seat_cli::SeatRemove),
     Audit(audit_cli::Audit),
     MemberRemove(member_cli::MemberRemove),
+    GuestRemove(member_cli::GuestRemove),
+    Guests(member_cli::Guests),
     SeatMerge(seat_cli::SeatMerge),
     /// Makes a seven-day claim link for one seat and one email (on the root key's node)
     SeatInvite {
@@ -309,7 +311,8 @@ const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127
 If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
 --no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
 
-fn status(node: &Node) {
+fn status(node: &Node, data: &DataDir) {
+    let releases = agency_adapters::runtime_releases::read(data);
     let config = node.config();
     println!(
         "Account: {} ({}), key fingerprint {}",
@@ -410,11 +413,12 @@ fn status(node: &Node) {
     }
     for team in &config.teams {
         println!(
-            "Team on this node: {}/{} (owner {}) runs {}",
+            "Team on this node: {}/{} (owner {}) runs {}; {}",
             team.org,
             team.team,
             team.owner,
-            team.runtime.command.join(" ")
+            team.runtime.command.join(" "),
+            agency_adapters::runtime_releases::say(&releases, &team.org, &team.team)
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
@@ -641,6 +645,8 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
         Command::Audit(args) => audit_cli::audit(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
+        Command::GuestRemove(args) => member_cli::guest_remove(&node, args)?,
+        Command::Guests(args) => member_cli::guests(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::SeatInvite { org, seat, email } => {
             let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
@@ -772,7 +778,7 @@ async fn run(cli: Cli) -> Result<()> {
                 outcomes.len()
             );
         }
-        Command::Status => status(&node),
+        Command::Status => status(&node, &cli_data),
         Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }

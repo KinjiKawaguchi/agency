@@ -1,6 +1,6 @@
 //! Ports: everything a use case needs from outside the domain. Adapters implement them.
 use crate::clients_seen::ClientsSeen;
-use crate::config::{FundingConfig, HostedTeam, NodeConfig};
+use crate::config::{DeliverySite, FundingConfig, HostedTeam, NodeConfig};
 use crate::decisions::DecisionRecord;
 use crate::delivery::DeliveryFacts;
 use crate::devices::DeviceRequestRecord;
@@ -153,6 +153,8 @@ pub trait ClaimStore {
     fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
     fn remove_claim(&self, digest: &str) -> Result<()>;
     fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()>;
+    /// Drops the open claim link of `seat` and the index entry that names it. Nothing to drop is not an error.
+    fn remove_claim_for_seat(&self, org: &Id, seat: &Id) -> Result<()>;
 }
 
 /// The envelopes already applied, for replay protection.
@@ -273,6 +275,8 @@ pub trait GuestStore {
         guest: &agency_proto::client::GuestRef,
         keys: &[String],
     ) -> Result<()>;
+    /// Drops the list of requests a guest was told of. Nothing to drop is not an error.
+    fn remove_guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Result<()>;
 }
 
 /// The app releases the node has seen (`clients_seen`), kept in its data directory.
@@ -496,11 +500,12 @@ pub struct DeliveryError(pub String);
 /// Reads the facts a team's delivery numbers are worked out from (GitHub, through the machine's `gh`).
 #[async_trait]
 pub trait DeliverySource: Send + Sync {
-    /// The pull requests of `repos` merged since `since`, and the runs of CI on their default branches
-    /// from about then on, enough to tell what state each branch was in at `since`.
+    /// The pull requests of the repositories `site` names, on the host it names, merged since `since`,
+    /// and the runs of CI on their default branches from about then on, enough to tell what state each
+    /// branch was in at `since`.
     async fn facts(
         &self,
-        repos: &[String],
+        site: &DeliverySite,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError>;
 }

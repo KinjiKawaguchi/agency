@@ -47,7 +47,7 @@ export function EffortSection({ org, days, teamLabels }: Props) {
       ) : (
         <>
           {effort.data.teams.map((team) => (
-            <TeamEffortView key={team.team} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} />
+            <TeamEffortView key={team.team} org={org} label={teamLabels.get(team.team) ?? team.team} effort={team} plan={planFor(team.team)} days={effort.data.days} />
           ))}
           {(effort.data.unavailable ?? [] /* stand-in-ok(optional): the node leaves the list out when every team answered, in an answer that has come */).map((one) => (
             <section key={one.team} className="ev-team">
