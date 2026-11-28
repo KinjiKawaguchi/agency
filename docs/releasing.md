@@ -33,7 +33,7 @@ BREAKING CHANGE: client API: the desk answer no longer has a `pending` field
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
 2. release-please keeps one open pull request for the node, **chore: release X.Y.Z**, that raises the version in `Cargo.toml`, and in the web client's `package.json` and `package-lock.json`, and adds the new section of `CHANGELOG.md`. A second job of the same workflow adds a commit that brings the workspace crates' versions in `Cargo.lock` up to date (release-please cannot do that itself). The pull request updates itself after each merge to `main`.
 3. To release, merge that pull request. release-please then tags `vX.Y.Z` and makes the GitHub Release with the changelog section as its notes.
-4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and Debian package, with their `.sha256` files, to the release.
+4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and Debian package, with their `.sha256` files, to the release, with the SBOMs and the signed `SHA256SUMS` (see "What a release holds").
 5. The macOS builds are made on a Mac, never on a GitHub runner. After step 4, on a Mac with the repository, Rust, and Node installed:
 
 ```sh
@@ -43,6 +43,8 @@ scripts/release-macos.sh vX.Y.Z
 ```
 
 The script refuses a tree that is not at the tag, builds the web client and the node, checks that the binary starts and serves, and attaches `agency-X.Y.Z-macos-<arm64|x86_64>.tar.gz` and its `.sha256` to the release. Run it once on each kind of Mac that should have a build.
+
+6. Check the release as someone who downloads it would, with the commands of "Checking a release" below: the signature of `SHA256SUMS` and the sums of the files. The signature is made by the workflow's identity, `release.yml` at `refs/heads/main` (release-please runs on `main` and calls it), and the expression that names it ends there so that a signature made from any other ref never verifies. The first release is the first time this is run for real: if `cosign verify-blob` refuses the real signature, read the identity in the certificate (`cosign verify-blob` says what it found), correct the expression here, and say so in the release notes.
 
 The macOS binaries are not signed and not notarized. A browser download is quarantined by macOS and will not open until `xattr -d com.apple.quarantine agency` (`gh release download` and `curl` do not quarantine).
 
@@ -95,7 +97,28 @@ Each build says which source it was made from, in its `Info.plist`: `AgencyBuild
 
 For each of macOS (arm64, x86_64) and Linux (x86_64, arm64): `agency-<version>-<os>-<arch>.tar.gz` and `agency-<version>-<os>-<arch>.tar.gz.sha256`. Each Linux build also has `agency_<version>_<amd64|arm64>.deb` and its `.sha256`. The tarball holds the `agency` binary (with the web client inside), the script that runs it as a service (`systemd-unit.sh` or `launchd-plist.sh` and `deploy-macos.sh`), the install guides, and the licenses. The Debian package installs the binary, the guides, licenses, and its user-unit script, but not a system service. [install.md](install.md) says how to install it.
 
+The release workflow also writes the lists of what the node is made of, as CycloneDX (JSON), one for the node's Rust crates (`agency-<version>-sbom-rust.cdx.json`, from `Cargo.lock`, for every platform the node is built for, so it may name a crate that one build does not contain) and one for the npm packages the web client embeds (`agency-<version>-sbom-web.cdx.json`, from `web/package-lock.json`, without the tools that only test and build). Last, it writes `SHA256SUMS`, the SHA-256 of every file above (the builds, the Debian packages and the lists, not the per-file `.sha256` files), and signs it: `SHA256SUMS.sigstore.json` is the signature, made by Sigstore's keyless signing with the workflow's own identity, so no signing key is kept anywhere. The macOS builds are made on a Mac after this and are in neither the list nor the signature.
+
 Builds that are not of a release (a manual run of the `release` workflow, or a pull request that changes it) are workflow artifacts, named with the short commit.
+
+## Checking a release
+
+To check that a download is what the release workflow built, with [cosign](https://docs.sigstore.dev/cosign/) and `sha256sum` (`<owner>/<repo>` is this repository, and `<tag>` the release):
+
+```sh
+gh release download <tag> --repo <owner>/<repo> --pattern 'SHA256SUMS*' --pattern 'agency-*-linux-x86_64.tar.gz'
+cosign verify-blob SHA256SUMS \
+  --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/<owner>/<repo>/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+The first command takes the signed list and the files you want, the second checks that the list was signed by this repository's release workflow, and the third that your files are the ones in it. A file that is not in the list, such as a macOS build, has only its own `.sha256`, which tells you the download is whole but not who made it.
+
+The lists of materials are ordinary CycloneDX files, to be read by any tool that reads them; they are in the same list of checksums. Each is the list of what went into the build, as it is in `Cargo.lock` and `web/package-lock.json` at the tag, so a newly reported vulnerability in a dependency can be matched against a release you run.
+
+CI fails a change that takes the lists, the checksums, or the signature out of the release workflow (`scripts/ci/check-release-workflow.sh`). The release workflow itself runs on a pull request that changes it, up to the signing, which needs a tag. A pull request that changes only a lock file (a dependency update) runs just the `sbom` workflow, which makes the lists and checks them, not the builds.
 
 ## Settings it needs
 

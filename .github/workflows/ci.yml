@@ -113,6 +113,13 @@ jobs:
         run: scripts/test/systemd-unit.sh
       - name: Test the Debian package script
         run: scripts/test/debian-package.sh
+      - name: Check the release workflow makes the SBOMs and the signed checksums
+        run: scripts/ci/check-release-workflow.sh
+      - name: Test the release scripts that write the SBOMs and the checksums, and the check of the workflow
+        run: |
+          shellcheck -x scripts/test/sbom-and-checksums.sh scripts/test/release-workflow.sh scripts/test/sbom-fakes/*
+          scripts/test/sbom-and-checksums.sh
+          scripts/test/release-workflow.sh
       - name: Test the deploy script, against stand-ins for launchctl and curl
         run: scripts/test/deploy-macos.sh
       - name: Test the macOS release script and the packaging, against stand-ins for gh, cargo, and npm
