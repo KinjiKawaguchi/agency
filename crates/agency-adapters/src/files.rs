@@ -2,6 +2,7 @@
 //! see a half-written file. The account key file and the directory are readable only by their owner.
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
+use agency_core::data_format::{is_unknown_setting, unknown_setting};
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::guests::Guest;
@@ -232,11 +233,20 @@ impl DataDir {
 impl ConfigStore for DataDir {
     fn load_config(&self) -> Result<NodeConfig> {
         let path = self.config_path();
-        read_json(&path).ok_or_else(|| {
+        let cannot_read = || {
             Error::internal(format!(
                 "cannot read {} (create it with agency init)",
                 path.display()
             ))
+        };
+        let text = fs::read_to_string(&path).map_err(|_| cannot_read())?;
+        serde_json::from_str(&text).map_err(|error| {
+            let reading_error = error.to_string();
+            if is_unknown_setting(&reading_error) {
+                unknown_setting(&reading_error)
+            } else {
+                cannot_read()
+            }
         })
     }
 
@@ -319,6 +329,12 @@ impl AppliedLog for DataDir {
 
     fn record_applied(&self, id: &EnvelopeId, at: &str) -> Result<()> {
         let mut applied = self.applied();
+        // What was applied longer ago than an envelope can be sent again is dropped as a new one is written, so
+        // the file (read and written for each decision) holds the ids of the window and not of every decision.
+        if let Some(now) = agency_proto::clock::parse(at) {
+            applied
+                .retain(|_, recorded| agency_proto::envelope::is_still_replayable(recorded, now));
+        }
         applied.insert(id.as_str().to_owned(), at.to_owned());
         write_json(&self.applied_path(), &applied)
     }
