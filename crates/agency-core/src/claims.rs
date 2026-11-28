@@ -3,10 +3,12 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::guests::check_email;
 use crate::node::Node;
 use crate::orgs::{is_root, load};
+use crate::pending_root::RootChange;
 use agency_proto::claim::{ClaimProgress, ClaimStatus};
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes};
 use agency_proto::org::{label_ok_to_write, Device, SignedOrg};
+use agency_proto::root_change::{waiting_message, PendingRootAnswer, RootAnswer};
 use agency_proto::{Id, PublicKey, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -374,23 +376,149 @@ pub async fn confirm(node: &Node, org: &Id, seat: &Id, pairing: &str) -> Result<
     Ok(doc)
 }
 
-/// `confirm` for the owner's client: when the root key asks for the owner's presence it is the node's terminal
-/// that is present, not the client, so the answer is a conflict that says to confirm there
-/// (`agency claim-confirm`); holding the confirmation for the owner's presence is a change of its own.
+/// What the owner's client is answered when it confirms a claim: the version that made the seat a member, or, when
+/// the root key asks for the owner's presence, the handle of the confirmation held for `agency root-sign`.
+#[derive(Debug)]
+pub enum ClientConfirmation {
+    Signed(Box<SignedOrg>),
+    Held(PendingRootAnswer),
+}
+
+/// `confirm` for the owner's client. When the root key asks for the owner's presence, the client is not where the
+/// owner is present: the confirmation is checked as `confirm` checks it and held as a root change of its own kind
+/// (`claimSeat`), which `agency root-sign` names and signs (docs/protocol.md, "Pending root changes").
 pub async fn confirm_from_client(
     node: &Node,
     org: &Id,
     seat: &Id,
     pairing: &str,
-) -> Result<SignedOrg> {
+) -> Result<ClientConfirmation> {
     let doc = load(node, org)?;
-    if crate::pending_root::must_hold(node, &doc) {
+    if !crate::pending_root::must_hold(node, &doc) {
+        return confirm(node, org, seat, pairing)
+            .await
+            .map(|doc| ClientConfirmation::Signed(Box::new(doc)));
+    }
+    hold_confirmation(node, org, seat, pairing)
+        .await
+        .map(ClientConfirmation::Held)
+}
+
+/// The redeemed claim of `seat` whose key's pairing code is `pairing`, as `confirm` requires it.
+fn redeemed_with_pairing(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    pairing: &str,
+) -> Result<(ClaimRecord, Redemption)> {
+    let (_, record) = claim_of(node, org, seat, |state| {
+        matches!(state, ClaimState::Redeemed(_))
+    })
+    .ok_or_else(|| Error::not_found(format!("no claim of seat {seat} waits in org {org}")))?;
+    let ClaimState::Redeemed(redemption) = record.state.clone() else {
+        return Err(unknown());
+    };
+    if plain(pairing) != plain(&redemption.public_key.pairing_code()) {
         return Err(Error::new(
             ErrorKind::Conflict,
-            "this node's root key asks for your presence: confirm at the node's terminal with `agency claim-confirm`",
+            "that is not the pairing code of the key this claim holds; compare it again on the person's screen",
         ));
     }
-    confirm(node, org, seat, pairing).await
+    Ok((record, redemption))
+}
+
+/// Holds the owner's confirmation of `seat`'s claim for the root key's presence. There is at most one for a seat: the
+/// same confirmation again answers the same handle, and one for a key the claim no longer holds is replaced.
+async fn hold_confirmation(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    pairing: &str,
+) -> Result<PendingRootAnswer> {
+    let _guard = node.write_lock().lock().await;
+    let (record, redemption) = redeemed_with_pairing(node, org, seat, pairing)?;
+    let email = crate::seats::check_email(&record.email)?;
+    crate::seats::check_email_is_free(node, &email, org, seat)?;
+    if let Some(held) = crate::pending_root::held_claim(node, org, seat)? {
+        let is_same_key = matches!(&held.change, RootChange::ClaimSeat { device, .. } if device.public_key == redemption.public_key);
+        if is_same_key {
+            return Ok(PendingRootAnswer {
+                pending: held.id,
+                message: waiting_message(),
+            });
+        }
+        crate::pending_root::refuse(node, &held.id)?;
+    }
+    let doc = load(node, org)?;
+    let seat_label = doc
+        .body
+        .seats
+        .iter()
+        .find(|one| &one.id == seat)
+        .map(|one| one.label.clone())
+        .ok_or_else(|| Error::new(ErrorKind::Conflict, "that seat is not in the org any more"))?;
+    let device = Device {
+        id: redemption.public_key.device_id(),
+        label: redemption.label,
+        public_key: redemption.public_key,
+        added_at: Timestamp::parse(&node.now_text())
+            .map_err(|error| Error::internal(error.to_string()))?,
+    };
+    let change = RootChange::ClaimSeat {
+        seat: seat.clone(),
+        seat_label,
+        device: Box::new(device),
+    };
+    match crate::pending_root::hold(node, org, change)? {
+        RootAnswer::Pending(answer) => Ok(answer),
+        RootAnswer::Signed(_) => Err(Error::internal("a held change was answered as signed")),
+    }
+}
+
+/// Whether `seat`'s claim still waits, redeemed with `key`, and its address can still become the member's sign-in:
+/// what a held confirmation is checked against again when it is signed. Answers that address.
+pub(crate) fn can_host(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<String> {
+    let (_, record) = waiting_with(node, org, seat, key)?;
+    let email = crate::seats::check_email(&record.email)?;
+    crate::seats::check_email_is_free(node, &email, org, seat)?;
+    Ok(email)
+}
+
+/// `seat`'s claim, while it waits redeemed with `key`, and the digest it is kept under.
+fn waiting_with(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    key: &PublicKey,
+) -> Result<(String, ClaimRecord)> {
+    claim_of(
+        node,
+        org,
+        seat,
+        |state| matches!(state, ClaimState::Redeemed(redemption) if &redemption.public_key == key),
+    )
+    .ok_or_else(|| Error::bad_request("the claim no longer waits with that device's key"))
+}
+
+/// Once the root has signed a held confirmation, before the version is published: the person's address becomes the
+/// member's sign-in.
+pub(crate) fn keep_sign_in(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
+    let (_, record) = waiting_with(node, org, seat, key)?;
+    let email = crate::seats::check_email(&record.email)?;
+    crate::guests::keep(
+        node,
+        &crate::guests::Guest::new(&email, org.clone(), seat.clone()),
+    )
+}
+
+/// Once a held confirmation's version is published: the claim is confirmed.
+pub(crate) fn mark_confirmed(node: &Node, org: &Id, seat: &Id, key: &PublicKey) -> Result<()> {
+    let (digest, mut record) = waiting_with(node, org, seat, key)?;
+    let ClaimState::Redeemed(redemption) = record.state.clone() else {
+        return Err(unknown());
+    };
+    record.state = ClaimState::Confirmed(redemption);
+    node.store().save_claim(&digest, &record)
 }
 
 /// The owner refuses the claim of `seat`: the pending claim is dropped, and the link stays spent (a new link is

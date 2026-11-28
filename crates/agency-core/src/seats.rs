@@ -108,7 +108,7 @@ const MOST_EMAIL_CHARACTERS: usize = 254;
 
 /// The email, lowercased, when it can be a sign-in address: text with one `@` that has text on both sides, no control
 /// character, at most `MOST_EMAIL_CHARACTERS` characters.
-fn check_email(email: &str) -> Result<String> {
+pub(crate) fn check_email(email: &str) -> Result<String> {
     let email = email.trim().to_lowercase();
     let is_shaped = email.chars().count() <= MOST_EMAIL_CHARACTERS
         && !email.chars().any(char::is_control)
@@ -125,7 +125,7 @@ fn check_email(email: &str) -> Result<String> {
 
 /// Refuses an email that cannot be this seat's guest: the owner's own sign-in (the owner is never a guest), or
 /// one that already is the guest of another member.
-fn check_email_is_free(node: &Node, email: &str, org: &Id, seat: &Id) -> Result<()> {
+pub(crate) fn check_email_is_free(node: &Node, email: &str, org: &Id, seat: &Id) -> Result<()> {
     let owner = node
         .config()
         .access
@@ -143,6 +143,17 @@ fn check_email_is_free(node: &Node, email: &str, org: &Id, seat: &Id) -> Result<
         )),
         _ => Ok(()),
     }
+}
+
+/// Makes `seat` of `body` a member this node hosts, with the seat's id, label, department and what to ask it about,
+/// and `device` as its only device. Not found when the seat is not in the org.
+pub(crate) fn host_in(body: &mut OrgDefinition, org: &Id, seat: &Id, device: Device) -> Result<()> {
+    let taken = take_seat(body, seat).map_err(|_| not_found("seat", seat, org))?;
+    let member = Person::hosted(taken.id, taken.label, vec![device])
+        .with_department(taken.department)
+        .with_ask_about(taken.ask_about);
+    body.people.push(member);
+    Ok(())
 }
 
 /// A seat becomes a member this node hosts, for a person with no node of their own (docs/glossary.md, "Hosted
@@ -173,14 +184,7 @@ pub fn host_seat(
     amend_with(
         node,
         org,
-        |body| {
-            let taken = take_seat(body, seat).map_err(|_| not_found("seat", seat, org))?;
-            let member = Person::hosted(taken.id, taken.label, vec![device])
-                .with_department(taken.department)
-                .with_ask_about(taken.ask_about);
-            body.people.push(member);
-            Ok(())
-        },
+        |body| host_in(body, org, seat, device),
         |_| guests::keep(node, &Guest::new(&email, org.clone(), seat.clone())),
     )
 }
