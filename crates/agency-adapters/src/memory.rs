@@ -228,6 +228,12 @@ impl TeamRuntime for MemoryRuntime {
         let waiting = match decision.kind {
             EnvelopeKind::Answer => &state.requests,
             EnvelopeKind::Judge => &state.pending,
+            EnvelopeKind::Prioritize => {
+                return Err(RuntimeError {
+                    status: 400,
+                    message: "a priority is not a decision of `decide`".into(),
+                })
+            }
         };
         if !waiting.iter().any(|(id, _)| id == &decision.target) {
             return Err(RuntimeError {

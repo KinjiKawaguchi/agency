@@ -5,6 +5,7 @@
 //! in docs/protocol.md.
 use crate::envelope::{EnvelopeKind, Payload};
 use crate::ids::Id;
+use crate::prioritize::PriorityChoice;
 use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -47,7 +48,7 @@ impl RuntimeRequest {
 }
 
 /// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage`, `activity`,
-/// `participantMetrics`, and `tickets` are optional, and the node calls one only when `Describe::ops` lists it.
+/// `participantMetrics`, `tickets`, and `prioritize` are optional, and the node calls one only when `Describe::ops` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "op", rename_all = "camelCase")]
 #[ts(export)]
@@ -76,6 +77,21 @@ pub enum RuntimeCall {
     },
     /// Answered with `Tickets`: the epics the team answers for with every child, and its tickets in no epic.
     Tickets,
+    /// Answered with `Decided`: sets the board's Priority of the ticket `target` names (a ticket's
+    /// `prioritizeWith`), or clears it. `by` and `byParticipant` are as in `RuntimeDecision`. A priority
+    /// never goes through `Decide`.
+    Prioritize {
+        target: String,
+        priority: PriorityChoice,
+        by: Id,
+        #[serde(
+            default,
+            rename = "byParticipant",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[ts(optional)]
+        by_participant: Option<String>,
+    },
 }
 
 /// The optional operation name for `RuntimeCall::TokenUsage` in `Describe::ops`.

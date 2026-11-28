@@ -399,6 +399,9 @@ impl PersonStatus {
 
 impl Request {
     fn check_limits(&self) -> Result<(), String> {
+        if self.answer_with.kind == EnvelopeKind::Prioritize {
+            return Err("a request is answered with an answer or a judge".into());
+        }
         let optional = [&self.to, &self.issue].into_iter().flatten();
         names(
             "a request's name",
