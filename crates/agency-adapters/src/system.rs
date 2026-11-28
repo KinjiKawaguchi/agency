@@ -57,6 +57,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_operating_system_gives_fresh_random_bytes() {
+        let (first, second) = (OsRandom.bytes16(), OsRandom.bytes16());
+        assert_ne!(first, second, "two draws are never the same");
+        assert_ne!(first, [0u8; 16], "a draw is not all zeros");
+    }
+
+    #[test]
     fn reads_the_offset_date_prints() {
         let hours = |h: i8, m: i8| UtcOffset::from_hms(h, m, 0).unwrap();
         assert_eq!(parse_offset("+0900"), Some(hours(9, 0)));
@@ -73,7 +80,7 @@ pub struct OsRandom;
 impl Random for OsRandom {
     fn bytes16(&self) -> [u8; 16] {
         let mut bytes = [0u8; 16];
-        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+        getrandom::fill(&mut bytes).expect("the operating system gives random bytes");
         bytes
     }
 }

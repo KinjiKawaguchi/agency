@@ -78,7 +78,33 @@
           "merged": 0
         }
       ],
-      "unattributedMerged": 1
+      "unattributedMerged": 1,
+      "byRepository": [
+        {
+          "repo": "acme/app",
+          "summary": {
+            "merged": { "feat": 2, "fix": 1, "refactor": 0, "docs": 0, "test": 0, "chore": 0, "other": 0 },
+            "prLeadMedianSeconds": 5400,
+            "prLeadP90Seconds": 14400,
+            "issueLeadMedianSeconds": 15300,
+            "issueLeadP90Seconds": 21600,
+            "mainRedSeconds": 1800,
+            "longestRedSeconds": 1800,
+            "reverts": 0
+          }
+        },
+        {
+          "repo": "acme/web",
+          "summary": {
+            "merged": { "feat": 1, "fix": 0, "refactor": 0, "docs": 1, "test": 0, "chore": 1, "other": 0 },
+            "prLeadMedianSeconds": 1800,
+            "prLeadP90Seconds": 9000,
+            "mainRedSeconds": 0,
+            "longestRedSeconds": 0,
+            "reverts": 1
+          }
+        }
+      ]
     },
     {
       "team": "docs",

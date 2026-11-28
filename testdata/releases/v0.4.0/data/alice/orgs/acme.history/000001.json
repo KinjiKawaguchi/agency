@@ -1,0 +1,28 @@
+{
+  "body": {
+    "org": "acme",
+    "label": "Acme",
+    "version": 1,
+    "prev": null,
+    "root": {
+      "account": "alice",
+      "publicKey": "h6lyp7/egGLWX9XoC2+Q+YtfnXBE7qTOyNJOrvuLqYA="
+    },
+    "departments": [],
+    "people": [
+      {
+        "id": "alice",
+        "label": "Alice",
+        "account": "alice",
+        "publicKey": "Zw7Hm42ytxNZ46mN1Ivvdqr6zRJXbZuIYciQNjGcZHQ=",
+        "department": null,
+        "role": "member"
+      }
+    ],
+    "teams": [],
+    "revoked": [],
+    "at": "2026-11-28T08:04:13Z"
+  },
+  "signer": "alice",
+  "signature": "rb+0BeN5Ydym22yNjstByao+7R/F3ox6f4/aN5SivrFWMbxEEQY2gK0ndG5toRtlrRjVm8UohAOB342TncJaCA=="
+}

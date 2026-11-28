@@ -10,6 +10,7 @@ use agency_proto::outcome::{
 };
 use agency_proto::seat::{External, Seat};
 use agency_proto::signed::{is_node_id, read_text, read_text_for};
+use agency_proto::view::FederatedView;
 use agency_proto::{
     clock, AccountKey, Device, DeviceChange, DeviceOp, Envelope, EnvelopeId, EnvelopeKind, Id,
     Kind, OrgDefinition, Payload, Person, Role, Signed, Timestamp,
@@ -251,7 +252,7 @@ fn p256_device(comment: &str) -> serde_json::Value {
 fn p256_key(byte: u8) -> (p256::ecdsa::SigningKey, agency_proto::PublicKey) {
     use base64::Engine;
     let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let encoded = base64::engine::general_purpose::STANDARD.encode(point.as_bytes());
     let public = agency_proto::PublicKey::try_from(format!("p256:{encoded}")).unwrap();
     (key, public)
@@ -898,6 +899,54 @@ fn a_node_id_is_thirty_two_lowercase_hex_characters() {
     }
 }
 
+/// The sample view of `testdata/teamview.sample.json` as a reader named `owner` is answered it.
+fn sample_answer() -> FederatedView {
+    let text = include_str!("../../../testdata/teamview.sample.json");
+    FederatedView {
+        view: serde_json::from_str(text).unwrap(),
+        viewer: Some("owner".into()),
+        answers_for: vec![],
+    }
+}
+
+/// The tag of a team's view answer: the SHA-256 of its canonical JSON without the view's `generatedAt`.
+fn view_tag_vector() -> serde_json::Value {
+    let answer = sample_answer();
+    serde_json::json!({ "answer": answer, "tag": answer.tag() })
+}
+
+#[test]
+fn the_tag_of_a_view_answer_says_nothing_of_when_it_was_made_and_changes_with_everything_else() {
+    let answer = sample_answer();
+    let tag = answer.tag();
+    assert_eq!(tag.len(), 64);
+    assert!(
+        tag.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+        "{tag}"
+    );
+
+    let mut later = answer.clone();
+    later.view.generated_at = Timestamp::parse("2027-01-01T00:00:00Z").unwrap();
+    assert_eq!(
+        later.tag(),
+        tag,
+        "the time the runtime made the view is not part of the tag"
+    );
+
+    let mut retitled = answer.clone();
+    retitled.view.label.push('!');
+    assert_ne!(retitled.tag(), tag, "the view");
+    let mut other_reader = answer.clone();
+    other_reader.viewer = Some("bob".into());
+    assert_ne!(other_reader.tag(), tag, "who reads it");
+    let mut answering_for = answer;
+    answering_for.answers_for = vec![agency_proto::view::AnswersFor {
+        name: "finance".into(),
+        id: id("carol"),
+    }];
+    assert_ne!(answering_for.tag(), tag, "whom the reader answers for");
+}
+
 #[test]
 fn vectors_match_testdata() {
     let key = AccountKey::from_seed([7u8; 32]);
@@ -947,6 +996,7 @@ fn vectors_match_testdata() {
         "orgWithOutcomes": org_with_outcomes(&key, &org),
         "deviceChangeP256": device_change_p256(),
         "signedRead": signed_read(&key),
+        "viewTag": view_tag_vector(),
     });
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/vectors.json");
     if std::env::var("AGENCY_WRITE_VECTORS").is_ok() {

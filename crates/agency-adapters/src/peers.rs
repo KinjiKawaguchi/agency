@@ -1,5 +1,5 @@
 //! Other nodes over HTTP (`/fed/v1`). Signed reads travel in the `x-agency-*` headers.
-use agency_core::ports::{DefinitionAccess, PeerError, Peers};
+use agency_core::ports::{DefinitionAccess, PeerError, Peers, ViewRead};
 use agency_core::read_auth::ReadAuth;
 use agency_proto::about::About;
 use agency_proto::activity::Activity;
@@ -7,7 +7,6 @@ use agency_proto::effort::Effort;
 use agency_proto::evaluation::Evaluation;
 use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::root_change::{PendingRootAnswer, RootAnswer};
-use agency_proto::view::FederatedView;
 use agency_proto::{DeviceChange, Envelope, JoinRequest, Signed, TokenUsage};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
@@ -30,6 +29,9 @@ pub fn read_headers(auth: &ReadAuth) -> Vec<(&'static str, String)> {
     headers
 }
 
+/// How long one request to another node is waited for.
+pub const TIMEOUT: Duration = Duration::from_secs(8);
+
 pub struct HttpPeers {
     http: reqwest::Client,
 }
@@ -42,7 +44,7 @@ impl HttpPeers {
                 // Others choose where this node sends (team places, invite links, team domains); a
                 // redirect would send its requests, and their headers, somewhere else.
                 .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(8))
+                .timeout(TIMEOUT)
                 .build()?,
         })
     }
@@ -77,6 +79,15 @@ async fn capped_body(mut response: reqwest::Response) -> Result<Vec<u8>, PeerErr
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+/// What a tag may be: an opaque token of letters, digits, `-` and `_`, at most 128 characters, that can sit in a quoted
+/// header value (the node's own are 64 hex characters).
+fn is_tag(tag: &str) -> bool {
+    (1..=128).contains(&tag.len())
+        && tag
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// A 2xx answer parsed as `T`; otherwise the status and the answer's `error` text.
@@ -156,8 +167,31 @@ impl Peers for HttpPeers {
         node: &str,
         path: &str,
         auth: &ReadAuth,
-    ) -> Result<FederatedView, PeerError> {
-        self.get_signed(node, path, auth).await
+        have: Option<&str>,
+    ) -> Result<ViewRead, PeerError> {
+        let mut request = self.http.get(format!("{node}{path}"));
+        for (name, value) in read_headers(auth) {
+            request = request.header(name, value);
+        }
+        if let Some(tag) = have.filter(|tag| is_tag(tag)) {
+            request = request.header(reqwest::header::IF_NONE_MATCH, format!("\"{tag}\""));
+        }
+        let response = request.send().await.map_err(unreachable)?;
+        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(ViewRead::Unchanged);
+        }
+        let tag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.trim_matches('"'))
+            .filter(|tag| is_tag(tag))
+            .map(str::to_owned);
+        let answer = answer(Ok(response)).await?;
+        Ok(ViewRead::Answer {
+            answer: Box::new(answer),
+            tag,
+        })
     }
 
     async fn get_usage(

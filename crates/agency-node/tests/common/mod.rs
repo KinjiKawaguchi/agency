@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 pub mod access;
 pub mod guests;
+pub mod oidc_issuer;
 
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
@@ -81,6 +82,11 @@ pub struct Running {
 impl Running {
     pub fn url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// The node's log, for work a test starts as the running node would.
+    pub fn logger(&self) -> agency_adapters::logging::Logger {
+        self.opened.logger().clone()
     }
 
     /// The node's data directory.
@@ -370,3 +376,21 @@ pub fn sign_answer(
 
 /// The Client API path for device-signed decisions in acme/app.
 pub const ENVELOPES: &str = "/api/orgs/acme/teams/app/envelopes";
+
+/// Makes alice's team `acme/app` read its delivery numbers from `acme/app` on the GitHub host `host`.
+pub fn read_delivery_on(alice: &Running, host: &str) {
+    alice
+        .node
+        .update_config(|config| {
+            let at = config
+                .teams
+                .iter()
+                .position(|team| team.team == id("app"))
+                .expect("alice hosts acme/app");
+            let team = config.teams.remove(at);
+            config
+                .teams
+                .insert(at, team.with_delivery_on(host, vec!["acme/app".into()]));
+        })
+        .unwrap();
+}

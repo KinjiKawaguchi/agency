@@ -40,12 +40,34 @@ pub struct Node {
     bound_readers_lock: Mutex<()>,
     /// Whether the owner has been told that the file of those accounts cannot be read.
     is_unreadable_said: AtomicBool,
+    /// Whether the owner has been told that the file of the origins this node has had cannot be read.
+    is_own_origins_unreadable_said: AtomicBool,
+    /// When each other node (by its origin as the node writes it) last answered this node, other than to a read of a
+    /// team's view: a replica waiting for such a node is read at the next pass (`views`). Kept in memory only, and
+    /// never written to a replica, so it cannot overwrite what a read saved.
+    answers: Mutex<HashMap<String, OffsetDateTime>>,
+}
+
+/// An origin as the node writes it (`home_node_origin`), or as it was given when it is no such origin.
+fn answer_key(origin: &str) -> String {
+    agency_proto::client::home_node_origin(origin).unwrap_or_else(|| origin.to_owned())
 }
 
 /// What the journal says of a file of the accounts that read bound which cannot be read.
 fn unreadable_line(error: &crate::error::Error) -> String {
     format!(
         "bound-readers.json cannot be read ({error}); it is left as it is, and reads that name no node are taken as before until it is mended or removed"
+    )
+}
+
+/// How many of the origins the node has been configured with are kept: the most recent. A node is renamed
+/// rarely, and a version of the org that names an origin older than these is read as naming another node.
+pub const MOST_OWN_ORIGINS: usize = 20;
+
+/// What the journal and `agency status` say of the file of the origins this node has had when it cannot be read.
+pub fn own_origins_unreadable_line(error: &crate::error::Error) -> String {
+    format!(
+        "own-origins.json cannot be read ({error}); it is left as it is, and only the origin this node is configured with now is read as its own until it is mended or removed"
     )
 }
 
@@ -57,7 +79,7 @@ impl Node {
     /// `key` is this node's account key; it never leaves the node.
     pub fn open(ports: Ports, key: AccountKey) -> Result<Self> {
         let config = ports.store.load_config()?;
-        Ok(Self {
+        let node = Self {
             ports,
             key,
             config: RwLock::new(config),
@@ -66,7 +88,51 @@ impl Node {
             intake: Mutex::new(()),
             bound_readers_lock: Mutex::default(),
             is_unreadable_said: AtomicBool::new(false),
-        })
+            is_own_origins_unreadable_said: AtomicBool::new(false),
+            answers: Mutex::default(),
+        };
+        node.remember_own_origin()?;
+        Ok(node)
+    }
+
+    /// Adds the origin this node is configured with now to those it has been configured with (kept: see
+    /// `own_origins`). A `url` that is no origin a client could use is not kept.
+    fn remember_own_origin(&self) -> Result<()> {
+        let Some(origin) = agency_proto::client::home_node_origin(&self.url()) else {
+            return Ok(());
+        };
+        let Ok(mut kept) = self.store().own_origins() else {
+            // Left as it is, never written over; `own_origins` says so.
+            return Ok(());
+        };
+        if kept.contains(&origin) {
+            return Ok(());
+        }
+        kept.push(origin);
+        let start = kept.len().saturating_sub(MOST_OWN_ORIGINS);
+        self.store().save_own_origins(&kept[start..])
+    }
+
+    /// The origins this node has been configured with, as `home_node_origin` writes them: the ones kept at each
+    /// start, and the one it is configured with now. A team's place that names any of them is this node, so a
+    /// version that only renames the node's own origin moves no team.
+    pub fn own_origins(&self) -> Vec<String> {
+        let mut origins = self.store().own_origins().unwrap_or_else(|error| {
+            if !self
+                .is_own_origins_unreadable_said
+                .swap(true, Ordering::Relaxed)
+            {
+                self.journal()
+                    .warn("federation", &own_origins_unreadable_line(&error));
+            }
+            vec![]
+        });
+        if let Some(now) = agency_proto::client::home_node_origin(&self.url()) {
+            if !origins.contains(&now) {
+                origins.push(now);
+            }
+        }
+        origins
     }
 
     /// Sets what is rung when a parcel is queued. Set once, by the process that delivers the outbox.
@@ -154,6 +220,25 @@ impl Node {
         }
     }
 
+    /// Notes that the node at `origin` has just answered this node.
+    pub(crate) fn note_answer(&self, origin: &str) {
+        let key = answer_key(origin);
+        let mut answers = self
+            .answers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        answers.insert(key, self.now());
+    }
+
+    /// When the node at `origin` last answered this node, other than to a read of a team's view.
+    pub(crate) fn answered_at(&self, origin: &str) -> Option<OffsetDateTime> {
+        let answers = self
+            .answers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        answers.get(&answer_key(origin)).copied()
+    }
+
     pub fn store(&self) -> &dyn Store {
         self.ports.store.as_ref()
     }
@@ -226,7 +311,9 @@ impl Node {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         edit(&mut guard);
-        self.ports.store.save_config(&guard)
+        self.ports.store.save_config(&guard)?;
+        drop(guard);
+        self.remember_own_origin()
     }
 
     /// The team, if this node serves it: it is in the node's own hosted-team configuration, and in the
