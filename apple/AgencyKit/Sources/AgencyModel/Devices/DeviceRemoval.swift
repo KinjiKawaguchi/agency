@@ -31,15 +31,15 @@ public struct DeviceRemovalPlan: Equatable, Sendable {
     /// The device to remove is this one: after it, this device cannot sign, and its key cannot be added again.
     public let isThisDevice: Bool
 
-    /// This device is the one to remove and decisions signed with its key are still kept on it, waiting to be sent: removing it would make
-    /// each of them fail for good.
+    /// Decisions signed with the key of the device to remove are still kept on this phone, waiting to be sent: removing the device would make
+    /// each of them fail for good. A device is this phone's own, or an earlier key of it that was made again.
     public let hasKeptDecisions: Bool
 
-    /// Whether nothing can be removed: the person's last device in some org, or no org that this device can sign for, or this device while
-    /// decisions signed with it are kept.
-    public var isBlocked: Bool { !lastIn.isEmpty || targets.isEmpty || (isThisDevice && hasKeptDecisions) }
+    /// Whether nothing can be removed: the person's last device in some org, or no org that this device can sign for, or a device that signed
+    /// decisions that are still kept.
+    public var isBlocked: Bool { !lastIn.isEmpty || targets.isEmpty || hasKeptDecisions }
 
-    /// - Parameter hasKeptDecisions: whether decisions are kept on this device; it matters only when the device to remove is this one.
+    /// - Parameter hasKeptDecisions: whether decisions signed with the key of the device to remove are kept, waiting to be sent.
     public init(for row: DeviceFacts.Row, in list: DeviceList, ownKey: String, hasKeptDecisions: Bool = false) {
         self.hasKeptDecisions = hasKeptDecisions
         label = row.label
@@ -88,7 +88,7 @@ public struct DeviceRemovalPlan: Equatable, Sendable {
     /// Why nothing can be removed, when that is so.
     public var refusal: String? {
         if !lastIn.isEmpty { return Ja.Devices.Remove.last(label, orgs: lastIn.joined(separator: "、")) }
-        if isThisDevice && hasKeptDecisions { return Ja.Devices.Remove.keptDecisions }
+        if hasKeptDecisions { return Ja.Devices.Remove.keptDecisions }
         if targets.isEmpty && !stillIn.isEmpty { return Ja.Devices.Remove.stillIn(stillIn.joined(separator: "、")) }
         return nil
     }

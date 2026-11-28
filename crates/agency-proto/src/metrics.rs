@@ -86,7 +86,9 @@ fn route_group(template: &str) -> &'static str {
         "outcomes"
     } else if starts("/api/orgs/{org}/evaluation") || starts("/api/orgs/{org}/effort") {
         "evaluation"
-    } else if starts("/api/orgs/{org}/teams/{team}/usage") {
+    } else if starts("/api/orgs/{org}/teams/{team}/usage")
+        || starts("/api/orgs/{org}/teams/{team}/budget")
+    {
         "usage"
     } else if template == "/api/orgs/{org}" || starts("/api/orgs/{org}/teams/") {
         "teams"

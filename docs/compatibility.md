@@ -32,7 +32,7 @@ Each artifact states which contract versions it speaks, and a node says so throu
 - **Additive by default.** A change that an older peer can safely ignore or refuse needs no new contract version. It does need a rollout rule when an older peer *refuses* it (see "Signed data").
 - **Readers ignore what they do not know**, except where ignoring would be unsafe. A signed org definition is the exception: a node refuses a version with a field it does not know, because it cannot check what it cannot read (see "Signed data").
 - **A breaking change gets a new contract version, side by side with the old one.** Both are served during an overlap. The old one goes only when the rule for that boundary says nobody needs it any more, and never in the same release that adds the new one.
-- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and a test fails if an existing vector changes.
+- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and CI fails a pull request that changes or removes an existing vector (`scripts/check-vectors-append-only.sh`, which compares the file with the base branch; a new vector is added at the end). A vector that was itself a mistake is corrected only by a line `<entry>: <reason>` in `testdata/vectors-changed.txt`, which the pull request's reviewers read like code.
 
 ## Node and node (`/fed/v1`)
 
@@ -122,6 +122,10 @@ Rollout:
 ## Node data and configuration
 
 - `config.json` and the data directory are read by one node only. Upgrades are forward-only: a newer node reads what an older one wrote, and migrates it on start if it must. A downgrade is not supported. A newer configuration may be refused by an older node, because the configuration is read strictly so that a typo never passes silently.
+- **The data format.** The data directory holds a file `format` with one number, the layout of the directory: 1 for everything the releases so far write. A node writes it when it opens a directory that has none (a directory without the file is format 1, since every earlier release wrote format 1), and `agency init` writes it.
+  - A node that finds a number higher than it knows stops before it reads or writes anything else, in every command that uses the directory. It says that the data was written by a newer release and that the node must be updated, or the data restored from a copy made before. The message has no path and no value from the directory, and the directory is left as it was. A `format` file that holds no number is refused the same way, since the node cannot tell which release wrote the data.
+  - A `config.json` with a setting the node does not know (an unknown field or an unknown variant) is refused with a message that says it may come from a newer release, or be misspelled. The node does not start with it.
+  - The number goes up only with a release that migrates the layout, and the step that does it (with the copy of what it replaced) comes with the first migration that needs it.
 - A new configuration field is optional and has a default, so an existing `config.json` keeps working unchanged.
 - The release notes name every migration. A migration keeps what it replaced, in the data directory under a dated name, so a failed upgrade can be undone by hand.
 
@@ -163,11 +167,12 @@ Names start at what came after the first release: every node has what the first 
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
+| `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
 
 ## Checks in CI
 
 - **Vectors:** `testdata/vectors.json` must stay byte-identical for every existing entry, so signatures and canonical JSON never drift.
 - **Fixtures:** `testdata/client/` must equal what the node answers.
-- **Earlier versions:** the fixtures and vectors of each released version are kept, and today's code must still decode them (an app's decoding tests, and a node's reading of older org versions and replicas).
+- **Earlier versions:** the data and fixtures of each released version are kept in `testdata/releases/<tag>/` (the last two minor releases), and today's code must still read them: `crates/agency-node/tests/earlier_releases.rs` starts today's node on the data directories two nodes of the release wrote (org versions and their signatures, replicas, the decision log, the configuration), and an app's decoding tests decode what its node answered. [releasing.md](releasing.md) says how a release is kept.
 - **Bindings:** `bindings/` must equal what the Rust types generate.
 - **Unknown words (Apple apps):** every enum the Swift package decodes reads a word it does not know as its own `unknown` (`OpenWireEnum`, or a decoder of its own with an `unknown` case), so that a new value never fails the whole answer and is never taken for a known one. `OpenWireEnumsGuardTests` reads the sources and fails for a decoded enum that does not, unless it is named there with why it is not a word of a node's (what the app keeps on the device for itself).

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { useApi } from '../api/context'
 import type { Device, DeviceList } from '../api/clientApi'
-import { DEVICES_KEY, decisionsQuery, devicesQuery, meQuery } from '../api/queries'
+import { allDecisionsQuery, DEVICES_KEY, devicesQuery, meQuery } from '../api/queries'
 import { useI18n } from '../i18n'
 import { useOutbox } from '../outbox/OutboxProvider'
 import { answerOf } from '../rootchange/changes'
@@ -10,6 +10,7 @@ import { useToast } from '../shared/Toasts'
 import { signChange } from './changes'
 import type { DeviceKey } from './deviceKey'
 import { pairingCodeOf } from './fingerprint'
+import { queuedCount } from './queuedCount'
 import { isRemovable, removalPlanOf, removeChangeFor, type RemovalPlan } from './removal'
 import { useReplaceDeviceKey } from './useDeviceKey'
 
@@ -74,8 +75,8 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
   const isRemoved = useRef(false)
   // What the node holds for a team that has not taken it yet ("Saved, not delivered"): a decision signed by the device being removed is
   // refused when the node tries again. The log does not say which device signed which, so the confirmation says how many there are.
-  const log = useQuery(decisionsQuery(api))
-  const queued = log.data === undefined ? undefined : log.data.entries.filter((entry) => entry.state.kind === 'queued').length
+  const log = useQuery(allDecisionsQuery(api))
+  const queued = log.data === undefined ? undefined : queuedCount(log.data.entries)
   const code = useQuery({ queryKey: ['pairing-code', device.publicKey], queryFn: () => pairingCodeOf(device.publicKey), staleTime: Infinity })
   const pendingWords = `${words.pendingRoot[0]}agency root-sign${words.pendingRoot[1]}`
   const remove = useMutation({
@@ -118,7 +119,7 @@ function Confirmation({ device, plan, ownKey, onDone, onCancel }: Pick<Props, 'd
       {plan.orgs.length > 1 ? <p>{words.fromOrgs(plan.orgs.map((one) => one.org).join(', '))}</p> : null}
       {plan.isThisDevice ? <p className="device-invalid">{words.thisDevice}</p> : null}
       {plan.unsignedIn.length > 0 ? <p className="muted">{words.stillIn(plan.unsignedIn.join(', '))}</p> : null}
-      {queued === undefined || queued === 0 ? null : <p>{plan.isThisDevice ? words.queuedHere(queued) : words.queuedOther(queued, device.label)}</p>}
+      {queued === undefined || queued.count === 0 ? null : <p>{plan.isThisDevice ? words.queuedHere(queued.count, queued.isAtLeast) : words.queuedOther(queued.count, queued.isAtLeast, device.label)}</p>}
       <div className="device-remove-actions">
         <button className="btn primary" type="button" disabled={remove.isPending || me.data === undefined || code.data === undefined} onClick={() => remove.mutate()}>
           {remove.isPending ? words.removing : words.confirm}

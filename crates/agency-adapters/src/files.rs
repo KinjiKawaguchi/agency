@@ -1,7 +1,9 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::claims::ClaimRecord;
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
+use agency_core::data_format::{is_unknown_setting, unknown_setting};
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::guests::Guest;
@@ -10,15 +12,16 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, BoundReaderStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
-    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
 use agency_proto::client::{GuestRef, PushToken};
+use agency_proto::digest::sha256_hex;
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
@@ -232,11 +235,20 @@ impl DataDir {
 impl ConfigStore for DataDir {
     fn load_config(&self) -> Result<NodeConfig> {
         let path = self.config_path();
-        read_json(&path).ok_or_else(|| {
+        let cannot_read = || {
             Error::internal(format!(
                 "cannot read {} (create it with agency init)",
                 path.display()
             ))
+        };
+        let text = fs::read_to_string(&path).map_err(|_| cannot_read())?;
+        serde_json::from_str(&text).map_err(|error| {
+            let reading_error = error.to_string();
+            if is_unknown_setting(&reading_error) {
+                unknown_setting(&reading_error)
+            } else {
+                cannot_read()
+            }
         })
     }
 
@@ -312,6 +324,35 @@ impl InviteStore for DataDir {
     }
 }
 
+impl ClaimStore for DataDir {
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String> {
+        read_json(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
+
+    fn save_claim(&self, digest: &str, record: &ClaimRecord) -> Result<()> {
+        write_json(&self.dir("claims").join(format!("{digest}.json")), record)
+    }
+
+    fn remove_claim(&self, digest: &str) -> Result<()> {
+        remove(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()> {
+        write_json(
+            &self.dir("claims-by-seat").join(format!(
+                "{}-{}.json",
+                sha256_hex(org.as_str().as_bytes()),
+                sha256_hex(seat.as_str().as_bytes())
+            )),
+            &digest,
+        )
+    }
+}
+
 impl AppliedLog for DataDir {
     fn is_applied(&self, id: &EnvelopeId) -> bool {
         self.applied().contains_key(id.as_str())
@@ -319,6 +360,12 @@ impl AppliedLog for DataDir {
 
     fn record_applied(&self, id: &EnvelopeId, at: &str) -> Result<()> {
         let mut applied = self.applied();
+        // What was applied longer ago than an envelope can be sent again is dropped as a new one is written, so
+        // the file (read and written for each decision) holds the ids of the window and not of every decision.
+        if let Some(now) = agency_proto::clock::parse(at) {
+            applied
+                .retain(|_, recorded| agency_proto::envelope::is_still_replayable(recorded, now));
+        }
         applied.insert(id.as_str().to_owned(), at.to_owned());
         write_json(&self.applied_path(), &applied)
     }
@@ -470,6 +517,16 @@ impl DecisionLogStore for DataDir {
         let records: Vec<DecisionRecord> =
             read_json(&self.0.join("decisions.json")).unwrap_or_default();
         records.into_iter().rev().take(limit).collect()
+    }
+
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()> {
+        let path = self.0.join("decisions.json");
+        let mut records: Vec<DecisionRecord> = read_json(&path).unwrap_or_default();
+        let Some(kept) = records.iter_mut().find(|one| one.id == record.id) else {
+            return Ok(());
+        };
+        *kept = record.clone();
+        write_json(&path, &records)
     }
 }
 
