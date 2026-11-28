@@ -6,8 +6,8 @@ use crate::orgs::{is_root, load};
 use agency_proto::claim::{ClaimProgress, ClaimStatus};
 use agency_proto::clock::{self, Duration};
 use agency_proto::invite::{code_digest, code_from_bytes};
-use agency_proto::org::label_ok_to_write;
-use agency_proto::{Id, PublicKey};
+use agency_proto::org::{label_ok_to_write, Device, SignedOrg};
+use agency_proto::{Id, PublicKey, Timestamp};
 use serde::{Deserialize, Serialize};
 
 pub const CLAIM_DAYS: i64 = 7;
@@ -248,4 +248,139 @@ pub fn is_claimant(node: &Node, email: &str) -> bool {
             ClaimState::Redeemed(_) => true,
             ClaimState::Confirmed(_) => false,
         })
+}
+
+/// A claim a browser has redeemed and the owner has not confirmed yet, as the owner sees it: no address, no key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingClaim {
+    pub org: Id,
+    pub seat: Id,
+    /// The seat's label as the definition has it (its id when the seat has gone).
+    pub seat_label: String,
+    /// What the browser calls itself.
+    pub device_label: String,
+    /// The pairing code of the key the browser sent, for the owner to compare with the one it shows the person.
+    pub pairing_code: String,
+    pub redeemed_at: String,
+}
+
+/// The claims waiting for the owner, the oldest first.
+pub fn pending(node: &Node) -> Vec<PendingClaim> {
+    let mut waiting: Vec<PendingClaim> = node
+        .store()
+        .claims()
+        .into_iter()
+        .filter_map(|(_, record)| {
+            let ClaimState::Redeemed(redemption) = record.state else {
+                return None;
+            };
+            let seat_label = load(node, &record.org)
+                .ok()
+                .and_then(|doc| {
+                    doc.body
+                        .seats
+                        .iter()
+                        .find(|one| one.id == record.seat)
+                        .map(|one| one.label.clone())
+                })
+                .unwrap_or_else(|| record.seat.to_string());
+            Some(PendingClaim {
+                org: record.org,
+                seat: record.seat,
+                seat_label,
+                device_label: redemption.label,
+                pairing_code: redemption.public_key.pairing_code(),
+                redeemed_at: redemption.redeemed_at,
+            })
+        })
+        .collect();
+    waiting.sort_by(|a, b| a.redeemed_at.cmp(&b.redeemed_at));
+    waiting
+}
+
+/// The claim of `seat` in `org` in the state `want` picks, with the digest it is kept under.
+fn claim_of(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    want: impl Fn(&ClaimState) -> bool,
+) -> Option<(String, ClaimRecord)> {
+    node.store()
+        .claims()
+        .into_iter()
+        .find(|(_, record)| &record.org == org && &record.seat == seat && want(&record.state))
+}
+
+/// What a pairing code is compared as: without dashes or spaces, in lower case.
+fn plain(code: &str) -> String {
+    code.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// The owner confirms the claim of `seat`: `pairing` is the code the owner read off the person's screen, and it
+/// must be the pairing code of the key the node holds (so a stale list, or a claim that was replaced, cannot be
+/// confirmed). The node then makes the seat a member it hosts (`seats::host_seat`, which checks the seat and the key
+/// again and keeps the person's address), and only once the root has signed is the claim confirmed. Confirming a
+/// claim that is already confirmed answers as the first time did.
+pub async fn confirm(node: &Node, org: &Id, seat: &Id, pairing: &str) -> Result<SignedOrg> {
+    let _guard = node.write_lock().lock().await;
+    let Some((digest, mut record)) = claim_of(node, org, seat, |state| {
+        matches!(state, ClaimState::Redeemed(_))
+    }) else {
+        if claim_of(node, org, seat, |state| {
+            matches!(state, ClaimState::Confirmed(_))
+        })
+        .is_some()
+        {
+            return load(node, org);
+        }
+        return Err(Error::not_found(format!(
+            "no claim of seat {seat} waits in org {org}"
+        )));
+    };
+    let ClaimState::Redeemed(redemption) = record.state.clone() else {
+        return Err(unknown());
+    };
+    if plain(pairing) != plain(&redemption.public_key.pairing_code()) {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "that is not the pairing code of the key this claim holds; compare it again on the person's screen",
+        ));
+    }
+    let doc = load(node, org)?;
+    let is_hosted_already = doc.body.member(seat).is_some_and(|member| {
+        member.is_hosted()
+            && member
+                .devices
+                .iter()
+                .any(|device| device.public_key == redemption.public_key)
+    });
+    let doc = if is_hosted_already {
+        doc
+    } else {
+        let device = Device {
+            id: redemption.public_key.device_id(),
+            label: redemption.label.clone(),
+            public_key: redemption.public_key.clone(),
+            added_at: Timestamp::parse(&node.now_text())
+                .map_err(|error| Error::internal(error.to_string()))?,
+        };
+        crate::seats::host_seat(node, org, seat, device, &record.email)?
+    };
+    record.state = ClaimState::Confirmed(redemption);
+    node.store().save_claim(&digest, &record)?;
+    Ok(doc)
+}
+
+/// The owner refuses the claim of `seat`: the pending claim is dropped, and the link stays spent (a new link is
+/// needed). Not found when none waits.
+pub async fn reject(node: &Node, org: &Id, seat: &Id) -> Result<()> {
+    let _guard = node.write_lock().lock().await;
+    let (digest, _) = claim_of(node, org, seat, |state| {
+        matches!(state, ClaimState::Redeemed(_))
+    })
+    .ok_or_else(|| Error::not_found(format!("no claim of seat {seat} waits in org {org}")))?;
+    node.store().remove_claim(&digest)
 }

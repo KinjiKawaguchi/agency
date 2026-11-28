@@ -355,6 +355,16 @@ agency seat-invite --org acme --seat finance --email carol@example.com
 
 It prints the email to add to the Access policy by hand, then a seven-day link. The node never calls Cloudflare and keeps the email only on this node. With Access the link uses the public host; without it, use the local link on this machine only. A newer link for the same seat replaces the old one.
 
+When the person has opened the link, signed in with that email and let their browser make its key, the claim waits for you on the root's node. Compare the pairing code on their screen with the one the node holds, and confirm or refuse it at the terminal:
+
+```sh
+agency claims
+agency claim-confirm --org acme --seat finance --pairing 3f2a-9c01-77be
+agency claim-reject --org acme --seat finance
+```
+
+`agency claims` lists what waits, with the browser's name and its pairing code (never the email); `agency status` counts them. Confirming needs the code the person reads out, so a claim that was replaced or never compared cannot be confirmed: the seat becomes a member this node hosts, with that browser as its device, and the person is let in as that member. Refusing drops the claim; the link stays spent, so make a new one if they should try again.
+
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
 
 1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's machine, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).
