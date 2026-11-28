@@ -3,7 +3,9 @@
 //! the web client with its Client API.
 pub mod background;
 pub mod budget;
-use agency_adapters::access::{is_valid_config, CertSource, HttpCerts, Provider, SignInVerifier};
+use agency_adapters::access::{
+    check_config, is_valid_config, CertSource, HttpCerts, Provider, SignInVerifier,
+};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
@@ -147,6 +149,21 @@ pub struct Opened {
 }
 
 /// Opens the node whose configuration and account key live in `data`.
+/// A node signs people in from outside in one way, `access` or `oidc`, never both, and with a setting that is
+/// well formed: a typo there would otherwise leave the node running with outside requests refused and nothing
+/// but a log line to say why.
+fn check_sign_in(config: &NodeConfig) -> Result<(), String> {
+    match (&config.access, &config.oidc) {
+        (Some(_), Some(_)) => Err(
+            "access and oidc are both set: a node signs people in from outside through one of them"
+                .into(),
+        ),
+        (Some(access), None) => check_config(access),
+        (None, Some(oidc)) => oidc.check(),
+        (None, None) => Ok(()),
+    }
+}
+
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     data.check_format()?;
     let key = data.load_key()?;
@@ -158,6 +175,7 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
     data.ensure_format()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    check_sign_in(&config).map_err(anyhow::Error::msg)?;
     config
         .federation
         .check(&config.url)

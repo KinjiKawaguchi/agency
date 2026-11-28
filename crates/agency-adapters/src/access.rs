@@ -20,6 +20,12 @@ const REFETCH_SECONDS: i64 = 60;
 
 /// Whether the Access settings have the expected shape. A malformed setting is treated as no setting.
 pub fn is_valid_config(config: &AccessConfig) -> bool {
+    check_config(config).is_ok()
+}
+
+/// Why the Access settings cannot be used, naming the field (`access.audience`), in words for the owner.
+/// `appId` is not checked here: a malformed one only turns the app's sign-in off.
+pub fn check_config(config: &AccessConfig) -> Result<(), String> {
     let is_label = |label: &str| {
         !label.is_empty()
             && label.len() <= 63
@@ -40,7 +46,20 @@ pub fn is_valid_config(config: &AccessConfig) -> bool {
         .owner_email
         .split_once('@')
         .is_some_and(|(user, domain)| !user.is_empty() && is_host(domain));
-    is_host(&config.public_host) && team.is_some_and(is_label) && is_audience && is_email
+    let field = |name: &str, what: &str| Err(format!("access.{name} {what}"));
+    if !is_host(&config.public_host) {
+        return field("publicHost", "is not a host name");
+    }
+    if !team.is_some_and(is_label) {
+        return field("teamDomain", "is not <team name>.cloudflareaccess.com");
+    }
+    if !is_audience {
+        return field("audience", "is not 64 lowercase hex characters");
+    }
+    if !is_email {
+        return field("ownerEmail", "is not an email address");
+    }
+    Ok(())
 }
 
 /// Where the provider's documents come from: the key set (Access's `https://<team domain>/cdn-cgi/access/certs`,
@@ -55,15 +74,26 @@ pub struct HttpCerts(reqwest::Client);
 
 impl HttpCerts {
     pub fn new() -> reqwest::Result<Self> {
-        Ok(Self(
-            reqwest::Client::builder()
-                .user_agent(crate::USER_AGENT)
-                // Others choose where this node sends (team places, invite links, team domains); a
-                // redirect would send its requests, and their headers, somewhere else.
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(10))
-                .build()?,
-        ))
+        Self::build(None)
+    }
+
+    /// Like `new`, and also trusting the certificate `root_der` (DER) as a root: for a test issuer on a
+    /// loopback address, whose certificate no public root signed. The node itself never calls it.
+    pub fn trusting(root_der: &[u8]) -> reqwest::Result<Self> {
+        Self::build(Some(reqwest::Certificate::from_der(root_der)?))
+    }
+
+    fn build(extra_root: Option<reqwest::Certificate>) -> reqwest::Result<Self> {
+        let mut client = reqwest::Client::builder()
+            .user_agent(crate::USER_AGENT)
+            // Others choose where this node sends (team places, invite links, team domains); a
+            // redirect would send its requests, and their headers, somewhere else.
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(10));
+        if let Some(root) = extra_root {
+            client = client.add_root_certificate(root);
+        }
+        Ok(Self(client.build()?))
     }
 }
 

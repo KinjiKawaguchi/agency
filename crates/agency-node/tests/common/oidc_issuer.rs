@@ -1,7 +1,11 @@
 //! A test OpenID Connect issuer for the integration tests: a loopback HTTPS server that serves discovery and
 //! a key set, and signs RS256 tokens. The node reaches it through its real key fetch (no redirect, 10 s),
 //! trusting only the test CA that signed the server's certificate (`oidc-test-ca.der`).
-use super::access::{TEST_KEY_DER, TEST_KEY_N};
+use super::access::{PUBLIC_HOST, TEST_KEY_DER, TEST_KEY_N};
+use super::guests::Runtime;
+use super::{id, memory_runtime, node_with, Running};
+use agency_adapters::access::HttpCerts;
+use agency_core::oidc_config::OidcConfig;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -203,9 +207,25 @@ where
     stream.shutdown().await
 }
 
-/// A token for `email` from this issuer, signed by `key` (`TEST_KEY_DER` as `k1`, or `ROTATED_KEY_DER`
-/// as `k2`), valid around T0 (2026-11-24T12:00:00Z) unless `edit` changes the claims.
+/// A token for `email` from this issuer, signed by the key that `kid` names (`k1` is `TEST_KEY_DER`, `k2` is
+/// `ROTATED_KEY_DER`), valid around T0 (2026-11-24T12:00:00Z) unless `edit` changes the claims.
 pub fn token(
+    issuer: &str,
+    audience: &str,
+    email: &str,
+    kid: &str,
+    edit: impl FnOnce(&mut Value),
+) -> String {
+    let key = match kid {
+        "k2" => ROTATED_KEY_DER,
+        _ => TEST_KEY_DER,
+    };
+    token_signed_with(key, issuer, audience, email, kid, edit)
+}
+
+/// `token`, signed by `key` whatever `kid` says.
+pub fn token_signed_with(
+    key: &[u8],
     issuer: &str,
     audience: &str,
     email: &str,
@@ -218,10 +238,6 @@ pub fn token(
         "sub": "subject-1", "email": email,
     });
     edit(&mut claims);
-    let key = match kid {
-        "k2" => ROTATED_KEY_DER,
-        _ => TEST_KEY_DER,
-    };
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some(kid.to_owned());
     jsonwebtoken::encode(
@@ -230,4 +246,37 @@ pub fn token(
         &jsonwebtoken::EncodingKey::from_rsa_der(key),
     )
     .unwrap()
+}
+
+/// The audience of the tokens of these tests: the client id the node is registered under.
+pub const AUDIENCE: &str = "agency-node";
+
+/// alice's node behind `issuer`, with owner `alice@example.com`, one request (`r-1`) waiting, and its key
+/// fetch (the node's real one) trusting the test CA. `edit` changes the setting before the node starts.
+pub async fn behind_oidc(
+    issuer: &Issuer,
+    edit: impl FnOnce(OidcConfig) -> OidcConfig,
+) -> (Running, Runtime) {
+    let (runtime, memory) = memory_runtime();
+    memory
+        .lock()
+        .unwrap()
+        .requests
+        .push(("r-1".into(), "Ship it?".into()));
+    let certs = Arc::new(HttpCerts::trusting(TEST_CA_DER).unwrap());
+    let mut running = node_with("alice", runtime, Some(certs)).await;
+    agency_core::orgs::create(&running.node, id("acme"), "Acme".into()).unwrap();
+    let setting = edit(OidcConfig::new(
+        PUBLIC_HOST,
+        issuer.issuer(),
+        AUDIENCE,
+        "alice@example.com",
+    ));
+    running
+        .node
+        .update_config(|config| config.oidc = Some(setting))
+        .unwrap();
+    running.stop().await;
+    running.start().await;
+    (running, memory)
 }
