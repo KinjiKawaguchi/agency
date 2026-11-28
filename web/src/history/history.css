@@ -1,0 +1,57 @@
+.hs-lead {
+  max-width: 60ch;
+}
+
+.hs-org {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.hs-list,
+.hs-changes {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hs-version {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.hs-head,
+.hs-signature,
+.hs-fork,
+.hs-gap {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.hs-signature.valid {
+  color: var(--ink-2);
+}
+
+.hs-signature.invalid,
+.hs-fork {
+  color: var(--seal);
+}
+
+.hs-signature.notChecked {
+  color: var(--hold);
+}
+
+.hs-changes li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.hs-more {
+  margin: 16px 0;
+}
+
+.hs-source {
+  margin-top: 24px;
+  font-size: 13px;
+}

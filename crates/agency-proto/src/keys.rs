@@ -143,7 +143,9 @@ pub struct AccountKey(SigningKey);
 
 impl AccountKey {
     pub fn generate() -> Self {
-        Self(SigningKey::generate(&mut rand_core::OsRng))
+        let mut seed = [0u8; 32];
+        getrandom::fill(&mut seed).expect("the operating system gives random bytes");
+        Self::from_seed(seed)
     }
 
     /// From a fixed seed (for test vectors).

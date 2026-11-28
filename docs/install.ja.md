@@ -14,8 +14,8 @@ ID に使えるのは英小文字、数字、ハイフンです（`[a-z0-9][a-z0
 ## 必要なもの
 
 - macOS（Apple シリコンでも Intel でもかまいません）、または glibc 2.34 以降の Linux（x86_64 か arm64）。ノードをサービスとして動かすには systemd も要ります。
-- macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラと `curl`。たとえば `sudo apt install build-essential curl` で入ります。
-- Rust の stable 版、1.87 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
+- macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラ、`curl`、`ca-certificates` パッケージ（ノードは通信先の証明書を、システムが信頼するルート証明書で確かめます）。たとえば `sudo apt install build-essential curl ca-certificates` で入ります。
+- Rust の stable 版、1.89 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
 - Web クライアントのビルドに使う Node.js 24 と npm。`node --version` で確かめます。
 - チームのハーネスと、ハーネスが使うツール（[チームランタイム](#チームランタイム)を参照）。
 
@@ -90,6 +90,8 @@ macOS のビルドは、署名も公証もしていません。ブラウザで�
 ローカル専用のノードは、1 台のマシンの中だけで動きます。
 待ち受けるのは `127.0.0.1` だけなので、Web クライアントはそのマシンでしか開けず、ノードもそのマシンからのリクエストしか受け付けません。
 ほかのノードとは行き来がなく、トンネルも Cloudflare もプッシュ通知も使いません。
+
+[ノードが保存するもの](data.md)（英語）に、ノードが書くすべてのファイル、その中身、保存期間、消し方、鍵、マシンの外に出るものをまとめています。
 ノードが保存するものはすべてデータディレクトリの中に残ります。
 
 ### ノード、組織、チームを作る
@@ -108,7 +110,7 @@ agency status
 - `--state-dir` は、ハーネスがチームの状態を置くディレクトリです。相対パスを渡しても絶対パスで保存されます。
 - `org-create` は、新しい組織のためのルート鍵を作り、このノードをそのルートのノードにします。`--node` を付けない `team-add` は、このノードのアカウントを持ち主として、チームをこのノードで動かします。
 
-`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。
+`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。`agency audit --org acme` は、組織のすべての版を古い順に、誰が署名し、何を変えたかとともに一覧します。
 
 データディレクトリには、ノードのアカウント鍵である `account.key` ができています。
 この鍵はノードの読み取り、参加の依頼、組織での最初の端末の追加に署名するので、このファイルを読める人は、あなたが読めるものを読めます。
@@ -301,16 +303,86 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 ```
 
 - `ownerEmail` は、自分が Access にサインインするときのメールアドレスです。ノードが受け入れるのは、このアドレスと、ゲスト（このノードにつながる、ノードを持たないメンバー）のアドレスだけです。ほかのサインインは、Access のポリシーが通していても 403 になります。オーナーとして書き込める（決定する、端末を追加する）のは `ownerEmail` だけです。
+- このノードがつなぐ、ノードを持たないメンバーが見て答えられるのは、このノードで動くチームの依頼だけです。別のノードで動くチームの依頼は、そのメンバーには表示されません。
 - `access` を設定すると、ノードの Mac 上の `http://127.0.0.1:4400/` は読むためだけのものになります。決定や端末の追加は、その Mac の上でも Access にサインインして `https://agency.example.com/` から行います。同じ Mac のほかのプログラムが、あなたとして書き込めないようにするためです。
 - iPhone アプリが Web ビューの外で Access にサインインできるようにするには、`"appId": "ABCDE12345.com.example.agency"`（`<チーム ID>.<バンドル ID>`）を追加し、上の二つ目の Bypass も設定します。`appId` だけでサインインできるのは、アプリのビルドの関連ドメインに入っているホスト名だけです。そのときアプリは、ノード自身のホスト名のユニバーサルリンクでサインインし、それを受け取れるのは、関連付けファイルが名指しするアプリだけです。自分でアプリをビルドするなら、ホスト名を `AGENCY_ASSOCIATED_HOST` に入れ、`allowSchemeSignIn` は無効のままにします。これが安全な方法です。関連ドメインを自分では決められないビルドのアプリを使うなら、ホスト名はその中にありません。その場合は、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定するか（既定は無効で、`appId` がなければ効きません）、アプリからはそのノードにサインインしないでください（ノードのアドレスのページはブラウザで使え、通知も届きます）。スキームのコールバックは、サインインを始めたアプリに届きます。それがどのアプリでも同じです。サインインする全端末の全アプリが信頼できる場合にだけ、有効にしてください。詳しくは [apple.md](apple.md) を参照してください。
 - 新しい依頼、追加を待つ端末、拒否された決定を iPhone に通知するには、アプリの APNs キーを指定した `push` の設定を追加します。書き方は README にあります。タイトルやラベルを Apple に送りたくないときは、`push` に `"hideTitles": true` を加えます。
-- ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"`（プッシュサービスが連絡できる `mailto:` か `https://` のアドレス。プッシュサービス（Google、Mozilla、Apple、Microsoft）の運営者がこれを読むので、どのノードかが伝わります。ノードのホスト名を伝えたくないときは、このために作った別名のアドレスを使ってください。省略するとノードのホスト名になります。`access` がないときはノード自身のアドレスになり、Apple のプッシュサービスはそれを受け付けないので、その場合は `mailto:` のアドレスを指定してください）と、`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
+- ブラウザにも通知するには（Android、Windows、Linux、macOS の Chrome、Edge、Firefox、Mac の Safari、インストールしたアプリ。iPhone のブラウザは対象外で、iPhone には専用のアプリがあります）、`config.json` に `"webPush": {}` を加えて再起動します。ノードがデータディレクトリに自分の鍵（`web-push-vapid.key`。アカウント鍵と同じように人に見せないでください）を作り、**端末**の画面にブラウザごとに通知を入れるボタンが出ます。通知は、そのブラウザのプッシュサービス（Google、Mozilla、Apple、Microsoft）を通り、ブラウザ宛てに暗号化されます。`"subject"` は、そのプッシュサービスの運営者にノードの運営者への連絡先を伝えます。既定では、`access` に公開ホスト名があるときは `https://<publicHost>`、`access` がないときはノード自身のアドレスです。Google、Mozilla、Apple、Microsoft はこれを読めるので、どのノードかが伝わります。ノードをこれより特定させたくないときは、`"subject": "mailto:push@example.com"` や `"subject": "https://example.com/contact"` のような連絡先を指定します。空の値、空白、`mailto:` でも `https://` でも始まらない値は設定の検査が拒否します。`access` がないとき、Apple のプッシュサービスはノード自身の `http` のアドレスを受け付けないので、`mailto:` の連絡先を指定してください。`"extraHosts"`（許すプッシュサービスを増やす）は任意です。タイトルやラベルをどのサービスにも送りたくないときは（Apple にも）、`config.json` の一番上に `"hideTitles": true` を加えます。iPhone への通知でも隠れます。
 
 設定の形式が正しくないと、起動時にログに出ます（[トラブルシューティング](#トラブルシューティング)を参照）。
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。
 ノードが何を検証するかは、[protocol.md](protocol.md) の「Who is let in」に詳しく書かれています。
 
+## OpenID Connect のプロバイダで外から届くようにする
+
+組織が Cloudflare Access ではなく、自前の OpenID Connect のプロバイダでサインインさせるときに使います。ノードが外からのサインインに使うのは `access` か `oidc` のどちらか一方で、両方は使えません。両方が書かれているとき、またはどちらかの形が正しくないときは、ノードは起動せず、どのフィールドが違うかを言います。
+
+### 必要なもの
+
+- このノードのためにプロバイダに登録したアプリケーション。そのクライアント ID がトークンの audience で、トークンは、RS256 で署名された JWT です。所有者はトークンの `sub` で、ゲストは、プロバイダが確認済みとしたクレーム（指定しなければ `email`。`email_verified` が true）のメールで決まります。プロバイダの issuer は、そのトークンの `iss` と完全に同じ文字列です。
+- 組織が承認したゲートウェイ（リバースプロキシやアクセスプロキシ）。ノードの公開ホスト名で受け、プロバイダでサインインさせ、署名されたトークンを、すべてのリクエストのヘッダでノードに渡します。ノードはトークンを自分で確かめ、リクエストがどう届いたかを信用しません。ゲートウェイがノードに「誰からか」を伝えるのではなく、トークンを運ぶだけです。
+- 「ノードのアドレスを変える」のとおりのノードの `url` と公開ホスト名（ネットワークでの呼び名は何でも構いません）。
+
+### oidc の設定
+
+`~/.agency/config.json` に `oidc` を書き（`access` は書かない）、ノードを再起動します。
+
+```json
+"oidc": {
+  "publicHost": "agency.example.com",
+  "issuer": "https://login.example.com/realms/acme",
+  "audience": "agency-node",
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
+}
+```
+
+- `issuer` と `keysUrl` は `https://<ホスト名>[:<ポート>][/<パス>]` の形で、`user@` のような認証情報、クエリ、フラグメントは付けません。ノードは、プロバイダの鍵を `keysUrl` から取ります。省略すると、`<issuer>/.well-known/openid-configuration` に尋ねて `jwks_uri` を得ます。リダイレクトには従わず、待つのは最長 10 秒で、知らない鍵 ID のときだけ、1 分に 1 回までもう一度取りに行きます。プロバイダが鍵を入れ替えても追えます。
+- `tokenHeader`（既定は `authorization`。`Bearer <トークン>` として読みます）は、ゲートウェイがトークンを入れるヘッダです。`emailClaim`（既定は `email`）は、メールを持つクレームです。
+- `ownerSubject` は、プロバイダのトークンにある所有者の `sub` です。ノードがトークンを所有者のものとするのは、`iss` が `issuer` で、`sub` が `ownerSubject` のときだけです。どちらも末尾のスラッシュまで含めて、完全に一致する必要があります。ここではメールは所有者を決めません。プロバイダによっては、人が自分でメールを入力できるからです。`sub` は、このノード自身のアプリケーション登録（ゲートウェイ経由）で一度サインインして、そのトークン、またはプロバイダの userinfo エンドポイントから読みます。トークンを `$TOKEN` に入れて次のとおりにします。
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  ほかのアプリケーションのトークンから取った `sub` は一致しません。プロバイダによっては、アプリケーションの登録ごとに、同じ人に別の `sub` を付けます。
+- ゲスト（このノードが受け持つメンバー）はメールで決まりますが、トークンが確認済みとしたメールだけです。`email_verified` が `true`（または文字列の `true`）のときです。メールがあっても確認済みと示されていないトークンは、ゲストを決めず、ログにそう出ます。`email_verified` を送らないプロバイダ（有効にしないと送らないものがあります）は、`sub` で所有者をサインインさせられますが、ゲストをメールで通すことはできません。プロバイダでそのクレームを有効にしてください。しないと、そのノードのゲストは使えません。ほかのトークンも、トークンのないリクエストも 403 です。所有者として書き込める（決定する、端末を足す）のは所有者だけです。
+- Access と同じく、`oidc` を書くと、ノードのマシンの `http://127.0.0.1:4400/` は読み取り専用になります。書き込みは、公開ホスト名からサインインして行います。
+- iPhone アプリ自身のサインイン（`appId`）は Cloudflare Access のもので、`oidc` では使えません。ブラウザの Web クライアントを使います。
+
+### 経路が守ること
+
+ブラウザとノードの間に何を置くかは、それぞれの運用の選択ですが、次のことは守ってください。
+
+- ブラウザからゲートウェイまで、同じマシンでなければゲートウェイからノードまでも TLS にします。ノード自身は平文の `http` で待ちます。
+- トークンのヘッダは、そのまま渡します。書き換えず、消さず、ゲートウェイが作ったトークンに替えません。
+- ブラウザが使ったホスト名（`Host`）と、送られたパスをそのままにします。エンコードされた区切りやドットのセグメントを含むパスは、ノードが拒みます。
+- `/fed/*` は、サインインなしでノードに届くようにします。ほかのノードは、プロバイダではなく署名で認証されます。
+
+### 動くことを確かめる
+
+所有者についてプロバイダが出したトークンで `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" https://agency.example.com/api/me` を実行すると `200` が出ます。ヘッダがないとき、またはほかの人のトークンのときは `403` です。設定が正しくないときの起動時のメッセージは「ログの行」にあります。
+
 ## スマートフォンやブラウザを端末として追加する
+
+### 席の受け取りリンクを送る
+
+ルートのノードで、まだ誰も受け取っていない 1 つの席と 1 つのメールアドレスの受け取りリンクを作ります。
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+出力には、Access のポリシーへ手で加えるメールアドレスと、7 日間使えるリンクが出ます。ノードは Cloudflare を呼ばず、メールアドレスはこのノードだけに置きます。Access があるときは公開ホスト名のリンクになり、ないときはこのマシンでだけローカルのリンクを使います。同じ席に新しいリンクを作ると、前のリンクは置き換わります。
+
+相手がリンクを開き、そのメールアドレスでサインインして、ブラウザが鍵を作ると、申請はルートのノードで承認待ちになります。相手の画面の照合コードとノードが持つコードを見比べて、ターミナルで承認するか、断ります。
+
+```sh
+agency claims
+agency claim-confirm --org acme --seat finance --pairing 3f2a-9c01-77be
+agency claim-reject --org acme --seat finance
+```
+
+`agency claims` は待っている申請を、ブラウザの名前と照合コードつきで一覧します（メールアドレスは出しません）。`agency status` に件数も出ます。承認には相手が読み上げたコードが必要なので、差し替えられた申請や、見比べていない申請は承認できません。承認すると、席はこのノードがつなぐメンバーになり、そのブラウザが端末になって、相手はそのメンバーとして入れます。断ると申請は消えますが、リンクは使用済みのままなので、やり直すときは新しいリンクを作ります。
 
 自分の代わりに決定するブラウザやスマートフォンは、それぞれ自分の鍵を作って持ちます。
 鍵が端末の外に出ることはありません。
@@ -324,6 +396,25 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 依頼は 1 時間有効で、ノードが保持するのは 10 件までです。
 ブラウザが鍵を作れるのは、`https` のページか、ノードのマシン上の `127.0.0.1` のページだけです。
 それ以外では、鍵を作れないと画面に表示されます。
+
+### 人のアクセスを終わらせる
+
+辞めた人や、端末をなくした人のアクセスは、ルートのノードで終わらせます。このノードが引き受けているメンバーと端末の数（メールアドレスは出ません）を一覧してから、1 人を終わらせます。
+
+```sh
+agency guests --org acme
+agency guest-remove --org acme --member carol
+```
+
+署名済みの版が 1 つ作られ、メンバーが組織から外れ、端末の鍵が失効します。以後、その人が署名したものは組織のどのノードでも受け付けられません。ノードは、その人のサインイン、プッシュ通知の登録、通知済みの依頼の一覧を消します。決定のログには、決めた内容が残ります。
+
+メンバーがまだ名指しされている間は、コマンドは拒否されます。このノードのチームが宛先にしている、代わりに答えている席がある、部署の責任者になっている、などです。その人宛ての依頼を失わずにアクセスを終わらせるには、`--to-seat` を付けます。同じ版の中で、メンバーの id の席がその人の代わりに置かれ（ラベル、部署、何を聞くかはメンバーのもの）、受け取っていた席も 1 つずつ戻ります。戻る席は、その席がまだあったノードの最後の保管済みの版にあったとおりです（どの版にも残っていなければメンバーのラベルなどになり、コマンドがそう表示します）。それらの席に前もって作った受け取りリンクは使えなくなります。
+
+```sh
+agency guest-remove --org acme --member carol --to-seat --answered-by bob
+```
+
+`--answered-by` は席の代わりに答えるメンバーを、優先する順に指定します（複数なら繰り返します）。省略すると、チームのオーナーが答えます。Access のポリシーにあるメールアドレスは、自分でそこから消すまで残ります。ノードは Access を変更しません。
 
 ## Web クライアントをアプリとして入れる
 
@@ -480,8 +571,29 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
-- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
+- リポジトリが GitHub Enterprise Server にあるチームは、`delivery.host` にそのホスト名を書きます。スキーム、パス、ポートのないホスト名で、書かなければ `github.com` です。
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  このとき `owner/name` は、そのホスト名の GitHub にあるリポジトリです。ホスト名として正しくない文字列（使えるのは英数字、ハイフン、ドットで、スキーム、ポート、パスは付けられません）を書くと、ノードは起動時に `teams[n].delivery.host` を名指しして止まります。ノードは `gh` にホスト名を伝え（`gh api --hostname`。`GH_HOST` より優先されます）、github.com と同じ問い合わせをするので、問い合わせが読むボードのプロジェクトの型を、そのホスト名の GitHub が知っている必要があります。確かめるには、ノードを動かすアカウントで次のコマンドを実行します。`a` と `b` の両方が名前を返せば大丈夫です。`null` なら、その型に対してその Server は古すぎます。その場合、チームの数の代わりに、ホスト名が要求に答えなかったという理由が出ます。
+
+  ```sh
+  gh api --hostname git.example.com graphql -f query='{ a: __type(name: "ProjectV2ItemStatusChangedEvent") { name } b: __type(name: "ProjectV2ItemFieldSingleSelectValue") { name } }'
+  ```
+
+  ノードに必要なログインは、そのホスト名のものです。ノードを動かすアカウントで `gh auth login --hostname git.example.com` を実行します。下の助言も同じです。ホスト名を書かないチームと `github.com` のチームは、これまでどおりに読みます。下の表の「the GitHub host the team names」で始まる理由は、そのホスト名を出しません。理由は、そのチームを読むすべての人に届くからです。
+- `delivery.repos` には、`owner/name` の形のリポジトリを最大 50 件まで、同じものを 2 度（大文字小文字は区別しません）書かずに並べます。そうでないと、ノードは起動時に止まり、`teams[n].delivery.repos` を挙げて知らせます。2 つ以上のリポジトリで働くチームには、リポジトリごとの数も表示されます（`byRepository`。[protocol.md](protocol.md#evaluation) を参照）。
+- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの単一選択のフィールド（「Work type」と、チームを表すフィールド）、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
+- 1 つのリポジトリに複数のチーム（たとえば 1 つの組織のノードのチーム、Web のチーム、Apple のチーム）がマージするときは、どのチームもリポジトリ全体の数を表示してしまいます。Issue がどのチームのものかを表す単一選択のフィールド（たとえば `Team`。選択肢はチームごと）をボードに作り、Issue に設定して、各チームの `delivery` に、そのフィールドの名前とチーム自身の選択肢を書きます。
+
+  ```json
+  "delivery": { "repos": ["acme/app"], "teamField": "Team", "teamValue": "Keel" }
+  ```
+
+  チームは、その選択肢をもつ Issue を閉じる PR だけを数えます。Issue を閉じない PR や、`Team` に値のない Issue を閉じる PR は、どのチームにも数えられないので、Issue を作るときにフィールドを設定します。2 つのキーは組で書きます。片方だけ書くと、ノードは設定の名前を挙げて起動を拒みます。main の CI はリポジトリのものなので、共有するチームには同じ赤の時間が出ます。キーがなければ何も変わらず、リポジトリの PR をすべて数えます。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
 - 労力の画面で改善と新機能を区別するには、ボードに `Work type` という名前の単一選択のフィールドを作り、選択肢を `New feature`、`Improvement`、`Maintenance`、`Tech debt`、`Incident` として、Issue に値を設定します。値のない Issue を閉じる PR は、タイトルの種別で分けます。ラベル `incident` の付いた Issue の fix は障害対応になります。
@@ -495,6 +607,9 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | the GitHub CLI (gh) on the team's node is not logged in | そのノードを動かすアカウントで `gh auth login` を実行します。 |
 | GitHub's rate limit is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | そのノードを動かすアカウントで `gh auth login --hostname <ホスト名>` を実行します。 |
+| the rate limit of the GitHub host the team names is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
+| the GitHub host the team names did not answer in time, or did not answer the request | そのマシンからそのホスト名へのネットワークと、ログインがリポジトリを読めること、github.com と同じ問い合わせにそのホスト名が答えられることを確かめます。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |
@@ -509,6 +624,15 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 
 - **このディレクトリをバックアップし、共有するものには入れないでください。** データディレクトリのバックアップには数字が含まれるので、アカウント鍵と同じように扱います。
 - 数字は指標の動きを読むためのもので、会計用ではありません。
+- **ノードが自分で求める数字。** このノードで動くチームの delivery に関する KPI は、日ごとの数字を手で入力する代わりに、ノードの delivery の数字から取れます。`config.json` に書いて、ノードを再起動します。
+
+  ```json
+  "outcomes": { "connectors": [
+    { "org": "acme", "team": "app", "kpi": "features-merged", "metric": "newFeaturesMerged" }
+  ] }
+  ```
+
+  `metric` は、`newFeaturesMerged`（件数）、`newFeaturePrLeadMedianSeconds`、`prLeadMedianSeconds`、`mainRedSeconds`（秒）、`costPerMergedPrUsd`（USD の金額）のどれかです。KPI の単位はそれに合うものでなければならず、合わないと、ノードは `outcomes.connectors[n].metric` を挙げて起動を拒みます。チームはこのノードで動き、`delivery` が設定されている必要があります（「Delivery metrics」を参照）。1 つの KPI には 1 つの connector です。1 日が終わると（ノードの時間帯で）、ノードはその日の数字を、source を `connector`（名前は `delivery`）として入力します。初めて起動したときは、最大で過去 30 日です。何らかの数字がすでにある日には入力しないので、手で入れた数字は残ります。1 日に入力するのは 1 回だけで、あとで GitHub の事実が訂正されても、書き直しません（ほかの数字と同じく、訂正は手で入力します）。中央値や費用を求める材料がない日は、数字がありません（0 ではありません）。組織の定義にまだ載っていない KPI は、載るまで待ちます。ノードが読めなかったもの（GitHub が答えない、費用のためのトークン使用量をランタイムが報告しない）は、10 分後にもう一度試し、ノードのログに 1 回だけ書きます。
 - **読み取り。** `GET /api/orgs/<組織>/outcomes/readings`（数字と同じく所有者だけ）は、チームの計画が epic を狙わせた KPI が、その epic の出荷日の前後でどうだったかを返します。チームの view は完了した epic を限られた間（scrum harness では 30 日）しか載せないため、ノードは、狙われた epic が完了したと最初に見た日を `outcomes/<組織>.ships.jsonl`（同じディレクトリ、ファイルは `0600`。チーム、epic、時刻を持ち、数字は含みません）に書き、変更しません。数字と一緒に保管し、同じようにバックアップしてください。これがないと、チームの view から消えた epic の読み取りはできません。
 
 ## ノードの更新
@@ -567,7 +691,7 @@ curl -s http://127.0.0.1:4400/metrics            # Prometheus が読むテキス
 - `GET /api/metrics?days=<1 から 30>&kind=&name=` は、系列（route、ノードが行う呼び出し、クライアントが報告したもの）ごとに、呼び出しの数、そのうちエラーの数、中央値と 95 パーセンタイルと 99 パーセンタイルをミリ秒で返します。7 日までの範囲では時間ごとにも返します（`hourBuckets=1` を付けると、各時間のバケットも返します。画面が複数の系列の時間を足して全体のパーセンタイルを読むためで、答えは約 1.7 倍の大きさになります）。パーセンタイルは、そのバケットの**上限**です（1、2、5、10、25、50、100、250、500、1000、2500、5000、10 000、30 000 ms）。「p95 100」は、100 ms 以下という意味です。答えには、性能の予算が当てはまる系列（ノード自身の状態から答える読み取り。参照環境で 95 パーセンタイルが 100 ms 以下）と、予算そのものも入ります。
 - ノードを自分の数字で縛るには、`config.json` に objectives を書いて、ノードを再起動します: `"metrics": { "objectives": [ { "group": "teams", "p95Ms": 200 } ] }`。`group` は `desk`、`teams`、`usage`、`evaluation`、`outcomes`、`devices`、`push`、`federation`、`metrics`、`other` のどれか（答えの各系列に、その group が書かれます）で、`p95Ms` は 1 から 30 000 です。範囲外の値があると、ノードは起動時に止まり、どれかを伝えます。`GET /api/metrics` は、それぞれについて、聞かれた日数で `met`（95 パーセンタイルが目標以内）、`notMet`（95 パーセンタイルのバケットの時間がすべて目標を超えている）、`undetermined`（目標がそのバケットの内側にあり、測定からは言えない）、`unknown`（その範囲に呼び出しがない）を、そのバケットの上限とともに返します。group 全体についての答えで、kind や name で絞った答えには付きません。
 - `agency metrics [--days n] [--kind serve|call|client] [--name <名前>] [--json]` は、同じものを表にして、ファイルから出力します。ノードが止まっていても、鍵なしで動きます。`<=100` は 100 ms 以下（バケットの上限）、`>30000` は最後の境界より遅いこと、BUDGET の列は、性能の予算が当てはまる読み取りについて `ok` か `OVER` です。動いているノードは数字を 1 分に 1 回書くので、直近の 1 分は `GET /api/metrics` にだけあります。
-- Web クライアントとアプリは、自分の呼び出しにかかった時間を `POST /api/telemetry` でノードに報告します（1 分ごとにまとめて）。設定は要りません。聞くのはオーナーのクライアントだけで、ノードのものでない route は捨てます。数字は `GET /api/metrics` の `client` 系列に出るので、ノードがかかった時間と並べて、人が待った時間を見られます。
+- Web クライアントとアプリは、自分の呼び出しにかかった時間を `POST /api/telemetry` でノードに報告します（1 分ごとにまとめて）。設定は要りません。聞くのはオーナーのクライアントだけで、ノードのものでない route は捨てます。数字は `GET /api/metrics` の `client` 系列に出るので、ノードがかかった時間と並べて、人が待った時間を見られます。Web クライアントは、自分を配ったノードに報告します。アプリが報告するのは自分のホームノードだけなので、ノードが持つのは、そのノードをホームノードにしているアプリの数字です。報告するのは iPhone のアプリで、Mac のアプリは報告しません（ノードは系列を `web` か `ios` の名前で分けます）。報告する機能が入る前の版のアプリは、何も送りません。この route を持たないノード（404）に当たったアプリや、オーナーではないとノードに言われた（403）アプリは、開き直すまで報告をやめます。ノード自身の `serve` と `call` の系列は、報告がなくても揃っています。
 - オーナーだけが読めます。直接のローカルのリクエスト、またはオーナーとして Access にサインインしたものです。Access が入れた他の人は 403 になります。`/metrics` は、ノードのあるマシンの上でだけ読めるので、Prometheus はそこで取りに来ます（トンネル経由ではありません）。
 - `serve` 以外のコマンドは、データディレクトリに何も記録しません。ディレクトリに書けないノードは、持っているものをメモリに保ち、あとでもう一度試します。
 
@@ -620,7 +744,8 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `Node running: <url> (listening on <address>)` と `Web client: …` | ノードが起動しました。 |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd と systemd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。書き方だけの違い（ホスト名の大文字小文字、既定のポート）なら、ほかは何も変わりません。実際に名前を変えた場合は、それより前に行い、まだ届いていない決定は断られるので、もう一度行います。 |
-| `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
+| ノードが起動せず、`access.<フィールド> …` または `oidc.<フィールド> …` と言う | その設定のそのフィールドが正しくありません。`config.json` で直します。 |
+| ノードが起動せず、`access and oidc are both set …` と言う | どちらか一方だけを残します。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
 | アプリのサインインのシートに `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)` と出て、ノードが `via=scheme` に `400` を返した | ノードのホスト名が、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。自分でアプリをビルドするなら、ビルドの `AGENCY_ASSOCIATED_HOST` にそのホスト名を入れます。そうでなければ、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
@@ -651,8 +776,8 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `421` `wrong host` | `127.0.0.1:<ポート>` か `localhost:<ポート>` 以外のアドレスでページを開いています。 |
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
-| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
-| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
+| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしているか、OpenID Connect のプロバイダで `ownerSubject` 以外の `sub` でサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもなく、使える申請リンクのアドレスでもないメールアドレス、またはサービストークンで Access にサインインしています。または、OpenID Connect のプロバイダで、`ownerSubject` ではない `sub` と、ゲストのものではない、またはトークンが確認済みと示していないメールでサインインしています。 |
 
 ## チームランタイム
 

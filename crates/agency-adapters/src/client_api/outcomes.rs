@@ -1,7 +1,7 @@
 //! The routes of the outcome analysis (docs/protocol.md, "Outcomes"). Business data: every route is owner-only,
 //! a read as well as the write, unlike the rest of the Client API, because someone who may read a team's board
 //! must not read the revenue.
-use super::{is_owner_request, json_body, refuse, respond, Admitted, ClientApi, Shared};
+use super::{is_owner_request, json_body, refuse, respond, Admitted, ClientApi, Route, Shared};
 use agency_core::{outcome_readings, outcomes};
 use agency_proto::observation::ObservationInput;
 use agency_proto::Id;
@@ -34,12 +34,12 @@ async fn require_owner(
     next.run(request).await
 }
 
-/// The routes below, by method and path, for the tests that walk every route.
-pub(super) const ROUTES: &[(&str, &str)] = &[
-    ("GET", OUTCOMES),
-    ("GET", OBSERVATIONS),
-    ("POST", OBSERVATIONS),
-    ("GET", READINGS),
+/// The routes below.
+pub(super) const ROUTES: &[Route] = &[
+    Route::get(OUTCOMES).reported(),
+    Route::get(OBSERVATIONS).reported(),
+    Route::post(OBSERVATIONS).reported(),
+    Route::get(READINGS).reported(),
 ];
 const OUTCOMES: &str = "/api/orgs/{org}/outcomes";
 const OBSERVATIONS: &str = "/api/orgs/{org}/outcomes/observations";

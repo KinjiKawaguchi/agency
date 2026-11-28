@@ -4,7 +4,7 @@
 // optional field the node leaves out stays left out. A screen can then rely on every type being there.
 import { EFFORT_TYPES, PULL_REQUEST_TYPES } from './evaluationApi'
 import type { TokenCounts } from './clientApi'
-import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, ParticipantEvaluation, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
+import type { DayEffort, DayEvaluation, Effort, EffortType, Evaluation, EvaluationSummary, MergedCounts, NewFeatureSummary, ParticipantEvaluation, RepositoryEvaluation, TeamEffort, TeamEvaluation, TeamUnavailable } from './evaluationApi'
 
 /** The answer is not what the route promises. The client turns it into a 503, "could not answer", shown in place. */
 export class MalformedAnswer extends Error {
@@ -60,8 +60,21 @@ const day = (raw: unknown): DayEvaluation => {
   }
 }
 
+/** The lead times of the period's new features alone; the node leaves the part out when none merged, and so does this. */
+function newFeatureSummary(raw: unknown): NewFeatureSummary {
+  const given = asObject(raw)
+  return {
+    merged: amount(given.merged, 'new features merged'),
+    ...present('prLeadMedianSeconds', optionalAmount(given.prLeadMedianSeconds, 'lead time')),
+    ...present('prLeadP90Seconds', optionalAmount(given.prLeadP90Seconds, 'lead time')),
+    ...present('issueLeadMedianSeconds', optionalAmount(given.issueLeadMedianSeconds, 'lead time')),
+    ...present('issueLeadP90Seconds', optionalAmount(given.issueLeadP90Seconds, 'lead time')),
+  }
+}
+
 function summary(raw: unknown): EvaluationSummary {
   const given = asObject(raw)
+  const newFeature = given.newFeature === undefined || given.newFeature === null ? {} : { newFeature: newFeatureSummary(given.newFeature) }
   return {
     merged: counts(given.merged, 'merged'),
     ...present('prLeadMedianSeconds', optionalAmount(given.prLeadMedianSeconds, 'lead time')),
@@ -72,6 +85,7 @@ function summary(raw: unknown): EvaluationSummary {
     longestRedSeconds: amount(given.longestRedSeconds, 'longest red time'),
     reverts: amount(given.reverts, 'reverts'),
     ...present('costPerMergedPrUsd', optionalAmount(given.costPerMergedPrUsd, 'cost')),
+    ...newFeature,
   }
 }
 
@@ -100,11 +114,18 @@ function participant(raw: unknown): ParticipantEvaluation {
   }
 }
 
+/** One repository's summary; it has no cost, and the node leaves one out. */
+function repository(raw: unknown): RepositoryEvaluation {
+  const given = asObject(raw)
+  return { repo: text(given.repo, 'repository'), summary: summary(given.summary) }
+}
+
 export function readEvaluation(raw: unknown): Evaluation {
   const given = asObject(raw)
   const teams: TeamEvaluation[] = asList(given.teams).map((one) => {
     const team = asObject(one)
     const participants = asList(team.participants).map(participant)
+    const byRepository = asList(team.byRepository).map(repository)
     return {
       team: text(team.team, 'team'),
       ...periodOf(team),
@@ -113,6 +134,8 @@ export function readEvaluation(raw: unknown): Evaluation {
       // Only the team's owner is given them: for anyone else they are left out, and stay left out here.
       ...(participants.length > 0 ? { participants } : {}),
       ...present('unattributedMerged', optionalAmount(team.unattributedMerged, 'merged')),
+      // Only a team that merged into two or more repositories has them: for one, they are left out, and stay left out here.
+      ...(byRepository.length > 0 ? { byRepository } : {}),
     }
   })
   return { ...header(given), teams }

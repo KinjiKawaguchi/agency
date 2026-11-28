@@ -107,8 +107,12 @@ pub(crate) fn remote_relayed_for(
             && request.answer_with.target == envelope.target
             && is_addressed_to(&reader, request)
     })?;
-    let (id, label) =
-        remote_addressed_party(definition, &replica.answers_for, request.to.as_deref())?;
+    let (id, label) = remote_addressed_party(
+        definition,
+        &replica.answers_for,
+        &envelope.account,
+        request.to.as_deref(),
+    )?;
     Some(RelayedFor {
         id: id.clone(),
         label: label.to_owned(),

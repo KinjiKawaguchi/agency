@@ -1,0 +1,9 @@
+#!/bin/bash
+# A stand-in for `npm sbom`. FAKE_MODE=web-empty gives a list with no components.
+[ "$1" = "sbom" ] || { echo "npm stand-in: unexpected $*" >&2; exit 64; }
+echo "$*" >> "${FAKE_STATE:?}/npm"
+if [ "${FAKE_MODE:-ok}" = "web-empty" ]; then
+  printf '{"bomFormat":"CycloneDX","specVersion":"1.5","components":[]}\n'
+else
+  printf '{"bomFormat":"CycloneDX","specVersion":"1.5","components":[{"type":"library","name":"a-web-package"}]}\n'
+fi

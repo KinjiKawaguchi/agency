@@ -21,6 +21,8 @@ final class NativeSession {
     /// Whether APNs takes the notices the node sends this phone, read from the node's list of the owner's tokens.
     let pushDelivery: PushDeliveryStore
     private(set) var signInProblem: String?
+    /// Whether this app and the home node still fit each other, once the node has said what it serves.
+    private(set) var compatibility: NodeCompatibility = .compatible
 
     /// The client of the home node, for the screens that read from it.
     @ObservationIgnored let client: NodeClient
@@ -29,7 +31,7 @@ final class NativeSession {
     @ObservationIgnored private var registeredPush: RegisteredPush?
     /// This phone's push token, once Apple has given it one: what `pushDelivery` looks for among the node's listed tokens.
     @ObservationIgnored private let ownPushToken = PushTokenBox()
-    /// What the home node said of itself, once it has: whether it takes `device` in a registration.
+    /// What the home node said of itself, once it has: what it serves, and whether it takes `device` in a registration.
     @ObservationIgnored private var nodeAbout: About?
     /// Whether the home node took the kinds of push the owner chose; `false` for a node that sends requests only.
     /// Whether the home node sends the kinds the owner chose, or `nil` until it has answered the registration.
@@ -46,6 +48,8 @@ final class NativeSession {
     let orgChart: OrgChartStore
     /// The owner's numbers for what each org measures: offered only when the node lets the owner read them.
     let outcomes: OutcomesStore
+    /// What the app observed of its calls to this home node, for the node to show beside its own timing.
+    let telemetry: ClientTelemetry
     /// What is new since the last read, as banners.
     let news: NewsStore
     /// What the widgets show, written after the desk is read.
@@ -62,8 +66,14 @@ final class NativeSession {
     ///     screens the viewer had are then not closed while the node is asked again.
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String, key: KeyLoad, standing: Standing = .loading) {
         self.signIn = signIn
+        // Every call to the home node is timed on its way out and back; what is seen goes to `telemetry`, made below, through a tap that
+        // starts empty because the telemetry needs the client that this transport is for.
+        let tap = TelemetryTap()
+        let transport = URLSessionTransport(homeNode: homeNode)
         let client = NodeClient(
-            transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
+            transport: ClientTelemetry.reports(from: Self.platform)
+                ? TimedTransport(transport) { sample in Task { @MainActor in tap.telemetry?.record(sample) } } : transport,
+            accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
         )
         self.client = client
         let signer: (any DeviceSigner)?
@@ -77,9 +87,13 @@ final class NativeSession {
         keyProblem = problem
         keyUnusable = unusable
         pairing = signer.map { PairingStore(client: client, key: $0.publicKey, label: deviceLabel) }
+        // The decisions kept on this phone until the node has taken them: a device that signed one is not removed while it waits.
+        let outbox = DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client)
         devices = signer.map { signer in
             let sender = DeviceChangeSender(poster: client, signer: signer)
-            return DevicesStore(source: client, adder: sender, ownKey: signer.publicKey, remover: sender)
+            return DevicesStore(
+                source: client, adder: sender, ownKey: signer.publicKey, remover: sender, keptDecisions: { _ in outbox.keptDecisions }
+            )
         }
         let ownToken = ownPushToken
         pushDelivery = PushDeliveryStore(source: client, ownToken: { ownToken.value })
@@ -92,11 +106,14 @@ final class NativeSession {
         desk = DeskStore(
             source: cached,
             signer: signer.map { DeviceDecisionSigner(poster: client, signer: $0, sent: sent) as any DeskSigner } ?? NoKeySigner(),
-            outbox: DecisionOutbox(storage: FileOutboxStorage(host: homeNode.host), submitter: client),
+            outbox: outbox,
             storage: DraftDefaultsStorage(host: homeNode.host),
             afterSend: { await cache.invalidate() },
             standing: standing
         )
+        let telemetry = ClientTelemetry(sender: client, standing: { [desk] in desk.standing })
+        tap.telemetry = telemetry
+        self.telemetry = telemetry
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
@@ -115,6 +132,15 @@ final class NativeSession {
             host: homeNode.host, preferences: WidgetPreferencesStore(storage: WidgetDefaultsStorage(host: homeNode.host)),
             sink: WidgetAppGroupSink()
         )
+    }
+
+    /// The platform this app was built for.
+    private static var platform: ClientIdentity.Platform {
+        #if os(macOS)
+        .macos
+        #else
+        .ios
+        #endif
     }
 
     /// Runs the Access sign-in again (the session ended, or there is no token yet) and reads the desk.
@@ -149,6 +175,15 @@ final class NativeSession {
         guard let me = try? await cache.me() else { return }
         widgets.preferences.nodeSays(hidesTitles: me.hidesTitles)
         widgets.publish(items: desk.items)
+    }
+
+    /// Compares what the home node serves with this app's Client API version and own version, and keeps the answer for the desk to say. A node
+    /// that cannot be read now is judged at the next desk read.
+    func checkNodeVersion() async {
+        await readAbout()
+        compatibility = NodeCompatibility.judge(
+            about: nodeAbout, clientApi: ClientApi.spoken, appVersion: ClientIdentity.currentVersion(), platform: ClientIdentity.platform
+        )
     }
 
     /// What the node says of itself, read until it has answered: a node that has no such route (404) has no capabilities, once and for good,
@@ -193,6 +228,12 @@ final class NativeSession {
             // Tried again at the next change or the next launch.
         }
     }
+}
+
+/// A place for the telemetry, which is made after the client whose transport reports to it.
+@MainActor
+private final class TelemetryTap {
+    var telemetry: ClientTelemetry?
 }
 
 /// A place for this phone's push token, which `NativeSession` learns after it has built what asks for it.

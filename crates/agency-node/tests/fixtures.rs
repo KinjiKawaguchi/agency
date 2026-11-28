@@ -72,7 +72,7 @@ fn waiting_person(id: &str, on: &str) -> Value {
 /// is written (`p256:` and the uncompressed point).
 fn p256_public(byte: u8) -> PublicKey {
     let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     PublicKey::try_from(format!("p256:{}", STANDARD.encode(point.as_bytes()))).unwrap()
 }
 
@@ -311,7 +311,69 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     ];
     answers.extend(alice_device_changes(alice, bob, &key).await);
     answers.push(("evaluation", evaluation_answer(alice).await));
+    answers.push(("org-members", org_members_answer(alice).await));
     answers
+}
+
+/// alice's `/api/orgs/acme/members` once the org has a hosted member with a sign-in, an open seat, an external
+/// party and a change that waits for the root key, besides the members and the devices the other answers made.
+async fn org_members_answer(alice: &Running) -> Value {
+    use agency_core::pending_root::{PendingRootChange, RootChange};
+    use agency_proto::org::Person;
+    use agency_proto::seat::{External, Seat};
+    let laptop = AccountKey::from_seed([0x81; 32]);
+    let device = Device {
+        id: laptop.public().device_id(),
+        label: "Laptop".into(),
+        public_key: laptop.public(),
+        added_at: Timestamp::parse(T0).unwrap(),
+    };
+    agency_core::orgs::amend(&alice.node, &id("acme"), |definition| {
+        definition
+            .people
+            .push(Person::hosted(id("carol"), "Carol", vec![device]));
+        definition.seats.push(Seat {
+            id: id("dan"),
+            label: "Dan (finance)".into(),
+            department: None,
+            ask_about: vec!["invoices".into()],
+            relays: vec![id("bob")],
+        });
+        definition.externals.push(External {
+            id: id("erin"),
+            label: "Erin (outside counsel)".into(),
+            ask_about: vec!["contracts".into()],
+            relays: vec![id("alice")],
+        });
+        Ok(())
+    })
+    .unwrap();
+    agency_core::guests::keep(
+        &alice.node,
+        &agency_core::guests::Guest::new("carol@example.com", id("acme"), id("carol")),
+    )
+    .unwrap();
+    let removal = DeviceChange {
+        org: id("acme"),
+        account: id("carol"),
+        op: DeviceOp::Remove {
+            device: laptop.public().device_id(),
+        },
+        at: Timestamp::parse(T0).unwrap(),
+    };
+    let signed = Signed::sign(Kind::Device, removal, laptop.public().device_id(), &laptop).unwrap();
+    let held = PendingRootChange {
+        id: "held-device-removal".into(),
+        org: id("acme"),
+        received_at: T0.into(),
+        order: 0,
+        change: RootChange::Device {
+            change: Box::new(signed),
+        },
+        signed_version: None,
+    };
+    alice.node.store().put_pending_root(&held).unwrap();
+    read(alice, "/api/orgs/acme/members").await
 }
 
 /// alice's `/api/orgs/acme/evaluation` for a team that reads two repositories: three pull requests
@@ -334,6 +396,7 @@ async fn evaluation_answer(alice: &Running) -> Value {
                 issue_started_at: started.map(at),
                 closes_incident: false,
                 work_type: None,
+                board: vec![],
             }
         };
     let run = |commit: &str, finished: &str, verdict| MainRun {

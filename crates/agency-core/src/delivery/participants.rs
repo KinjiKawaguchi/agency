@@ -125,6 +125,7 @@ mod tests {
             issue_started_at: None,
             closes_incident: false,
             work_type: None,
+            board: vec![],
         }
     }
 

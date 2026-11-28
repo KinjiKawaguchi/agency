@@ -44,6 +44,12 @@ private struct ShellChrome: ViewModifier {
             .task(id: NewsWatch(phase: scenePhase, session: model.session.map(ObjectIdentifier.init))) {
                 if scenePhase == .active { await model.watchOutbox() }
             }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background {
+                    model.keepSending()
+                    model.reportCalls()
+                }
+            }
             .task(id: model.session?.news.banners) { await model.dismissBannersSoon() }
             .onChange(of: model.session?.notifications.preferences.pushKinds) { model.registerPush() }
             // These follow the desk whichever screen is open: the Mac's sidebar keeps only the open screen alive.

@@ -185,7 +185,7 @@ export function earlierDecisions(now: Date): DecisionEntry[] {
   ]
 }
 
-/** More orgs for the overview: a team that is stuck, one that is a stale copy, a busy one, and one that cannot be read. */
+/** More orgs for the overview: a team that is stuck, one that is a stale copy, a large one, and one that cannot be read. */
 export const MORE_ORGS = [
   {
     id: 'lab',
@@ -300,6 +300,8 @@ export function moreTeamViews(now: Date): TeamView[] {
       agent('ivy', 'Ivy', 'lead', 'working', 'Planning the spring planting', ago(HOUR), ['gd#1']),
       agent('moss', 'Moss', 'member', 'working', 'Updating the seed list', ago(2 * HOUR), ['gd#2']),
       agent('fern', 'Fern', 'member', 'idle', 'Nothing in Next', ago(6 * HOUR)),
+      // A large team: its agents fill several lines of its box in the chart of every org.
+      ...['Sage', 'Basil', 'Thyme', 'Clover', 'Hazel', 'Juniper', 'Willow', 'Rowan', 'Poppy', 'Lily'].map((name, index) => agent(name.toLowerCase(), name, 'member', index % 3 === 0 ? 'working' : 'idle', index % 3 === 0 ? 'Tending the beds' : 'Nothing in Next', ago((7 + index) * HOUR))),
       owner,
     ],
     requests: [],

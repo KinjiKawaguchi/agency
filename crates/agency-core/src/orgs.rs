@@ -373,6 +373,18 @@ pub fn amend(
     org: &Id,
     edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
 ) -> Result<SignedOrg> {
+    amend_with(node, org, edit, |_| Ok(()))
+}
+
+/// `amend`, and `before_publish` runs on the signed version before it is kept and queued: what must go with the
+/// version (a record that belongs to it) is written only once the root has signed, and a refusal of `before_publish`
+/// publishes nothing.
+pub(crate) fn amend_with(
+    node: &Node,
+    org: &Id,
+    edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
+    before_publish: impl FnOnce(&SignedOrg) -> Result<()>,
+) -> Result<SignedOrg> {
     let current = load(node, org)?;
     if !is_root(node, &current) {
         return Err(Error::new(
@@ -384,6 +396,7 @@ pub fn amend(
     edit(&mut body)?;
     capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
+    before_publish(&doc)?;
     publish(node, &doc)?;
     forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;

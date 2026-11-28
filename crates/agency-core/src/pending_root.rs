@@ -9,7 +9,7 @@ use crate::unseen;
 use agency_proto::clock::{self, Duration};
 use agency_proto::device::{DeviceChange, DeviceOp};
 use agency_proto::invite::{code_from_bytes, JoinRequest};
-use agency_proto::org::SignedOrg;
+use agency_proto::org::{Device, SignedOrg};
 use agency_proto::root_change::{
     waiting_message, PendingRootAnswer, RootAnswer, RootChangeKind, RootChangeRef,
     PENDING_ROOT_DAYS,
@@ -37,8 +37,19 @@ pub struct PendingRootChange {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum RootChange {
-    Join { request: Box<Signed<JoinRequest>> },
-    Device { change: Box<Signed<DeviceChange>> },
+    Join {
+        request: Box<Signed<JoinRequest>>,
+    },
+    Device {
+        change: Box<Signed<DeviceChange>>,
+    },
+    /// The owner confirmed from a client that `seat` becomes a member this node hosts, with the device of the
+    /// person who claimed it (docs/protocol.md, "Claim link"). The seat's label is kept as it was, for the words.
+    ClaimSeat {
+        seat: Id,
+        seat_label: String,
+        device: Box<Device>,
+    },
 }
 
 /// A join this node asked for, held by the org's root node: where to ask, with which handle, and the
@@ -76,6 +87,14 @@ impl PendingRootChange {
                     format!("remove device {device} of {}", change.body.account)
                 }
             },
+            RootChange::ClaimSeat {
+                seat,
+                seat_label,
+                device,
+            } => format!(
+                "host seat {seat} ({seat_label}) as a member, with device {} ({})",
+                device.label, device.id
+            ),
         }
     }
 
@@ -89,10 +108,7 @@ impl PendingRootChange {
 
     /// The account the change is for: the joiner, or the member whose device it is.
     pub fn account(&self) -> &Id {
-        match &self.change {
-            RootChange::Join { request } => &request.body.account,
-            RootChange::Device { change } => &change.body.account,
-        }
+        account_of(&self.change)
     }
 
     fn is_expired(&self, node: &Node) -> bool {
@@ -117,6 +133,11 @@ impl PendingRootChange {
                     (RootChangeKind::RemoveDevice, None, Some(device.clone()))
                 }
             },
+            RootChange::ClaimSeat { device, .. } => (
+                RootChangeKind::ClaimSeat,
+                Some(device.label.clone()),
+                Some(device.id.clone()),
+            ),
         };
         RootChangeRef {
             id: self.id.clone(),
@@ -133,6 +154,23 @@ impl PendingRootChange {
 
 use agency_proto::org::printable;
 
+/// The account a change is for: the joiner, the member whose device it is, or the seat that becomes a member.
+fn account_of(change: &RootChange) -> &Id {
+    match change {
+        RootChange::Join { request } => &request.body.account,
+        RootChange::Device { change } => &change.body.account,
+        RootChange::ClaimSeat { seat, .. } => seat,
+    }
+}
+
+/// The confirmation of `seat`'s claim that waits for the owner, if one does: there is at most one for a seat.
+pub(crate) fn held_claim(node: &Node, org: &Id, seat: &Id) -> Result<Option<PendingRootChange>> {
+    Ok(waiting(node)?.into_iter().find(|one| {
+        &one.org == org
+            && matches!(&one.change, RootChange::ClaimSeat { seat: held, .. } if held == seat)
+    }))
+}
+
 /// The most changes one presence prompt signs: every one of them is named in its words.
 pub const MOST_PER_PROMPT: usize = 3;
 
@@ -148,10 +186,7 @@ pub(crate) fn must_hold(node: &Node, current: &SignedOrg) -> bool {
 
 /// Holds a checked change and answers with its handle.
 pub(crate) fn hold(node: &Node, org: &Id, change: RootChange) -> Result<RootAnswer> {
-    let account = match &change {
-        RootChange::Join { request } => request.body.account.clone(),
-        RootChange::Device { change } => change.body.account.clone(),
-    };
+    let account = account_of(&change).clone();
     let held_for = waiting(node)?
         .iter()
         .filter(|one| &one.org == org && one.account() == &account)
@@ -305,8 +340,20 @@ pub async fn sign_held(node: &Node, org: &Id, ids: &[String]) -> Result<SignRun>
     }
     let run = run_signatures(node, &current, &held)?;
     for (one, doc) in &run.signed {
+        // A claim's sign-in is kept before its version is published, as `host_seat` does; the claim is marked confirmed
+        // only once the version is out, so a failure in between leaves what `claims::confirm` recognises and marks.
+        let claimed = match &one.change {
+            RootChange::ClaimSeat { seat, device, .. } => Some((seat, &device.public_key)),
+            _ => None,
+        };
+        if let Some((seat, key)) = claimed {
+            crate::claims::keep_sign_in(node, org, seat, key)?;
+        }
         crate::orgs::publish(node, doc)?;
         settle(node, one, Some(doc.body.version))?;
+        if let Some((seat, key)) = claimed {
+            crate::claims::mark_confirmed(node, org, seat, key)?;
+        }
     }
     for (one, _) in &run.dropped {
         settle(node, one, None)?;
@@ -320,12 +367,17 @@ fn run_signatures(node: &Node, current: &SignedOrg, held: &[PendingRootChange]) 
     let mut run = SignRun::default();
     let mut work = |sign: &crate::ports::RootSigner| -> std::result::Result<(), String> {
         let mut doc = current.clone();
+        // The addresses that claims signed earlier in this run make a sign-in: their records are kept only after the
+        // run, so a later claim for the same address is checked against these too.
+        let mut taken: Vec<String> = vec![];
         for one in held {
-            let next =
-                next_body(node, &doc, one).and_then(|body| crate::orgs::sign_by(node, body, sign));
+            let next = next_body(node, &doc, one, &taken).and_then(|(body, address)| {
+                crate::orgs::sign_by(node, body, sign).map(|signed| (signed, address))
+            });
             match next {
-                Ok(signed) => {
+                Ok((signed, address)) => {
                     doc = signed.clone();
+                    taken.extend(address);
                     run.signed.push((one.clone(), signed));
                 }
                 Err(error) if error.kind == ErrorKind::Forbidden => return Err(error.message),
@@ -352,21 +404,38 @@ fn run_signatures(node: &Node, current: &SignedOrg, held: &[PendingRootChange]) 
 
 /// The version a held change makes after `doc`, checked again against it: as it was when it came, for its
 /// time, and against what the org is now, for everything else.
+/// For a claim, also the address that becomes the member's sign-in; `taken` are those claims signed earlier in the
+/// same run make one.
 fn next_body(
     node: &Node,
     doc: &SignedOrg,
     held: &PendingRootChange,
-) -> Result<agency_proto::OrgDefinition> {
+    taken: &[String],
+) -> Result<(agency_proto::OrgDefinition, Option<String>)> {
     match &held.change {
         RootChange::Join { request } => {
             let record = crate::invites::held_invite(node, &request.body)
                 .ok_or_else(|| Error::bad_request("its invite is no longer held for it"))?;
-            crate::invites::joined_body(node, doc, &request.body, &record)
+            crate::invites::joined_body(node, doc, &request.body, &record).map(|body| (body, None))
         }
         RootChange::Device { change } => {
             let received = clock::parse(&held.received_at)
                 .ok_or_else(|| Error::bad_request("a held change without a time"))?;
-            crate::devices::changed_body(node, doc, change, received)
+            crate::devices::changed_body(node, doc, change, received).map(|body| (body, None))
+        }
+        RootChange::ClaimSeat { seat, device, .. } => {
+            let org = &doc.body.org;
+            let address = crate::claims::can_host(node, org, seat, &device.public_key)?;
+            if taken.contains(&address) {
+                return Err(Error::new(
+                    ErrorKind::Conflict,
+                    "its address becomes the sign-in of another member in this run",
+                ));
+            }
+            let mut body = agency_proto::OrgDefinition::successor_of(doc, node.now_text());
+            crate::seats::host_in(&mut body, org, seat, device.as_ref().clone())?;
+            crate::capabilities::check_before_signing(node, &doc.body, &body)?;
+            Ok((body, Some(address)))
         }
     }
 }

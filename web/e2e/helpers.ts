@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { queryOfFeatures, type AskedOfFeatures } from '../src/mock/features/index'
 
-export interface NodeOptions {
+/** What a test may ask of the mock node: the features of the Client API (`src/mock/features`, each states how it is asked for), and the rest. */
+export interface NodeOptions extends AskedOfFeatures {
   /** Serve the mock token use (the real node does not yet). */
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
@@ -34,7 +36,7 @@ export interface NodeOptions {
   outcomes?: boolean
   /** The evaluation carries each team's participants, as it does for the team's owner. */
   participants?: boolean
-  /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
+  /** Adds the orgs Lab and Club: a stuck team, a stale copy, a large team, and one that cannot be read. */
   moreOrgs?: boolean
   /** The account has a second device, Work laptop, which can be removed. */
   laptop?: boolean
@@ -49,6 +51,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  for (const [key, value] of queryOfFeatures(options)) query.set(key, value)
   if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)

@@ -214,11 +214,6 @@ a.oc-node:hover {
   margin-top: 6px;
 }
 
-.oc-more {
-  color: var(--ink-3);
-  font-size: 11.5px;
-}
-
 /*
  * On a phone a chart of this width would have to be panned, and half of it is always out of sight. So the
  * same tree is drawn as an indented list: each unit under its parent, with a rail down the parent's left

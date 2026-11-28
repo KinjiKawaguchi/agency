@@ -306,6 +306,19 @@ pub struct FederatedView {
     pub answers_for: Vec<AnswersFor>,
 }
 
+impl FederatedView {
+    /// The tag of this answer (`ETag`): the SHA-256, as 64 lower-case hex characters, of the answer's canonical JSON
+    /// without the view's `generatedAt`, which the team's runtime sets again every time it makes the view and says
+    /// nothing of what changed. A reader that holds the tag and finds it is still the answer's has the answer.
+    pub fn tag(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(view) = value.get_mut("view").and_then(|view| view.as_object_mut()) {
+            view.remove("generatedAt");
+        }
+        crate::digest::sha256_hex(crate::canonical::canonical(&value).as_bytes())
+    }
+}
+
 /// A seat or an external party that the reader of a team answers for: the name the team's runtime knows
 /// it by (what a request's `to` holds), and its id in the org definition, from which the reader's home node
 /// reads its label.

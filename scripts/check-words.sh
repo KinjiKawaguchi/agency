@@ -31,10 +31,10 @@ check() {
   fi
 }
 
-for file in web/src/i18n/ja.ts docs/*.ja.md; do
+for file in web/src/i18n/ja/*.ts docs/*.ja.md; do
   [ -f "$file" ] && check "$file" "$JAPANESE" "a word the glossary does not allow"
 done
-for file in web/src/i18n/en.ts; do
+for file in web/src/i18n/en/*.ts; do
   [ -f "$file" ] && check "$file" "$ENGLISH" "a word the glossary does not allow"
 done
 

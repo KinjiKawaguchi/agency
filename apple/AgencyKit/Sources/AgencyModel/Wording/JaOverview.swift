@@ -2,7 +2,7 @@ import AgencyAPI
 import Foundation
 
 extension Ja {
-    /// The overview of every org and team, from the web client's Japanese (`overview` in `ja.ts`).
+    /// The overview of every org and team, from the web client's Japanese (`overview` in `ja/overview.ts`).
     public enum Overview {
         public static let title = "全体の状況"
         public static let noTeams = "この組織には、まだチームがありません。"

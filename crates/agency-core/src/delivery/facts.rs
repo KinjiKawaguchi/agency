@@ -31,6 +31,16 @@ pub struct MergedPullRequest {
     pub closes_incident: bool,
     /// The board's "Work type" of the first issue it closes that has one, when the board has it.
     pub work_type: Option<WorkType>,
+    /// The single-select values the board holds for the issues it closes (every field, in the order GitHub
+    /// lists the issues, their projects, and their fields): what a team's `teamField` is read from.
+    pub board: Vec<BoardValue>,
+}
+
+/// One single-select field of an issue on a board, and the option it has.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoardValue {
+    pub field: String,
+    pub value: String,
 }
 
 /// How one workflow run on the default branch ended.

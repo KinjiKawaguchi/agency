@@ -1,7 +1,7 @@
 import Foundation
 
 extension Ja {
-    /// The node's own response times on the evaluation screen, in the web's words (`metrics` in `ja.ts`) and the glossary's: 応答時間,
+    /// The node's own response times on the evaluation screen, in the web's words (`metrics` in `ja/metrics.ts`) and the glossary's: 応答時間,
     /// ルートの区分, ノード内の読み取り, 目標. A percentile is always 「以下」: it is the upper bound of its bucket.
     public enum NodeSpeed {
         public static let title = "このノードの応答時間"
@@ -65,7 +65,7 @@ extension Ja {
             public static func name(_ group: String) -> String { names[group] ?? group }
         }
 
-        /// The hour-by-hour trend, in the web's words (`metrics.trend` in `ja.ts`).
+        /// The hour-by-hour trend, in the web's words (`metrics.trend` in `ja/metrics.ts`).
         public enum Trend {
             public static let title = "時間ごとの推移"
             public static let lead = "ルートの区分ごとの、各時間の p95 です。p95 は区間の上限なので「以下」です。目盛りは 1 つで、単位はミリ秒（0.5 ミリ秒から 30 秒）、対数目盛りです。呼び出しがなかった時間は 0 ではなく、線の切れ目になります。"

@@ -110,6 +110,13 @@
           "refactor": 0,
           "test": 0
         },
+        "newFeature": {
+          "issueLeadMedianSeconds": 14400,
+          "issueLeadP90Seconds": 14400,
+          "merged": 1,
+          "prLeadMedianSeconds": 7200,
+          "prLeadP90Seconds": 7200
+        },
         "prLeadMedianSeconds": 1800,
         "prLeadP90Seconds": 7200,
         "reverts": 1

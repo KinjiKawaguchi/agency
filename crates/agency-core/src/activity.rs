@@ -4,10 +4,13 @@ use crate::client::membership;
 use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
+use crate::peer_about::note_not_found;
+use crate::peer_features::refusal_for_lacking;
 use crate::ports::PeerError;
 use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
+use agency_proto::about::Capability;
 use agency_proto::activity::{
     valid_limit, Activity, DEFAULT_LIMIT, DEFAULT_SINCE_MINUTES, MAX_LIMIT,
 };
@@ -88,8 +91,10 @@ pub async fn team_activity(
 }
 
 /// The events from the node a team runs on, read live. A node that cannot be reached, or whose answer is
-/// malformed, is unavailable; a node that does not report activity (or does not serve the route) is not found;
-/// a node that refuses the reader (403) is passed through.
+/// malformed, is unavailable; a node that does not report activity or does not serve the route is not found,
+/// and so is one that has been read and does not list the `activity` capability (the route is not called, and
+/// the reason names the release it runs and says it needs an update); a node that refuses the reader (403) is
+/// passed through.
 async fn remote_activity(
     node: &Node,
     org: &Id,
@@ -97,6 +102,15 @@ async fn remote_activity(
     since: &Timestamp,
     limit: u32,
 ) -> Result<Activity> {
+    if let Some(reason) = refusal_for_lacking(
+        node,
+        org,
+        &place.node,
+        Capability::Activity,
+        "the team's activity feed",
+    ) {
+        return Err(Error::not_found(reason));
+    }
     let path = routes::activity(org, &place.id, since, limit);
     let auth = sign_for_peer(node, org, &place.node, &path);
     let activity = node
@@ -104,7 +118,10 @@ async fn remote_activity(
         .get_activity(&place.node, &path, &auth)
         .await
         .map_err(|error| match error {
-            PeerError::Status { status: 404, .. } => Error::not_found(error.to_string()),
+            PeerError::Status { status: 404, .. } => {
+                let _ = note_not_found(node, org, &place.node);
+                Error::not_found(error.to_string())
+            }
             PeerError::Status { status: 403, .. } => Error::new(
                 ErrorKind::Forbidden,
                 "the team's node does not let this account read the team's activity",

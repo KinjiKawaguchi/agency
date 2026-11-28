@@ -232,5 +232,259 @@
       "signature": "9TKfPWifh8CVPPT+yWEKXZ8+7v4fQr/sdiMP5ju1h7SGrnivxy/16CEkJQqdg0gvVUZRvHr1xu3twYVkVAhhDg==",
       "text": "GET\n/fed/v1/teams/acme/app/view\n2026-11-24T12:00:00.123Z\nalice"
     }
+  },
+  "viewTag": {
+    "answer": {
+      "view": {
+        "epics": [
+          {
+            "basis": "Recent throughput of 1.5 points per day; blocked children left out",
+            "blocked": [
+              {
+                "count": 1,
+                "reason": "needsDecision"
+              },
+              {
+                "count": 1,
+                "reason": "waitingOnPrevious"
+              }
+            ],
+            "doing": 1,
+            "done": 1,
+            "forecast": {
+              "at": "2026-11-27T12:00:00Z",
+              "days": 3
+            },
+            "ref": "app#10",
+            "remainingPoints": 5,
+            "title": "Persistent sessions",
+            "total": 4
+          },
+          {
+            "basis": "No recent throughput to forecast from",
+            "blocked": [],
+            "doing": 0,
+            "done": 0,
+            "ref": "app#20",
+            "remainingPoints": 0,
+            "title": "Mobile layout",
+            "total": 0
+          }
+        ],
+        "generatedAt": "2026-11-24T12:00:00Z",
+        "label": "App",
+        "org": "acme",
+        "people": [
+          {
+            "holding": [],
+            "id": "lead",
+            "kind": "agent",
+            "label": "Lead",
+            "role": "lead",
+            "since": "2026-11-24T11:40:00Z",
+            "state": "working",
+            "status": "Reviewing app#12"
+          },
+          {
+            "holding": [
+              "app#12"
+            ],
+            "id": "backend",
+            "kind": "agent",
+            "label": "Backend",
+            "role": "member",
+            "since": "2026-11-24T11:52:00Z",
+            "state": "working",
+            "status": "Permission prompt: run the database migration",
+            "waitingOn": {
+              "kind": "person",
+              "person": "owner"
+            }
+          },
+          {
+            "holding": [],
+            "id": "frontend",
+            "kind": "agent",
+            "label": "Frontend",
+            "role": "member",
+            "since": "2026-11-24T11:30:00Z",
+            "state": "idle",
+            "status": "Idle for 30 minutes; nothing in Next",
+            "waitingOn": {
+              "kind": "lead"
+            }
+          },
+          {
+            "holding": [
+              "app#15"
+            ],
+            "id": "docs",
+            "kind": "agent",
+            "label": "Docs",
+            "role": "member",
+            "state": "away",
+            "status": "Session ended"
+          },
+          {
+            "holding": [],
+            "id": "owner",
+            "kind": "human",
+            "label": "Alice",
+            "role": "member",
+            "state": "unknown",
+            "status": "Three requests are waiting for an answer"
+          }
+        ],
+        "requests": [
+          {
+            "answerWith": {
+              "kind": "answer",
+              "target": "r-20261124-110000-a1b2"
+            },
+            "blocks": [
+              "backend",
+              "app#12"
+            ],
+            "context": "Both pass the load test. SQLite needs no extra service; PostgreSQL scales past one machine.",
+            "createdAt": "2026-11-24T11:00:00Z",
+            "from": "backend",
+            "id": "r-20261124-110000-a1b2",
+            "issue": "app#12",
+            "kind": "question",
+            "options": [
+              {
+                "isRecommended": true,
+                "key": "a",
+                "text": "SQLite"
+              },
+              {
+                "isRecommended": false,
+                "key": "b",
+                "text": "PostgreSQL"
+              }
+            ],
+            "thread": [
+              {
+                "at": "2026-11-24T11:10:00Z",
+                "by": "owner",
+                "from": "owner",
+                "text": "What does the load test cover?"
+              },
+              {
+                "at": "2026-11-24T11:20:00Z",
+                "from": "backend",
+                "text": "Ten times the current peak traffic for one hour."
+              }
+            ],
+            "title": "Which database should the app use in production?"
+          },
+          {
+            "answerWith": {
+              "kind": "answer",
+              "target": "r-20261124-113000-c3d4"
+            },
+            "blocks": [],
+            "context": "The web client epic is behind its forecast by four days.",
+            "createdAt": "2026-11-24T11:30:00Z",
+            "document": "## Proposal\n\nAdd one frontend agent for two weeks.\n\n## Cost\n\nAbout 15% more of the weekly usage limit.",
+            "from": "lead",
+            "id": "r-20261124-113000-c3d4",
+            "kind": "proposal",
+            "options": [
+              {
+                "detail": "Two weeks, then review",
+                "isRecommended": true,
+                "key": "approve",
+                "text": "Approve"
+              },
+              {
+                "detail": "The epic finishes about four days later",
+                "isRecommended": false,
+                "key": "reject",
+                "text": "Reject"
+              }
+            ],
+            "title": "Add a second frontend agent",
+            "to": "owner"
+          },
+          {
+            "answerWith": {
+              "kind": "judge",
+              "target": "app#14"
+            },
+            "blocks": [
+              "app#14"
+            ],
+            "context": "Blocked on a decision since 2026-11-23.",
+            "createdAt": "2026-11-23T09:00:00Z",
+            "from": "board",
+            "id": "app#14",
+            "issue": "app#14",
+            "kind": "pendingDecision",
+            "options": [],
+            "title": "Drop support for the old export format?"
+          }
+        ],
+        "team": "app",
+        "work": [
+          {
+            "assignee": "backend",
+            "epic": "app#10",
+            "eta": {
+              "basis": "8 finished items with 3 points",
+              "isOverBudget": false,
+              "p50": "2026-11-25T03:00:00Z",
+              "p80": "2026-11-25T09:00:00Z"
+            },
+            "points": 3,
+            "ref": "app#12",
+            "status": "inProgress",
+            "title": "Store sessions in the database",
+            "workType": "newFeature"
+          },
+          {
+            "blocked": {
+              "reason": "needsDecision",
+              "since": "2026-11-23"
+            },
+            "epic": "app#10",
+            "points": 2,
+            "ref": "app#14",
+            "status": "next",
+            "title": "Remove the old export format",
+            "workType": "debt"
+          },
+          {
+            "assignee": "docs",
+            "blocked": {
+              "reason": "waitingOnPrevious",
+              "since": "2026-11-24"
+            },
+            "epic": "app#10",
+            "ref": "app#15",
+            "status": "backlog",
+            "title": "Document the session store",
+            "workType": "maintenance"
+          },
+          {
+            "assignee": "backend",
+            "points": 1,
+            "ref": "app#11",
+            "status": "release",
+            "title": "Add a health check endpoint",
+            "workType": "improvement"
+          },
+          {
+            "doneAt": "2026-11-20T15:00:00Z",
+            "points": 1,
+            "ref": "app#9",
+            "status": "done",
+            "title": "Set up the project"
+          }
+        ]
+      },
+      "viewer": "owner"
+    },
+    "tag": "e4594050810252da66999bb394c0f83ef5453abe410a7ceb4e7ddd3c7c72cfcb"
   }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 extension Ja {
-    /// The costs screen, from the web client's Japanese (`costs` in `ja.ts`).
+    /// The costs screen, from the web client's Japanese (`costs` in `ja/costs.ts`).
     public enum Costs {
         public static let title = "費用"
         public static let funding = "サブスクリプション"

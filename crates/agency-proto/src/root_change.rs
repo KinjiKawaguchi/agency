@@ -57,6 +57,9 @@ pub enum RootChangeKind {
     AddMember,
     AddDevice,
     RemoveDevice,
+    /// A seat becomes a member the root's node hosts, with the device of the person who claimed it: `member` is the
+    /// seat's id, `label` the device's label, and `device` its id.
+    ClaimSeat,
 }
 
 /// What the owner is told while a change waits for the root key's node.
