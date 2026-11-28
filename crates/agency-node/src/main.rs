@@ -24,7 +24,6 @@ use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::signed_decisions::decide_with_device;
-use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
 use agency_node::Overrides;
 use agency_proto::org::{is_node_origin, TeamPlace};
@@ -107,6 +106,15 @@ enum Command {
     SeatRemove(seat_cli::SeatRemove),
     MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
+    /// Makes a seven-day claim link for one seat and one email (on the root key's node)
+    SeatInvite {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        email: String,
+    },
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -203,6 +211,7 @@ enum Command {
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
+    Export(agency_node::export::ExportArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -258,6 +267,7 @@ fn owner_of(account: &str, label: &str) -> Result<Account> {
 }
 
 fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
+    data.check_format()?;
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
@@ -274,6 +284,7 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
     data.save_config(&config)?;
+    data.ensure_format()?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
@@ -305,6 +316,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::views::waiting_lines(node) {
+        println!("{line}");
+    }
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
     }
@@ -535,6 +549,7 @@ async fn run(cli: Cli) -> Result<()> {
         .with_local_clients(!no_local_clients);
         return init(&data, config);
     }
+    data.check_format()?;
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
@@ -544,6 +559,11 @@ async fn run(cli: Cli) -> Result<()> {
     }
     if let Command::Metrics(args) = &cli.command {
         return metrics_cli::run(&data, args);
+    }
+    if let Command::Export(args) = &cli.command {
+        if let Some(dir) = args.only_verifies() {
+            return agency_node::export::verify_dir(dir);
+        }
     }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
@@ -619,6 +639,17 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::SeatInvite { org, seat, email } => {
+            let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
+            println!("{}", invite.link);
+            println!(
+                "Add {} to the Access policy by hand; the node does not change Access.",
+                invite.email
+            );
+            if invite.local_only {
+                println!("This link works on this machine only.");
+            }
+        }
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
@@ -726,7 +757,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
-            refresh(&node).await?;
+            agency_core::views::refresh_now(&node).await?;
             for joined in finish_joins(&node).await? {
                 if let Joined::Member(doc) = joined {
                     println!("Joined org {} (version {})", doc.body.org, doc.body.version);
@@ -739,6 +770,7 @@ async fn run(cli: Cli) -> Result<()> {
             );
         }
         Command::Status => status(&node),
+        Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }
     Ok(())
