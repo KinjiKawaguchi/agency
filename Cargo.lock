@@ -46,7 +46,7 @@ dependencies = [
  "agency-proto",
  "async-trait",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "block2",
  "futures-util",
  "hkdf",
@@ -87,7 +87,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bip39",
  "clap",
  "futures-util",
@@ -108,7 +108,7 @@ dependencies = [
 name = "agency-proto"
 version = "0.4.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "ed25519-dalek",
  "p256",
  "rand_core 0.6.4",

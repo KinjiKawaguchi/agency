@@ -12,7 +12,7 @@ publish = false
 anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 # RS256 (Access) and ES256 (APNs), through ring (already used by rustls); no PEM parsing.
 jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
 clap = { version = "4", features = ["derive"] }
