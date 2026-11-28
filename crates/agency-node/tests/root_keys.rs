@@ -307,7 +307,7 @@ async fn the_prompt_names_a_key_swap_a_role_and_counts_what_it_does_not_name() {
     .unwrap();
     orgs::amend(&alice.node, &id("acme"), |body| {
         for raw in ["a", "b", "c", "d", "e"] {
-            body.departments.push(department(raw));
+            body.departments_mut().push(department(raw));
         }
         Ok(())
     })

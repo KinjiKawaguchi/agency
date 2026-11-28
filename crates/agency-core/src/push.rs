@@ -297,7 +297,7 @@ pub(crate) async fn waiting_in_hosted(
 async fn waiting_for_owner(node: &Node, is_hidden: bool) -> Vec<Candidate> {
     let mut all = vec![];
     for doc in node.store().orgs() {
-        for place in &doc.body.teams {
+        for place in doc.body.teams() {
             all.extend(waiting_in(node, &doc.body, &place.id, is_hidden).await);
         }
     }

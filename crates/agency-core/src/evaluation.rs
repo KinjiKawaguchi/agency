@@ -198,10 +198,10 @@ pub async fn org_evaluation(node: &Node, org: &Id, days: Option<u32>) -> Result<
         teams: vec![],
         unavailable: vec![],
     };
-    for place in &doc.body.teams {
+    for place in doc.body.teams() {
         let one = match node.hosted(org, &place.id) {
             Some(hosted) => Ok(evaluate_hosted(node, &hosted, days, &person.id).await),
-            None => remote_evaluation(node, org, place, days).await,
+            None => remote_evaluation(node, org, &place, days).await,
         };
         match one {
             Ok(one) => {

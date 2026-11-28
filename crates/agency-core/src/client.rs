@@ -89,9 +89,8 @@ pub fn me(node: &Node) -> Me {
         let person = doc.body.member(&config.account.id)?.clone();
         let teams = doc
             .body
-            .teams
-            .iter()
-            .map(|place| team_ref(node, &doc.body.org, place, &person))
+            .teams()
+            .map(|place| team_ref(node, &doc.body.org, &place, &person))
             .collect();
         Some(OrgRef {
             id: doc.body.org.clone(),

@@ -74,7 +74,7 @@ pub async fn team_usage(node: &Node, org: &Id, team: &Id, days: Option<u32>) -> 
     let days = check_days(days.unwrap_or(DEFAULT_USAGE_DAYS))?;
     match node.hosted(org, &place.id) {
         Some(hosted) => runtime_usage(node, &hosted, days).await,
-        None => remote_usage(node, org, place, days).await,
+        None => remote_usage(node, org, &place, days).await,
     }
 }
 
