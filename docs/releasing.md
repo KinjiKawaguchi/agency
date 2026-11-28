@@ -14,6 +14,20 @@ Versions are `0.MINOR.PATCH` until the first 1.0. How the number moves, from the
 
 A `refactor` is listed in the changelog, but it does not call for a release by itself. Before 1.0, a breaking change raises the minor number, as a new feature does, so read the changelog before updating across a minor number. What counts as breaking at each boundary (nodes, the Client API, the team runtime, the apps) is the subject of the compatibility policy ([compatibility.md](compatibility.md)), and the release numbering follows it.
 
+## Pull request titles
+
+A pull request's title is the commit title of its squash merge, so release-please reads it. CI checks it (the `pr-title` workflow, which runs again when the title is edited):
+
+- The title is `<type>(<scope>)!: <description>`: a type from the table above or `revert` (the repository's reverts use it; it has no changelog section), an optional scope, an optional `!`, and a description. A title that GitHub's revert button writes, `Revert "<such a title>"`, is accepted.
+- It is at most 70 characters (characters, not bytes). A bot's title, such as a dependency update, is not held to the length. A title that is too long is shortened with `gh pr edit <number> --title "..."`; no commit is needed.
+- A breaking change, which is a `!` in the title or a `BREAKING CHANGE:` footer in the body, says which boundary it breaks, in a body line of its own:
+
+```text
+BREAKING CHANGE: client API: the desk answer no longer has a `pending` field
+```
+
+  The boundary is one of `federation`, `signed text`, `team runtime`, `client API` (the contracts of [compatibility.md](compatibility.md)) or `data` (the files a node keeps). release-please copies the line into the changelog, so a reader of the changelog sees what to check before updating.
+
 ## How a release is made
 
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
@@ -33,6 +47,21 @@ The script refuses a tree that is not at the tag, builds the web client and the 
 6. Check the release as someone who downloads it would, with the commands of "Checking a release" below: the signature of `SHA256SUMS` and the sums of the files. The signature is made by the workflow's identity, `release.yml` at `refs/heads/main` (release-please runs on `main` and calls it), and the expression that names it ends there so that a signature made from any other ref never verifies. The first release is the first time this is run for real: if `cosign verify-blob` refuses the real signature, read the identity in the certificate (`cosign verify-blob` says what it found), correct the expression here, and say so in the release notes.
 
 The macOS binaries are not signed and not notarized. A browser download is quarantined by macOS and will not open until `xattr -d com.apple.quarantine agency` (`gh release download` and `curl` do not quarantine).
+
+6. Keep what the release wrote: `scripts/release/snapshot-data.sh vX.Y.Z`, in a pull request of its own (see "Keeping what the release wrote" below).
+
+## Keeping what the release wrote
+
+Upgrades are forward-only, so every later build must read the data an earlier release wrote ([compatibility.md](compatibility.md), "Checks in CI"). After a release is tagged, on any machine with the repository and Rust, keep its data:
+
+```sh
+git fetch --tags
+scripts/release/snapshot-data.sh vX.Y.Z
+```
+
+The script builds the tag in a temporary worktree and runs two nodes of that build through a fixed sequence: alice makes the org `acme` and the team `app`, adds a device and serves; bob joins and reads alice's team once; alice answers the team's one request. It writes the two data directories to `testdata/releases/vX.Y.Z/data/alice` and `.../bob`, without their logs and without local paths. The keys in them are test keys of an org that exists nowhere else, made by that run: the script runs its own throwaway nodes and never copies the data directory of a node that is really used, and what is checked in must stay so. The org's root key is kept outside a data directory and is not written. Commit the directory in a pull request of its own (`test: keep the data of vX.Y.Z`).
+
+`crates/agency-node/tests/earlier_releases.rs` starts today's node on a copy of every kept data directory and reads everything in it, so the pull request's checks say whether the new release still reads the old one's data. Each release adds its snapshot and drops the one of the minor release three back, so `testdata/releases/` holds the release just made and the two minor releases before it, which is as far as the 90-day overlaps of the policy reach (for 0.5.0: 0.5, 0.4 and 0.3; the snapshot of 0.2 is removed in the same pull request).
 
 ## Tags: one artifact, one prefix
 

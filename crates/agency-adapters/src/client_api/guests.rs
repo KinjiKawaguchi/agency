@@ -40,7 +40,7 @@ fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
 
 /// Whether `path` is the web client itself (its page and files), which holds none of the node's data: not
 /// under `/api`, not the node's own measurements (`/metrics`), and not the app sign-in (`/app`).
-fn is_the_client(path: &str) -> bool {
+pub(super) fn is_the_client(path: &str) -> bool {
     let reserved = ["/api", "/metrics", "/app"];
     !reserved
         .iter()

@@ -108,7 +108,7 @@ agency status
 - `--state-dir` は、ハーネスがチームの状態を置くディレクトリです。相対パスを渡しても絶対パスで保存されます。
 - `org-create` は、新しい組織のためのルート鍵を作り、このノードをそのルートのノードにします。`--node` を付けない `team-add` は、このノードのアカウントを持ち主として、チームをこのノードで動かします。
 
-`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。
+`agency status` に、アカウント、`Org acme (Acme), version 2, root key`、`Team on this node: acme/app (owner alice) runs <scrum> runtime` が表示されれば成功です。`agency audit --org acme` は、組織のすべての版を古い順に、誰が署名し、何を変えたかとともに一覧します。
 
 データディレクトリには、ノードのアカウント鍵である `account.key` ができています。
 この鍵はノードの読み取り、参加の依頼、組織での最初の端末の追加に署名するので、このファイルを読める人は、あなたが読めるものを読めます。
@@ -310,7 +310,66 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 その場合、ノードは Cloudflare を通ったリクエストをすべて拒否します。
 ノードが何を検証するかは、[protocol.md](protocol.md) の「Who is let in」に詳しく書かれています。
 
+## OpenID Connect のプロバイダで外から届くようにする
+
+組織が Cloudflare Access ではなく、自前の OpenID Connect のプロバイダでサインインさせるときに使います。ノードが外からのサインインに使うのは `access` か `oidc` のどちらか一方で、両方は使えません。両方が書かれているとき、またはどちらかの形が正しくないときは、ノードは起動せず、どのフィールドが違うかを言います。
+
+### 必要なもの
+
+- このノードのためにプロバイダに登録したアプリケーション。そのクライアント ID がトークンの audience で、トークンは、RS256 で署名された JWT です。所有者はトークンの `sub` で、ゲストは、プロバイダが確認済みとしたクレーム（指定しなければ `email`。`email_verified` が true）のメールで決まります。プロバイダの issuer は、そのトークンの `iss` と完全に同じ文字列です。
+- 組織が承認したゲートウェイ（リバースプロキシやアクセスプロキシ）。ノードの公開ホスト名で受け、プロバイダでサインインさせ、署名されたトークンを、すべてのリクエストのヘッダでノードに渡します。ノードはトークンを自分で確かめ、リクエストがどう届いたかを信用しません。ゲートウェイがノードに「誰からか」を伝えるのではなく、トークンを運ぶだけです。
+- 「ノードのアドレスを変える」のとおりのノードの `url` と公開ホスト名（ネットワークでの呼び名は何でも構いません）。
+
+### oidc の設定
+
+`~/.agency/config.json` に `oidc` を書き（`access` は書かない）、ノードを再起動します。
+
+```json
+"oidc": {
+  "publicHost": "agency.example.com",
+  "issuer": "https://login.example.com/realms/acme",
+  "audience": "agency-node",
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
+}
+```
+
+- `issuer` と `keysUrl` は `https://<ホスト名>[:<ポート>][/<パス>]` の形で、`user@` のような認証情報、クエリ、フラグメントは付けません。ノードは、プロバイダの鍵を `keysUrl` から取ります。省略すると、`<issuer>/.well-known/openid-configuration` に尋ねて `jwks_uri` を得ます。リダイレクトには従わず、待つのは最長 10 秒で、知らない鍵 ID のときだけ、1 分に 1 回までもう一度取りに行きます。プロバイダが鍵を入れ替えても追えます。
+- `tokenHeader`（既定は `authorization`。`Bearer <トークン>` として読みます）は、ゲートウェイがトークンを入れるヘッダです。`emailClaim`（既定は `email`）は、メールを持つクレームです。
+- `ownerSubject` は、プロバイダのトークンにある所有者の `sub` です。ノードがトークンを所有者のものとするのは、`iss` が `issuer` で、`sub` が `ownerSubject` のときだけです。どちらも末尾のスラッシュまで含めて、完全に一致する必要があります。ここではメールは所有者を決めません。プロバイダによっては、人が自分でメールを入力できるからです。`sub` は、このノード自身のアプリケーション登録（ゲートウェイ経由）で一度サインインして、そのトークン、またはプロバイダの userinfo エンドポイントから読みます。トークンを `$TOKEN` に入れて次のとおりにします。
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  ほかのアプリケーションのトークンから取った `sub` は一致しません。プロバイダによっては、アプリケーションの登録ごとに、同じ人に別の `sub` を付けます。
+- ゲスト（このノードが受け持つメンバー）はメールで決まりますが、トークンが確認済みとしたメールだけです。`email_verified` が `true`（または文字列の `true`）のときです。メールがあっても確認済みと示されていないトークンは、ゲストを決めず、ログにそう出ます。`email_verified` を送らないプロバイダ（有効にしないと送らないものがあります）は、`sub` で所有者をサインインさせられますが、ゲストをメールで通すことはできません。プロバイダでそのクレームを有効にしてください。しないと、そのノードのゲストは使えません。ほかのトークンも、トークンのないリクエストも 403 です。所有者として書き込める（決定する、端末を足す）のは所有者だけです。
+- Access と同じく、`oidc` を書くと、ノードのマシンの `http://127.0.0.1:4400/` は読み取り専用になります。書き込みは、公開ホスト名からサインインして行います。
+- iPhone アプリ自身のサインイン（`appId`）は Cloudflare Access のもので、`oidc` では使えません。ブラウザの Web クライアントを使います。
+
+### 経路が守ること
+
+ブラウザとノードの間に何を置くかは、それぞれの運用の選択ですが、次のことは守ってください。
+
+- ブラウザからゲートウェイまで、同じマシンでなければゲートウェイからノードまでも TLS にします。ノード自身は平文の `http` で待ちます。
+- トークンのヘッダは、そのまま渡します。書き換えず、消さず、ゲートウェイが作ったトークンに替えません。
+- ブラウザが使ったホスト名（`Host`）と、送られたパスをそのままにします。エンコードされた区切りやドットのセグメントを含むパスは、ノードが拒みます。
+- `/fed/*` は、サインインなしでノードに届くようにします。ほかのノードは、プロバイダではなく署名で認証されます。
+
+### 動くことを確かめる
+
+所有者についてプロバイダが出したトークンで `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" https://agency.example.com/api/me` を実行すると `200` が出ます。ヘッダがないとき、またはほかの人のトークンのときは `403` です。設定が正しくないときの起動時のメッセージは「ログの行」にあります。
+
 ## スマートフォンやブラウザを端末として追加する
+
+### 席の受け取りリンクを送る
+
+ルートのノードで、まだ誰も受け取っていない 1 つの席と 1 つのメールアドレスの受け取りリンクを作ります。
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+出力には、Access のポリシーへ手で加えるメールアドレスと、7 日間使えるリンクが出ます。ノードは Cloudflare を呼ばず、メールアドレスはこのノードだけに置きます。Access があるときは公開ホスト名のリンクになり、ないときはこのマシンでだけローカルのリンクを使います。同じ席に新しいリンクを作ると、前のリンクは置き換わります。
 
 自分の代わりに決定するブラウザやスマートフォンは、それぞれ自分の鍵を作って持ちます。
 鍵が端末の外に出ることはありません。
@@ -324,6 +383,25 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 依頼は 1 時間有効で、ノードが保持するのは 10 件までです。
 ブラウザが鍵を作れるのは、`https` のページか、ノードのマシン上の `127.0.0.1` のページだけです。
 それ以外では、鍵を作れないと画面に表示されます。
+
+### 人のアクセスを終わらせる
+
+辞めた人や、端末をなくした人のアクセスは、ルートのノードで終わらせます。このノードが引き受けているメンバーと端末の数（メールアドレスは出ません）を一覧してから、1 人を終わらせます。
+
+```sh
+agency guests --org acme
+agency guest-remove --org acme --member carol
+```
+
+署名済みの版が 1 つ作られ、メンバーが組織から外れ、端末の鍵が失効します。以後、その人が署名したものは組織のどのノードでも受け付けられません。ノードは、その人のサインイン、プッシュ通知の登録、通知済みの依頼の一覧を消します。決定のログには、決めた内容が残ります。
+
+メンバーがまだ名指しされている間は、コマンドは拒否されます。このノードのチームが宛先にしている、代わりに答えている席がある、部署の責任者になっている、などです。その人宛ての依頼を失わずにアクセスを終わらせるには、`--to-seat` を付けます。同じ版の中で、メンバーの id の席がその人の代わりに置かれ（ラベル、部署、何を聞くかはメンバーのもの）、受け取っていた席も 1 つずつ戻ります。戻る席は、その席がまだあったノードの最後の保管済みの版にあったとおりです（どの版にも残っていなければメンバーのラベルなどになり、コマンドがそう表示します）。それらの席に前もって作った受け取りリンクは使えなくなります。
+
+```sh
+agency guest-remove --org acme --member carol --to-seat --answered-by bob
+```
+
+`--answered-by` は席の代わりに答えるメンバーを、優先する順に指定します（複数なら繰り返します）。省略すると、チームのオーナーが答えます。Access のポリシーにあるメールアドレスは、自分でそこから消すまで残ります。ノードは Access を変更しません。
 
 ## Web クライアントをアプリとして入れる
 
@@ -480,6 +558,20 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
+- リポジトリが GitHub Enterprise Server にあるチームは、`delivery.host` にそのホスト名を書きます。スキーム、パス、ポートのないホスト名で、書かなければ `github.com` です。
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  このとき `owner/name` は、そのホスト名の GitHub にあるリポジトリです。ホスト名として正しくない文字列（使えるのは英数字、ハイフン、ドットで、スキーム、ポート、パスは付けられません）を書くと、ノードは起動時に `teams[n].delivery.host` を名指しして止まります。ノードは `gh` にホスト名を伝え（`gh api --hostname`。`GH_HOST` より優先されます）、github.com と同じ問い合わせをするので、問い合わせが読むボードのプロジェクトの型を、そのホスト名の GitHub が知っている必要があります。確かめるには、ノードを動かすアカウントで次のコマンドを実行します。`a` と `b` の両方が名前を返せば大丈夫です。`null` なら、その型に対してその Server は古すぎます。その場合、チームの数の代わりに、ホスト名が要求に答えなかったという理由が出ます。
+
+  ```sh
+  gh api --hostname git.example.com graphql -f query='{ a: __type(name: "ProjectV2ItemStatusChangedEvent") { name } b: __type(name: "ProjectV2ItemFieldSingleSelectValue") { name } }'
+  ```
+
+  ノードに必要なログインは、そのホスト名のものです。ノードを動かすアカウントで `gh auth login --hostname git.example.com` を実行します。下の助言も同じです。ホスト名を書かないチームと `github.com` のチームは、これまでどおりに読みます。下の表の「the GitHub host the team names」で始まる理由は、そのホスト名を出しません。理由は、そのチームを読むすべての人に届くからです。
+- `delivery.repos` には、`owner/name` の形のリポジトリを最大 50 件まで、同じものを 2 度（大文字小文字は区別しません）書かずに並べます。そうでないと、ノードは起動時に止まり、`teams[n].delivery.repos` を挙げて知らせます。2 つ以上のリポジトリで働くチームには、リポジトリごとの数も表示されます（`byRepository`。[protocol.md](protocol.md#evaluation) を参照）。
 - ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
@@ -495,6 +587,9 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 | the GitHub CLI (gh) on the team's node is not logged in | そのノードを動かすアカウントで `gh auth login` を実行します。 |
 | GitHub's rate limit is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
 | GitHub did not answer in time, or did not answer the request | そのマシンのネットワークと、ログインがリポジトリを読めることを確かめます。 |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | そのノードを動かすアカウントで `gh auth login --hostname <ホスト名>` を実行します。 |
+| the rate limit of the GitHub host the team names is used up for now | 待ちます。ノードは 10 分後にもう一度尋ねます。 |
+| the GitHub host the team names did not answer in time, or did not answer the request | そのマシンからそのホスト名へのネットワークと、ログインがリポジトリを読めること、github.com と同じ問い合わせにそのホスト名が答えられることを確かめます。 |
 | the team's node does not give delivery numbers | そのノードがこの機能より古いので、更新します。 |
 | the team's node does not give delivery numbers to this account | このアカウントは組織の answerer で、読めません。 |
 | the team's runtime does not report token usage | `tokenUsage` を持つランタイムを使います。それまで、このチームの労力は出ません。 |
@@ -620,7 +715,8 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `Node running: <url> (listening on <address>)` と `Web client: …` | ノードが起動しました。 |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd と systemd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。書き方だけの違い（ホスト名の大文字小文字、既定のポート）なら、ほかは何も変わりません。実際に名前を変えた場合は、それより前に行い、まだ届いていない決定は断られるので、もう一度行います。 |
-| `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
+| ノードが起動せず、`access.<フィールド> …` または `oidc.<フィールド> …` と言う | その設定のそのフィールドが正しくありません。`config.json` で直します。 |
+| ノードが起動せず、`access and oidc are both set …` と言う | どちらか一方だけを残します。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
 | アプリのサインインのシートに `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)` と出て、ノードが `via=scheme` に `400` を返した | ノードのホスト名が、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。自分でアプリをビルドするなら、ビルドの `AGENCY_ASSOCIATED_HOST` にそのホスト名を入れます。そうでなければ、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
 | `agency: refused an Access request (no Access token)` | Access のサインインがないリクエストが Cloudflare から届きました。Bypass が二つのパス以外にも及んでいるか、ホスト名の前に Access がありません。 |
@@ -651,8 +747,8 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 | `421` `wrong host` | `127.0.0.1:<ポート>` か `localhost:<ポート>` 以外のアドレスでページを開いています。 |
 | `403` `the Client API is local only` | ほかのマシンからのリクエストが、Cloudflare を通らずにノードへ届きました。 |
 | `403` `missing or wrong write token` | ページがノードの最後の起動より前に開かれたものです。読み込み直してください。 |
-| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしています。 |
-| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもないメールアドレス、またはサービストークンで Access にサインインしています。 |
+| `403` `only the node's owner may decide` | `ownerEmail` 以外のメールアドレスで Access にサインインしているか、OpenID Connect のプロバイダで `ownerSubject` 以外の `sub` でサインインしています。 |
+| `403` `this sign-in is not the node's owner or a guest of it` | `ownerEmail` でもゲストでもなく、使える申請リンクのアドレスでもないメールアドレス、またはサービストークンで Access にサインインしています。または、OpenID Connect のプロバイダで、`ownerSubject` ではない `sub` と、ゲストのものではない、またはトークンが確認済みと示していないメールでサインインしています。 |
 
 ## チームランタイム
 

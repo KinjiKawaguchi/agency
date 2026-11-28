@@ -15,6 +15,8 @@ import { WebPushBrowserProvider } from '../pwa/WebPushBrowserContext'
 import { WebPushRegistration } from '../pwa/WebPushRegistration'
 import type { WebPushBrowser } from '../pwa/useWebPush'
 import { OutboxProvider } from '../outbox/OutboxProvider'
+import { createTelemetry } from '../telemetry/telemetry'
+import { TelemetryReporting } from '../telemetry/TelemetryReporting'
 import { ToastProvider } from '../shared/Toasts'
 import { createQueryClient } from './queryClient'
 import { createAppRouter } from './router'
@@ -32,7 +34,8 @@ interface AppProps {
 }
 
 export function App({ client, history, locale, keyStore, queryClient: given, webPushBrowser }: AppProps) {
-  const [api] = useState(() => client ?? createApiClient())
+  const [telemetry] = useState(createTelemetry)
+  const [api] = useState(() => client ?? createApiClient(undefined, undefined, { onSample: telemetry.record }))
   const [queryClient] = useState(() => given ?? createQueryClient())
   const [router] = useState(() => createAppRouter(history))
   return (
@@ -48,6 +51,7 @@ export function App({ client, history, locale, keyStore, queryClient: given, web
                       <NativePushRegistration />
                       <WebPushRegistration />
                       <NativeBadge />
+                      <TelemetryReporting telemetry={telemetry} />
                       <RouterProvider router={router} />
                     </OutboxProvider>
                   </WebPushBrowserProvider>

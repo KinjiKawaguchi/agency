@@ -1,0 +1,88 @@
+{
+  "externals": [
+    {
+      "answeredBy": [
+        "alice"
+      ],
+      "askAbout": [
+        "contracts"
+      ],
+      "id": "erin",
+      "label": "Erin (outside counsel)"
+    }
+  ],
+  "held": [
+    {
+      "device": "d-2ad2694ace04",
+      "id": "held-device-removal",
+      "kind": "removeDevice",
+      "member": "carol",
+      "org": "acme",
+      "receivedAt": "2026-11-24T12:00:00Z",
+      "what": "remove device d-2ad2694ace04 of carol"
+    }
+  ],
+  "members": [
+    {
+      "devices": [
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-dbc298251c51",
+          "keyKind": "ed25519",
+          "label": "Laptop"
+        },
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-506ef1879d74",
+          "keyKind": "ed25519",
+          "label": "iPhone"
+        },
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-a652124afda7",
+          "keyKind": "p256",
+          "label": "iPad"
+        }
+      ],
+      "id": "alice",
+      "isHosted": false,
+      "label": "ALICE",
+      "role": "member"
+    },
+    {
+      "devices": [],
+      "id": "bob",
+      "isHosted": false,
+      "label": "BOB",
+      "role": "member"
+    },
+    {
+      "devices": [
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-2ad2694ace04",
+          "keyKind": "ed25519",
+          "label": "Laptop"
+        }
+      ],
+      "hasSignIn": true,
+      "id": "carol",
+      "isHosted": true,
+      "label": "Carol",
+      "role": "member"
+    }
+  ],
+  "org": "acme",
+  "seats": [
+    {
+      "answeredBy": [
+        "bob"
+      ],
+      "askAbout": [
+        "invoices"
+      ],
+      "id": "dan",
+      "label": "Dan (finance)"
+    }
+  ]
+}

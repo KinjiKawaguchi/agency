@@ -41,14 +41,22 @@ public enum ClientIdentity {
         return "\(short) (\(build))"
     }
 
+    /// The platform this app was built for.
+    public static var platform: Platform {
+        #if os(macOS)
+        .macos
+        #else
+        .ios
+        #endif
+    }
+
+    /// This app's own version (the bundle's `CFBundleShortVersionString`), when it is in the form the node reads.
+    public static func currentVersion(bundle: Bundle = .main) -> String? {
+        version(bundle.infoDictionary?["CFBundleShortVersionString"] as? String)
+    }
+
     /// This app's: its own bundle's version and build, on the platform it was built for.
     public static func current(bundle: Bundle = .main) -> String? {
-        #if os(macOS)
-        let platform = Platform.macos
-        #else
-        let platform = Platform.ios
-        #endif
-        let info = bundle.infoDictionary
-        return value(platform: platform, version: info?["CFBundleShortVersionString"] as? String, build: info?["CFBundleVersion"] as? String)
+        value(platform: platform, version: bundle.infoDictionary?["CFBundleShortVersionString"] as? String, build: bundle.infoDictionary?["CFBundleVersion"] as? String)
     }
 }
