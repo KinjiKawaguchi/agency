@@ -121,6 +121,10 @@ jobs:
         run: scripts/test/ci-scripts.sh
       - name: Test the check that existing test vectors stay as they are
         run: scripts/test/vectors-append-only.sh
+      - name: Test the check of a pull request's title
+        run: |
+          shellcheck -x scripts/test/pr-title.sh
+          scripts/test/pr-title.sh
 
   web:
     runs-on: ubuntu-latest

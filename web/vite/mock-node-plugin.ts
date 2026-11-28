@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 import type { Connect, Plugin } from 'vite'
+import { budgetFor } from '../src/mock/budget.ts'
 import { createMockNode, MOCK_TOKEN } from '../src/mock/node.ts'
 
 async function readBody(message: IncomingMessage): Promise<Buffer> {
@@ -40,6 +41,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
+    // The weekly budget is the node's answer, which the evaluation screen shows beside the effort; `budgetState` fixes where the app team stands (for the screenshots).
+    ...(evaluation === '1' ? { budget: budgetFor(query?.get('budgetState')) } : {}),
     members: query?.get('members') === '1',
     activity: activity === '1',
     participants: participants === '1',

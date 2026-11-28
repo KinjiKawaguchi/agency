@@ -4,9 +4,11 @@
 
 pub mod about;
 pub mod activity;
+pub mod audit;
 pub mod budget;
 pub mod capabilities;
 pub mod change_words;
+pub mod claims;
 pub mod client;
 pub mod clients_seen;
 pub mod config;
@@ -32,11 +34,13 @@ pub mod members;
 pub mod metrics_config;
 pub mod node;
 pub mod notice;
+pub mod oidc_config;
 pub mod orgs;
 pub mod outbox;
 pub mod outcome_readings;
 pub mod outcomes;
 pub mod peer_about;
+pub mod peer_features;
 pub mod pending_root;
 pub mod ports;
 pub mod push;

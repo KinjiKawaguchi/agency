@@ -130,11 +130,32 @@ pub struct TeamEvaluation {
     #[serde(default, skip_serializing_if = "is_zero")]
     #[ts(as = "Option<u32>", optional)]
     pub unattributed_merged: u32,
+    /// The summary of each repository that had a merged pull request or a CI run in the period, by name; left
+    /// out unless at least two had, since one would repeat the team's summary.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<RepositoryEvaluation>>", optional)]
+    pub by_repository: Vec<RepositoryEvaluation>,
 }
 
 fn is_zero(count: &u32) -> bool {
     *count == 0
 }
+
+/// One repository's numbers over the period: the summary of the pull requests merged into it and of the CI
+/// runs on its default branch alone. The cost is the team's tokens by day, which no repository owns, so
+/// `costPerMergedPrUsd` is always left out here.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RepositoryEvaluation {
+    /// `owner/name`.
+    pub repo: String,
+    pub summary: EvaluationSummary,
+}
+
+/// The most repositories a team's report breaks its numbers down by, and the longest repository name.
+pub const MAX_REPOSITORIES: usize = 50;
+pub const MAX_REPOSITORY_BYTES: usize = 140;
 
 /// A team the node could not get numbers for. The reason is plain text with no secret and no address.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -333,6 +354,75 @@ fn check_participants(team: &TeamEvaluation, team_days: u32) -> Result<(), Strin
     Ok(())
 }
 
+/// Whether `name` is a repository as GitHub writes it, `owner/name`: what a report names and what a team's
+/// `delivery.repos` may hold.
+pub fn is_repository(name: &str) -> bool {
+    let part = |part: &str| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    };
+    name.len() <= MAX_REPOSITORY_BYTES
+        && name
+            .split_once('/')
+            .is_some_and(|(owner, repo)| part(owner) && part(repo))
+}
+
+/// Checks a team's repositories: named `owner/name`, in order and once, with no cost, and adding up to the
+/// team's summary: the same pull requests by type and the same reverts, and a red time of the team that is
+/// at least the longest of theirs and at most their sum (the branches can be red at the same time).
+fn check_by_repository(team: &TeamEvaluation) -> Result<(), String> {
+    let found = &team.by_repository;
+    if found.is_empty() {
+        return Ok(());
+    }
+    if found.len() > MAX_REPOSITORIES {
+        return Err("reported more repositories than a report may hold".into());
+    }
+    if found.iter().any(|one| !is_repository(&one.repo)) {
+        return Err("reported a repository that is not written owner/name".into());
+    }
+    if found.windows(2).any(|pair| pair[0].repo >= pair[1].repo) {
+        return Err("reported repositories out of order or twice".into());
+    }
+    if found
+        .iter()
+        .any(|one| one.summary.cost_per_merged_pr_usd.is_some())
+    {
+        return Err("reported a cost for a repository, which has none".into());
+    }
+    let sum = |count: fn(&EvaluationSummary) -> u32| -> u64 {
+        found.iter().map(|one| u64::from(count(&one.summary))).sum()
+    };
+    let counts: [fn(&EvaluationSummary) -> u32; 8] = [
+        |s| s.merged.feat,
+        |s| s.merged.fix,
+        |s| s.merged.refactor,
+        |s| s.merged.docs,
+        |s| s.merged.test,
+        |s| s.merged.chore,
+        |s| s.merged.other,
+        |s| s.reverts,
+    ];
+    if counts
+        .iter()
+        .any(|count| sum(*count) != u64::from(count(&team.summary)))
+    {
+        return Err("reported repositories whose pull requests do not add up to the team's".into());
+    }
+    let red: Vec<u64> = found
+        .iter()
+        .map(|one| one.summary.main_red_seconds)
+        .collect();
+    let total = red.iter().fold(0u64, |sum, part| sum.saturating_add(*part));
+    let longest = red.iter().copied().max().unwrap_or(0);
+    if team.summary.main_red_seconds < longest || team.summary.main_red_seconds > total {
+        return Err("reported repositories whose red time does not fit the team's".into());
+    }
+    Ok(())
+}
+
 impl Evaluation {
     /// Checks that this is a well-formed report of the org and range that were asked for.
     pub fn check(&self, org: &Id, days: u32) -> Result<(), String> {
@@ -351,6 +441,7 @@ impl Evaluation {
             costs.extend(team.summary.cost_per_merged_pr_usd);
             check_days(&dates, &team.from, &team.until, &costs, days)?;
             check_participants(team, days)?;
+            check_by_repository(team)?;
         }
         Ok(())
     }
@@ -441,6 +532,66 @@ mod tests {
         let read: Evaluation = serde_json::from_value(old).unwrap();
         assert_eq!(read.check(&acme(), 14), Ok(()));
         assert!(read.teams[0].participants.is_empty());
+    }
+
+    #[test]
+    fn a_team_with_two_repositories_breaks_its_numbers_down_and_a_team_with_one_does_not() {
+        let value = serde_json::to_value(sample()).unwrap();
+        let repos = value["teams"][0]["byRepository"].as_array().unwrap();
+        assert_eq!(repos.len(), 2);
+        assert!(repos[0]["summary"].get("costPerMergedPrUsd").is_none());
+        assert!(value["teams"][1].get("byRepository").is_none());
+        // An answer of a node that does not know of it still reads.
+        let mut old = value.clone();
+        old["teams"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("byRepository");
+        let read: Evaluation = serde_json::from_value(old).unwrap();
+        assert_eq!(read.check(&acme(), 14), Ok(()));
+        assert!(read.teams[0].by_repository.is_empty());
+    }
+
+    #[test]
+    fn refuses_repositories_that_are_not_well_formed_or_do_not_add_up_to_the_team() {
+        let refused = |change: &dyn Fn(&mut TeamEvaluation)| {
+            let mut report = sample();
+            change(&mut report.teams[0]);
+            report.check(&acme(), 14).unwrap_err()
+        };
+        assert!(refused(&|t| t.by_repository[0].summary.merged.feat += 1).contains("do not add up"));
+        assert!(refused(&|t| t.by_repository[1].summary.reverts = 0).contains("do not add up"));
+        assert!(refused(&|t| t.by_repository.reverse()).contains("out of order"));
+        assert!(refused(&|t| t.by_repository[1].repo = "acme/app".into())
+            .contains("out of order or twice"));
+        for bad in ["acme", "acme/", "/web", "acme/we b", "acme/web/x", ""] {
+            let bad = bad.to_owned();
+            assert!(
+                refused(&|t| t.by_repository[1].repo = bad.clone()).contains("owner/name"),
+                "{bad}"
+            );
+        }
+        assert!(
+            refused(&|t| t.by_repository[0].summary.cost_per_merged_pr_usd = Some(1.0))
+                .contains("has none")
+        );
+        assert!(
+            refused(&|t| t.by_repository[0].summary.main_red_seconds = 1799).contains("red time")
+        );
+        assert!(
+            refused(&|t| t.by_repository[0].summary.main_red_seconds = 1801).contains("red time")
+        );
+        assert!(refused(&|t| t.summary.main_red_seconds = 3601).contains("red time"));
+        assert!(refused(&|t| {
+            let one = t.by_repository[0].clone();
+            t.by_repository = (0..=MAX_REPOSITORIES)
+                .map(|n| RepositoryEvaluation {
+                    repo: format!("acme/r{n:03}"),
+                    ..one.clone()
+                })
+                .collect();
+        })
+        .contains("more repositories"));
     }
 
     #[test]

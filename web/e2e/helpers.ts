@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 export interface NodeOptions {
+  /** Where the `app` team stands against its weekly budget (`ok`, `over`, `partial`); its default is close to the budget. */
+  budgetState?: string
   /** Serve the org's members, devices and open seats, as a node that lists the `members` capability does. */
   members?: boolean
   /** Serve the mock token use (the real node does not yet). */
@@ -51,6 +53,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  if (options.budgetState !== undefined) query.set('budgetState', options.budgetState)
   if (options.members === true) query.set('members', '1')
   if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
