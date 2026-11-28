@@ -1,4 +1,4 @@
-import { createMockNode } from './node'
+import { createMockNode } from '../node'
 
 const get = (node: ReturnType<typeof createMockNode>, path: string) => node.handle(new Request(`http://mock.local${path}`))
 const versions = async (node: ReturnType<typeof createMockNode>, query = ''): Promise<{ entries: Array<{ version: number }>; more?: boolean }> => (await (await get(node, `/api/orgs/acme/history${query}`)).json()) as { entries: Array<{ version: number }>; more?: boolean }

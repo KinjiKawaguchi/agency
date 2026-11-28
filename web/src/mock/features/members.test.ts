@@ -1,4 +1,4 @@
-import { createMockNode } from './node'
+import { createMockNode } from '../node'
 
 const get = (node: ReturnType<typeof createMockNode>, path: string) => node.handle(new Request(`http://mock.local${path}`))
 

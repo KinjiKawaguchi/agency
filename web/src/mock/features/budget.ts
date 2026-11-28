@@ -1,7 +1,15 @@
 // The mock node's weekly budget: what `GET /api/orgs/{org}/teams/{team}/budget` answers on a node that has the `budget` capability. The
 // states are the node's own rules, written out for fixed figures (warning from 80% of the cap, over at the cap, an org that is over makes
 // its teams over), so that a screen is drawn against each of them.
-import type { BudgetStatus } from '../api/clientApi.ts'
+import type { BudgetStatus } from '../../api/clientApi.ts'
+import { failure, json, type MockFeature } from './feature.ts'
+
+export interface BudgetOptions {
+  /** A node that computes the weekly budget (it lists the `budget` capability and serves the route): `true` for the default figures of each team, or the answer of each team by its id (a team with none answers 404); otherwise the route answers 404. */
+  budget?: true | Readonly<Record<string, BudgetStatus>>
+}
+
+const PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/budget$/
 
 /** The Monday of the week that contains `now`, in UTC, as `YYYY-MM-DD`. */
 export function mondayOf(now: Date): string {
@@ -32,4 +40,22 @@ const STATES: Readonly<Record<string, BudgetStatus>> = {
 export function budgetFor(name: string | null | undefined): true | Readonly<Record<string, BudgetStatus>> {
   const state = name === undefined || name === null ? undefined : STATES[name]
   return state === undefined ? true : { app: state }
+}
+
+export const budgetFeature: MockFeature<BudgetOptions, { budgetState?: string }> = {
+  capability: 'budget',
+  isOn: (options) => options.budget !== undefined,
+  answer: (request, url, options, { now }) => {
+    const matched = PATH.exec(url.pathname)
+    if (matched === null || request.method !== 'GET' || options.budget === undefined) return undefined
+    const team = matched[2] ?? ''
+    const answer = options.budget === true ? budgetOf(team, now) : options.budget[team]
+    return answer === undefined ? failure(404, 'No such team.') : json(answer)
+  },
+  isOwnerRoute: (pathname) => PATH.test(pathname),
+  // The budget is the node's answer that the evaluation screen shows beside the effort, so it is on with the evaluation; `budgetState` fixes where the
+  // app team stands (for the screenshots).
+  fromQuery: (query) => ((query?.get('evaluation') ?? process.env.AGENCY_MOCK_EVALUATION) === '1' ? { budget: budgetFor(query?.get('budgetState')) } : {}),
+  /** Where the app team stands (`ok`, `over`, `partial`). */
+  toQuery: ({ budgetState }) => (budgetState === undefined ? [] : [['budgetState', budgetState]]),
 }
