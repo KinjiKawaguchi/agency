@@ -123,9 +123,9 @@ pub enum Accepted {
     Duplicate,
 }
 
-/// What this node does with an envelope of `kind`. A `prioritize` is a signed word that this node reads but does
-/// not apply yet, so it is refused rather than passed to `decide`, which a harness reads only for answers and
-/// judgments.
+/// What this node does with an envelope of `kind`: an answer or a judgment goes on. A `prioritize` is a word
+/// this release reads and refuses (400): a priority is no decision of `decide`, which a harness reads only
+/// for answers and judgments, so it is never handed to a runtime that way.
 pub(crate) fn refuse_unsupported_kind(kind: EnvelopeKind) -> Result<()> {
     match kind {
         EnvelopeKind::Answer | EnvelopeKind::Judge => Ok(()),

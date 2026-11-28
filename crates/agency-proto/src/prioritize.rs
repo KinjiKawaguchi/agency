@@ -9,7 +9,7 @@ use ts_rs::TS;
 /// The optional operation name for `RuntimeCall::Prioritize` in `Describe::ops`.
 pub const PRIORITIZE_OP: &str = "prioritize";
 
-/// A priority to set on a ticket, or `none` to clear the one it has.
+/// A priority to set on a ticket, or `none` (`Clear`) to clear the one it has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -19,8 +19,9 @@ pub enum PriorityChoice {
     Medium,
     Low,
     Deferred,
-    /// Clears the ticket's own priority, so that it takes its epic's again.
-    None,
+    /// Clears the ticket's own priority, so that it takes its epic's again. Written `none`.
+    #[serde(rename = "none")]
+    Clear,
 }
 
 impl PriorityChoice {
@@ -37,7 +38,7 @@ impl PriorityChoice {
             Self::Medium => Some(Priority::Medium),
             Self::Low => Some(Priority::Low),
             Self::Deferred => Some(Priority::Deferred),
-            Self::None => None,
+            Self::Clear => None,
         }
     }
 }
@@ -52,7 +53,7 @@ mod tests {
         ("medium", PriorityChoice::Medium),
         ("low", PriorityChoice::Low),
         ("deferred", PriorityChoice::Deferred),
-        ("none", PriorityChoice::None),
+        ("none", PriorityChoice::Clear),
     ];
 
     #[test]
@@ -89,6 +90,6 @@ mod tests {
                 Priority::Deferred
             ]
         );
-        assert_eq!(PriorityChoice::None.priority(), None);
+        assert_eq!(PriorityChoice::Clear.priority(), None);
     }
 }

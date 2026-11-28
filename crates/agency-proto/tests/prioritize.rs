@@ -114,7 +114,7 @@ fn the_runtime_op_carries_the_target_the_choice_and_who_decided() {
     assert!(matches!(
         read.call,
         RuntimeCall::Prioritize {
-            priority: PriorityChoice::None,
+            priority: PriorityChoice::Clear,
             by_participant: None,
             ..
         }
