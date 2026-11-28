@@ -22,14 +22,14 @@ jobs:
   conflict-markers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-conflict-markers.sh
 
   # A word the glossary rules out cannot come back in a screen's text.
   words:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-words.sh
 
   # An existing test vector never changes: signatures made over its bytes would stop being valid. The test in
@@ -39,7 +39,7 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - run: scripts/check-vectors-append-only.sh "origin/${GITHUB_BASE_REF:-main}"
@@ -48,13 +48,13 @@ jobs:
   doc-translations:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-doc-translations.sh
 
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
@@ -83,14 +83,14 @@ jobs:
       run:
         working-directory: apple/AgencyKit
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: swift test
 
   # The release scripts for the iPhone app, tested against stand-ins for Apple's API and for Xcode.
   apple-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the scripts
         run: shellcheck -x -P SCRIPTDIR apple/scripts/*.sh apple/scripts/lib/*.sh apple/scripts/test/run.sh apple/scripts/test/fakes/*
       - name: Test the scripts
@@ -102,7 +102,7 @@ jobs:
   linux-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test the script that posts the week's flaky tests
         run: |
           shellcheck -x scripts/ci/flaky-weekly.sh scripts/test/flaky-weekly.sh scripts/test/flaky-fakes/*
@@ -136,7 +136,7 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: web
         name: Check for the web client
         run: echo "present=$([ -f web/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -163,7 +163,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: web
         name: Check for the web client
         run: echo "present=$([ -f web/e2e/screenshots.spec.ts ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
