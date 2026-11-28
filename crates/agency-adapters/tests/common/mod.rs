@@ -13,6 +13,7 @@ pub const SAMPLE: &str = include_str!("../../../../testdata/teamview.sample.json
 pub const USAGE: &str = include_str!("../../../../testdata/tokenusage.sample.json");
 pub const PARTICIPANTS: &str = include_str!("../../../../testdata/participantmetrics.sample.json");
 pub const ACTIVITY: &str = include_str!("../../../../testdata/activity.sample.json");
+pub const TICKETS: &str = include_str!("../../../../testdata/tickets.sample.json");
 
 /// The fake runtime's script. It is run as `sh runtime.sh`, never executed itself: a program that was just
 /// written cannot be executed while any process still holds it open for writing (`ETXTBSY`, "Text file

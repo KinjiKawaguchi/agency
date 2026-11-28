@@ -23,6 +23,7 @@ use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::root_change::RootAnswer;
 use agency_proto::runtime::RuntimeError;
+use agency_proto::tickets::Tickets;
 use agency_proto::{
     DeviceChange, Envelope, JoinRequest, RuntimeDecision, Signed, TeamView, Timestamp, TokenUsage,
 };
@@ -347,6 +348,10 @@ impl TeamRuntime for TimedRuntime {
     ) -> Result<Activity, RuntimeError> {
         self.call("runtime activity", self.inner.activity(team, since, limit))
             .await
+    }
+
+    async fn tickets(&self, team: &HostedTeam) -> Result<Tickets, RuntimeError> {
+        self.call("runtime tickets", self.inner.tickets(team)).await
     }
 }
 

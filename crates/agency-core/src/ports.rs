@@ -23,6 +23,7 @@ use agency_proto::org::{SignedOrg, Versions};
 use agency_proto::participant_metrics::ParticipantMetrics;
 use agency_proto::root_change::RootAnswer;
 use agency_proto::runtime::RuntimeError;
+use agency_proto::tickets::Tickets;
 use agency_proto::view::FederatedView;
 use agency_proto::{
     DeviceChange, Envelope, EnvelopeId, Id, JoinRequest, PublicKey, RuntimeDecision, Signed,
@@ -511,6 +512,16 @@ pub trait TeamRuntime: Send + Sync {
         since: &Timestamp,
         limit: u32,
     ) -> Result<Activity, RuntimeError>;
+
+    /// The team's tickets: the epics it answers for with every child, and its tickets in no epic, checked
+    /// and printable. A runtime that does not report them answers 404, which is what a runtime that does not
+    /// implement this answers.
+    async fn tickets(&self, _team: &HostedTeam) -> Result<Tickets, RuntimeError> {
+        Err(RuntimeError {
+            status: 404,
+            message: "the team runtime does not report tickets".into(),
+        })
+    }
 }
 
 /// Why a team's delivery facts could not be read. The text is plain, and holds no secret and no address:
