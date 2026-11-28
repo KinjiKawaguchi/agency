@@ -159,6 +159,10 @@ fn bounded(node: &Node, parcel: &Parcel, outcome: Outcome) -> Outcome {
 /// After an attempt: removes a delivered parcel, moves a refused one to the refused box, or schedules
 /// the next attempt.
 pub(crate) fn settle(node: &Node, parcel: &Parcel, outcome: &Outcome) -> Result<()> {
+    // A node that answered, even to refuse, is there: the replicas of its teams that wait for it are read at the next pass.
+    if !matches!(outcome, Outcome::Unreachable(_)) {
+        node.note_answer(&parcel.to);
+    }
     match outcome {
         Outcome::Delivered => node.store().remove_parcel(&parcel.id)?,
         Outcome::Refused(message) => {
