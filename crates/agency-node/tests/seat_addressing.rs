@@ -432,39 +432,74 @@ async fn a_member_on_another_node_who_took_a_seat_has_its_requests_as_her_own() 
 }
 
 /// The team's node knows a seat this node's definition of the org does not have yet.
-#[tokio::test]
-async fn a_party_the_definition_does_not_have_yet_is_said_by_its_id() {
-    let (_alice, _, bob, _) = world().await;
+/// The team's node says bob answers for `finance`, but as the party `party`, which bob's own definition does
+/// not have him answer for.
+async fn answers_for_as(bob: &Running, party: &str) {
     let (acme, app) = (id("acme"), id("app"));
     refresh(&bob.node).await.unwrap();
     let mut replica = bob.node.store().load_replica(&acme, &app).unwrap();
     for one in &mut replica.answers_for {
         if one.name == "finance" {
-            one.id = id("newseat");
+            one.id = id(party);
         }
     }
     bob.node
         .store()
         .save_replica(&acme, &app, &replica)
         .unwrap();
+}
 
+/// What bob's node says r-1 is for: on the desk, and in the decision log once bob decides it.
+async fn said_for_r1(bob: &Running) -> (Option<String>, Option<String>) {
+    let (acme, app) = (id("acme"), id("app"));
     let snapshot = team_snapshot(&bob.node, &acme, &app).await.unwrap();
     assert!(
         snapshot.mine.contains(&"r-1".to_owned()),
-        "still bob's to answer"
+        "still bob's to answer: the team's node decides that"
     );
-    assert_eq!(
-        snapshot.relayed_for.get("r-1").map(String::as_str),
-        Some("newseat")
-    );
-    let key = device(&bob).await;
-    assert_eq!(decide(&bob, &key, "r-1").await, Decided::Delivered);
+    let on_desk = snapshot.relayed_for.get("r-1").cloned();
+    let key = device(bob).await;
+    assert_eq!(decide(bob, &key, "r-1").await, Decided::Delivered);
     let log = decision_log(&bob.node, None);
-    let relayed = log.entries[0].relayed_for.as_ref().unwrap();
-    assert_eq!(
-        (relayed.id.as_str(), relayed.label.as_str()),
-        ("newseat", "newseat")
-    );
+    let logged = log.entries[0]
+        .relayed_for
+        .as_ref()
+        .map(|one| one.label.clone());
+    (on_desk, logged)
+}
+
+#[tokio::test]
+async fn a_party_the_definition_does_not_have_is_said_of_no_request() {
+    let (_alice, _, bob, _) = world().await;
+    answers_for_as(&bob, "newseat").await;
+    assert_eq!(said_for_r1(&bob).await, (None, None));
+}
+
+#[tokio::test]
+async fn a_party_the_reader_does_not_answer_for_in_the_definition_is_said_of_no_request() {
+    let (alice, _, bob, _) = world().await;
+    let only_cara = External {
+        id: id("frank"),
+        label: "Frank (auditor)".into(),
+        ask_about: vec![],
+        relays: vec![id("cara")],
+    };
+    seats::add_external(&alice.node, &id("acme"), only_cara).unwrap();
+    answers_for_as(&bob, "frank").await;
+    assert_eq!(said_for_r1(&bob).await, (None, None));
+}
+
+#[tokio::test]
+async fn a_seat_the_reader_does_not_answer_for_in_the_definition_is_said_of_no_request() {
+    let (alice, _, bob, _) = world().await;
+    seats::add_seat(
+        &alice.node,
+        &id("acme"),
+        seat("gina", "Gina (legal)", &["cara"]),
+    )
+    .unwrap();
+    answers_for_as(&bob, "gina").await;
+    assert_eq!(said_for_r1(&bob).await, (None, None));
 }
 
 #[tokio::test]
