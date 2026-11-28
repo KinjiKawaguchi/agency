@@ -47,7 +47,7 @@ impl RuntimeRequest {
 }
 
 /// The operation and its input. `describe`, `view`, and `decide` are required; `tokenUsage`, `activity`,
-/// and `participantMetrics` are optional, and the node calls one only when `Describe::ops` lists it.
+/// `participantMetrics`, and `tickets` are optional, and the node calls one only when `Describe::ops` lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "op", rename_all = "camelCase")]
 #[ts(export)]
@@ -74,6 +74,8 @@ pub enum RuntimeCall {
         #[ts(optional)]
         utc_offset_minutes: Option<i32>,
     },
+    /// Answered with `Tickets`: the epics the team answers for with every child, and its tickets in no epic.
+    Tickets,
 }
 
 /// The optional operation name for `RuntimeCall::TokenUsage` in `Describe::ops`.
@@ -82,6 +84,8 @@ pub const TOKEN_USAGE_OP: &str = "tokenUsage";
 pub const ACTIVITY_OP: &str = "activity";
 /// The optional operation name for `RuntimeCall::ParticipantMetrics` in `Describe::ops`.
 pub const PARTICIPANT_METRICS_OP: &str = "participantMetrics";
+/// The optional operation name for `RuntimeCall::Tickets` in `Describe::ops`.
+pub const TICKETS_OP: &str = "tickets";
 
 /// A verified decision, applied by the team runtime.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

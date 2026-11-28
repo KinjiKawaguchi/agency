@@ -396,6 +396,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 | `tokenUsage` (optional) | `"days": <1 to 90>` | `TokenUsage` (see "Token usage") |
 | `activity` (optional) | `"since": <Timestamp>`, `"limit": <1 to 500>` | `Activity` (see "Activity") |
 | `participantMetrics` (optional) | `"days": <1 to 90>`, `"utcOffsetMinutes"?: <-720 to 840>` | `ParticipantMetrics` (see "Participant metrics") |
+| `tickets` (optional) | none | `Tickets` (see "Tickets") |
 
 - The node calls `describe` first and stops unless `runtimes` contains `agency-runtime/1`. Unknown names in `ops` are ignored.
 - `version` is optional: the harness release that runs the team, as a short text (at most 64 characters, no control character and none that hides or reorders text (`is_hidden_char`); the runtime's own wording, for example `0.7.2`). A runtime without it is read as before, and a node takes no value beyond those limits (it reads it as none), so a long or odd value never stops a team from being served. The node notes what each hosted team's runtime said in `runtime-releases.json` of its data directory (the team, the release or none, and when it read `describe`: once per team and process, when it first calls the runtime after it starts; every process of the node, `serve` and the commands, adds its notes to what the file holds, and an entry of a team the node no longer hosts is dropped at the next note), and `agency status` prints it beside each hosted team: `runtime release <version>, read <time>`, `runtime does not say its release, read <time>`, or `runtime release not read yet`. A remote team's runtime is not shown: its own node says it.
@@ -408,6 +409,7 @@ Response: `{ "result": <result> }` or `{ "error": { "status": <HTTP status>, "me
 - `tokenUsage` is optional. The node calls it only when `describe` lists it in `ops`; otherwise it answers 404 without running the command. A runtime's 404 also means it has no usage to report; any other failure is 503.
 - `activity` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. It runs at most one `activity` call per team at a time, and the answer is kept and refreshed as above (young for 10 seconds): the command is asked for the events after five minutes before the first reader's `since`, at the largest `limit`, and each reader gets the events after its own `since`, cut at its own `limit`, so readers with different questions start one process. A reader whose question the shared answer cannot give (it asks from before the shared answer began, or for more events than an answer the runtime cut holds) gets a run of its own.
 - `participantMetrics` is optional in the same way: the node calls it only when `describe` lists it, and a runtime without it is a team with no participant metrics, not an error. A runtime that lists it cuts the days at `utcOffsetMinutes` when the request has it.
+- `tickets` is optional in the same way: the node calls it only when `describe` lists it, and otherwise answers 404 without running the command. A runtime without it is a team whose tickets cannot be read, not an error.
 - `usage` is a reserved op name. Subscription usage belongs to the account, not to a team runtime, and is not part of agency-runtime/1.
 
 ## Token usage
@@ -524,6 +526,29 @@ message       { from, to, summary }
 - Before passing an answer on, the node checks that `org` and `team` are the ones it asked for, that there are at most `limit` events, their order and times as above, their ids, and the text limits. An answer that fails is 503.
 - An answerer reads none of it (403). The Client API route is in "Client API"; it reads a team on another node live from that node over the federation route (`/fed/v1/teams/<org>/<team>/activity`), and checks the answer as above before it passes it on.
 - The shared sample is `testdata/activity.sample.json`.
+
+## Tickets
+
+What a team's board holds, for the owner's screen of all the work and its order: the epics the team answers for, each with every child, open and closed, and the team's tickets that belong to no epic, with what the board says of each. It is the optional op `tickets` of agency-runtime/1; the team's runtime reads the board (on GitHub: the issues, their sub-issues, and the board's fields Status, Team, Priority, Assigned to and Points) with its own login, so no GitHub token reaches a node's client.
+
+```
+Tickets         { org: Id, team: Id, generatedAt: Timestamp, epics: Epic[], withoutEpic: Ticket[] }
+Epic            Ticket & { children: Ticket[] }
+Ticket          { ref, title, status: WorkStatus, team?: string, assignee?: string, points?: number,
+                  priority?: Priority, effectivePriority?: Priority, prioritizeWith?: string,
+                  pullRequests: OpenPullRequest[] }
+Priority        "highest" | "high" | "medium" | "low" | "deferred"
+OpenPullRequest { repo, number, title }
+```
+
+- **Which team answers for what.** A team's runtime lists the epics whose board Team is its own team, each with every child, whatever the child's own Team; and, in `withoutEpic`, its tickets that are in no epic. So teams that share a board each list their own, and a ticket is listed by one team. An answer lists a ticket once (an epic, a child, or a ticket in no epic, never two of these).
+- `ref` is the ticket's item reference (see "TeamView"); `status` its board status, and `done` for a closed ticket whatever the board says; `team` the board's Team option as text, which is the board's own value and **not** an org team id; `assignee` a name of the team's runtime, as a work item's; `points` the board's Points.
+- `priority` is the ticket's own value on the board. `effectivePriority` is what its work is ordered by: its own priority, else its epic's. The runtime works it out, because its dispatch orders work by the same rule, and a node and a client pass it on and show it: none of them works out an order of its own. Either is left out when there is none. A ticket with no effective priority, or `deferred`, is not handed out (see "Priority" in the glossary).
+- `prioritizeWith` is the target a decision that sets the ticket's priority names, under the rule of an envelope's `target` (1 to 120 bytes of ASCII letters, digits, `.`, `_`, `#`, and `-`; see "Item references"). The runtime gives it only for a ticket whose priority it can write, and a client offers to set a priority only where it is given and never derives it, as with `answerWith`.
+- `pullRequests` are the ticket's open pull requests, named by `repo` (`owner/name` on GitHub) and `number`, as in "Participant metrics", and the pull request's `title`.
+- Limits: at most 500 epics and 5,000 tickets in all (the epics, their children, and those in no epic), 50 pull requests per ticket; `ref`, `team`, and `assignee` 200 characters, a ticket's and a pull request's `title` 200. Before passing an answer on, a node checks that `org` and `team` are the ones it asked for, the limits, that each ticket is listed once, every `prioritizeWith`, and every pull request (`owner/name`, a number above 0, listed once in a ticket); an answer that fails is refused whole (`Tickets::check`).
+- **What people wrote is printable.** `title`, `team`, `assignee`, and a pull request's `title` are text the board's people wrote. A node serves them with each character `is_hidden_char` names, a line break included, as `?` (`Tickets::printable`), so a title cannot hide or reorder what a screen shows next to it.
+- The shared sample is `testdata/tickets.sample.json`.
 
 ## Outcomes
 
