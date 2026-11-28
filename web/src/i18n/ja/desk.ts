@@ -85,7 +85,7 @@ export const desk: Messages['desk'] = {
       answered: '回答',
       label: (drafter, step, decider) => `起案は ${drafter}、${step}は ${decider}`,
     },
-    waitingOn: (name) => `${name} さんへの相談です。ここで読むことはできますが、答えることはできません。`,
+    waitingOn: (name) => `${name} さんの返事待ちです。ここで読むことはできますが、答えることはできません。`,
     recommended: '起案者のおすすめ',
     options: '選択肢',
     notePlaceholderWithOptions: '条件や補足があれば書いてください (任意)',

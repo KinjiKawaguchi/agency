@@ -142,7 +142,7 @@ The English names stay as they are. The Japanese ones say what a screen is for: 
 | server, for a node; サーバー, サーバ | node (ノード) | A node is a peer. There is no central service. |
 | user; ユーザー, ユーザ | account (アカウント) for the identity; human (人) for the real person; member (組織のメンバー) for the seat in an org | It does not say which of the three. |
 | デバイス | 端末 | The Japanese name of a device is 端末. |
-| 判断のお願い; 判断待ち | 相談 (相談待ち for waiting on one) | The kind `pendingDecision` has one name. A sentence may say 「…さんへの相談」. |
+| 判断のお願い; 判断待ち | 相談 (相談待ち for waiting on one) | The kind `pendingDecision` has one name. A sentence about a request of that kind may say 「…さんへの相談」; one about whose answer is awaited says 「…さんの返事待ち」. |
 | person, for a member | member (組織のメンバー) | "Person" stays for the human. |
 | unclaimed member; 未参加のメンバー; 席 | seat (ポジション) | A seat is not a member: it has no account, key, or device. |
 | relay, for answering on someone's behalf; 代理で答える | answer for (代理回答) | A node relays changes to another node; a person answers for someone. |
