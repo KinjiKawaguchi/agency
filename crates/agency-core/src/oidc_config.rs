@@ -10,6 +10,7 @@ pub const DEFAULT_EMAIL_CLAIM: &str = "email";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[non_exhaustive]
 pub struct OidcConfig {
     /// The host name requests from outside name, such as `agency.example.com`.
     pub public_host: String,

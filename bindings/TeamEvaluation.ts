@@ -4,6 +4,7 @@ import type { DayEvaluation } from "./DayEvaluation.js";
 import type { EvaluationSummary } from "./EvaluationSummary.js";
 import type { Id } from "./Id.js";
 import type { ParticipantEvaluation } from "./ParticipantEvaluation.js";
+import type { RepositoryEvaluation } from "./RepositoryEvaluation.js";
 
 export type TeamEvaluation = { team: Id, 
 /**
@@ -25,4 +26,9 @@ participants?: Array<ParticipantEvaluation>,
  * requests of `participants` and these add up to the summary's `merged` and `reverts`. Left out when
  * it is 0.
  */
-unattributedMerged?: number, };
+unattributedMerged?: number, 
+/**
+ * The summary of each repository that had a merged pull request or a CI run in the period, by name; left
+ * out unless at least two had, since one would repeat the team's summary.
+ */
+byRepository?: Array<RepositoryEvaluation>, };

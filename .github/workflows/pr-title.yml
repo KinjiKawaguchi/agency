@@ -1,0 +1,30 @@
+name: pr-title
+
+# A pull request's title is the commit title of its squash merge, and releases are made from those titles
+# (docs/releasing.md). The title can change after the pull request is opened, so this runs again when it is
+# edited, which ci.yml cannot do without cancelling its own runs. Only ci.yml listens to merge_group, so this
+# check is shown on the pull request and cannot be a required check of the merge queue.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The title and the body are text that anyone can write: they come in the environment, never in the
+      # script's text.
+      - name: Check the title and the breaking-change footer
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: scripts/ci/check-pr-title.sh

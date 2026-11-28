@@ -34,10 +34,13 @@ final class ShellModel {
         self.nodes = nodes
     }
 
-    /// What the desk says is wrong with this device's key or with the sign-in, if anything.
+    /// What the desk says is wrong with the versions, this device's key or the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
+        return DeskNotice.first(
+            compatibility: session.compatibility, isGuest: session.desk.standing.isGuest,
+            then: [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem]
+        )
     }
 
     // MARK: Start
@@ -59,10 +62,13 @@ final class ShellModel {
         switch loading {
         case .loaded:
             push.noteSignedIn()
+            checkNodeVersion()
             registerPush()
             publishWidgets()
             noteHomeNodes()
         case .failed:
+            // A node whose answers this app cannot read may be one it no longer fits: the versions are compared whether or not the desk loaded.
+            checkNodeVersion()
             // The first launch has no token: ask for the sign-in once, without waiting for a tap.
             if session.desk.needsSignIn, !triedSignIn {
                 triedSignIn = true
@@ -71,6 +77,12 @@ final class ShellModel {
         default:
             break
         }
+    }
+
+    /// Asks the home node what it serves and compares it with this app, for the desk to say when one of them is to be updated.
+    private func checkNodeVersion() {
+        guard let session else { return }
+        Task { await session.checkNodeVersion() }
     }
 
     /// The desk's requests changed, or were read: the widgets show them.
