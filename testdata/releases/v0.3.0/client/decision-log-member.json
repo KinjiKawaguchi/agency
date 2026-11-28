@@ -1,0 +1,20 @@
+{
+  "entries": [
+    {
+      "choice": "b",
+      "decidedAt": "2026-11-24T12:00:00Z",
+      "id": "02020202020202020202020202020202",
+      "kind": "answer",
+      "org": "acme",
+      "state": {
+        "attempts": 1,
+        "kind": "queued",
+        "lastError": "error sending request for url (http://127.0.0.1:7701/fed/v1/teams/acme/app/envelopes)",
+        "nextAt": "2026-11-24T12:00:15Z"
+      },
+      "target": "r-1",
+      "team": "app",
+      "text": ""
+    }
+  ]
+}
