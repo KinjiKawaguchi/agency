@@ -48,14 +48,16 @@ export function pageOf(entries: readonly HistoryEntry[], url: URL): OrgHistory |
 
 export const historyFeature: MockFeature<HistoryOptions, HistoryOptions> = {
   capability: 'history',
-  isOn: (options) => options.history !== undefined,
-  answer: (request, url, options) => {
-    const matched = PATH.exec(url.pathname)
-    if (matched === null || request.method !== 'GET' || options.history === undefined) return undefined
-    if (matched[1] !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
-    const page = pageOf(historyOf(options.history), url)
-    return 'refused' in page ? failure(400, page.refused) : json(page)
-  },
+  select: ({ history: versions }) =>
+    versions === undefined
+      ? undefined
+      : (request, url) => {
+          const matched = PATH.exec(url.pathname)
+          if (matched === null || request.method !== 'GET') return undefined
+          if (matched[1] !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
+          const page = pageOf(historyOf(versions), url)
+          return 'refused' in page ? failure(400, page.refused) : json(page)
+        },
   isOwnerRoute: (pathname) => PATH.test(pathname),
   fromQuery: (query) => {
     const length = Number(query?.get('history'))

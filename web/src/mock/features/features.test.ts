@@ -28,6 +28,13 @@ describe.each(FEATURES)('the $capability feature of the mock node', ({ capabilit
     expect((await createMockNode().handle(ask(path))).status).toBe(404)
   })
 
+  it('answers a read of its route only: any other method on it is left to the node', () => {
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request(`http://mock.local${path}`, { method })
+      expect(answerOf(request, new URL(request.url), options, { now }), method).toBeUndefined()
+    }
+  })
+
   it('leaves what is not its route to the others', () => {
     expect(answerOf(ask('/api/nothing-of-it'), new URL('http://mock.local/api/nothing-of-it'), options, { now })).toBeUndefined()
   })
@@ -39,8 +46,8 @@ describe.each(FEATURES)('the $capability feature of the mock node', ({ capabilit
 
   it('is asked for by a test and read by the running node in the same terms', () => {
     expect(queryOfFeatures(asked)).toEqual(expect.arrayContaining(query))
-    expect(optionsFromQuery(new URLSearchParams(readFrom))).toMatchObject(read)
-    expect(optionsFromQuery(new URLSearchParams(''))).not.toHaveProperty(Object.keys(options)[0] ?? '')
+    expect(optionsFromQuery(new URLSearchParams(readFrom), { evaluation: readFrom.includes('evaluation=1') })).toMatchObject(read)
+    expect(optionsFromQuery(new URLSearchParams(''), { evaluation: false })).not.toHaveProperty(Object.keys(options)[0] ?? '')
   })
 
   it('names a capability that the node itself lists (the sample of its `about`), so that the mock says nothing the node does not', () => {
