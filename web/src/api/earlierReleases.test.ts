@@ -6,7 +6,7 @@
 // The client reads most answers only through the generated types (`bindings/`), so the check is the compiler's:
 // each file becomes an expression passed where the type is expected. A field the type lacks is ignored, as at
 // runtime; a field it needs and the answer has not, or a value it does not allow, fails. The answers that have
-// a reader of their own (`readActivity`, `readEvaluation`) are also read with it.
+// a reader of their own (`readActivity`, `readEvaluation`, `readMembers`) are also read with it.
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readActivity } from './activityAnswers'
 import { readEvaluation } from './evaluationAnswers'
+import { readMembers } from './membersAnswers'
 
 /** The generated type each kept file is read as, by its name in `testdata/client/`. */
 const TYPE_OF: Record<string, string> = {
@@ -198,6 +199,8 @@ describe('the answers of earlier nodes, read with this client', () => {
     for (const { text } of named('activity')) expect(() => readActivity(JSON.parse(text))).not.toThrow()
     expect(named('evaluation').length).toBeGreaterThan(0)
     for (const { text } of named('evaluation')) expect(() => readEvaluation(JSON.parse(text))).not.toThrow()
+    expect(named('org-members').length).toBeGreaterThan(0)
+    for (const { text } of named('org-members')) expect(() => readMembers(JSON.parse(text))).not.toThrow()
   })
 
   it('an error answer names its reason', () => {
