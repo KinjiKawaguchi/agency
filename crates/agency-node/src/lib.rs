@@ -3,7 +3,7 @@
 //! the web client with its Client API.
 pub mod background;
 pub mod budget;
-use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
+use agency_adapters::access::{is_valid_config, CertSource, HttpCerts, Provider, SignInVerifier};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
 use agency_adapters::files::DataDir;
@@ -25,7 +25,7 @@ use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
 use agency_adapters::web_push::{WebPush, WithWebPush};
-use agency_core::config::{NodeConfig, RootKeyStore};
+use agency_core::config::{AccessConfig, NodeConfig, RootKeyStore};
 use agency_core::logging_config::LogLevel;
 use agency_core::ports::ConfigStore as _;
 use agency_core::ports::{Clock, DeliverySource, Notifier, Random, RootKeys, TeamRuntime};
@@ -86,8 +86,8 @@ fn token_notifier(
 /// The contact a push service may reach this node's operator at, when the configuration names none: the
 /// node's public host name, else its origin.
 fn web_push_subject(config: &NodeConfig) -> String {
-    match &config.access {
-        Some(access) => format!("https://{}", access.public_host),
+    match config.public_host() {
+        Some(host) => format!("https://{host}"),
         None => config.url.clone(),
     }
 }
@@ -255,26 +255,47 @@ impl Opened {
             .collect()
     }
 
-    fn access(&self) -> anyhow::Result<Option<Arc<AccessVerifier>>> {
-        let Some(config) = self.node.config().access else {
+    /// The sign-in provider in front of the Client API: Access, else OIDC, when it is well formed. A malformed
+    /// one is no provider: requests from outside are then refused.
+    fn access(&self) -> anyhow::Result<Option<Arc<SignInVerifier>>> {
+        let config = self.node.config();
+        let provider = match (config.access, config.oidc) {
+            (Some(access), _) => self.access_provider(access),
+            (None, Some(oidc)) => match oidc.check() {
+                Ok(()) => Some(Provider::oidc(&oidc)),
+                Err(why) => {
+                    self.logger.warn(
+                        "access",
+                        &format!("the oidc setting is malformed ({why}); requests from outside are refused"),
+                    );
+                    None
+                }
+            },
+            (None, None) => None,
+        };
+        let Some(provider) = provider else {
             return Ok(None);
         };
-        if !is_valid_config(&config) {
-            self.logger.warn("access", "the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
-            return Ok(None);
-        }
-        if config.app_id.is_some() && handoff::app_id(&config).is_none() {
-            self.logger.warn("access", "the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
-        }
         let certs = match &self.certs {
             Some(certs) => certs.clone(),
             None => Arc::new(HttpCerts::new()?),
         };
-        Ok(Some(Arc::new(AccessVerifier::new(
-            config,
+        Ok(Some(Arc::new(SignInVerifier::new(
+            provider,
             certs,
             self.clock.clone(),
         ))))
+    }
+
+    fn access_provider(&self, config: AccessConfig) -> Option<Provider> {
+        if !is_valid_config(&config) {
+            self.logger.warn("access", "the access setting is malformed (publicHost, teamDomain, audience, ownerEmail); requests through Cloudflare are refused");
+            return None;
+        }
+        if config.app_id.is_some() && handoff::app_id(&config).is_none() {
+            self.logger.warn("access", "the access appId is malformed (<team id>.<bundle id>); the app sign-in handoff and the app association file are off");
+        }
+        Some(Provider::access(config))
     }
 
     /// The federation routes, the Client API, and the web client, for a node listening on `port`.

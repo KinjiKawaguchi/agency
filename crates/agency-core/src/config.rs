@@ -2,6 +2,7 @@
 use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
+use crate::oidc_config::OidcConfig;
 use agency_proto::client::FundingKind;
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
@@ -143,6 +144,9 @@ pub struct NodeConfig {
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessConfig>,
+    /// An OpenID Connect provider in front of the Client API, in place of `access`. A node has one or neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oidc: Option<OidcConfig>,
     /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push: Option<PushConfig>,
@@ -414,6 +418,7 @@ impl NodeConfig {
             trusted: vec![],
             funding: vec![],
             access: None,
+            oidc: None,
             push: None,
             web_push: None,
             hide_titles: false,
@@ -427,6 +432,28 @@ impl NodeConfig {
     }
 
     /// Whether the Client API admits direct local requests (`localClients`).
+    /// The same configuration with `oidc` in front of the Client API.
+    pub fn with_oidc(self, oidc: OidcConfig) -> Self {
+        Self {
+            oidc: Some(oidc),
+            ..self
+        }
+    }
+
+    /// Whether a sign-in provider (`access` or `oidc`) is set, well formed or not: with one, a direct local
+    /// request may read but never write, and a malformed one must not make loopback the owner again.
+    pub fn has_sign_in(&self) -> bool {
+        self.access.is_some() || self.oidc.is_some()
+    }
+
+    /// The host name requests from outside name, from whichever sign-in provider is set.
+    pub fn public_host(&self) -> Option<&str> {
+        self.access
+            .as_ref()
+            .map(|access| access.public_host.as_str())
+            .or_else(|| self.oidc.as_ref().map(|oidc| oidc.public_host.as_str()))
+    }
+
     pub fn with_local_clients(self, local_clients: bool) -> Self {
         Self {
             local_clients,
