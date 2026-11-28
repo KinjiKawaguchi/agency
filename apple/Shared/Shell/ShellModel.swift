@@ -37,7 +37,10 @@ final class ShellModel {
     /// What the desk says is wrong with the versions, this device's key or the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
+        return DeskNotice.first(
+            compatibility: session.compatibility, isGuest: session.desk.standing.isGuest,
+            then: [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem]
+        )
     }
 
     // MARK: Start

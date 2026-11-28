@@ -73,10 +73,23 @@ struct NodeCompatibilityTests {
         #expect(judge(about(current: 2, oldest: 1, floor: ["ios": "1.2.0.1"]), version: "1.2.0") == .appTooOld)
     }
 
-    @Test("what the owner is told names the part to update, and nothing is said when it fits")
+    @Test("what the viewer is told names the part to update; a guest, who cannot update the node, is told to tell its owner")
     func notices() {
-        #expect(NodeCompatibility.compatible.notice == nil)
-        #expect(NodeCompatibility.nodeTooOld.notice?.contains("ノードを更新") == true)
-        #expect(NodeCompatibility.appTooOld.notice?.contains("アプリを更新") == true)
+        #expect(NodeCompatibility.compatible.notice(isGuest: false) == nil && NodeCompatibility.compatible.notice(isGuest: true) == nil)
+        #expect(NodeCompatibility.nodeTooOld.notice(isGuest: false) == "ホームノードが古いため、このアプリは通信できません。ノードを更新してください。")
+        #expect(NodeCompatibility.nodeTooOld.notice(isGuest: true) == "ホームノードが古いため、このアプリは通信できません。ノードの持ち主に伝えてください。")
+        for isGuest in [false, true] {
+            #expect(NodeCompatibility.appTooOld.notice(isGuest: isGuest) == "アプリが古いため、ホームノードと通信できません。アプリを更新してください。", "the app is the viewer's own")
+        }
+    }
+
+    @Test("the desk says the versions before the key and the sign-in, and the key and the sign-in when the versions fit")
+    func deskNotice() {
+        #expect(DeskNotice.first(compatibility: .appTooOld, isGuest: false, then: ["key", "sign-in"]) == Ja.Compatibility.appTooOld)
+        #expect(DeskNotice.first(compatibility: .nodeTooOld, isGuest: true, then: ["key"]) == Ja.Compatibility.nodeTooOldForGuest)
+        #expect(DeskNotice.first(compatibility: .compatible, isGuest: false, then: [nil, "sign-in", "later"]) == "sign-in")
+        #expect(DeskNotice.first(compatibility: .compatible, isGuest: false, then: ["key", "sign-in"]) == "key")
+        #expect(DeskNotice.first(compatibility: .compatible, isGuest: true, then: [nil, nil]) == nil)
+        #expect(DeskNotice.first(compatibility: .compatible, isGuest: false, then: []) == nil)
     }
 }

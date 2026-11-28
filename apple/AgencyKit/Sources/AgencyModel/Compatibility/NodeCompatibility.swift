@@ -28,13 +28,21 @@ public enum NodeCompatibility: Equatable, Sendable {
         return .compatible
     }
 
-    /// What the owner is told, or `nil` when nothing is wrong.
-    public var notice: String? {
+    /// What the viewer is told, or `nil` when nothing is wrong. The app is always the viewer's to update; the node is the owner's, so a guest
+    /// of someone else's node is told to tell the owner.
+    public func notice(isGuest: Bool) -> String? {
         switch self {
         case .compatible: nil
-        case .nodeTooOld: Ja.Compatibility.nodeTooOld
+        case .nodeTooOld: isGuest ? Ja.Compatibility.nodeTooOldForGuest : Ja.Compatibility.nodeTooOld
         case .appTooOld: Ja.Compatibility.appTooOld
         }
+    }
+}
+
+/// What the desk says above its requests: the first thing that is wrong, the versions before the key and the sign-in.
+public enum DeskNotice {
+    public static func first(compatibility: NodeCompatibility, isGuest: Bool, then others: [String?]) -> String? {
+        ([compatibility.notice(isGuest: isGuest)] + others).compactMap { $0 }.first
     }
 }
 
