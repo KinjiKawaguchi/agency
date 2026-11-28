@@ -50,6 +50,7 @@ pub fn status_of(kind: ErrorKind) -> StatusCode {
         ErrorKind::Forbidden => StatusCode::FORBIDDEN,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::Conflict => StatusCode::CONFLICT,
+        ErrorKind::Gone => StatusCode::GONE,
         ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     }

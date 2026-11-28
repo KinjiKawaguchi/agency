@@ -53,4 +53,11 @@ struct ClientIdentityTests {
         #expect(value == nil || value?.hasPrefix("ios/") == true)
         #endif
     }
+
+    @Test("this app's own version is given only in the form the node reads")
+    func currentVersion() {
+        let version = ClientIdentity.currentVersion()
+        #expect(version == nil || version?.split(separator: ".").count == 3)
+        #expect(ClientIdentity.platform.rawValue == (ClientIdentity.current().map { String($0.prefix { $0 != "/" }) } ?? ClientIdentity.platform.rawValue))
+    }
 }

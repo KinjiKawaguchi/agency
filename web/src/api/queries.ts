@@ -98,6 +98,10 @@ export const numberHistoryQuery = (api: ApiClient, org: string, kpi: string) =>
 export const readingsQuery = (api: ApiClient, org: string) =>
   queryOptions({ queryKey: ['readings', org], queryFn: () => api.readings(org), staleTime: 2 * POLL_MS })
 
+/** A team's weekly budget as the node computes it. */
+export const budgetQuery = (api: ApiClient, org: string, team: string) =>
+  queryOptions({ queryKey: ['budget', org, team], queryFn: () => api.budget(org, team), staleTime: 2 * POLL_MS })
+
 export const effortQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['effort', org, days], queryFn: () => api.effort(org, days), staleTime: 2 * POLL_MS })
 
