@@ -17,20 +17,28 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[path = "earlier_releases/later_files.rs"]
+mod later_files;
+
 /// What a node's data directory holds at its top level, as each release writes it. A name that is not
 /// here fails the check, so that a snapshot of a release that writes something new is read too.
 const READ_BELOW: &[&str] = &[
+    "about",
     "account.key",
     "applied.json",
     "cli-device.key",
     "config.json",
     "decisions.json",
     "desk-refresh.json",
+    // read by opening the node, which refuses a layout newer than its own
     "format",
     "invites",
     "notified.json",
     "orgs",
+    "own-origins.json",
+    "push-retries.json",
     "replicas",
+    "runtime-releases.json",
 ];
 
 fn releases_dir() -> PathBuf {
@@ -369,6 +377,7 @@ async fn read_everything(data: &Path) -> Result<usize, String> {
     check_replicas(&store, data)?;
     check_invites(&store, data)?;
     check_push_state(&store, data)?;
+    later_files::check(&store, data)?;
     let decisions = check_decisions(&store, data)?;
     check_client_api(&opened, decisions).await?;
     Ok(decisions)
@@ -442,10 +451,15 @@ async fn today_s_node_reads_what_each_earlier_release_wrote() {
 
 /// The snapshot of the first release, copied, so that a test can break one thing in it.
 fn damaged(node: &str, damage: impl FnOnce(&Path)) -> Result<usize, String> {
+    damaged_in("v0.3.0", node, damage)
+}
+
+/// The snapshot of a release, copied, so that a test can break one thing in it.
+fn damaged_in(release: &str, node: &str, damage: impl FnOnce(&Path)) -> Result<usize, String> {
     let snapshot = snapshots()
         .into_iter()
-        .find(|(tag, name, _)| tag == "v0.3.0" && name == node)
-        .expect("the v0.3.0 snapshot")
+        .find(|(tag, name, _)| tag == release && name == node)
+        .unwrap_or_else(|| panic!("the {release} snapshot"))
         .2;
     let copy = copy_of(&snapshot);
     damage(copy.path());

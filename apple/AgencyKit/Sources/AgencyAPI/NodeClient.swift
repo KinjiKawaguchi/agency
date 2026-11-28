@@ -103,6 +103,12 @@ public actor NodeClient {
         try await get("/api/metrics?days=\(days)" + (hourBuckets ? "&hourBuckets=1" : ""))
     }
 
+    /// Tells the node what this app observed of its own calls (`POST /api/telemetry`, "Metrics" in `docs/protocol.md`). Owner only: anyone else
+    /// is told 403, and a node without the route 404 (405 for one that has the path and not the method).
+    public func reportTelemetry(_ report: TelemetryReport) async throws -> TelemetryAnswer {
+        try await write("POST", "/api/telemetry", body: try report.body)
+    }
+
     /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
     public func effort(org: String, days: Int) async throws -> Effort {
         try await get("/api/orgs/\(Self.segment(org))/effort?days=\(days)")

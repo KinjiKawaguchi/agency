@@ -81,6 +81,27 @@ pub(crate) fn effective(observations: Vec<Observation>) -> BTreeMap<(Id, String)
 /// Enters one number: the org must list the KPI and the node's account be a member, the number and its
 /// note well formed, the day reasonable, and the KPI below its limit. The node sets the time and the member.
 pub async fn record(node: &Node, org: &Id, input: ObservationInput) -> Result<Observation> {
+    let written = record_inner(node, org, input, false).await?;
+    written.ok_or_else(|| Error::internal("a number was not entered"))
+}
+
+/// `record`, for a number a program works out: it is entered only when its KPI has no number at all for that
+/// day (entered by hand or not), checked while the node's write lock is held so that a number entered at the
+/// same moment is never overwritten. `None` when the day already has one.
+pub async fn record_new(
+    node: &Node,
+    org: &Id,
+    input: ObservationInput,
+) -> Result<Option<Observation>> {
+    record_inner(node, org, input, true).await
+}
+
+async fn record_inner(
+    node: &Node,
+    org: &Id,
+    input: ObservationInput,
+    is_only_for_an_empty_day: bool,
+) -> Result<Option<Observation>> {
     input.check().map_err(Error::bad_request)?;
     let (doc, person) = membership(node, org)?;
     if !doc.body.kpis.iter().any(|kpi| kpi.id == input.kpi) {
@@ -88,13 +109,16 @@ pub async fn record(node: &Node, org: &Id, input: ObservationInput) -> Result<Ob
     }
     check_date(node, &input.date)?;
     let _guard = node.write_lock().lock().await;
-    let kept = node
+    let own: Vec<Observation> = node
         .store()
         .observations(org)
-        .iter()
+        .into_iter()
         .filter(|one| one.kpi == input.kpi)
-        .count();
-    if kept >= MAX_OBSERVATIONS {
+        .collect();
+    if is_only_for_an_empty_day && own.iter().any(|one| one.date == input.date) {
+        return Ok(None);
+    }
+    if own.len() >= MAX_OBSERVATIONS {
         return Err(Error::new(
             ErrorKind::Conflict,
             format!("a KPI keeps at most {MAX_OBSERVATIONS} observations"),
@@ -116,7 +140,7 @@ pub async fn record(node: &Node, org: &Id, input: ObservationInput) -> Result<Ob
         note: input.note,
     };
     node.store().append_observation(org, &observation)?;
-    Ok(observation)
+    Ok(Some(observation))
 }
 
 /// A series for each KPI of the definition, in its order: the numbers of the last `days` calendar days (the

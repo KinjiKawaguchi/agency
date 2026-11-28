@@ -1,7 +1,7 @@
 //! The routes of the node's own measurements (docs/protocol.md, "Metrics"). They are the node's data and
 //! the owner's alone: the owner is the direct local request, or the Access sign-in of the configured owner,
 //! and nobody else the node lets in. They are not federation routes, so no other node reads them.
-use super::{is_owner_request, refuse, respond, Admitted, ClientApi, Shared};
+use super::{is_owner_request, refuse, respond, Admitted, ClientApi, Route, Shared};
 use agency_core::Error;
 use agency_proto::metrics::{judge, valid_metrics_days, Series, SeriesKind, MAX_METRICS_DAYS};
 use axum::extract::{Extension, Query, Request, State};
@@ -34,14 +34,17 @@ async fn require_owner(
     next.run(request).await
 }
 
-/// The routes below, by method and path, for the tests that walk every route.
-pub(super) const ROUTES: &[(&str, &str)] = &[("GET", "/api/metrics"), ("GET", "/metrics")];
+/// The routes below.
+pub(super) const ROUTES: &[Route] = &[
+    Route::get("/api/metrics").reported(),
+    Route::get("/metrics"),
+];
 
 pub(super) fn routes(api: Arc<ClientApi>) -> Router<Arc<ClientApi>> {
     let owner_only = Router::new()
-        .route(ROUTES[0].1, get(get_metrics))
+        .route(ROUTES[0].path, get(get_metrics))
         .route_layer(middleware::from_fn_with_state(api, require_owner));
-    owner_only.route(ROUTES[1].1, get(get_prometheus))
+    owner_only.route(ROUTES[1].path, get(get_prometheus))
 }
 
 /// `GET /api/metrics?days=<1 to 30>&kind=&name=&hourBuckets=1`: the measurements of the last `days` days (1

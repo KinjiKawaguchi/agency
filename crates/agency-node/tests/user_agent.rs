@@ -26,7 +26,12 @@ async fn requests_to_other_nodes_carry_a_user_agent() {
 
     let peers = HttpPeers::new().unwrap();
     let _ = peers
-        .get_view(&url, "/fed/v1/teams/acme/app/view", &ReadAuth::default())
+        .get_view(
+            &url,
+            "/fed/v1/teams/acme/app/view",
+            &ReadAuth::default(),
+            None,
+        )
         .await;
     let agent = seen.lock().unwrap().clone().unwrap_or_default();
     assert!(agent.starts_with("agency-node/"), "{agent:?}");

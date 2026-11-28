@@ -76,3 +76,5 @@ jobs:
       tag: ${{ needs.release-please.outputs.tag_name }}
     permissions:
       contents: write
+      # The attach job signs the checksums with the workflow's identity.
+      id-token: write

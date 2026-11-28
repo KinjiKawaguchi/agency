@@ -36,6 +36,8 @@ To install a node on a Mac, run it as a service, and reach it from outside behin
 
 What each part may change without breaking the others, and how versions move, is in [docs/compatibility.md](docs/compatibility.md).
 
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Who is trusted for what, and what is known not to be covered, is in [docs/security.md](docs/security.md).
+
 ## Build and test
 
 ```sh

@@ -8,7 +8,18 @@ use agency_proto::client::{DeviceChangeOutcome, DeviceRequestInput};
 use agency_proto::org::printable;
 use agency_proto::{AccountKey, Id, PublicKey};
 use anyhow::{bail, Result};
+use clap::Args;
 use std::io::Write;
+
+/// Adds a device that asked through the web client, after you compare its pairing code. With --cli,
+/// adds this terminal's own device, which `decide` signs with. The account key adds only your first
+/// device; later ones are added from one of your devices.
+#[derive(Args)]
+pub struct DeviceAdd {
+    /// Adds the CLI device (its key stays in the data directory)
+    #[arg(long)]
+    cli: bool,
+}
 
 /// The CLI device's key and id. Without one, the CLI cannot decide.
 pub struct CliDevice {
@@ -153,9 +164,9 @@ fn say_which_node(node: &Node, data: &DataDir) {
     );
 }
 
-pub async fn device_add(node: &Node, data: &DataDir, is_cli: bool) -> Result<()> {
+pub async fn device_add(node: &Node, data: &DataDir, args: DeviceAdd) -> Result<()> {
     say_which_node(node, data);
-    if is_cli {
+    if args.cli {
         add_cli_device(node, data).await
     } else {
         add_requested_device(node, data).await

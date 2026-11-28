@@ -51,6 +51,16 @@ impl Gh for FakeGh {
     }
 }
 
+/// The repositories of a team on github.com.
+fn on_github(repos: &[&str]) -> DeliverySite {
+    DeliverySite::new(repos.iter().map(|repo| repo.to_string()).collect())
+}
+
+/// The repositories of a team on a GitHub host of its own.
+fn on_host(host: &str, repos: &[&str]) -> DeliverySite {
+    on_github(repos).with_host(host)
+}
+
 fn since() -> agency_proto::clock::OffsetDateTime {
     clock::parse("2026-11-10T00:00:00Z").unwrap()
 }
@@ -60,7 +70,7 @@ async fn collects_the_pull_requests_and_runs_of_every_repository() {
     let gh = Arc::new(FakeGh::new());
     let delivery = GithubDelivery::new(gh.clone());
     let facts = delivery
-        .facts(&["acme/app".into(), "acme/web".into()], since())
+        .facts(&on_github(&["acme/app", "acme/web"]), since())
         .await
         .unwrap();
     let titles: Vec<&str> = facts
@@ -99,7 +109,7 @@ async fn collects_the_pull_requests_and_runs_of_every_repository() {
 async fn asks_github_for_the_default_branch_and_reads_runs_from_a_week_before_the_period() {
     let gh = Arc::new(FakeGh::new());
     GithubDelivery::new(gh.clone())
-        .facts(&["acme/app".into()], since())
+        .facts(&on_github(&["acme/app"]), since())
         .await
         .unwrap();
     let calls: Vec<String> = gh
@@ -136,6 +146,123 @@ async fn asks_github_for_the_default_branch_and_reads_runs_from_a_week_before_th
     );
 }
 
+/// The calls `delivery` makes to a `gh` that answers as `FakeGh` does, one string each.
+async fn calls_for(site: &DeliverySite) -> Vec<String> {
+    let gh = Arc::new(FakeGh::new());
+    GithubDelivery::new(gh.clone())
+        .facts(site, since())
+        .await
+        .unwrap();
+    let calls = gh.calls.lock().unwrap();
+    calls.iter().map(|args| args.join(" ")).collect()
+}
+
+#[tokio::test]
+async fn tells_gh_the_host_of_a_team_that_names_one_in_every_call() {
+    let calls = calls_for(&on_host("git.example.test", &["acme/app"])).await;
+    assert_eq!(
+        calls.len(),
+        3,
+        "the pull requests, the default branch, the runs: {calls:?}"
+    );
+    for call in &calls {
+        assert!(
+            call.contains("--hostname git.example.test"),
+            "every call names the host: {call}"
+        );
+        assert!(
+            call.starts_with("api "),
+            "only reads through gh api: {call}"
+        );
+    }
+    let graphql = calls.iter().find(|call| call.contains("graphql")).unwrap();
+    assert!(graphql.starts_with("api --hostname git.example.test graphql -f query="));
+    assert!(graphql.contains("-f owner=acme -f name=app"));
+}
+
+#[tokio::test]
+async fn asks_exactly_as_before_when_the_team_names_no_host_or_github_com() {
+    let plain = calls_for(&on_github(&["acme/app"])).await;
+    assert!(
+        plain.iter().all(|call| !call.contains("--hostname")),
+        "{plain:?}"
+    );
+    let named = calls_for(&on_host("GitHub.com", &["acme/app"])).await;
+    assert_eq!(named, plain, "github.com named is the call without a host");
+}
+
+#[tokio::test]
+async fn refuses_a_host_that_is_not_a_host_name_before_asking_github() {
+    for host in [
+        "",
+        "-evil",
+        "--hostname",
+        "git.example.test --jq x",
+        "git example",
+        "git.example.test/path",
+        "git.example.test:8443",
+        "git..example.test",
+        ".example.test",
+        "example.test.",
+        "ex_ample.test",
+        "git.example.test?x=1",
+    ] {
+        let gh = Arc::new(FakeGh::new());
+        let error = GithubDelivery::new(gh.clone())
+            .facts(&on_host(host, &["acme/app"]), since())
+            .await
+            .unwrap_err();
+        assert!(error.0.contains("not a host name"), "{host:?}: {}", error.0);
+        assert!(gh.calls.lock().unwrap().is_empty(), "{host:?} reached gh");
+    }
+    for host in [
+        "git.example.test",
+        "ghe",
+        "a-b.c-d.example.test",
+        "10.0.0.7",
+    ] {
+        assert!(is_host_name(host), "{host}");
+    }
+}
+
+#[tokio::test]
+async fn says_that_it_is_the_teams_own_host_that_could_not_be_read_and_never_names_it() {
+    for (error, wanted) in [
+        (GhError::NotInstalled, "not installed"),
+        (
+            GhError::NotLoggedIn,
+            "not logged in to the GitHub host the team names",
+        ),
+        (
+            GhError::RateLimited,
+            "rate limit of the GitHub host the team names",
+        ),
+        (
+            GhError::TimedOut,
+            "the GitHub host the team names did not answer in time",
+        ),
+        (
+            GhError::Failed,
+            "the GitHub host the team names did not answer the request",
+        ),
+    ] {
+        let gh = Arc::new(FakeGh {
+            calls: Mutex::new(vec![]),
+            fail_with: Some(error),
+        });
+        let reason = GithubDelivery::new(gh)
+            .facts(&on_host("git.example.test", &["acme/app"]), since())
+            .await
+            .unwrap_err()
+            .0;
+        assert!(reason.contains(wanted), "{reason}");
+        assert!(
+            !reason.contains("example.test"),
+            "the host is not named: {reason}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn names_the_reason_in_plain_words_and_nothing_gh_printed() {
     for (error, wanted) in [
@@ -149,7 +276,7 @@ async fn names_the_reason_in_plain_words_and_nothing_gh_printed() {
             fail_with: Some(error),
         });
         let reason = GithubDelivery::new(gh)
-            .facts(&["acme/app".into()], since())
+            .facts(&on_github(&["acme/app"]), since())
             .await
             .unwrap_err()
             .0;
@@ -176,7 +303,7 @@ async fn refuses_a_repository_that_is_not_owner_slash_name_before_asking_github(
     ] {
         let gh = Arc::new(FakeGh::new());
         let error = GithubDelivery::new(gh.clone())
-            .facts(&[repo.into()], since())
+            .facts(&on_github(&[repo]), since())
             .await
             .unwrap_err();
         assert!(error.0.contains("owner/name"), "{repo:?}");
@@ -192,7 +319,7 @@ async fn refuses_a_repository_that_is_not_owner_slash_name_before_asking_github(
 async fn real_github() {
     let since = clock::parse("2026-11-20T00:00:00Z").unwrap();
     let facts = GithubDelivery::default()
-        .facts(&["KinjiKawaguchi/agency".into()], since)
+        .facts(&on_github(&["KinjiKawaguchi/agency"]), since)
         .await
         .unwrap();
     println!(
