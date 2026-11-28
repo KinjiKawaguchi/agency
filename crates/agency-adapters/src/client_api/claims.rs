@@ -2,7 +2,7 @@
 //! confirmed, listed for the Devices screen to compare their pairing codes, and confirmed or refused. They call the
 //! use cases the terminal's `agency claims` calls. The routes are not in the table of a guest or a claimant, so the
 //! guard answers either 403; a write has the write token and the owner's sign-in like any other.
-use super::{json_body, respond, ClientApi, Shared};
+use super::{json_body, respond, ClientApi, Route, Shared};
 use agency_core::claims::{self, ClientConfirmation};
 use agency_core::Error;
 use agency_proto::claim::{
@@ -17,17 +17,17 @@ use axum::routing::{get, post};
 use axum::Router;
 use std::sync::Arc;
 
-pub(super) const ROUTES: &[(&str, &str)] = &[
-    ("GET", "/api/claims"),
-    ("POST", "/api/claims/{id}/confirm"),
-    ("POST", "/api/claims/{id}/reject"),
+pub(super) const ROUTES: &[Route] = &[
+    Route::get("/api/claims").reported(),
+    Route::post("/api/claims/{id}/confirm").reported(),
+    Route::post("/api/claims/{id}/reject").reported(),
 ];
 
 pub(super) fn routes() -> Router<Arc<ClientApi>> {
     Router::new()
-        .route(ROUTES[0].1, get(get_claims))
-        .route(ROUTES[1].1, post(post_confirm))
-        .route(ROUTES[2].1, post(post_reject))
+        .route(ROUTES[0].path, get(get_claims))
+        .route(ROUTES[1].path, post(post_confirm))
+        .route(ROUTES[2].path, post(post_reject))
 }
 
 /// The org and seat a path's claim id names; not found for a text that is none, as for a claim that is not there.

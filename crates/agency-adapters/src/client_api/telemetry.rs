@@ -2,7 +2,7 @@
 //! kept as `client` series. It is a write like any other, so the guard has already asked for the write token and
 //! the owner. A route the node does not name is dropped and counted, because a client could otherwise make
 //! the node hold a series for any text.
-use super::{json_body, refuse, respond, ClientApi, Shared};
+use super::{json_body, refuse, respond, ClientApi, Route, Shared};
 use crate::metrics::{Recorder, SeriesKey};
 use agency_core::Error;
 use agency_proto::metrics::{valid_status, SeriesKind, CLIENTS};
@@ -15,52 +15,33 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-/// The routes of the Client API a client may report, written in `testdata/route-templates.json` for the
-/// clients to name theirs from. A test holds the file to this table and this table to the router.
-pub const REPORTABLE_ROUTES: [&str; 34] = [
-    "GET /api/about",
-    "GET /api/claim",
-    "POST /api/claim",
-    "GET /api/claims",
-    "POST /api/claims/{id}/confirm",
-    "POST /api/claims/{id}/reject",
-    "GET /api/me",
-    "GET /api/session",
-    "GET /api/decisions",
-    "GET /api/devices",
-    "POST /api/devices/requests",
-    "POST /api/devices/changes",
-    "GET /api/metrics",
-    "GET /api/orgs/{org}",
-    "GET /api/orgs/{org}/effort",
-    "GET /api/orgs/{org}/evaluation",
-    "GET /api/orgs/{org}/history",
-    "GET /api/orgs/{org}/members",
-    "GET /api/orgs/{org}/outcomes",
-    "GET /api/orgs/{org}/outcomes/observations",
-    "POST /api/orgs/{org}/outcomes/observations",
-    "GET /api/orgs/{org}/outcomes/readings",
-    "GET /api/orgs/{org}/teams/{team}/activity",
-    "GET /api/orgs/{org}/teams/{team}/budget",
-    "POST /api/orgs/{org}/teams/{team}/envelopes",
-    "GET /api/orgs/{org}/teams/{team}/usage",
-    "GET /api/orgs/{org}/teams/{team}/view",
-    "GET /api/push/subscriptions",
-    "POST /api/push/subscriptions",
-    "DELETE /api/push/subscriptions/{id}",
-    "GET /api/push/tokens",
-    "POST /api/push/tokens",
-    "DELETE /api/push/tokens/{token}",
-    "GET /api/push/vapid",
-];
+/// The routes of the Client API a client may report: those declared `reported`, by `<method> <path>`, sorted.
+pub fn reportable_routes() -> Vec<String> {
+    let mut routes: Vec<String> = super::declared()
+        .filter(|route| route.is_reported())
+        .map(Route::template)
+        .collect();
+    routes.sort_unstable();
+    routes
+}
 
-pub(super) const ROUTES: &[(&str, &str)] = &[("POST", "/api/telemetry")];
+/// `testdata/route-templates.json` as the declarations make it: the routes a client may report, which the
+/// clients name theirs from. A test fails when the file differs.
+pub fn route_templates() -> String {
+    let file = serde_json::json!({ "routes": reportable_routes() });
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&file).expect("a list of strings")
+    )
+}
+
+pub(super) const ROUTES: &[Route] = &[Route::post("/api/telemetry")];
 
 pub(super) fn routes() -> Router<Arc<ClientApi>> {
-    Router::new().route(ROUTES[0].1, post(post_telemetry))
+    Router::new().route(ROUTES[0].path, post(post_telemetry))
 }
 
 async fn post_telemetry(State(api): Shared, bytes: Bytes) -> Response {
@@ -91,8 +72,10 @@ fn record(recorder: &Recorder, report: &TelemetryReport) -> Result<TelemetryAnsw
         accepted: 0,
         dropped: 0,
     };
+    static REPORTABLE: OnceLock<Vec<String>> = OnceLock::new();
+    let reportable = REPORTABLE.get_or_init(reportable_routes);
     for sample in &report.samples {
-        if !REPORTABLE_ROUTES.contains(&sample.route.as_str())
+        if reportable.binary_search(&sample.route).is_err()
             || !valid_status(SeriesKind::Client, &sample.status)
         {
             answer.dropped += 1;

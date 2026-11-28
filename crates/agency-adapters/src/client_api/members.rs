@@ -1,7 +1,7 @@
 //! The route of an org's people for its owner (docs/protocol.md, "Members, devices, and open seats"). The
 //! owner is the direct local request, or the Access sign-in of the configured owner: a guest does not reach
 //! it (the guard), and no other sign-in Access lets in does either.
-use super::{is_owner_request, parse_id, refuse, respond, Admitted, ClientApi, Shared};
+use super::{is_owner_request, parse_id, refuse, respond, Admitted, ClientApi, Route, Shared};
 use agency_core::org_members::org_members;
 use axum::extract::{Extension, Path};
 use axum::http::StatusCode;
@@ -10,11 +10,11 @@ use axum::routing::get;
 use axum::Router;
 use std::sync::Arc;
 
-/// The routes below, by method and path, for the tests that walk every route.
-pub(super) const ROUTES: &[(&str, &str)] = &[("GET", "/api/orgs/{org}/members")];
+/// The routes below.
+pub(super) const ROUTES: &[Route] = &[Route::get("/api/orgs/{org}/members").reported()];
 
 pub(super) fn routes() -> Router<Arc<ClientApi>> {
-    Router::new().route(ROUTES[0].1, get(get_members))
+    Router::new().route(ROUTES[0].path, get(get_members))
 }
 
 async fn get_members(

@@ -1,31 +1,12 @@
-//! What a guest (a member hosted by this node, signed in through Access) may reach of the Client API: one
-//! table, and nothing outside it. Every other route answers 403 to a guest; the routes in it are scoped to the
-//! guest's member in the handlers.
+//! What a guest (a member hosted by this node, signed in through Access) may reach of the Client API: the
+//! routes declared `for_guests`, and nothing else. Every other route answers 403 to a guest; those routes are
+//! scoped to the guest's member in the handlers.
 use agency_core::guests::Guest;
 use axum::http::Method;
 
-/// A guest's routes: `(method, path)`, where `{org}` must be the guest's own org, `{team}` any team, and
-/// `{token}` or `{id}` any one segment (the handler finds only the guest's own).
-pub(super) const GUEST_ROUTES: [(&str, &str); 16] = [
-    ("GET", "/api/about"),
-    ("GET", "/api/me"),
-    ("GET", "/api/session"),
-    ("GET", "/api/devices"),
-    ("GET", "/api/decisions"),
-    ("GET", "/api/orgs/{org}/teams/{team}/view"),
-    ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
-    ("POST", "/api/devices/changes"),
-    ("POST", "/api/devices/requests"),
-    ("GET", "/api/push/tokens"),
-    ("POST", "/api/push/tokens"),
-    ("DELETE", "/api/push/tokens/{token}"),
-    ("GET", "/api/push/vapid"),
-    ("GET", "/api/push/subscriptions"),
-    ("POST", "/api/push/subscriptions"),
-    ("DELETE", "/api/push/subscriptions/{id}"),
-];
-
-/// Whether `path` fits `pattern`, with `{org}` the guest's org and `{team}` one well-formed segment.
+/// Whether `path` fits `pattern`, the path of a route declared `for_guests`: `{org}` must be the guest's own
+/// org, `{team}` one well-formed segment, and `{token}` or `{id}` any one segment (the handler finds only the
+/// guest's own).
 fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
     let (wanted, given): (Vec<&str>, Vec<&str>) =
         (pattern.split('/').collect(), path.split('/').collect());
@@ -48,7 +29,7 @@ pub(super) fn is_the_client(path: &str) -> bool {
 }
 
 /// Whether a guest may make this request at all. HEAD goes with GET. A guest loads the web client too, so
-/// that its shell runs; the client reads the node only through the routes above.
+/// that its shell runs; the client reads the node only through a guest's routes.
 pub(super) fn may(guest: &Guest, method: &Method, path: &str) -> bool {
     let method = if method == Method::HEAD {
         "GET"
@@ -57,9 +38,9 @@ pub(super) fn may(guest: &Guest, method: &Method, path: &str) -> bool {
     };
     let is_page = method == "GET" && is_the_client(path);
     is_page
-        || GUEST_ROUTES
-            .iter()
-            .any(|(allowed, pattern)| *allowed == method && fits(pattern, path, guest))
+        || super::declared().any(|route| {
+            route.is_for_guests() && route.method == method && fits(route.path, path, guest)
+        })
 }
 
 /// Whether the request is a write a guest may make: the write half of the table.

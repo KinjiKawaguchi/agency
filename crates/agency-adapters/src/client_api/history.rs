@@ -2,7 +2,7 @@
 //! other records about its machine and its org's numbers: the history names each key that signed and every
 //! change to the people of the org, which a member Access lets in has no need to read. It answers what
 //! `agency audit --json` prints, from the same function (`agency_core::audit::org_history`).
-use super::{is_owner_request, refuse, respond, Admitted, ClientApi, Shared};
+use super::{is_owner_request, refuse, respond, Admitted, ClientApi, Route, Shared};
 use agency_core::audit::{org_history_page, HistoryQuery};
 use agency_core::Error;
 use agency_proto::clock;
@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 const HISTORY: &str = "/api/orgs/{org}/history";
 
-/// The routes below, by method and path, for the tests that walk every route.
-pub(super) const ROUTES: &[(&str, &str)] = &[("GET", HISTORY)];
+/// The routes below.
+pub(super) const ROUTES: &[Route] = &[Route::get(HISTORY).reported()];
 
 /// Lets the owner through and refuses everyone else.
 async fn require_owner(
