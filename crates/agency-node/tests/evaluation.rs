@@ -107,6 +107,15 @@ async fn a_member_reads_the_evaluation_of_a_team_that_has_repositories() {
         ("2026-11-11", "2026-11-24")
     );
     assert_eq!(team.summary.merged.feat, 1);
+    let features = team.summary.new_feature.as_ref().expect("a feature merged");
+    assert_eq!(
+        (
+            features.merged,
+            features.pr_lead_median_seconds,
+            features.issue_lead_median_seconds
+        ),
+        (1, Some(3600), Some(10_800))
+    );
     assert_eq!(team.summary.pr_lead_median_seconds, Some(3600));
     assert_eq!(team.summary.issue_lead_median_seconds, Some(10_800));
     assert_eq!(

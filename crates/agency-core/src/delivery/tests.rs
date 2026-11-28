@@ -394,6 +394,122 @@ fn the_same_facts_fall_on_other_days_in_another_time_zone() {
     );
 }
 
+// ── New-feature lead times ──
+
+fn pull_requests_for_lead_times() -> Vec<MergedPullRequest> {
+    let mut found = vec![];
+    // Eight quick docs and chore merges: an hour each (opened to merged), the issue started two hours before.
+    for n in 0..8 {
+        let title = if n % 2 == 0 {
+            "docs: a note"
+        } else {
+            "chore: a bump"
+        };
+        found.push(pull_request(
+            title,
+            "",
+            "2026-11-23T01:00:00Z",
+            "2026-11-23T02:00:00Z",
+            None,
+            true,
+            Some("2026-11-22T23:00:00Z"),
+        ));
+    }
+    // Three new features: 1 day, 2 days, and 3 days from opened to merged; their issues started a day earlier.
+    for (opened, merged, started) in [
+        (
+            "2026-11-20T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-19T00:00:00Z",
+        ),
+        (
+            "2026-11-19T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-18T00:00:00Z",
+        ),
+        (
+            "2026-11-18T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+        ),
+    ] {
+        found.push(pull_request(
+            "feat(web): a screen",
+            "",
+            opened,
+            merged,
+            None,
+            true,
+            Some(started),
+        ));
+    }
+    found
+}
+
+fn lead_time_evaluation(pull_requests: &[MergedPullRequest]) -> TeamEvaluation {
+    let input = Input {
+        now: at("2026-11-24T12:00:00Z"),
+        offset: UtcOffset::UTC,
+        days: 7,
+        pull_requests,
+        runs: &[],
+        cost_by_day: &[],
+    };
+    evaluate(team(), &input)
+}
+
+#[test]
+fn the_new_features_have_their_own_lead_times_and_the_summarys_are_over_every_pull_request() {
+    let summary = lead_time_evaluation(&pull_requests_for_lead_times()).summary;
+    let features = summary.new_feature.expect("three features merged");
+    assert_eq!(features.merged, 3);
+    assert_eq!(features.pr_lead_median_seconds, Some(2 * 86_400));
+    assert_eq!(features.pr_lead_p90_seconds, Some(3 * 86_400));
+    assert_eq!(features.issue_lead_median_seconds, Some(3 * 86_400));
+    assert_eq!(features.issue_lead_p90_seconds, Some(4 * 86_400));
+    assert_eq!(
+        summary.pr_lead_median_seconds,
+        Some(3600),
+        "eleven pull requests, eight of them quick: the summary's median is the quick one"
+    );
+}
+
+#[test]
+fn only_a_new_feature_by_the_rule_of_work_type_is_one_and_a_revert_is_never() {
+    let day = ("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z");
+    let make = |title: &str, closes_incident: bool| {
+        let mut one = pull_request(title, "", day.0, day.1, None, false, None);
+        one.closes_incident = closes_incident;
+        one
+    };
+    let found = [
+        make("feat: counts", false),
+        make("feat(web)!: counts too", false),
+        make("fix: not one", false),
+        make("fix: an incident is not one", true),
+        make("refactor: not one", false),
+        make("docs: not one", false),
+        make("perf: not one", false),
+        make("Revert \"feat: a screen\"", false),
+    ];
+    let features = lead_time_evaluation(&found).summary.new_feature.unwrap();
+    assert_eq!(features.merged, 2);
+    assert_eq!(
+        features.issue_lead_median_seconds, None,
+        "no issue, no sample"
+    );
+    assert_eq!(features.pr_lead_median_seconds, Some(86_400));
+}
+
+#[test]
+fn a_period_without_a_new_feature_leaves_the_part_out() {
+    let found: Vec<_> = pull_requests_for_lead_times()
+        .into_iter()
+        .filter(|one| !one.title.starts_with("feat"))
+        .collect();
+    assert_eq!(lead_time_evaluation(&found).summary.new_feature, None);
+}
+
 #[test]
 fn a_board_option_names_a_work_type_by_its_name_alone() {
     use agency_proto::view::WorkType::*;
