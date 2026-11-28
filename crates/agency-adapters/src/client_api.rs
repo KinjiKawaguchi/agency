@@ -8,10 +8,8 @@
 //! Writes also need the page's token in `x-agency-token` and a JSON body. A page on another site cannot
 //! send that header without a preflight, which this node never allows (CSRF). Through Access, writes
 //! also need the owner's email, because writes act for the node's account.
-use crate::access::{AccessVerifier, Identity};
-use crate::handoff::{
-    self, ACCESS_HEADER, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH,
-};
+use crate::access::{Identity, SignInVerifier};
+use crate::handoff::{self, ASSOCIATION_PATH, CALLBACK_PATH, HANDOFF_PATH, REDEEM_PATH};
 use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
@@ -52,6 +50,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 
 mod guests;
+mod history;
 mod members;
 mod metrics;
 mod outcomes;
@@ -81,7 +80,8 @@ pub struct ClientApi {
     pub token: String,
     /// The port the node listens on, for the `Host` check.
     pub port: u16,
-    pub access: Option<Arc<AccessVerifier>>,
+    /// The sign-in provider in front of the Client API (Access or OIDC), when one is set and well formed.
+    pub access: Option<Arc<SignInVerifier>>,
     pub assets: Arc<dyn Assets>,
     /// The running program and its data directory, for the command a client shows the owner. `None`
     /// when they cannot be written out as text; clients then show their own wording.
@@ -141,7 +141,7 @@ async fn admit(
     let is_public = api
         .access
         .as_ref()
-        .is_some_and(|access| access.config().public_host == host);
+        .is_some_and(|access| access.provider().public_host() == host);
     if !is_via_cloudflare(headers) && !is_public {
         let is_local_host =
             host == format!("127.0.0.1:{}", api.port) || host == format!("localhost:{}", api.port);
@@ -158,8 +158,8 @@ async fn admit(
     let access = api
         .access
         .as_ref()
-        .ok_or((StatusCode::FORBIDDEN, "this node has no Access setting"))?;
-    match access.verify(header_text(headers, ACCESS_HEADER)).await {
+        .ok_or((StatusCode::FORBIDDEN, "this node has no sign-in setting"))?;
+    match access.verify(access.provider().token(headers)).await {
         // Only a known identity is admitted: the owner's email, which always wins, or a current guest's.
         // Any other sign-in, one without an email included, is refused.
         Ok(identity) if is_owner(api, &identity) => Ok(Admitted::Access(identity)),
@@ -169,17 +169,30 @@ async fn admit(
             .and_then(|email| agency_core::guests::admit(&api.node, email))
             .map(Admitted::Guest)
             .ok_or_else(|| {
-                (api.log)("refused an Access sign-in that is neither the owner nor a guest");
+                let why = if identity.has_unverified_email {
+                    "whose email the provider did not say it verified, so it names no guest"
+                } else {
+                    "that is neither the owner nor a guest"
+                };
+                (api.log)(&format!(
+                    "refused an {} sign-in {why}",
+                    access.provider().name()
+                ));
                 (
                     StatusCode::FORBIDDEN,
                     "this sign-in is not the node's owner or a guest of it",
                 )
             }),
         Err(reason) => {
-            (api.log)(&format!("refused an Access request ({reason})"));
+            let name = access.provider().name();
+            (api.log)(&format!("refused an {name} request ({reason})"));
             Err((
                 StatusCode::FORBIDDEN,
-                "not signed in through Cloudflare Access",
+                if access.provider().access_config().is_some() {
+                    "not signed in through Cloudflare Access"
+                } else {
+                    "not signed in through the node's OpenID Connect provider"
+                },
             ))
         }
     }
@@ -219,12 +232,16 @@ fn check_write(
         ));
     }
     match admitted {
-        // With an access setting the owner is who Access says it is, so a process of the same OS user
-        // on this machine cannot write as the owner. Checked against the setting itself, so a malformed
-        // one (which disables Access) does not make loopback the owner again.
-        Admitted::Local if api.node.config().access.is_some() => Err((
+        // With a sign-in setting (`access` or `oidc`) the owner is who the provider says it is, so a process
+        // of the same OS user on this machine cannot write as the owner. Checked against the setting itself,
+        // so a malformed one (which disables the provider) does not make loopback the owner again.
+        Admitted::Local if api.node.config().has_sign_in() => Err((
             StatusCode::FORBIDDEN,
-            "this node is behind Access: writes come through its public host name, signed in as the owner",
+            if api.node.config().access.is_some() {
+                "this node is behind Access: writes come through its public host name, signed in as the owner"
+            } else {
+                "this node is behind its OpenID Connect provider: writes come through its public host name, signed in as the owner"
+            },
         )),
         Admitted::Local => Ok(()),
         Admitted::Access(identity) if is_owner(api, identity) => Ok(()),
@@ -235,17 +252,11 @@ fn check_write(
     }
 }
 
-/// Whether the Access sign-in is the configured owner's.
+/// Whether the sign-in is the configured owner's.
 pub(crate) fn is_owner(api: &ClientApi, identity: &Identity) -> bool {
-    let owner = api
-        .access
+    api.access
         .as_ref()
-        .map(|access| access.config().owner_email.as_str());
-    identity
-        .email
-        .as_deref()
-        .zip(owner)
-        .is_some_and(|(email, owner)| email.eq_ignore_ascii_case(owner))
+        .is_some_and(|access| access.provider().is_owner(identity))
 }
 
 async fn guard(
@@ -774,10 +785,11 @@ pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
     guests::GUEST_ROUTES.to_vec()
 }
 
-/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
+/// Every route behind the guard, this module's and its parts' (history, outcomes, metrics, telemetry), by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = outcomes::ROUTES
+    let parts = history::ROUTES
         .iter()
+        .chain(outcomes::ROUTES)
         .chain(members::ROUTES)
         .chain(metrics::ROUTES)
         .chain(telemetry::ROUTES);
@@ -820,7 +832,8 @@ pub fn router(api: Arc<ClientApi>) -> Router {
     let own = paths.into_iter().fold(Router::new(), |router, path| {
         router.route(path, method_router(path))
     });
-    own.merge(outcomes::routes(api.clone()))
+    own.merge(history::routes(api.clone()))
+        .merge(outcomes::routes(api.clone()))
         .merge(members::routes())
         .merge(metrics::routes(api.clone()))
         .merge(telemetry::routes())

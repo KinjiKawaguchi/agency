@@ -27,6 +27,21 @@ impl GhError {
             Self::Failed => "GitHub did not answer the request",
         }
     }
+
+    /// A reason for a team on a GitHub host of its own: it says that it is that host that could not be
+    /// read. It never names the host: a reason goes to every client that reads the team, and a company's
+    /// host name is not theirs to be told.
+    pub fn own_host_reason(self) -> &'static str {
+        match self {
+            Self::NotInstalled => self.reason(),
+            Self::NotLoggedIn => {
+                "the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names"
+            }
+            Self::RateLimited => "the rate limit of the GitHub host the team names is used up for now",
+            Self::TimedOut => "the GitHub host the team names did not answer in time",
+            Self::Failed => "the GitHub host the team names did not answer the request",
+        }
+    }
 }
 
 /// `gh` with some arguments, answering what it printed on its standard output.
@@ -147,7 +162,9 @@ mod tests {
             GhError::TimedOut,
             GhError::Failed,
         ] {
-            assert!(!error.reason().contains("http") && !error.reason().contains('@'));
+            for reason in [error.reason(), error.own_host_reason()] {
+                assert!(!reason.contains("http") && !reason.contains('@'));
+            }
         }
     }
 }
