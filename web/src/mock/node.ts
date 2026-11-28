@@ -3,6 +3,7 @@
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { metricsAnswer, type MetricsVariant } from './metrics'
+import { createMockTelemetry, type KeptSample } from './telemetry'
 import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
@@ -37,6 +38,8 @@ export interface MockNode {
   pushTokenEntries: () => ReadonlyArray<PushToken>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
+  /** The samples of how long a client's calls took, as the node kept them from the reports it took (`POST /api/telemetry`). */
+  telemetry: () => readonly KeptSample[]
   /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
   recordPushDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => void
   /** Envelopes that were accepted, oldest first. */
@@ -251,6 +254,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
+  const telemetry = createMockTelemetry()
   const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
@@ -444,6 +448,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const answered = webPush.handle(request, url, () => readWrite(request))
       if (answered !== undefined) return answered
     }
+    const reported = telemetry.handle(request, url, () => readWrite(request))
+    if (reported !== undefined) return reported
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
     const budgetMatch = BUDGET_PATH.exec(url.pathname)
     if (budgetMatch !== null && request.method === 'GET') return handleBudget(budgetMatch[2] ?? '')
@@ -475,6 +481,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     pushTokens: () => pushTokenEntries.map(({ token, environment, label }) => ({ token, environment, label })),
     pushTokenEntries: () => pushTokenEntries,
     pushSubscriptions: () => webPush.subscriptions(),
+    telemetry: telemetry.kept,
     recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
     signRootChanges: () => {
