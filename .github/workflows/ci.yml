@@ -126,6 +126,10 @@ jobs:
         run: scripts/test/release-macos.sh
       - name: Test the scripts that show the tests that passed only on a retry
         run: scripts/test/ci-scripts.sh
+      - name: Test the check of the generated bindings
+        run: |
+          shellcheck -x scripts/check-bindings.sh scripts/test/check-bindings.sh
+          scripts/test/check-bindings.sh
       - name: Test the check that existing test vectors stay as they are
         run: scripts/test/vectors-append-only.sh
       - name: Test the check of a pull request's title
