@@ -197,7 +197,7 @@ targets:
     info:
       path: NotificationService/Info.plist
       properties:
-        CFBundleDisplayName: 決めること
+        CFBundleDisplayName: あなた宛てのリクエスト
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
@@ -233,7 +233,7 @@ targets:
     info:
       path: Widgets/Info.plist
       properties:
-        CFBundleDisplayName: 決めること
+        CFBundleDisplayName: あなた宛てのリクエスト
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AgencyAppGroup: group.$(PRODUCT_BUNDLE_IDENTIFIER:base)
