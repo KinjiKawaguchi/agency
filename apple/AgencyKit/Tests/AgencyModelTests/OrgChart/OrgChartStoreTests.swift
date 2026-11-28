@@ -86,7 +86,7 @@ struct OrgChartStoreTests {
         await store.refresh()
         store.focus(on: "engineering")
         guard case .top(let kind, let name, let sub) = store.rows[0].content else { Issue.record("no top"); return }
-        #expect([kind, name, sub ?? ""] == ["部署", "Engineering", "責任者は Alice"])
+        #expect([kind, name, sub ?? ""] == ["部署", "Engineering", "部長は Alice"])
         #expect(!store.isEmptyDepartment)
         store.focus(on: "platform")
         #expect(store.rows.count == 2)
