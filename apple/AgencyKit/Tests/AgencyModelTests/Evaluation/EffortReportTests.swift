@@ -56,13 +56,6 @@ struct EffortReportTests {
         #expect(EffortAnalysis.pointsFromPlan(share: 20.5, intended: 20) == 1)
     }
 
-    @Test("the week's spend adds up the seven days that end at the last day of the period, and no earlier day")
-    func weekSpend() {
-        let day = { (date: String, feature: Double, unclassified: Double) in DayEffort(date: date, costUsd: [.newFeature: feature, .unclassified: unclassified]) }
-        let byDay = [day("2026-11-19", 100, 0), day("2026-11-20", 1, 0), day("2026-11-24", 2, 1), day("2026-11-26", 3, 0)]
-        #expect(EffortAnalysis.weekSpend(byDay, last: "2026-11-26") == 7)
-    }
-
     // MARK: The report
 
     @Test("the sample against a plan: each type's share and the org's mark, the gap in points")
@@ -95,40 +88,17 @@ struct EffortReportTests {
         let none = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .none)
         #expect(none.planNote == "このチームには組織のプランがまだ示されていないので、比べるものがありません。")
         #expect(none.rows.allSatisfy { $0.intendedText == nil })
-        #expect(none.budget == nil)
+        #expect(none.plannedBudget == nil)
         let unreadable = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .unreadable)
         #expect(unreadable.planNote == "このチームの組織のプランを読み取れなかったので、比べていません。")
     }
 
-    @Test("the weekly budget: what was spent in the last seven days, what is left, or by how much it is over")
-    func budget() throws {
+    @Test("the report keeps what the plan states of the weekly budget, and works out no spend: how the week stands is the node's")
+    func plannedBudget() throws {
         let sample = try Self.sample()
-        // The sample's two days cost 13.3 in all.
-        let report = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(plan))
-        let budget = try #require(report.budget)
-        #expect(budget.line == "直近 7 日で $140 のうち $13")
-        #expect(budget.note == "残り $127")
-        #expect(budget.isOver == false)
-        #expect(abs(budget.fraction - 13.3 / 140) < 0.0001)
-        #expect(budget.spoken == "週次予算 $140 のうち $13 を使用")
-        let tight = TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 10)
-        let over = try #require(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(tight)).budget)
-        #expect(over.isOver)
-        #expect(over.note == "$3.30 超過")
-        #expect(over.fraction == 1)
-        let none = TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 0)
-        #expect(try #require(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(none)).budget).fraction == 1)
-    }
-
-    @Test("spending exactly the budget is not over it")
-    func exactBudget() throws {
-        let sample = try Self.sample()
-        let exact = TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 13)
-        let day = TeamEffort.with(spent: 13, last: "2026-11-24", of: sample.teams[0])
-        let budget = try #require(TeamEffortReport(effort: day, label: "App", days: 14, plan: .stated(exact)).budget)
-        #expect(!budget.isOver)
-        #expect(budget.note == "残り $0")
-        #expect(budget.fraction == 1)
+        #expect(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(plan)).plannedBudget == 140)
+        #expect(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .none).plannedBudget == nil)
+        #expect(TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .unreadable).plannedBudget == nil)
     }
 
     @Test("a team is drawn against its own period, not the one asked for")
@@ -170,10 +140,8 @@ struct EffortReportTests {
         let report = TeamEffortReport(effort: effort(), label: "Quiet", days: 14, plan: .stated(plan))
         #expect(report.rows.allSatisfy { $0.share == 0 })
         #expect(report.byDay.max == 1)
-        #expect(report.budget?.line == "直近 7 日で $140 のうち $0")
-        #expect(report.budget?.fraction == 0)
-        // A budget of nothing is full, even before a dollar is spent.
+        #expect(report.plannedBudget == 140)
         let zero = TeamEffortReport(effort: effort(), label: "Quiet", days: 14, plan: .stated(TeamPlan(allocation: plan.allocation, weeklyBudgetUsd: 0)))
-        #expect(zero.budget?.fraction == 1)
+        #expect(zero.plannedBudget == 0)
     }
 }

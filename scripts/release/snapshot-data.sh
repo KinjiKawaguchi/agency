@@ -1,13 +1,19 @@
 #!/bin/bash
-# Keeps the data two nodes of a release wrote, so that every later build is tested on reading it
-# (crates/agency-node/tests/earlier_releases.rs). It builds the tag in a temporary worktree and runs two
-# nodes of that build, on empty data directories, through a fixed sequence:
+# Keeps what a release wrote, so that every later build is tested on reading it:
+#
+#   testdata/releases/<tag>/client/  the Client API's answers of the tag (its testdata/client/), which the
+#                                    apps' and the web client's tests decode;
+#   testdata/releases/<tag>/data/    the data directories of two nodes of the tag
+#                                    (crates/agency-node/tests/earlier_releases.rs).
+#
+# A part that is kept already is left as it is, and said. The data comes from building the tag in a
+# temporary worktree and running two nodes of that build, on empty data directories, through a fixed sequence:
 #
 #   alice makes the org acme, adds the team app (run by fixture-runtime.sh), adds her CLI device, serves;
 #   bob joins acme, adds his CLI device, reads alice's team once, which leaves a replica;
 #   alice answers the team's request with her CLI device, which writes the decision log.
 #
-# The two data directories are written to testdata/releases/<tag>/data/alice and .../bob, without the log
+# The two data directories are written to data/alice and data/bob, without the log
 # and with local paths in config.json made fixed ones. The keys in them are test keys made by this run:
 # the root key of acme is kept outside a data directory and is not written. usage:
 #
@@ -21,11 +27,14 @@ repository="$(cd "$(dirname "$0")/../.." && pwd)"
 port_alice="${SNAPSHOT_PORT:-4791}"
 port_bob="$((port_alice + 1))"
 destination="$repository/testdata/releases/$tag/data"
+client_destination="$repository/testdata/releases/$tag/client"
 
 git -C "$repository" rev-parse --verify --quiet "refs/tags/$tag^{commit}" >/dev/null \
   || { echo "$tag is not a tag of this repository (git fetch --tags)" >&2; exit 1; }
-[ ! -e "$destination" ] \
-  || { echo "$destination exists; remove it first if the snapshot is to be made again" >&2; exit 1; }
+for kept in "$destination" "$client_destination"; do
+  [ ! -e "$kept" ] || echo "${kept#"$repository/"} is kept already; left as it is (remove it first to make it again)"
+done
+[ ! -e "$destination" ] || [ ! -e "$client_destination" ] || exit 0
 
 work="$(mktemp -d)"
 serve_pid=""
@@ -41,6 +50,17 @@ cleanup() {
 trap cleanup EXIT
 
 git -C "$repository" worktree add --quiet --detach "$work/source" "refs/tags/$tag"
+
+if [ ! -e "$client_destination" ]; then
+  [ -d "$work/source/testdata/client" ] \
+    || { echo "$tag has no testdata/client" >&2; exit 1; }
+  mkdir -p "$(dirname "$client_destination")"
+  cp -R "$work/source/testdata/client" "$work/client"
+  mv "$work/client" "$client_destination"
+  echo "client answers of $tag: $client_destination"
+fi
+[ ! -e "$destination" ] || exit 0
+
 target="${CARGO_TARGET_DIR:-$work/target}"
 (cd "$work/source" && CARGO_TARGET_DIR="$target" cargo build --quiet --locked -p agency-node)
 binary="$target/debug/agency"

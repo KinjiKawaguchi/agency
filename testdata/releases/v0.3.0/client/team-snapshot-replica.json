@@ -1,0 +1,82 @@
+{
+  "mine": [],
+  "source": {
+    "fetchedAt": "2026-11-24T12:00:00Z",
+    "kind": "replica",
+    "triedAt": "2026-11-24T12:00:00Z"
+  },
+  "view": {
+    "epics": [],
+    "generatedAt": "2026-01-01T00:00:00Z",
+    "label": "app",
+    "org": "acme",
+    "people": [
+      {
+        "holding": [
+          "app#7"
+        ],
+        "id": "backend",
+        "kind": "agent",
+        "label": "backend",
+        "role": "member",
+        "state": "idle",
+        "status": "Waiting on owner",
+        "waitingOn": {
+          "kind": "person",
+          "person": "owner"
+        }
+      },
+      {
+        "holding": [
+          "app#7"
+        ],
+        "id": "frontend",
+        "kind": "agent",
+        "label": "frontend",
+        "role": "member",
+        "state": "idle",
+        "status": "Waiting on reviewer",
+        "waitingOn": {
+          "kind": "person",
+          "person": "reviewer"
+        }
+      }
+    ],
+    "requests": [
+      {
+        "answerWith": {
+          "kind": "answer",
+          "target": "r-1"
+        },
+        "blocks": [],
+        "context": "",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "from": "lead",
+        "id": "r-1",
+        "kind": "question",
+        "options": [],
+        "title": "Make a key?"
+      },
+      {
+        "answerWith": {
+          "kind": "answer",
+          "target": "r-2"
+        },
+        "blocks": [],
+        "context": "",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "from": "lead",
+        "id": "r-2",
+        "kind": "question",
+        "options": [],
+        "title": "Ship it?"
+      }
+    ],
+    "team": "app",
+    "work": []
+  },
+  "viewer": "reviewer",
+  "waitingOnViewer": [
+    "frontend"
+  ]
+}

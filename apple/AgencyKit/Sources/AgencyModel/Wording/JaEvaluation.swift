@@ -104,9 +104,22 @@ extension Ja {
         public static func intended(_ share: String) -> String { "意図 \(share)" }
         public static func above(_ points: Int) -> String { "\(points) ポイント上" }
         public static func below(_ points: Int) -> String { "\(points) ポイント下" }
-        public static func budgetLine(spent: String, of budget: String) -> String { "直近 7 日で \(budget) のうち \(spent)" }
-        public static func budgetLeft(_ amount: String) -> String { "残り \(amount)" }
-        public static func budgetOver(_ amount: String) -> String { "\(amount) 超過" }
-        public static func budgetMeter(spent: String, of budget: String) -> String { "週次予算 \(budget) のうち \(spent) を使用" }
+        public static func budgetLine(spent: String, of cap: String, weekStart: String) -> String { "今週(\(weekStart) の月曜から)は \(cap) のうち \(spent)" }
+        public static func budgetNotKnown(weekStart: String) -> String { "今週(\(weekStart) の月曜から)の使用額は分かりません" }
+        public static func budgetMeter(spent: String, of cap: String, state: String?) -> String {
+            "週次予算 \(cap) のうち \(spent) を使用" + (state.map { ": \($0)" } ?? "")
+        }
+        public static let budgetOK = "予算の範囲内です"
+        public static let budgetWarning = "予算に近づいています"
+        public static let budgetOverState = "予算を超えています"
+        public static let budgetPartial = "このチームの使用量を読めなかったため、今週の使用額は分かりません。"
+        public static func budgetOrg(isOver: Bool, spent: String, of cap: String) -> String {
+            "組織は週次予算\(isOver ? "を超えています" : "に近づいています"): \(cap) のうち \(spent)。"
+        }
+        public static let budgetOrgLowerBound = "読めなかった使用量があるため、少なくともこれだけです。"
+        public static let budgetOrgNoneRead = "組織の使用量に読めなかったものがあるため、今週の使用額は分かりません。"
+        public static func budgetOrgPartialOK(spent: String, of cap: String) -> String { "組織の使用量に読めなかったものがあります: 今週は \(cap) のうち、少なくとも \(spent)。" }
+        public static func budgetPlain(_ cap: String) -> String { "週次予算は \(cap) です。このノードは、今週の使用額をまだ返しません。" }
+        public static func budgetFailed(_ reason: String) -> String { "週次予算状況を読み込めませんでした: \(reason)" }
     }
 }
