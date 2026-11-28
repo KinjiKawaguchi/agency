@@ -87,7 +87,7 @@ The runtime lists what it speaks in `describe` (`runtimes`, `ops`), and the node
 
 May change without a new version:
 - **A new optional op.** The runtime lists it in `ops`; the node calls it only then, and treats its absence as "not reported" (for example `tokenUsage`, `activity`).
-- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer. Both sides ignore unknown fields.
+- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer (for example `version` in `describe`, the harness release). Both sides ignore unknown fields.
 - **A new value of an existing enum.** It is breaking for a reader that does not know it. The node therefore maps an unknown value to a safe default where one exists, and otherwise refuses the view (503) without crashing. The runtime adds such a value only after the node release that knows it.
 
 Breaking, so `agency-runtime/2`:
@@ -95,7 +95,7 @@ Breaking, so `agency-runtime/2`:
 - removing an op;
 - changing an error status's meaning.
 
-Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use.
+Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use. The node shows which release each hosted team's runtime says it is (`version` of `describe`) in `agency status`, so the owner can see what is in use and ask a team's owner to update the harness; a runtime that does not say its release is shown as not saying it, which the node cannot judge: that one is checked by hand.
 
 ## Node and apps (the Client API, `clientApi`)
 
