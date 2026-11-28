@@ -3,6 +3,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod budget;
 pub mod canonical;
 pub mod claim;
 pub mod client;
@@ -14,6 +15,7 @@ pub mod directory;
 pub mod effort;
 pub mod envelope;
 pub mod evaluation;
+pub mod history;
 pub mod ids;
 pub mod invite;
 pub mod keys;

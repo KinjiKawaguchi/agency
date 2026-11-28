@@ -32,7 +32,7 @@ Each artifact states which contract versions it speaks, and a node says so throu
 - **Additive by default.** A change that an older peer can safely ignore or refuse needs no new contract version. It does need a rollout rule when an older peer *refuses* it (see "Signed data").
 - **Readers ignore what they do not know**, except where ignoring would be unsafe. A signed org definition is the exception: a node refuses a version with a field it does not know, because it cannot check what it cannot read (see "Signed data").
 - **A breaking change gets a new contract version, side by side with the old one.** Both are served during an overlap. The old one goes only when the rule for that boundary says nobody needs it any more, and never in the same release that adds the new one.
-- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and a test fails if an existing vector changes.
+- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and CI fails a pull request that changes or removes an existing vector (`scripts/check-vectors-append-only.sh`, which compares the file with the base branch; a new vector is added at the end). A vector that was itself a mistake is corrected only by a line `<entry>: <reason>` in `testdata/vectors-changed.txt`, which the pull request's reviewers read like code.
 
 ## Node and node (`/fed/v1`)
 
@@ -43,7 +43,7 @@ May change without a new version:
 
 Breaking, so a new `/fed/v2`:
 - removing or renaming a route or a field, or changing its type or meaning;
-- changing what a signed read covers;
+- changing what a signed read covers, other than by a new signed-text version of the read (see "Signed data"; the routes stay as they are);
 - refusing something current nodes send.
 
 Rollout of `/fed/v2`:
@@ -65,6 +65,7 @@ May change without a new version:
   - the root's node checks that every node of the org lists the capability before it signs a version that uses it, and refuses otherwise, naming the nodes that are behind;
   - The check is made on every version the root signs, before it is signed, from what the node has kept of its peers (see "Discovery"), so signing never waits for the network. The nodes it checks are those of the **new** version's teams that do not run on the root's node, and it checks, for a node already in the org, the capabilities the new version uses and the current one does not use yet: a node that cannot read a field the current version already carries refuses the current version already, and refusing every later one would not help it. A node the version **brings into** the org (a first team on it, or a team moved to it) is checked against everything the version uses, since it would refuse every version from the start. The root cannot have read such a node yet, since only nodes of the org's teams are read, so `agency team-add --node` and `agency team-move` read it first; that works because a node that joined the org holds its definition and can answer. Taking a lagging node's teams out of the org leaves it out of the check.
   - A node counts as listing nothing when it was never read, never answered, or its last answer is more than **3 days** old. The refusal names each node, says why (not read, not answered, too old, or the capability it lacks and the release it runs), and says to update those nodes and run `agency sync`, which reads them again.
+  - So one team node that never lists a capability holds back every version that would use the field, for as long as it runs teams of the org: the root signs no such version over it. The owner's remedy is to move that node's teams to another node (`agency team-move`) or to take them out of the org; both take it out of the check. There is no option to sign over a node that lags, because that would cut the node off from the org without anyone being told.
   - a client checks the same before it signs something with a new field.
   - The root can check only the nodes it can name: the nodes of the org's teams, which are the ones it sends each version to. A member's home node that hosts no team is not named in the definition, so it is not checked, and it refuses a version it cannot read until it is updated.
 
@@ -73,7 +74,12 @@ Breaking, so a new signed-text version `agency/v2/<kind>`:
 - a change to the signed text's layout;
 - a change to the meaning of an existing field.
 
-Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
+Rollout: nodes first accept both `v1` and `v2` signatures, then start writing `v2` once every reader lists it, as with `/fed/v2`.
+
+A new layout of one kind can come alone, and then it is announced by a capability (the first is `readAudience`, for `agency/v2/read`, a signed read that names the node it is for) instead of by `signedText`, which lists a version only when every kind has it. The rules for it are these:
+- The new layout has its own kind line, and a header that travels with the signed document says which text was signed (for a read, `x-agency-audience` present means `agency/v2/read`). A verifier then makes one check, and neither text can pass for the other.
+- A writer uses the new layout toward a peer only when the peer lists the capability, and the older layout otherwise.
+- A verifier takes the older layout through the overlap. It may stop earlier: for an account that has already used the new layout (the account's node speaks it, so an older signature of that account is a copy), and for every account when its owner sets so. A way to take an account's older layout again is named in the refusal's log line, for an account that has two nodes of different releases. A document signed with `v1` stays valid for as long as it is kept: old org versions are never re-signed. New vectors are added for `v2`, and the `v1` vectors stay.
 
 ## Node and team runtime (`agency-runtime/1`)
 
@@ -116,6 +122,10 @@ Rollout:
 ## Node data and configuration
 
 - `config.json` and the data directory are read by one node only. Upgrades are forward-only: a newer node reads what an older one wrote, and migrates it on start if it must. A downgrade is not supported. A newer configuration may be refused by an older node, because the configuration is read strictly so that a typo never passes silently.
+- **The data format.** The data directory holds a file `format` with one number, the layout of the directory: 1 for everything the releases so far write. A node writes it when it opens a directory that has none (a directory without the file is format 1, since every earlier release wrote format 1), and `agency init` writes it.
+  - A node that finds a number higher than it knows stops before it reads or writes anything else, in every command that uses the directory. It says that the data was written by a newer release and that the node must be updated, or the data restored from a copy made before. The message has no path and no value from the directory, and the directory is left as it was. A `format` file that holds no number is refused the same way, since the node cannot tell which release wrote the data.
+  - A `config.json` with a setting the node does not know (an unknown field or an unknown variant) is refused with a message that says it may come from a newer release, or be misspelled. The node does not start with it.
+  - The number goes up only with a release that migrates the layout, and the step that does it (with the copy of what it replaced) comes with the first migration that needs it.
 - A new configuration field is optional and has a default, so an existing `config.json` keeps working unchanged.
 - The release notes name every migration. A migration keeps what it replaced, in the data directory under a dated name, so a failed upgrade can be undone by hand.
 
@@ -156,12 +166,15 @@ Names start at what came after the first release: every node has what the first 
 | `outcomes` | feature | The owner's numbers and the readings of them. |
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
+| `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
+| `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
+| `history` | feature | An org's change history for the node's owner: `GET /api/orgs/<org>/history`, the entries of `agency audit --json`. |
 | `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
 
 ## Checks in CI
 
 - **Vectors:** `testdata/vectors.json` must stay byte-identical for every existing entry, so signatures and canonical JSON never drift.
 - **Fixtures:** `testdata/client/` must equal what the node answers.
-- **Earlier versions:** the fixtures and vectors of each released version are kept, and today's code must still decode them (an app's decoding tests, and a node's reading of older org versions and replicas).
+- **Earlier versions:** the data and fixtures of each released version are kept in `testdata/releases/<tag>/` (the last two minor releases), and today's code must still read them: `crates/agency-node/tests/earlier_releases.rs` starts today's node on the data directories two nodes of the release wrote (org versions and their signatures, replicas, the decision log, the configuration), and an app's decoding tests decode what its node answered. [releasing.md](releasing.md) says how a release is kept.
 - **Bindings:** `bindings/` must equal what the Rust types generate.
 - **Unknown words (Apple apps):** every enum the Swift package decodes reads a word it does not know as its own `unknown` (`OpenWireEnum`, or a decoder of its own with an `unknown` case), so that a new value never fails the whole answer and is never taken for a known one. `OpenWireEnumsGuardTests` reads the sources and fails for a decoded enum that does not, unless it is named there with why it is not a word of a node's (what the app keeps on the device for itself).

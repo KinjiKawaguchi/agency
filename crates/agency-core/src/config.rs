@@ -1,7 +1,9 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
 use agency_proto::client::FundingKind;
+use agency_proto::evaluation::{is_repository, MAX_REPOSITORIES};
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -166,6 +168,9 @@ pub struct NodeConfig {
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
+    /// How the node takes the signed reads of other nodes.
+    #[serde(default, skip_serializing_if = "FederationConfig::is_default")]
+    pub federation: FederationConfig,
     /// Whether the Client API and the web client admit direct local requests (loopback, a local `Host`).
     /// `false` refuses every one of them with 403, for a machine that other accounts log in to: each of them
     /// reaches the loopback address as well. The federation routes answer either way.
@@ -256,6 +261,31 @@ pub struct WebPushConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
+}
+
+impl DeliveryConfig {
+    /// Why these settings cannot be used, in words that name the setting; `at` is where they sit
+    /// (`teams[0].delivery`). The repositories are what a report names, so they have its limits: at most
+    /// `MAX_REPOSITORIES`, each written `owner/name`, none twice (GitHub names ignore case).
+    pub fn check(&self, at: &str) -> Result<(), String> {
+        if self.repos.len() > MAX_REPOSITORIES {
+            return Err(format!(
+                "{at}.repos has more than {MAX_REPOSITORIES} entries"
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for (index, repo) in self.repos.iter().enumerate() {
+            if !is_repository(repo) {
+                return Err(format!("{at}.repos[{index}] is not written owner/name"));
+            }
+            if !seen.insert(repo.to_ascii_lowercase()) {
+                return Err(format!(
+                    "{at}.repos[{index}] names a repository twice (names ignore case)"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -384,6 +414,12 @@ pub struct AccessConfig {
     /// no app association file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
+    /// Whether the app may sign in through its custom scheme (`via=scheme`), for a host that is not in the app
+    /// build's associated domains. Off by default: the scheme is delivered to the app that starts the sign-in,
+    /// whatever app that is, so an app of someone else's on the owner's device could start it and redeem the
+    /// owner's token; the universal link of `via=link` reaches only the app the association file names.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_scheme_sign_in: bool,
 }
 
 impl NodeConfig {
@@ -411,6 +447,7 @@ impl NodeConfig {
             logging: LoggingConfig::default(),
             metrics: MetricsConfig::default(),
             root_keys: RootKeyStore::Files,
+            federation: FederationConfig::default(),
             local_clients: true,
         }
     }
@@ -421,6 +458,11 @@ impl NodeConfig {
             local_clients,
             ..self
         }
+    }
+
+    /// How the node takes the signed reads of other nodes (`federation`).
+    pub fn with_federation(self, federation: FederationConfig) -> Self {
+        Self { federation, ..self }
     }
 
     /// The owner's other home nodes (`homeNodes`).
@@ -496,6 +538,25 @@ mod tests {
     }
 
     #[test]
+    fn the_apps_scheme_sign_in_is_off_unless_the_access_setting_turns_it_on() {
+        let base = r#""publicHost":"agency.example.com","teamDomain":"acme.cloudflareaccess.com","audience":"a","ownerEmail":"alice@example.com""#;
+        let without: AccessConfig = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(
+            !without.allow_scheme_sign_in,
+            "a configuration from before keeps the scheme off"
+        );
+        assert!(!serde_json::to_string(&without)
+            .unwrap()
+            .contains("allowSchemeSignIn"));
+        let with: AccessConfig =
+            serde_json::from_str(&format!("{{{base},\"allowSchemeSignIn\":true}}")).unwrap();
+        assert!(with.allow_scheme_sign_in);
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .contains("\"allowSchemeSignIn\":true"));
+    }
+
+    #[test]
     fn a_team_may_name_the_repositories_its_delivery_numbers_come_from() {
         let old = r#"{"org":"acme","team":"app","owner":"owner","runtime":{"command":["scrum","runtime"]}}"#;
         let without: HostedTeam = serde_json::from_str(old).unwrap();
@@ -523,6 +584,49 @@ mod tests {
             serde_json::from_str::<HostedTeam>(&unknown).is_err(),
             "no other key, a token least of all"
         );
+    }
+
+    #[test]
+    fn the_repositories_of_a_team_are_few_written_owner_name_and_none_twice() {
+        let delivery = |repos: &[&str]| DeliveryConfig {
+            repos: repos.iter().map(|one| (*one).to_owned()).collect(),
+        };
+        let at = "teams[1].delivery";
+        assert_eq!(delivery(&["acme/app", "acme/web"]).check(at), Ok(()));
+        assert_eq!(
+            delivery(&[]).check(at),
+            Ok(()),
+            "none is the team having no numbers, which is not this check's"
+        );
+        for (repos, wanted) in [
+            (
+                vec!["acme"],
+                "teams[1].delivery.repos[0] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "acme/web/x"],
+                "teams[1].delivery.repos[1] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "Acme/App"],
+                "teams[1].delivery.repos[1] names a repository twice",
+            ),
+            (vec!["acme/app", "acme/app"], "names a repository twice"),
+        ] {
+            let error = delivery(&repos).check(at).unwrap_err();
+            assert!(error.contains(wanted), "{error}");
+        }
+        let many: Vec<String> = (0..=MAX_REPOSITORIES)
+            .map(|n| format!("acme/r{n}"))
+            .collect();
+        let many = DeliveryConfig { repos: many };
+        assert!(many.check(at).unwrap_err().contains("more than 50"));
+        let fifty = DeliveryConfig {
+            repos: (0..MAX_REPOSITORIES)
+                .map(|n| format!("acme/r{n}"))
+                .collect(),
+        };
+        assert_eq!(fifty.check(at), Ok(()));
     }
 
     #[test]

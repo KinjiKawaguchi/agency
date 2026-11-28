@@ -2,13 +2,14 @@
 use crate::config::{HostedTeam, NodeConfig};
 use crate::error::Result;
 use crate::ports::{
-    Clock, DeliverySource, FundingSource, Journal, Notifier, Peers, Random, RootKeys, Store,
-    TeamRuntime, WriteLock,
+    Clock, DeliverySource, FundingSource, Journal, Notifier, OutboxBell, Peers, Random, RootKeys,
+    Store, TeamRuntime, WriteLock,
 };
 use agency_proto::clock::{self, OffsetDateTime};
 use agency_proto::{AccountKey, Id};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 
 pub struct Ports {
     pub store: Arc<dyn Store>,
@@ -30,6 +31,35 @@ pub struct Node {
     config: RwLock<NodeConfig>,
     /// The signed reads accepted recently, with when they were signed (see `accept_read_once`).
     reads: Mutex<HashMap<String, OffsetDateTime>>,
+    /// Rung when a parcel is queued for the background (see `set_outbox_bell`).
+    bell: OnceLock<Arc<dyn OutboxBell>>,
+    /// Held while a decision is checked against what the node already kept and queued, so that two sends
+    /// of one envelope keep one parcel. Never held across an await.
+    intake: Mutex<()>,
+    /// Serializes the writes of the accounts that read bound (`change_bound_readers`).
+    bound_readers_lock: Mutex<()>,
+    /// Whether the owner has been told that the file of those accounts cannot be read.
+    is_unreadable_said: AtomicBool,
+    /// Whether the owner has been told that the file of the origins this node has had cannot be read.
+    is_own_origins_unreadable_said: AtomicBool,
+}
+
+/// What the journal says of a file of the accounts that read bound which cannot be read.
+fn unreadable_line(error: &crate::error::Error) -> String {
+    format!(
+        "bound-readers.json cannot be read ({error}); it is left as it is, and reads that name no node are taken as before until it is mended or removed"
+    )
+}
+
+/// How many of the origins the node has been configured with are kept: the most recent. A node is renamed
+/// rarely, and a version of the org that names an origin older than these is read as naming another node.
+pub const MOST_OWN_ORIGINS: usize = 20;
+
+/// What the journal and `agency status` say of the file of the origins this node has had when it cannot be read.
+pub fn own_origins_unreadable_line(error: &crate::error::Error) -> String {
+    format!(
+        "own-origins.json cannot be read ({error}); it is left as it is, and only the origin this node is configured with now is read as its own until it is mended or removed"
+    )
 }
 
 /// At most this many recent signed reads are remembered. A signature is remembered only once it is
@@ -40,12 +70,76 @@ impl Node {
     /// `key` is this node's account key; it never leaves the node.
     pub fn open(ports: Ports, key: AccountKey) -> Result<Self> {
         let config = ports.store.load_config()?;
-        Ok(Self {
+        let node = Self {
             ports,
             key,
             config: RwLock::new(config),
             reads: Mutex::default(),
-        })
+            bell: OnceLock::new(),
+            intake: Mutex::new(()),
+            bound_readers_lock: Mutex::default(),
+            is_unreadable_said: AtomicBool::new(false),
+            is_own_origins_unreadable_said: AtomicBool::new(false),
+        };
+        node.remember_own_origin()?;
+        Ok(node)
+    }
+
+    /// Adds the origin this node is configured with now to those it has been configured with (kept: see
+    /// `own_origins`). A `url` that is no origin a client could use is not kept.
+    fn remember_own_origin(&self) -> Result<()> {
+        let Some(origin) = agency_proto::client::home_node_origin(&self.url()) else {
+            return Ok(());
+        };
+        let Ok(mut kept) = self.store().own_origins() else {
+            // Left as it is, never written over; `own_origins` says so.
+            return Ok(());
+        };
+        if kept.contains(&origin) {
+            return Ok(());
+        }
+        kept.push(origin);
+        let start = kept.len().saturating_sub(MOST_OWN_ORIGINS);
+        self.store().save_own_origins(&kept[start..])
+    }
+
+    /// The origins this node has been configured with, as `home_node_origin` writes them: the ones kept at each
+    /// start, and the one it is configured with now. A team's place that names any of them is this node, so a
+    /// version that only renames the node's own origin moves no team.
+    pub fn own_origins(&self) -> Vec<String> {
+        let mut origins = self.store().own_origins().unwrap_or_else(|error| {
+            if !self
+                .is_own_origins_unreadable_said
+                .swap(true, Ordering::Relaxed)
+            {
+                self.journal()
+                    .warn("federation", &own_origins_unreadable_line(&error));
+            }
+            vec![]
+        });
+        if let Some(now) = agency_proto::client::home_node_origin(&self.url()) {
+            if !origins.contains(&now) {
+                origins.push(now);
+            }
+        }
+        origins
+    }
+
+    /// Sets what is rung when a parcel is queued. Set once, by the process that delivers the outbox.
+    pub fn set_outbox_bell(&self, bell: Arc<dyn OutboxBell>) {
+        let _ = self.bell.set(bell);
+    }
+
+    pub(crate) fn ring_outbox_bell(&self) {
+        if let Some(bell) = self.bell.get() {
+            bell.ring();
+        }
+    }
+
+    pub(crate) fn intake(&self) -> MutexGuard<'_, ()> {
+        self.intake
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Accepts a valid signed read once. A signed read is good for `SKEW_SECONDS` either way of its
@@ -73,6 +167,47 @@ impl Node {
         }
         reads.insert(signature.to_owned(), signed_at);
         true
+    }
+
+    /// The accounts whose node signs reads that name this node (see `read_auth`). When the file that keeps them
+    /// cannot be read they are taken as none, so that reads keep being answered, and the owner is told once.
+    pub(crate) fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        self.store().bound_readers().inspect_err(|error| {
+            if !self.is_unreadable_said.swap(true, Ordering::Relaxed) {
+                self.journal().warn("federation", &unreadable_line(error));
+            }
+        })
+    }
+
+    /// Changes the accounts whose node signs reads that name this node, one change at a time, and keeps the
+    /// result in the data directory when it differs. A file that cannot be read is left as it is, never written
+    /// over, and said in the journal; a failure to keep the result is said too, and the accounts are then taken
+    /// as before.
+    pub(crate) fn change_bound_readers(&self, change: impl FnOnce(&mut BTreeSet<Id>)) {
+        let _one_at_a_time = self
+            .bound_readers_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let before = match self.store().bound_readers() {
+            Ok(before) => before,
+            Err(error) => {
+                self.journal().warn("federation", &unreadable_line(&error));
+                return;
+            }
+        };
+        let mut after = before.clone();
+        change(&mut after);
+        if after == before {
+            return;
+        }
+        if let Err(error) = self.store().save_bound_readers(&after) {
+            self.journal().warn(
+                "federation",
+                &format!(
+                    "could not keep which accounts read in the form that names this node: {error}"
+                ),
+            );
+        }
     }
 
     pub fn store(&self) -> &dyn Store {
@@ -147,7 +282,9 @@ impl Node {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         edit(&mut guard);
-        self.ports.store.save_config(&guard)
+        self.ports.store.save_config(&guard)?;
+        drop(guard);
+        self.remember_own_origin()
     }
 
     /// The team, if this node serves it: it is in the node's own hosted-team configuration, and in the

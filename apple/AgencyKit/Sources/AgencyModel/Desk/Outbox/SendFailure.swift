@@ -14,8 +14,9 @@ public enum SendFailure: Equatable, Sendable {
 
     public static func of(_ error: Error) -> SendFailure {
         switch error {
-        case NodeError.sessionExpired, NodeError.notSignedIn, NodeError.http(status: 401, _):
-            // The gate does not know the token: signing in again mends it, and the decision is kept for that.
+        case NodeError.sessionExpired, NodeError.notSignedIn:
+            // The Access sign-in ended: the gate answers with a redirect, which the client reads as `sessionExpired`. A 401 from the node is
+            // not this: on an envelope it says the signing device is not (or no longer) the account's, which sending again will not change.
             return .signInEnded
         case NodeError.unreadable:
             return .taken

@@ -72,6 +72,7 @@ version = "0.3.0"
 dependencies = [
  "agency-proto",
  "async-trait",
+ "futures-util",
  "serde",
  "serde_json",
 ]

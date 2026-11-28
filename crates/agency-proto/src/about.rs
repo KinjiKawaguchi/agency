@@ -152,12 +152,18 @@ pub enum Capability {
     PushDevice,
     /// Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and the federation read of it.
     Effort,
+    /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
+    ReadAudience,
+    /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
+    Budget,
+    /// An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.
+    History,
     /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
     ClaimLinks,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 13] = [
+    pub const ALL: [Capability; 16] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -170,6 +176,9 @@ impl Capability {
         Capability::Outcomes,
         Capability::PushDevice,
         Capability::Effort,
+        Capability::ReadAudience,
+        Capability::Budget,
+        Capability::History,
         Capability::ClaimLinks,
     ];
 
@@ -187,6 +196,9 @@ impl Capability {
             Capability::Outcomes => "outcomes",
             Capability::PushDevice => "pushDevice",
             Capability::Effort => "effort",
+            Capability::ReadAudience => "readAudience",
+            Capability::Budget => "budget",
+            Capability::History => "history",
             Capability::ClaimLinks => "claimLinks",
         }
     }

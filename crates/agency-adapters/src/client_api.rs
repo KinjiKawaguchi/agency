@@ -16,9 +16,11 @@ use crate::launch::Launch;
 use crate::server::status_of;
 use agency_core::about;
 use agency_core::activity::team_activity;
-use agency_core::client::{home_nodes, me, org_definition, submit_signed_decision, team_snapshot};
+use agency_core::client::{
+    decision_entry, home_nodes, me, org_definition, submit_signed_decision, team_snapshot,
+};
 use agency_core::clients_seen;
-use agency_core::devices::{device_list, request_device};
+use agency_core::devices::{device_list, request_device_as};
 use agency_core::effort::org_effort;
 use agency_core::evaluation::org_evaluation;
 use agency_core::guests::{Caller, Guest};
@@ -27,11 +29,11 @@ use agency_core::usage::team_usage;
 use agency_core::web_push::{
     register_subscription_as, remove_subscription_as, subscriptions_of, vapid_key,
 };
-use agency_core::{Error, Node};
+use agency_core::{Error, ErrorKind, Node};
 use agency_proto::claim::ClaimInput;
 use agency_proto::client::{
-    DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput, PushTokenInput, Session,
-    SignedDecisionInput,
+    DecisionOutcome, DeviceList, DeviceRequestInput, NodeInfo, PushSubscriptionInput,
+    PushTokenInput, Session, SignedDecisionInput,
 };
 use agency_proto::client_version::{self, Platform};
 use agency_proto::clock::{Duration, OffsetDateTime};
@@ -52,6 +54,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 mod claimants;
 mod guests;
+mod history;
 mod metrics;
 mod outcomes;
 mod telemetry;
@@ -135,7 +138,8 @@ pub(crate) fn header_text(headers: &HeaderMap, name: impl header::AsHeaderName) 
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-fn is_via_cloudflare(headers: &HeaderMap) -> bool {
+/// Whether the request came through Cloudflare (its tunnel or proxy adds these headers).
+pub fn is_via_cloudflare(headers: &HeaderMap) -> bool {
     headers.contains_key("cf-ray") || headers.contains_key("cf-connecting-ip")
 }
 
@@ -394,6 +398,12 @@ async fn get_decisions(
     json_response(StatusCode::OK, &log)
 }
 
+/// One decision of the account with where it is now, which a client that sent it reads until it is applied,
+/// delivered, or refused.
+async fn get_decision(State(api): Shared, Path(id): Path<String>) -> Response {
+    respond(decision_entry(&api.node, &id))
+}
+
 async fn get_org(State(api): Shared, Path(org): Path<String>) -> Response {
     respond(parse_id(&org).and_then(|org| org_definition(&api.node, &org)))
 }
@@ -431,6 +441,14 @@ async fn get_usage(
         Some(Err(_)) => return refuse(StatusCode::BAD_REQUEST, "days must be a number"),
     };
     let result = async { team_usage(&api.node, &parse_id(&org)?, &parse_id(&team)?, days).await };
+    respond(result.await)
+}
+
+/// A team's weekly budget status: this week's spend of the team and of the org against their caps.
+async fn get_budget(State(api): Shared, Path((org, team)): Path<(String, String)>) -> Response {
+    let result = async {
+        crate::budget::budget_status(&api.node, &parse_id(&org)?, &parse_id(&team)?).await
+    };
     respond(result.await)
 }
 
@@ -504,13 +522,30 @@ async fn post_envelope(
     Path((org, team)): Path<(String, String)>,
     bytes: Bytes,
 ) -> Response {
-    let result = async {
+    let result = (|| {
         let (org, team) = (parse_id(&org)?, parse_id(&team)?);
         let input: SignedDecisionInput = json_body(&bytes, "signed decision")?;
-        submit_signed_decision(&api.node, &caller_of(&admitted), &org, &team, input).await
-    };
-    respond(result.await)
+        submit_signed_decision(&api.node, &caller_of(&admitted), &org, &team, input)
+    })();
+    match result {
+        Ok(result) if result.outcome == DecisionOutcome::Queued => {
+            json_response(StatusCode::ACCEPTED, &result)
+        }
+        Ok(result) => json_response(StatusCode::OK, &result),
+        Err(error) if error.kind == ErrorKind::Unavailable => {
+            let mut response = refuse(StatusCode::SERVICE_UNAVAILABLE, &error.message);
+            response.headers_mut().insert(
+                header::RETRY_AFTER,
+                HeaderValue::from_static(KEEP_RETRY_AFTER_SECONDS),
+            );
+            response
+        }
+        Err(error) => refuse(status_of(error.kind), &error.message),
+    }
 }
+
+/// What a client is told to wait before it sends a decision again that this node could not keep.
+const KEEP_RETRY_AFTER_SECONDS: &str = "5";
 
 /// Who the request acts as: a guest as its hosted member, anyone else admitted as the node's own account.
 fn caller_of(admitted: &Admitted) -> Caller {
@@ -607,10 +642,15 @@ async fn post_claim(
     respond(result)
 }
 
-/// A new device asks to be added; the answer carries its pairing code.
-async fn post_device_request(State(api): Shared, bytes: Bytes) -> Response {
+/// A new device asks to be added, for the owner's account or for the guest's hosted member; the answer
+/// carries its pairing code.
+async fn post_device_request(
+    State(api): Shared,
+    Extension(admitted): Extension<Admitted>,
+    bytes: Bytes,
+) -> Response {
     let result = json_body::<DeviceRequestInput>(&bytes, "device request")
-        .and_then(|input| request_device(&api.node, input));
+        .and_then(|input| request_device_as(&api.node, &caller_of(&admitted), input));
     respond(result)
 }
 
@@ -793,6 +833,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/me"),
     ("GET", "/api/session"),
     ("GET", "/api/decisions"),
+    ("GET", "/api/decisions/{id}"),
     ("GET", "/api/devices"),
     ("GET", "/api/claim"),
     ("POST", "/api/claim"),
@@ -808,6 +849,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/orgs/{org}"),
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("GET", "/api/orgs/{org}/teams/{team}/usage"),
+    ("GET", "/api/orgs/{org}/teams/{team}/budget"),
     ("GET", "/api/orgs/{org}/evaluation"),
     ("GET", "/api/orgs/{org}/effort"),
     ("GET", "/api/orgs/{org}/teams/{team}/activity"),
@@ -826,10 +868,11 @@ pub fn guest_routes() -> Vec<(&'static str, &'static str)> {
     guests::GUEST_ROUTES.to_vec()
 }
 
-/// Every route behind the guard, this module's and its parts' (outcomes, metrics, telemetry), by method and path.
+/// Every route behind the guard, this module's and its parts' (history, outcomes, metrics, telemetry), by method and path.
 pub fn routes_behind_the_guard() -> Vec<(&'static str, &'static str)> {
-    let parts = outcomes::ROUTES
+    let parts = history::ROUTES
         .iter()
+        .chain(outcomes::ROUTES)
         .chain(metrics::ROUTES)
         .chain(telemetry::ROUTES);
     ROUTES.iter().chain(parts).copied().collect()
@@ -842,6 +885,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/me" => get(get_me),
         "/api/session" => get(get_session),
         "/api/decisions" => get(get_decisions),
+        "/api/decisions/{id}" => get(get_decision),
         "/api/devices" => get(get_devices),
         "/api/claim" => get(get_claim).post(post_claim),
         "/api/push/tokens" => get(get_push_tokens).post(post_push_token),
@@ -854,6 +898,7 @@ fn method_router(path: &str) -> MethodRouter<Arc<ClientApi>> {
         "/api/orgs/{org}" => get(get_org),
         "/api/orgs/{org}/teams/{team}/view" => get(get_team),
         "/api/orgs/{org}/teams/{team}/usage" => get(get_usage),
+        "/api/orgs/{org}/teams/{team}/budget" => get(get_budget),
         "/api/orgs/{org}/evaluation" => get(get_evaluation),
         "/api/orgs/{org}/effort" => get(get_effort),
         "/api/orgs/{org}/teams/{team}/activity" => get(get_activity),
@@ -870,7 +915,8 @@ pub fn router(api: Arc<ClientApi>) -> Router {
     let own = paths.into_iter().fold(Router::new(), |router, path| {
         router.route(path, method_router(path))
     });
-    own.merge(outcomes::routes(api.clone()))
+    own.merge(history::routes(api.clone()))
+        .merge(outcomes::routes(api.clone()))
         .merge(metrics::routes(api.clone()))
         .merge(telemetry::routes())
         .fallback(page)
