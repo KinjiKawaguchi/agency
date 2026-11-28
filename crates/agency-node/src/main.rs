@@ -107,6 +107,15 @@ enum Command {
     SeatRemove(seat_cli::SeatRemove),
     MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
+    /// Makes a seven-day claim link for one seat and one email (on the root key's node)
+    SeatInvite {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        email: String,
+    },
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -619,6 +628,17 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::SeatInvite { org, seat, email } => {
+            let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
+            println!("{}", invite.link);
+            println!(
+                "Add {} to the Access policy by hand; the node does not change Access.",
+                invite.email
+            );
+            if invite.local_only {
+                println!("This link works on this machine only.");
+            }
+        }
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
