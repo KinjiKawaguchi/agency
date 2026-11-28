@@ -1,0 +1,29 @@
+{
+  "node": {
+    "command": "/opt/agency/bin/agency --dir /var/lib/agency device-add",
+    "dataDir": "/var/lib/agency",
+    "url": "http://127.0.0.1:7701"
+  },
+  "orgs": [
+    {
+      "devices": [
+        {
+          "addedAt": "2026-11-24T12:00:00Z",
+          "id": "d-dbc298251c51",
+          "label": "Laptop",
+          "publicKey": "/RckOFqgx1tk+3jNYC+h2ZH96/drE8WO1wLqyDXp9hg="
+        }
+      ],
+      "org": "acme"
+    }
+  ],
+  "requests": [
+    {
+      "deviceId": "d-506ef1879d74",
+      "label": "iPhone",
+      "pairingCode": "506e-f187-9d74",
+      "publicKey": "Q6cucUQBdi32a2jCbfvfJoKq7J8kdOykYT5CSg+6/Tw=",
+      "requestedAt": "2026-11-24T12:00:00Z"
+    }
+  ]
+}

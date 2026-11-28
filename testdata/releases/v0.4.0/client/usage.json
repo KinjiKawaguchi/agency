@@ -1,0 +1,55 @@
+{
+  "byDay": [
+    {
+      "costUsd": {
+        "backend": 6.4,
+        "lead": 3.15
+      },
+      "date": "2026-11-23"
+    },
+    {
+      "costUsd": {
+        "backend": 2.05,
+        "lead": 1.2,
+        "reviewer": 0.5
+      },
+      "date": "2026-11-24"
+    }
+  ],
+  "byPerson": [
+    {
+      "costUsd": 8.45,
+      "person": "backend",
+      "tokens": {
+        "cacheRead": 2400000,
+        "cacheWrite": 180000,
+        "input": 120000,
+        "output": 45000
+      }
+    },
+    {
+      "costUsd": 4.35,
+      "person": "lead",
+      "tokens": {
+        "cacheRead": 1300000,
+        "cacheWrite": 90000,
+        "input": 60000,
+        "output": 21000
+      }
+    },
+    {
+      "costUsd": 0.5,
+      "person": "reviewer",
+      "tokens": {
+        "cacheRead": 150000,
+        "cacheWrite": 12000,
+        "input": 8000,
+        "output": 3000
+      }
+    }
+  ],
+  "days": 7,
+  "generatedAt": "2026-11-24T12:00:00Z",
+  "org": "acme",
+  "team": "app"
+}

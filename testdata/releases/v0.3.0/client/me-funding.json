@@ -1,0 +1,50 @@
+{
+  "account": {
+    "fingerprint": "34750f98bd59fcfc946da45aaabe933b",
+    "id": "alice",
+    "label": "ALICE"
+  },
+  "funding": [
+    {
+      "id": "max",
+      "kind": "subscription",
+      "label": "Max",
+      "readAt": "2026-11-24T11:57:00Z",
+      "windows": [
+        {
+          "lengthHours": 5,
+          "name": "fiveHour",
+          "resetsAt": "2026-11-24T15:00:00Z",
+          "utilization": 42
+        },
+        {
+          "lengthHours": 168,
+          "name": "sevenDay",
+          "resetsAt": "2026-11-30T00:00:00Z",
+          "utilization": 63
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "kind": "apiKey",
+      "label": "API",
+      "windows": []
+    }
+  ],
+  "orgs": [
+    {
+      "id": "acme",
+      "isRoot": true,
+      "label": "Acme",
+      "teams": [
+        {
+          "id": "app",
+          "label": "app",
+          "location": "local",
+          "viewer": "owner"
+        }
+      ]
+    }
+  ]
+}
