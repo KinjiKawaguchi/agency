@@ -47,6 +47,30 @@ pub struct DayEvaluation {
     pub issue_lead_seconds: Vec<u64>,
 }
 
+/// The lead times of the period's new features alone: the pull requests whose work type is new feature
+/// (the board's "Work type" of the issue they close, else the title's `feat`; a revert is none). It is the
+/// number new-feature speed is read from, since the summary's lead times are over every pull request. A
+/// median or p90 is left out when there are no samples, as in `EvaluationSummary`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct NewFeatureSummary {
+    /// The new features merged in the period.
+    pub merged: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub pr_lead_median_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub pr_lead_p90_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub issue_lead_median_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub issue_lead_p90_seconds: Option<u64>,
+}
+
 /// The numbers for the whole period, worked out by the node so that a screen and an agent that cites
 /// them agree. A median or p90 is left out when there are no samples. The p90 is the nearest rank
 /// (`sorted[ceil(0.9 n) - 1]`); the median of an even count is the mean of the two middle samples,
@@ -78,6 +102,9 @@ pub struct EvaluationSummary {
     /// usage is per day, so there is no per-pull-request attribution. Left out when nothing merged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_per_merged_pr_usd: Option<f64>,
+    /// The lead times of the new features alone; left out when none merged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_feature: Option<NewFeatureSummary>,
 }
 
 /// One participant's numbers over the period, added up from the team runtime's `participantMetrics` and
@@ -310,6 +337,33 @@ fn merged_total(summary: &EvaluationSummary) -> u64 {
     .sum()
 }
 
+/// Checks that the new features are no more than the pull requests the summary counts by type.
+fn check_new_feature(summary: &EvaluationSummary) -> Result<(), String> {
+    let Some(features) = &summary.new_feature else {
+        return Ok(());
+    };
+    let counts = summary.merged;
+    let typed: u64 = [
+        counts.feat,
+        counts.fix,
+        counts.refactor,
+        counts.docs,
+        counts.test,
+        counts.chore,
+        counts.other,
+    ]
+    .iter()
+    .map(|count| u64::from(*count))
+    .sum();
+    if features.merged == 0 {
+        return Err("reported a new-feature part with no new feature".into());
+    }
+    if u64::from(features.merged) > typed {
+        return Err("reported more new features than pull requests merged".into());
+    }
+    Ok(())
+}
+
 /// Checks a team's participants: each named and listed once, no more time than the period holds (the three
 /// times of a participant add up to at most `days` times 86 400 seconds), costs that are numbers not
 /// negative, and their merged pull requests, with the unattributed ones, adding up to the summary's.
@@ -440,6 +494,7 @@ impl Evaluation {
             let mut costs: Vec<f64> = team.by_day.iter().map(|day| day.cost_usd).collect();
             costs.extend(team.summary.cost_per_merged_pr_usd);
             check_days(&dates, &team.from, &team.until, &costs, days)?;
+            check_new_feature(&team.summary)?;
             check_participants(team, days)?;
             check_by_repository(team)?;
         }
@@ -460,6 +515,41 @@ mod tests {
 
     fn acme() -> Id {
         Id::parse("acme").unwrap()
+    }
+
+    #[test]
+    fn a_new_feature_part_without_a_new_feature_is_refused() {
+        let mut report = sample();
+        report.teams[0].summary.new_feature.as_mut().unwrap().merged = 0;
+        assert!(report
+            .check(&acme(), 14)
+            .unwrap_err()
+            .contains("no new feature"));
+    }
+
+    #[test]
+    fn more_new_features_than_pull_requests_merged_is_refused() {
+        let acme = acme();
+        let mut report = sample();
+        let summary = &mut report.teams[0].summary;
+        let typed = summary.merged.feat
+            + summary.merged.fix
+            + summary.merged.refactor
+            + summary.merged.docs
+            + summary.merged.test
+            + summary.merged.chore
+            + summary.merged.other;
+        summary.new_feature.as_mut().unwrap().merged = typed;
+        assert_eq!(
+            report.check(&acme, 14),
+            Ok(()),
+            "all of them may be features"
+        );
+        report.teams[0].summary.new_feature.as_mut().unwrap().merged = typed + 1;
+        assert!(report
+            .check(&acme, 14)
+            .unwrap_err()
+            .contains("more new features"));
     }
 
     #[test]
