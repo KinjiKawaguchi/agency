@@ -32,7 +32,7 @@ BREAKING CHANGE: client API: the desk answer no longer has a `pending` field
 
 1. Merge pull requests as usual. The pull request title is the commit title (a squash merge), so it must follow Conventional Commits.
 2. release-please keeps one open pull request for the node, **chore: release X.Y.Z**, that raises the version in `Cargo.toml`, and in the web client's `package.json` and `package-lock.json`, and adds the new section of `CHANGELOG.md`. A second job of the same workflow adds a commit that brings the workspace crates' versions in `Cargo.lock` up to date (release-please cannot do that itself). The pull request updates itself after each merge to `main`.
-3. To release, merge that pull request. release-please then tags `vX.Y.Z` and makes the GitHub Release with the changelog section as its notes.
+3. To release, merge that pull request. release-please then tags `vX.Y.Z` and makes the GitHub Release with the changelog section as its notes. The pull request is updated by release-please with the workflow's own token, and what that token pushes starts no workflow, so after each merge to `main` its new head has no CI run, and the required checks cannot report on it. Close the pull request and reopen it (`gh pr close` and `gh pr reopen`): a person's reopening starts CI on the current `main`. Do this after the last merge to `main` before the release, wait for the checks, and merge it after a reviewer's go, as any pull request (the reviewer sets `merge-ready`, which puts it in the merge queue). If another pull request lands on `main` meanwhile, the pull request is updated again and needs closing and reopening once more.
 4. The `release` workflow builds the node for Linux (x86_64 and arm64) from the tag and attaches each tarball and Debian package, with their `.sha256` files, to the release, with the SBOMs and the signed `SHA256SUMS` (see "What a release holds").
 5. The macOS builds are made on a Mac, never on a GitHub runner. After step 4, on a Mac with the repository, Rust, and Node installed:
 
@@ -48,7 +48,7 @@ The script refuses a tree that is not at the tag, builds the web client and the 
 
 The macOS binaries are not signed and not notarized. A browser download is quarantined by macOS and will not open until `xattr -d com.apple.quarantine agency` (`gh release download` and `curl` do not quarantine).
 
-6. Keep what the release wrote: `scripts/release/snapshot-data.sh vX.Y.Z`, in a pull request of its own (see "Keeping what the release wrote" below).
+7. Keep what the release wrote: `scripts/release/snapshot-data.sh vX.Y.Z`, in a pull request of its own (see "Keeping what the release wrote" below).
 
 ## Keeping what the release wrote
 
@@ -123,5 +123,5 @@ CI fails a change that takes the lists, the checksums, or the signature out of t
 ## Settings it needs
 
 - Settings, Actions, General: **Allow GitHub Actions to create and approve pull requests** is on (release-please opens its pull request with the workflow's own token). The default token permissions stay read-only; the workflows ask for what they need.
-- A pull request made with the workflow's own token does not start other workflows, so the release pull request has no CI run. It changes only versions and the changelog.
+- A pull request made with the workflow's own token does not start other workflows, and neither does what that token pushes to it, so the release pull request has no CI run of its own. It changes only versions and the changelog; its checks run when a person closes and reopens it (step 3 of "How a release is made").
 - The first release, 0.1.0, counted the pull requests merged from the day releases were set up; the history before it is in `git log`.
