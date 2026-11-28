@@ -35,7 +35,7 @@ fn names_in(teams: &[&HostedTeam], ids: &[&Id]) -> Vec<RuntimeNames> {
 }
 
 fn departments(body: &OrgDefinition) -> Vec<DirectoryDepartment> {
-    let departments = body.departments.iter();
+    let departments = body.groups();
     departments
         .map(|one| DirectoryDepartment {
             id: one.id.clone(),

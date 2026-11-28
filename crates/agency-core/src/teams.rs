@@ -17,7 +17,7 @@ fn not_in_org(team: &Id, org: &Id) -> Error {
 pub fn set_label(node: &Node, org: &Id, team: &Id, label: String) -> Result<SignedOrg> {
     amend(node, org, |body| {
         let place = body
-            .teams
+            .teams_mut()
             .iter_mut()
             .find(|place| &place.id == team)
             .ok_or_else(|| not_in_org(team, org))?;
@@ -45,9 +45,10 @@ pub fn remove(node: &Node, org: &Id, team: &Id) -> Result<SignedOrg> {
         ));
     }
     amend(node, org, |body| {
-        let before = body.teams.len();
-        body.teams.retain(|place| &place.id != team);
-        if body.teams.len() == before {
+        let teams = body.teams_mut();
+        let before = teams.len();
+        teams.retain(|place| &place.id != team);
+        if teams.len() == before {
             return Err(not_in_org(team, org));
         }
         Ok(())

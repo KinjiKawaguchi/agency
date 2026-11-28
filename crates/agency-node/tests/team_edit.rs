@@ -77,7 +77,7 @@ async fn a_team_taken_out_of_the_config_is_removed_in_one_version() {
         .update_config(|config| config.teams.clear())
         .unwrap();
     teams::remove(&alice.node, &id("acme"), &id("app")).unwrap();
-    assert!(body(&alice).teams.is_empty());
+    assert!(body(&alice).teams().next().is_none());
 }
 
 #[tokio::test]

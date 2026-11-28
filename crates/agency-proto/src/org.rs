@@ -319,11 +319,11 @@ pub struct OrgDefinition {
     pub prev: Option<String>,
     pub root: Root,
     #[serde(default)]
-    pub departments: Vec<Department>,
+    pub(crate) departments: Vec<Department>,
     #[serde(default)]
     pub people: Vec<Person>,
     #[serde(default)]
-    pub teams: Vec<TeamPlace>,
+    pub(crate) teams: Vec<TeamPlace>,
     #[serde(default)]
     pub revoked: Vec<PublicKey>,
     /// What the org measures: labels and ids only, never a number. Left out when empty, so a version signed
@@ -567,10 +567,6 @@ impl OrgDefinition {
             return Err("a device has a malformed label, a repeated id or key, or a key that is an account, root, or revoked key".into());
         }
         Ok(())
-    }
-
-    pub fn team(&self, id: &Id) -> Option<&TeamPlace> {
-        self.teams.iter().find(|one| &one.id == id)
     }
 
     /// Checks the shape: label lengths, duplicate ids, and that departments, heads, people, and team places refer to each other correctly.

@@ -198,7 +198,7 @@ async fn the_nodes_checked_are_those_of_the_version_being_signed_not_of_the_one_
     // One version that adds a team on a node never read and a KPI: that node is one that reads it.
     let carol = TeamPlace::new(id("mobile"), "Mobile", "http://127.0.0.1:1");
     let refused = orgs::amend(&alice.node, &id("acme"), |body| {
-        body.teams.push(carol);
+        body.teams_mut().push(carol);
         body.kpis.push(kpi("revenue"));
         Ok(())
     })
@@ -211,7 +211,7 @@ async fn the_nodes_checked_are_those_of_the_version_being_signed_not_of_the_one_
 
     // One version that takes bob's team out and adds a KPI: bob does not read it, so it does not hold it back.
     let both = orgs::amend(&alice.node, &id("acme"), |body| {
-        body.teams.retain(|team| team.id != id("web"));
+        body.teams_mut().retain(|team| team.id != id("web"));
         body.kpis.push(kpi("activation"));
         Ok(())
     });

@@ -21,7 +21,7 @@ fn not_found(what: &str, id: &Id, org: &Id) -> Error {
 /// The parent is a department of the org, and the head one of its members (by member id).
 fn check_links(body: &OrgDefinition, department: &Department) -> Result<()> {
     if let Some(parent) = &department.parent {
-        if !body.departments.iter().any(|one| &one.id == parent) {
+        if body.group(parent).is_none() {
             return Err(not_found("department", parent, &body.org));
         }
     }
@@ -35,14 +35,14 @@ fn check_links(body: &OrgDefinition, department: &Department) -> Result<()> {
 
 pub fn add(node: &Node, org: &Id, department: Department) -> Result<SignedOrg> {
     amend(node, org, |body| {
-        if body.departments.iter().any(|one| one.id == department.id) {
+        if body.group(&department.id).is_some() {
             return Err(Error::new(
                 ErrorKind::Conflict,
                 format!("department {} already exists", department.id),
             ));
         }
         check_links(body, &department)?;
-        body.departments.push(department);
+        body.departments_mut().push(department);
         Ok(())
     })
 }
@@ -52,11 +52,11 @@ pub fn add(node: &Node, org: &Id, department: Department) -> Result<SignedOrg> {
 pub fn change(node: &Node, org: &Id, id: &Id, change: Change) -> Result<SignedOrg> {
     amend(node, org, |body| {
         let index = body
-            .departments
+            .departments_mut()
             .iter()
             .position(|one| &one.id == id)
             .ok_or_else(|| not_found("department", id, org))?;
-        let mut department = body.departments[index].clone();
+        let mut department = body.departments_mut()[index].clone();
         if let Some(label) = change.label {
             department.label = label;
         }
@@ -67,7 +67,7 @@ pub fn change(node: &Node, org: &Id, id: &Id, change: Change) -> Result<SignedOr
             department.head = head;
         }
         check_links(body, &department)?;
-        body.departments[index] = department;
+        body.departments_mut()[index] = department;
         Ok(())
     })
 }
@@ -75,14 +75,14 @@ pub fn change(node: &Node, org: &Id, id: &Id, change: Change) -> Result<SignedOr
 /// Removes a department that nothing is in: no department under it, and no member, seat, or team in it.
 pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
     amend(node, org, |body| {
-        if !body.departments.iter().any(|one| &one.id == id) {
+        if body.group(id).is_none() {
             return Err(not_found("department", id, org));
         }
         let is_here = |department: &Option<Id>| department.as_ref() == Some(id);
-        let children = body.departments.iter().filter(|one| is_here(&one.parent));
+        let children = body.groups().filter(|one| is_here(&one.parent));
         let people = body.people.iter().filter(|one| is_here(&one.department));
         let seats = body.seats.iter().filter(|one| is_here(&one.department));
-        let teams = body.teams.iter().filter(|one| is_here(&one.department));
+        let teams = body.teams().filter(|one| is_here(&one.department));
         let in_it: Vec<String> = children
             .map(|one| format!("department {}", one.id))
             .chain(people.map(|one| format!("member {}", one.id)))
@@ -95,7 +95,7 @@ pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
                 format!("department {id} still holds {}", in_it.join(", ")),
             ));
         }
-        body.departments.retain(|one| &one.id != id);
+        body.departments_mut().retain(|one| &one.id != id);
         Ok(())
     })
 }
@@ -104,12 +104,12 @@ pub fn remove(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {
 pub fn place_team(node: &Node, org: &Id, team: &Id, department: Option<Id>) -> Result<SignedOrg> {
     amend(node, org, |body| {
         if let Some(department) = &department {
-            if !body.departments.iter().any(|one| &one.id == department) {
+            if body.group(department).is_none() {
                 return Err(not_found("department", department, org));
             }
         }
         let place = body
-            .teams
+            .teams_mut()
             .iter_mut()
             .find(|one| &one.id == team)
             .ok_or_else(|| not_found("team", team, org))?;
@@ -138,7 +138,7 @@ pub fn plan_team(node: &Node, org: &Id, team: &Id, plan: Option<TeamPlan>) -> Re
     }
     amend(node, org, |body| {
         let place = body
-            .teams
+            .teams_mut()
             .iter_mut()
             .find(|one| &one.id == team)
             .ok_or_else(|| not_found("team", team, org))?;

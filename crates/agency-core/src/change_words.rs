@@ -188,16 +188,16 @@ fn all_changes(before: &OrgDefinition, after: &OrgDefinition) -> Vec<Change> {
     member_changes(before, after, &mut changes);
     compare(
         "department",
-        &before.departments,
-        &after.departments,
+        &before.groups().collect::<Vec<_>>(),
+        &after.groups().collect::<Vec<_>>(),
         |one| &one.id,
         |one| &one.label,
         &mut changes,
     );
     compare(
         "team",
-        &before.teams,
-        &after.teams,
+        &before.teams().collect::<Vec<_>>(),
+        &after.teams().collect::<Vec<_>>(),
         |one| &one.id,
         |one| &one.label,
         &mut changes,

@@ -236,8 +236,7 @@ fn staleness(
             let latest = node.store().load_org(&doc.body.org)?;
             let is_placed = latest
                 .body
-                .teams
-                .iter()
+                .teams()
                 .any(|team| is_same_node(&team.node, &parcel.to));
             let is_older_than_a_waiting_one = newest
                 .get(&doc.body.org)
