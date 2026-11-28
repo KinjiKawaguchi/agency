@@ -88,6 +88,98 @@ async fn since_keeps_the_later_versions_as_the_command_does() {
     assert_eq!(status, 400, "{answer}");
 }
 
+/// alice's org with the versions of `with_guest` and three more, each signed two minutes after the one before.
+async fn alice_with_many_versions() -> Running {
+    let (alice, _) = with_guest().await;
+    for team in ["web", "api", "ops"] {
+        alice.clock.advance(Duration::minutes(2));
+        let place = TeamPlace::new(id(team), team, alice.url());
+        orgs::add_team(&alice.node, &id("acme"), place).unwrap();
+    }
+    alice
+}
+
+async fn entries_of(alice: &Running, query: &str) -> (Vec<Value>, bool) {
+    let (status, answer) = read(alice, OWNER, query).await;
+    assert_eq!(status, 200, "{query}: {answer}");
+    let entries = answer["entries"].as_array().unwrap().clone();
+    (entries, answer.get("more").is_some_and(|more| more == true))
+}
+
+#[tokio::test]
+async fn a_limit_cuts_the_answer_says_there_is_more_and_after_gives_the_rest() {
+    let alice = alice_with_many_versions().await;
+    let (all, more) = entries_of(&alice, "").await;
+    assert!(all.len() >= 5 && !more, "the whole history, with no flag");
+    assert!(
+        read(&alice, OWNER, "").await.1.get("more").is_none(),
+        "more is left out when there is none"
+    );
+
+    let mut joined: Vec<Value> = vec![];
+    let mut after = 0;
+    loop {
+        let (page, more) = entries_of(&alice, &format!("?limit=2&after={after}")).await;
+        assert!(page.len() <= 2, "{page:?}");
+        assert!(page
+            .iter()
+            .all(|entry| entry["version"].as_u64().unwrap() > after));
+        joined.extend(page.clone());
+        if !more {
+            break;
+        }
+        assert_eq!(page.len(), 2, "a cut page is a full one");
+        after = page.last().unwrap()["version"].as_u64().unwrap();
+    }
+
+    assert_eq!(joined, all, "the pages, joined, are the whole history");
+    let (exact, more) = entries_of(&alice, &format!("?limit={}", all.len())).await;
+    assert_eq!(
+        (exact.len(), more),
+        (all.len(), false),
+        "nothing left out, no flag"
+    );
+}
+
+#[tokio::test]
+async fn since_and_after_together_equal_the_whole_history_cut_afterwards() {
+    let alice = alice_with_many_versions().await;
+    let (all, _) = entries_of(&alice, "").await;
+    let at = all[all.len() - 3]["at"].as_str().unwrap().to_owned();
+    let after = all[all.len() - 2]["version"].as_u64().unwrap();
+
+    let (cut, more) = entries_of(&alice, &format!("?since={at}&after={after}")).await;
+
+    let wanted: Vec<Value> = all
+        .iter()
+        .filter(|entry| {
+            entry["version"].as_u64().unwrap() > after
+                && entry["at"].as_str().unwrap() >= at.as_str()
+        })
+        .cloned()
+        .collect();
+    assert!(!wanted.is_empty() && wanted.len() < all.len());
+    assert_eq!((cut, more), (wanted, false));
+}
+
+#[tokio::test]
+async fn a_limit_or_an_after_that_is_not_allowed_is_400() {
+    let alice = alice_with_many_versions().await;
+    for query in [
+        "?limit=0",
+        "?limit=1001",
+        "?limit=many",
+        "?limit=-1",
+        "?after=first",
+        "?after=-1",
+    ] {
+        let (status, answer) = read(&alice, OWNER, query).await;
+        assert_eq!(status, 400, "{query}: {answer}");
+    }
+    let (status, _) = read(&alice, OWNER, "?limit=1000").await;
+    assert_eq!(status, 200, "the most is allowed");
+}
+
 #[tokio::test]
 async fn an_org_this_node_does_not_have_is_not_found() {
     let (alice, _) = with_guest().await;
