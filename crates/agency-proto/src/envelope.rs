@@ -7,6 +7,12 @@ use ts_rs::TS;
 pub const MAX_TEXT: usize = 4000;
 /// How long after it was made an envelope is still accepted (long enough for a sleeping node to wake up and deliver it).
 pub const MAX_AGE_SECONDS: i64 = 7 * 24 * 60 * 60;
+/// How far ahead of the node's clock an envelope's time may be (clock skew).
+pub const MAX_AHEAD_SECONDS: i64 = 5 * 60;
+/// How long a node must remember that it applied an envelope. An envelope made at `at` is accepted until `at` plus
+/// `MAX_AGE_SECONDS`, and `at` is at most `MAX_AHEAD_SECONDS` after the moment the node applied it, so after this
+/// long the envelope is refused as expired before the applied set is asked, and its id need not be kept.
+pub const REPLAY_WINDOW_SECONDS: i64 = MAX_AGE_SECONDS + MAX_AHEAD_SECONDS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -79,10 +85,74 @@ impl Envelope {
     }
 }
 
+/// Whether an envelope id recorded as applied at `recorded_at` may still be sent again at `now`, so that its id has
+/// to be kept. A time that does not parse is kept: it is never wrongly forgotten.
+pub fn is_still_replayable(recorded_at: &str, now: time::OffsetDateTime) -> bool {
+    clock::parse(recorded_at).is_none_or(|at| (now - at).whole_seconds() <= REPLAY_WINDOW_SECONDS)
+}
+
 /// Whether a signed time is at most 7 days old and at most 5 minutes ahead (clock skew).
 pub(crate) fn is_fresh_at(at: &str, now: time::OffsetDateTime) -> bool {
     clock::parse(at).is_some_and(|at| {
         let age = (now - at).whole_seconds();
-        (-300..=MAX_AGE_SECONDS).contains(&age)
+        (-MAX_AHEAD_SECONDS..=MAX_AGE_SECONDS).contains(&age)
     })
+}
+
+#[cfg(test)]
+mod replay_window_tests {
+    use super::*;
+
+    fn at(raw: &str) -> time::OffsetDateTime {
+        clock::parse(raw).unwrap()
+    }
+
+    #[test]
+    fn the_window_is_the_envelopes_life_and_its_clock_skew() {
+        assert_eq!(REPLAY_WINDOW_SECONDS, 7 * 86_400 + 300);
+    }
+
+    #[test]
+    fn an_applied_id_is_kept_to_the_second_the_window_ends() {
+        let recorded = "2026-11-24T12:00:00Z";
+        for (now, kept) in [
+            ("2026-11-24T12:00:00Z", true),
+            ("2026-12-01T12:00:00Z", true),
+            ("2026-12-01T12:05:00Z", true),
+            ("2026-12-01T12:05:01Z", false),
+            ("2026-12-10T12:00:00Z", false),
+        ] {
+            assert_eq!(is_still_replayable(recorded, at(now)), kept, "{now}");
+        }
+    }
+
+    #[test]
+    fn a_time_that_does_not_parse_is_kept() {
+        assert!(is_still_replayable(
+            "not a time",
+            at("2030-01-01T00:00:00Z")
+        ));
+    }
+
+    #[test]
+    fn no_envelope_the_node_accepts_outlives_the_window() {
+        // Made at its latest (5 minutes ahead) and applied at once, it is accepted for 7 days after its own time.
+        let applied = at("2026-11-24T12:00:00Z");
+        let made = applied + time::Duration::seconds(MAX_AHEAD_SECONDS);
+        let last_moment_it_is_fresh = made + time::Duration::seconds(MAX_AGE_SECONDS);
+        assert!(is_fresh_at(
+            &made
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap(),
+            last_moment_it_is_fresh
+        ));
+        assert!(is_still_replayable(
+            "2026-11-24T12:00:00Z",
+            last_moment_it_is_fresh
+        ));
+        assert!(!is_still_replayable(
+            "2026-11-24T12:00:00Z",
+            last_moment_it_is_fresh + time::Duration::seconds(1)
+        ));
+    }
 }

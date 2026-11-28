@@ -142,6 +142,15 @@ pub trait InviteStore {
     fn save_invite(&self, digest: &str, record: &InviteRecord) -> Result<()>;
 }
 
+/// Seat claim links, keyed by the SHA-256 of their secret code. The seat index lets a newer link replace
+/// the older open link without keeping the code itself.
+pub trait ClaimStore {
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String>;
+    fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
+    fn remove_claim(&self, digest: &str) -> Result<()>;
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()>;
+}
+
 /// The envelopes already applied, for replay protection.
 pub trait AppliedLog {
     fn is_applied(&self, id: &EnvelopeId) -> bool;
@@ -163,6 +172,14 @@ pub trait DecisionLogStore {
     fn append_decision(&self, record: &DecisionRecord) -> Result<()>;
     /// At most `limit` records, newest first.
     fn recent_decisions(&self, limit: usize) -> Vec<DecisionRecord>;
+    /// Replaces the record with the same id, if the log still has it.
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()>;
+}
+
+/// Tells the task that delivers the outbox that a parcel is waiting, so that it does not wait for its
+/// next round.
+pub trait OutboxBell: Send + Sync {
+    fn ring(&self);
 }
 
 /// Devices waiting to be added, newest last.
@@ -243,6 +260,8 @@ pub trait GuestStore {
     fn guest(&self, email: &str) -> Option<crate::guests::Guest>;
     fn put_guest(&self, guest: &crate::guests::Guest) -> Result<()>;
     fn remove_guest(&self, email: &str) -> Result<()>;
+    /// Every guest record this node keeps.
+    fn guests(&self) -> Vec<crate::guests::Guest>;
     /// The keys of the requests a guest was told of, like `notified` for the owner; `None` before its first pass.
     fn guest_notified(&self, guest: &agency_proto::client::GuestRef) -> Option<Vec<String>>;
     fn save_guest_notified(
@@ -270,6 +289,7 @@ pub trait Store:
     + OrgStore
     + PendingRootStore
     + InviteStore
+    + ClaimStore
     + AppliedLog
     + OutboxStore
     + ReplicaStore
@@ -292,6 +312,7 @@ impl<
             + OrgStore
             + PendingRootStore
             + InviteStore
+            + ClaimStore
             + AppliedLog
             + OutboxStore
             + ReplicaStore

@@ -160,6 +160,7 @@ fn localized(key: &str, no_text_key: &str, text: Option<&String>) -> Value {
 /// it has an id), and can be changed by the app's notification service extension (`mutable-content`), which sets the badge to
 /// the sum over the nodes.
 pub fn payload(notice: &Notice, node: Option<&str>) -> Value {
+    let notice = &notice.printable();
     let (alert, agency) = match &notice.kind {
         NoticeKind::Request {
             org,

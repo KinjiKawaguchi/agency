@@ -3,6 +3,7 @@
 //! the web client with its Client API.
 pub mod background;
 pub mod budget;
+pub mod export;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
@@ -148,12 +149,14 @@ pub struct Opened {
 
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
+    data.check_format()?;
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
     let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let config = data.load_config()?;
+    data.ensure_format()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
     config
@@ -170,9 +173,10 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
-            Arc::new(CommandRuntime::with_log(
-                logger.sink(LogLevel::Warn, "runtime"),
-            ))
+            Arc::new(
+                CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
+                    .recording(recorder.clone()),
+            )
         }),
         clock: clock.clone(),
         random: random.clone(),
@@ -312,8 +316,13 @@ impl Opened {
             .layer(axum::middleware::from_fn(
                 agency_adapters::raw_path::refuse_ambiguous_paths,
             ));
+        let is_https = self.node.config().url.starts_with("https://");
         Ok(if is_public {
             app.layer(axum::middleware::map_response(strict_transport))
+        } else if is_https {
+            app.layer(axum::middleware::from_fn(
+                strict_transport_through_cloudflare,
+            ))
         } else {
             app
         })
@@ -324,6 +333,21 @@ impl Opened {
 /// year. Without `includeSubDomains`, it says nothing about other names under the same domain.
 /// Browsers ignore the header on plain HTTP, so local answers carrying it change nothing.
 pub const STRICT_TRANSPORT_SECURITY: &str = "max-age=31536000";
+
+/// HSTS for a node without an access setting whose url is HTTPS: on every answer to a request that came through
+/// Cloudflare, since that is how browsers reach it at its public host name. A direct local request gets none.
+async fn strict_transport_through_cloudflare(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let is_via_cloudflare = client_api::is_via_cloudflare(request.headers());
+    let response = next.run(request).await;
+    if is_via_cloudflare {
+        strict_transport(response).await
+    } else {
+        response
+    }
+}
 
 async fn strict_transport(mut response: axum::response::Response) -> axum::response::Response {
     response.headers_mut().insert(

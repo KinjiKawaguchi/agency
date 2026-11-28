@@ -154,12 +154,14 @@ pub enum Capability {
     Effort,
     /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
     ReadAudience,
+    /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
+    Budget,
     /// A team's view read with a tag (`ETag`, `If-None-Match`): `304` with no body when it did not change.
     ViewUnchanged,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 14] = [
+    pub const ALL: [Capability; 15] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -173,6 +175,7 @@ impl Capability {
         Capability::PushDevice,
         Capability::Effort,
         Capability::ReadAudience,
+        Capability::Budget,
         Capability::ViewUnchanged,
     ];
 
@@ -191,6 +194,7 @@ impl Capability {
             Capability::PushDevice => "pushDevice",
             Capability::Effort => "effort",
             Capability::ReadAudience => "readAudience",
+            Capability::Budget => "budget",
             Capability::ViewUnchanged => "viewUnchanged",
         }
     }

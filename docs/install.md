@@ -293,6 +293,16 @@ A malformed setting is reported at start (see [Troubleshooting](#troubleshooting
 
 ## Adding a phone or a browser
 
+### Send a claim link for a seat
+
+On the root's node, make a claim link for one unclaimed seat and one email:
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+It prints the email to add to the Access policy by hand, then a seven-day link. The node never calls Cloudflare and keeps the email only on this node. With Access the link uses the public host; without it, use the local link on this machine only. A newer link for the same seat replaces the old one.
+
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
 
 1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's machine, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).
@@ -445,10 +455,11 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
-- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
 - What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- For the effort screen to tell improvement from new feature, give the board a single-select field named `Work type` with the options `New feature`, `Improvement`, `Maintenance`, `Tech debt`, and `Incident`, and set it on the issues. A pull request that closes an issue with no value is split by its title's type, and a fix of an issue labeled `incident` is incident.
 - The effort screen (where a team's tokens went, by work type, at `/api/orgs/<org>/effort`) is worked out from the same repositories and from the token usage the team's runtime reports (`tokenUsage`). It is an estimate: the runtime reports cost by day, so a day's cost is shared out among the types of the pull requests merged that day, or, on a day nothing merged, among those of the next day that has some ([protocol.md](protocol.md#evaluation) has the rule). A team whose runtime does not report token usage is listed with a reason, never with zero.
 - A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
 
@@ -583,7 +594,7 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
 | `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |

@@ -312,6 +312,16 @@ Cloudflare Zero Trust で、`agency.example.com` のセルフホスト型 Access
 
 ## スマートフォンやブラウザを端末として追加する
 
+### 席の受け取りリンクを送る
+
+ルートのノードで、まだ誰も受け取っていない 1 つの席と 1 つのメールアドレスの受け取りリンクを作ります。
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+出力には、Access のポリシーへ手で加えるメールアドレスと、7 日間使えるリンクが出ます。ノードは Cloudflare を呼ばず、メールアドレスはこのノードだけに置きます。Access があるときは公開ホスト名のリンクになり、ないときはこのマシンでだけローカルのリンクを使います。同じ席に新しいリンクを作ると、前のリンクは置き換わります。
+
 自分の代わりに決定するブラウザやスマートフォンは、それぞれ自分の鍵を作って持ちます。
 鍵が端末の外に出ることはありません。
 
@@ -480,10 +490,11 @@ JSON を 1 つ出力します。`source` が使う資金源、`env` がセッシ
 ]
 ```
 
-- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベル、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
+- ノードは、そのマシンの `gh` のログインで、読み取りだけを行って GitHub を読みます。使うのは `gh api` の読み取りだけです（マージされた PR、その PR が閉じる Issue と、そのラベルとボードの「Work type」、その Issue がボードで In Progress に動いた時刻の GraphQL クエリ、デフォルトブランチのワークフロー実行の読み取り）。トークンは保持せず、設定にも書きません。`gh` が入っていて、launchd のエージェントか systemd のユニットの `PATH`（「launchd で動かす」を参照）にあり、ノードを動かすアカウントでログインしている（`gh auth login`）必要があります。`GH_HOST` など `gh` の環境変数は、`gh` のとおりに働きます。
 - 読み取りしかできないログインを使うほうが安全です。`gh auth login --with-token` に、リポジトリの Pull request、Issue、Actions、メタデータへの読み取り権限と、プロジェクト（Issue が In Progress に動いた時刻のため）への読み取り権限をもつ、きめ細かいトークンを渡します。
 - チームのランタイムが参加者を報告する（`participantMetrics`）と、チームの数には、参加者ごとに、セッションが働いた時間、人の判断を待った時間、空いていた時間、トークンの費用、マージされた PR のうち参加者のものの数（`merged`。ランタイムが作者を知らないものは `unattributedMerged`）も入ります。ノードは、同じ日数を自分の時間帯で尋ねます。この op がないとき、またはランタイムの答えが尋ねたものと違うときは、参加者は出さず、ほかは同じです。人の判断を待った時間は、ランタイムが一部の待ちしか見えない場合は下限です。
 - GitHub の答えは、チームと期間ごとに 10 分間保持するので、画面を読んでもログインのレート制限を使いません。ディスクには何も書きません。
+- 労力の画面で改善と新機能を区別するには、ボードに `Work type` という名前の単一選択のフィールドを作り、選択肢を `New feature`、`Improvement`、`Maintenance`、`Tech debt`、`Incident` として、Issue に値を設定します。値のない Issue を閉じる PR は、タイトルの種別で分けます。ラベル `incident` の付いた Issue の fix は障害対応になります。
 - 労力の画面（チームのトークンがどの作業種別に使われたか。`/api/orgs/<org>/effort`）は、同じリポジトリと、チームのランタイムが報告するトークン使用量（`tokenUsage`）から求めます。これは推定です。ランタイムは費用を日ごとに報告するので、1 日の費用は、その日にマージした PR の種別に分けます。マージのない日は、次にマージのある日の種別に分けます（規則は [protocol.md](protocol.md#evaluation) にあります）。ランタイムがトークン使用量を報告しないチームは、0 ではなく理由とともに並びます。
 - `delivery` のないチームや、数を読めないチームはエラーではありません。画面は、そのチームを理由とともに並べます。
 
@@ -618,7 +629,7 @@ agency logs --json | jq 'select(.event == "push")'   # ファイルにあるま�
 |---|---|
 | `Node running: <url> (listening on <address>)` と `Web client: …` | ノードが起動しました。 |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | ほかのプロセスがポートを使っています。launchd と systemd は 10 秒ごとに起動し直します。`lsof -nP -iTCP:4400 -sTCP:LISTEN` でどのプロセスかわかります。 |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。 |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | ノードの `url` が変わっています。行に書かれた `agency team-move` を実行します。書き方だけの違い（ホスト名の大文字小文字、既定のポート）なら、ほかは何も変わりません。実際に名前を変えた場合は、それより前に行い、まだ届いていない決定は断られるので、もう一度行います。 |
 | `agency: the access setting is malformed (…)` | `config.json` の `access` を直します。直すまで、Cloudflare を通ったリクエストはすべて拒否されます。 |
 | `agency: the access appId is malformed (…)` | `appId` を直します。`access` のほかの部分は有効ですが、アプリのサインインは使えません。 |
 | アプリのサインインのシートに `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)` と出て、ノードが `via=scheme` に `400` を返した | ノードのホスト名が、アプリのビルドの関連ドメインに入っていないため、アプリがカスタムスキームを求め、ノードが既定で断っています。自分でアプリをビルドするなら、ビルドの `AGENCY_ASSOCIATED_HOST` にそのホスト名を入れます。そうでなければ、`access` の中の `appId` の隣に `"allowSchemeSignIn": true` を設定します（危険は、設定を説明している箇所で確認してください）。 |
