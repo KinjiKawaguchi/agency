@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 pub mod access;
 pub mod guests;
+pub mod oidc_issuer;
 
 use agency_adapters::access::CertSource;
 use agency_adapters::client_api::Assets;
