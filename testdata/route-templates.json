@@ -14,6 +14,7 @@
     "GET /api/orgs/{org}/effort",
     "GET /api/orgs/{org}/evaluation",
     "GET /api/orgs/{org}/history",
+    "GET /api/orgs/{org}/members",
     "GET /api/orgs/{org}/outcomes",
     "GET /api/orgs/{org}/outcomes/observations",
     "POST /api/orgs/{org}/outcomes/observations",
