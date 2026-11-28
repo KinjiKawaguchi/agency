@@ -1,4 +1,5 @@
 import AgencyAPI
+import AgencyKit
 import Foundation
 import Testing
 @testable import AgencyModel
@@ -179,6 +180,12 @@ struct ClientTelemetryTests {
         await scene.telemetry.leftForeground()
         let first = await scene.sender.reports.first?.samples.first?.ms
         #expect(first == 300)
+    }
+
+    @Test("the phone reports and the Mac does not: the node's series is named for the phone, and a Mac would hide what a phone on a mobile network sees")
+    func platforms() {
+        #expect(ClientTelemetry.reports(from: .ios))
+        #expect(!ClientTelemetry.reports(from: .macos))
     }
 
     @Test("a report is not sent while another is on its way")

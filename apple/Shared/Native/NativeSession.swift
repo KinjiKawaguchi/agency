@@ -67,8 +67,10 @@ final class NativeSession {
         // Every call to the home node is timed on its way out and back; what is seen goes to `telemetry`, made below, through a tap that
         // starts empty because the telemetry needs the client that this transport is for.
         let tap = TelemetryTap()
+        let transport = URLSessionTransport(homeNode: homeNode)
         let client = NodeClient(
-            transport: TimedTransport(URLSessionTransport(homeNode: homeNode)) { sample in Task { @MainActor in tap.telemetry?.record(sample) } },
+            transport: ClientTelemetry.reports(from: ClientIdentity.platform)
+                ? TimedTransport(transport) { sample in Task { @MainActor in tap.telemetry?.record(sample) } } : transport,
             accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
         )
         self.client = client

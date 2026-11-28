@@ -1,4 +1,5 @@
 import AgencyAPI
+import AgencyKit
 import Foundation
 
 /// Where a report goes: the home node's `POST /api/telemetry`.
@@ -16,6 +17,12 @@ extension NodeClient: TelemetrySending {}
 /// take reports from this app (not the owner, no such route, too large) ends reporting for the session. Nothing is kept between sessions.
 @MainActor
 public final class ClientTelemetry {
+    /// Whether the app of `platform` reports. The node names a series by its `client`, and the protocol has `web` and `ios`: a Mac on a wired network
+    /// mixed into `ios` would hide what a phone on a mobile network sees, which is what that series is for. The Mac reports once the protocol names it.
+    public static func reports(from platform: ClientIdentity.Platform) -> Bool {
+        platform == .ios
+    }
+
     /// The shortest time between two reports.
     public static let interval: TimeInterval = 60
     /// What waits at most: older samples go first, so that a node that cannot be told does not make the app hold them all.
