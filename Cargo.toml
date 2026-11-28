@@ -13,7 +13,7 @@ anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
 base64 = "0.23"
-# RS256 (Access) and ES256 (APNs), through ring (already used by rustls); no PEM parsing.
+# RS256 (Access) and ES256 (APNs), through aws-lc-rs (also the TLS provider of reqwest); no PEM parsing.
 jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = "2"
