@@ -21,13 +21,15 @@ head?: Id,
  */
 team?: ChartTeam, 
 /**
- * Who sits directly in it.
+ * The people and agents in this unit and every unit under it.
  */
 holds: ChartHolds, 
 /**
- * For a unit with a team: how many requests wait for an answer in the team's current view, as this node
- * knows it (the view it serves, or the replica it keeps of a team on another node). Left out when the unit
- * has no team, and when this node has read no view of the team yet: never 0 for "not known".
+ * How many requests wait for an answer in the teams of this unit and of every unit under it: the sum of each
+ * team's whole view (the same for every viewer), as this node knows it (the view it serves, or the replica it
+ * keeps of a team on another node). On a team it is that team's own, with the teams under it when it has any.
+ * Left out when no unit in the subtree has a team, and unless the node has read the view of **every** team in
+ * the subtree: a number on a screen is always the node's, never a part of it and never 0 for "not known".
  */
 waiting?: number, 
 /**

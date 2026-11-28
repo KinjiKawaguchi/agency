@@ -30,7 +30,9 @@ pub struct ChartTeam {
     pub node: String,
 }
 
-/// How many people and agents sit directly in a unit (not in the units below it).
+/// How many people and agents are in a unit and in every unit under it, so that a screen that folds a unit shows
+/// the count without adding up the units it hides. A screen that wants who sits in the unit itself counts the
+/// `members` whose `unit` is its id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -70,11 +72,13 @@ pub struct ChartUnit {
     /// Set when a harness runs the unit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team: Option<ChartTeam>,
-    /// Who sits directly in it.
+    /// The people and agents in this unit and every unit under it.
     pub holds: ChartHolds,
-    /// For a unit with a team: how many requests wait for an answer in the team's current view, as this node
-    /// knows it (the view it serves, or the replica it keeps of a team on another node). Left out when the unit
-    /// has no team, and when this node has read no view of the team yet: never 0 for "not known".
+    /// How many requests wait for an answer in the teams of this unit and of every unit under it: the sum of each
+    /// team's whole view (the same for every viewer), as this node knows it (the view it serves, or the replica it
+    /// keeps of a team on another node). On a team it is that team's own, with the teams under it when it has any.
+    /// Left out when no unit in the subtree has a team, and unless the node has read the view of **every** team in
+    /// the subtree: a number on a screen is always the node's, never a part of it and never 0 for "not known".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting: Option<u32>,
     /// Left out unless the team's runtime names a lead who is not the unit's head (or the unit names none).
@@ -140,12 +144,6 @@ impl OrgChart {
                     _ => return Err(format!("unit {} comes before its parent {parent}", unit.id)),
                 }
             }
-            if unit.waiting.is_some() && unit.team.is_none() {
-                return Err(format!(
-                    "unit {} has no team and counts what waits",
-                    unit.id
-                ));
-            }
             if unit.runtime_lead.is_some() && unit.team.is_none() {
                 return Err(format!(
                     "unit {} has no team and names its runtime's lead",
@@ -201,6 +199,64 @@ impl OrgChart {
                 ));
             }
         }
+        self.check_totals(&unit_at)
+    }
+}
+
+impl OrgChart {
+    /// `holds` and `waiting` of a unit are the totals of its subtree: the members whose unit is in it, and the
+    /// teams' counts, which a unit has only when every team in it has one.
+    fn check_totals(&self, index: &std::collections::HashMap<&Id, usize>) -> Result<(), String> {
+        let count = self.units.len();
+        let mut holds = vec![(0u32, 0u32); count];
+        for member in &self.members {
+            let Some(at) = member.unit.as_ref().and_then(|unit| index.get(unit)) else {
+                continue;
+            };
+            match member.kind {
+                ChartMemberKind::Person => holds[*at].0 += 1,
+                ChartMemberKind::Agent => holds[*at].1 += 1,
+            }
+        }
+        // What the units below a unit say of their teams: whether any has one, and the sum when each has its count.
+        let mut below_has_team = vec![false; count];
+        let mut below_sum: Vec<Option<u32>> = vec![Some(0); count];
+        // A parent is listed before the units in it, so going backwards meets every unit after the units in it.
+        for at in (0..count).rev() {
+            let unit = &self.units[at];
+            let expected = ChartHolds {
+                people: holds[at].0,
+                agents: holds[at].1,
+            };
+            if unit.holds != expected {
+                return Err(format!(
+                    "unit {} holds {:?} and its members and the units under it add up to {expected:?}",
+                    unit.id, unit.holds
+                ));
+            }
+            let has_team = unit.team.is_some() || below_has_team[at];
+            let is_wrong = match (&unit.team, below_sum[at]) {
+                (None, sum) => unit.waiting != if has_team { sum } else { None },
+                (Some(_), None) => unit.waiting.is_some(),
+                (Some(_), Some(sum)) => unit.waiting.is_some_and(|waiting| waiting < sum),
+            };
+            if is_wrong {
+                return Err(format!(
+                    "unit {} counts {:?} waiting, which is not what the teams in it add up to",
+                    unit.id, unit.waiting
+                ));
+            }
+            if let Some(parent) = unit.parent.as_ref().and_then(|parent| index.get(parent)) {
+                holds[*parent].0 += holds[at].0;
+                holds[*parent].1 += holds[at].1;
+                if has_team {
+                    below_has_team[*parent] = true;
+                    below_sum[*parent] = below_sum[*parent]
+                        .zip(unit.waiting)
+                        .map(|(sum, own)| sum + own);
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -238,9 +294,28 @@ mod tests {
         assert!(unit("studio").head.is_none(), "a unit that names no head");
         assert_eq!(unit("app").waiting, Some(3), "a team with what waits");
         assert_eq!(
-            unit("web").waiting,
+            unit("dev").waiting,
+            Some(5),
+            "a unit adds up the teams in it"
+        );
+        assert_eq!(
+            unit("product").waiting,
+            None,
+            "and has none while a team in it is not read"
+        );
+        assert_eq!(
+            unit("labs").waiting,
             None,
             "a team whose view is not read yet"
+        );
+        assert_eq!(unit("studio").waiting, None, "no team in it");
+        assert_eq!(
+            unit("dev").holds,
+            ChartHolds {
+                people: 1,
+                agents: 2
+            },
+            "who is under it too"
         );
         assert!(
             unit("web").runtime_lead.is_some(),
@@ -273,7 +348,19 @@ mod tests {
         assert!(broke(&|c| c.units[2].head = Some(id("nobody"))).contains("no one on the chart"));
         assert!(broke(&|c| c.members[1].heads.clear()).contains("heads"));
         assert!(broke(&|c| c.members[0].unit = Some(id("nowhere"))).contains("not listed"));
-        assert!(broke(&|c| c.units[0].waiting = Some(1)).contains("no team"));
+        assert!(
+            broke(&|c| c.units[4].waiting = Some(1)).contains("waiting"),
+            "a count where no team is"
+        );
+        assert!(
+            broke(&|c| c.units[0].waiting = Some(9)).contains("waiting"),
+            "a count over a team not read"
+        );
+        assert!(
+            broke(&|c| c.units[1].waiting = Some(4)).contains("waiting"),
+            "a sum that is not the teams'"
+        );
+        assert!(broke(&|c| c.units[1].holds.agents = 9).contains("holds"));
         assert!(broke(&|c| c.units.push(c.units[0].clone())).contains("listed twice"));
         assert!(broke(&|c| c.members[1].reports_to = Some(id("nobody")))
             .contains("no one on the chart"));

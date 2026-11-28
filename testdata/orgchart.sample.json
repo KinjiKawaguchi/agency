@@ -8,22 +8,34 @@
       "id": "product",
       "label": "Product",
       "head": "alice",
-      "holds": { "people": 1, "agents": 0 }
+      "holds": {
+        "people": 3,
+        "agents": 2
+      }
     },
     {
       "id": "dev",
       "label": "Development",
       "parent": "product",
       "head": "dev-lead",
-      "holds": { "people": 0, "agents": 1 }
+      "holds": {
+        "people": 1,
+        "agents": 2
+      },
+      "waiting": 5
     },
     {
       "id": "app",
       "label": "App",
       "parent": "dev",
       "head": "app-lead",
-      "team": { "node": "https://node.example.com" },
-      "holds": { "people": 0, "agents": 1 },
+      "team": {
+        "node": "https://node.example.com"
+      },
+      "holds": {
+        "people": 0,
+        "agents": 1
+      },
       "waiting": 3
     },
     {
@@ -31,15 +43,39 @@
       "label": "Web",
       "parent": "dev",
       "head": "dev-lead",
-      "team": { "node": "https://node.example.com" },
-      "holds": { "people": 1, "agents": 0 },
-      "runtimeLead": { "name": "lead", "party": "carol" }
+      "team": {
+        "node": "https://node.example.com"
+      },
+      "holds": {
+        "people": 1,
+        "agents": 0
+      },
+      "runtimeLead": {
+        "name": "lead",
+        "party": "carol"
+      },
+      "waiting": 2
     },
     {
       "id": "studio",
       "label": "Studio",
       "parent": "product",
-      "holds": { "people": 1, "agents": 0 }
+      "holds": {
+        "people": 1,
+        "agents": 0
+      }
+    },
+    {
+      "id": "labs",
+      "label": "Labs",
+      "parent": "product",
+      "team": {
+        "node": "https://labs.example.com"
+      },
+      "holds": {
+        "people": 0,
+        "agents": 0
+      }
     }
   ],
   "members": [
@@ -48,7 +84,9 @@
       "label": "Alice",
       "kind": "person",
       "unit": "product",
-      "heads": ["product"]
+      "heads": [
+        "product"
+      ]
     },
     {
       "id": "dev-lead",
@@ -56,7 +94,10 @@
       "kind": "agent",
       "unit": "dev",
       "reportsTo": "alice",
-      "heads": ["dev", "web"]
+      "heads": [
+        "dev",
+        "web"
+      ]
     },
     {
       "id": "app-lead",
@@ -64,7 +105,9 @@
       "kind": "agent",
       "unit": "app",
       "reportsTo": "dev-lead",
-      "heads": ["app"]
+      "heads": [
+        "app"
+      ]
     },
     {
       "id": "carol",
