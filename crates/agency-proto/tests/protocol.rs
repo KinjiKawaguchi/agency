@@ -44,7 +44,9 @@ fn revoked_keys_are_not_members() {
 fn org_shape_is_checked() {
     let root = AccountKey::generate();
     let v1 = genesis(&root);
-    let broken = successor(&v1, &root, |body| body.teams[0].node = "file:///etc".into());
+    let broken = successor(&v1, &root, |body| {
+        body.teams_mut()[0].node = "file:///etc".into()
+    });
     assert!(verify_successor(&v1, &broken).is_err());
     let dangling = successor(&v1, &root, |body| {
         body.people[0].department = Some(id("nowhere"))

@@ -188,7 +188,7 @@ pub fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
 /// The next version of `org`, with a plan for its team: how a plan is signed.
 pub fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: Allocation {
             new_feature: 40,
@@ -212,6 +212,7 @@ pub fn org_with_seats(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
         id: id("carol"),
         label: "Carol (finance)".into(),
         department: Some(id("dev")),
+        unit: None,
         ask_about: vec!["invoices".into(), "budget approval".into()],
         relays: vec![id("owner")],
     });
@@ -307,7 +308,7 @@ pub fn org_with_outcomes(root: &AccountKey, org: &SignedOrg) -> serde_json::Valu
     lead_time.good_when = GoodWhen::Lower;
     body.kpis = vec![kpi("revenue", "Revenue", yen), activation, lead_time];
     let plan = TeamPlan::new(allocation(), 500).with_aims(vec![aim("app#10", "activation")]);
-    body.teams[0].plan = Some(plan);
+    body.teams_mut()[0].plan = Some(plan);
     let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     assert!(verify_successor(org, &signed).is_ok());
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })

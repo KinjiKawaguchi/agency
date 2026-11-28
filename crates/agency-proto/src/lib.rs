@@ -24,6 +24,8 @@ pub mod observation;
 pub mod org;
 pub mod org_chart;
 pub mod org_members;
+pub mod org_model;
+pub mod org_units;
 pub mod outcome;
 pub mod participant_metrics;
 pub mod reading;

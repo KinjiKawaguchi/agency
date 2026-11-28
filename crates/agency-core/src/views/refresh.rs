@@ -125,13 +125,12 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
 /// without an error, so that a node that does not answer is not the one asked every time.
 async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     let org = &doc.body.org;
-    let elsewhere: Vec<&TeamPlace> = doc
+    let elsewhere: Vec<TeamPlace> = doc
         .body
-        .teams
-        .iter()
+        .teams()
         .filter(|place| !node.runs_here(org, &place.id))
         .collect();
-    let answered = |place: &&&TeamPlace| {
+    let answered = |place: &&TeamPlace| {
         node.store()
             .load_replica(org, &place.id)
             .is_some_and(|replica| replica.error.is_none() && replica.fetched_at.is_some())
@@ -169,8 +168,7 @@ pub fn waiting_lines(node: &Node) -> Vec<String> {
         let org = &doc.body.org;
         for place in doc
             .body
-            .teams
-            .iter()
+            .teams()
             .filter(|place| !node.runs_here(org, &place.id))
         {
             let Some(replica) = node.store().load_replica(org, &place.id) else {
@@ -251,8 +249,7 @@ async fn refresh_teams(node: &Node, due: Due) -> Result<()> {
         .flat_map(|doc| {
             let org = &doc.body.org;
             doc.body
-                .teams
-                .iter()
+                .teams()
                 .filter(|place| !node.runs_here(org, &place.id))
                 .filter(|place| is_due(node, org, place, due))
                 .map(|place| (org.clone(), place.clone()))

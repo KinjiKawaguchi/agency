@@ -251,7 +251,7 @@ pub fn kpi_lines(body: &OrgDefinition) -> Vec<String> {
             unit_text(&kpi.unit)
         )
     });
-    let aims = body.teams.iter().flat_map(|team| {
+    let aims = body.teams().flat_map(|team| {
         let aims = team.plan.iter().flat_map(|plan| &plan.aims);
         aims.map(|aim| format!("  Team {} aims {} at KPI {}", team.id, aim.epic, aim.kpi))
             .collect::<Vec<_>>()

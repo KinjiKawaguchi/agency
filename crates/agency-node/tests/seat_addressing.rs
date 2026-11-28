@@ -28,6 +28,7 @@ fn seat(raw: &str, label: &str, relays: &[&str]) -> Seat {
         id: id(raw),
         label: label.into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: relays.iter().map(|one| id(one)).collect(),
     }

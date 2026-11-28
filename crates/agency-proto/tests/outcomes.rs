@@ -53,7 +53,7 @@ fn what_an_org_measures_and_aims_at_is_checked_by_every_node() {
     let with = |kpis: Vec<Kpi>, aims: Vec<Aim>| {
         let mut body = genesis(&key).body;
         body.kpis = kpis;
-        body.teams[0].plan = Some(TeamPlan::new(allocation(), 0).with_aims(aims));
+        body.teams_mut()[0].plan = Some(TeamPlan::new(allocation(), 0).with_aims(aims));
         body.validate()
     };
     let count = || kpi("count", "Count", KpiUnit::Count);
@@ -180,21 +180,21 @@ fn a_plan_allocation_adds_up_to_100() {
         debt: 15,
         incident: 5,
     };
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert_eq!(body.validate(), Ok(()));
     allocation.incident = 4;
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert!(body.validate().is_err(), "99");
     allocation.incident = u32::MAX;
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation,
         weekly_budget_usd: 0,

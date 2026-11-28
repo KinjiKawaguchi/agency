@@ -40,7 +40,7 @@ async fn a_node_does_not_serve_a_team_its_org_no_longer_lists() {
     // The root removes the team while this node's config still lists it: what a node that does not hold
     // the root key sees after it takes the version that removes the team.
     orgs::amend(&alice.node, &id("acme"), |definition| {
-        definition.teams.clear();
+        definition.teams_mut().clear();
         Ok(())
     })
     .unwrap();

@@ -29,8 +29,7 @@ fn still_named(node: &Node, org: &OrgDefinition, member: &Id, becomes_seat: bool
         .filter(|external| external.relays.contains(member))
         .map(|external| format!("it answers for external party {}", external.id));
     let heads = org
-        .departments
-        .iter()
+        .groups()
         .filter(|department| department.head.as_ref() == Some(member))
         .map(|department| format!("it heads department {}", department.id));
     // A seat the member took is answered by the member (`formerly`), so a team that addresses that id names it too.
@@ -194,6 +193,7 @@ fn seats_for(
         id: id.clone(),
         label: person.label.clone(),
         department: person.department.clone(),
+        unit: None,
         ask_about: person.ask_about.clone(),
         relays: answered_by.to_vec(),
     };
@@ -205,11 +205,9 @@ fn seats_for(
         match seat_as_it_was(node, org, id) {
             Some(was) => replacement.seats.push(Seat {
                 // A department the org no longer has cannot be named by a seat.
-                department: was.department.filter(|one| {
-                    org.departments
-                        .iter()
-                        .any(|department| &department.id == one)
-                }),
+                department: was
+                    .department
+                    .filter(|one| org.groups().any(|department| &department.id == one)),
                 relays: answered_by.to_vec(),
                 ..was
             }),

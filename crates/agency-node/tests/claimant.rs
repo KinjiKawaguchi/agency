@@ -20,6 +20,7 @@ fn seat(raw: &str, label: &str) -> Seat {
         id: id(raw),
         label: label.into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("alice")],
     }

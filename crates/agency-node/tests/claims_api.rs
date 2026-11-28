@@ -55,6 +55,7 @@ async fn with_a_waiting_claim() -> Running {
         id: id("dave"),
         label: "Dave (finance)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("alice")],
     };
@@ -439,6 +440,7 @@ async fn a_held_confirmation_waits_for_every_team_node_to_read_hosted_members() 
         id: id("dave"),
         label: "Dave (finance)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("alice")],
     };
@@ -485,6 +487,7 @@ async fn two_claims_for_one_address_signed_in_one_run_make_one_member_with_it() 
         id: id("erin"),
         label: "Erin (legal)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("alice")],
     };

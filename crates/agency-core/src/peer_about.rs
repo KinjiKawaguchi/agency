@@ -45,8 +45,7 @@ pub(crate) fn peer_origins(node: &Node, definition: &OrgDefinition) -> BTreeSet<
     let me = node.url();
     let org = &definition.org;
     let elsewhere = definition
-        .teams
-        .iter()
+        .teams()
         .filter(|team| !node.runs_here(org, &team.id));
     elsewhere
         .map(|team| team.node.clone())

@@ -49,8 +49,7 @@ pub fn status(node: &Node, data: &DataDir) {
             role,
             doc.body.people.len(),
             doc.body
-                .teams
-                .iter()
+                .teams()
                 .map(|t| format!("{}@{}", t.id, t.node))
                 .collect::<Vec<_>>()
                 .join(", ")

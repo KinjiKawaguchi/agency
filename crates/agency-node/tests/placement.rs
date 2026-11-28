@@ -121,9 +121,9 @@ async fn team_move_changes_only_that_teams_place_on_the_roots_node() {
     let before = alice.node.store().load_org(&id("acme")).unwrap();
     let moved = move_team(&alice.node, &id("acme"), &id("app"), ELSEWHERE.into()).unwrap();
     assert_eq!(moved.body.version, before.body.version + 1);
-    let mut expected = before.body.teams.clone();
+    let mut expected: Vec<_> = before.body.teams().collect();
     expected[0].node = ELSEWHERE.into();
-    assert_eq!(moved.body.teams, expected);
+    assert_eq!(moved.body.teams().collect::<Vec<_>>(), expected);
     assert_eq!(moved.body.people, before.body.people);
 
     let refusals = [

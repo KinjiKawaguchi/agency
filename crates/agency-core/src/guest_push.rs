@@ -44,7 +44,7 @@ async fn waiting_for(node: &Node, guest: &GuestRef, is_hidden: bool) -> Option<V
         return None;
     }
     let mut all = vec![];
-    for place in &doc.body.teams {
+    for place in doc.body.teams() {
         if let Some(hosted) = node.hosted(&guest.org, &place.id) {
             all.extend(waiting_in_hosted(node, &doc.body, &hosted, &guest.member, is_hidden).await);
         }

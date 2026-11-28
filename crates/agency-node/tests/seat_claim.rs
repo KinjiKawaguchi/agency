@@ -37,6 +37,7 @@ async fn org_with_a_seat() -> (Running, Memory) {
         id: id("carol"),
         label: "Carol (finance)".into(),
         department: Some(id("ops")),
+        unit: None,
         ask_about: vec!["invoices".into()],
         relays: vec![id("alice")],
     };
@@ -282,6 +283,7 @@ async fn the_id_of_a_seat_that_was_taken_is_not_free_for_another() {
         id: id("carol"),
         label: "Another Carol".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![],
     };

@@ -154,6 +154,7 @@ pub fn seat_add(node: &Node, args: SeatAdd) -> Result<()> {
         id: id(&args.seat)?,
         label: args.label,
         department: args.dept.as_deref().map(id).transpose()?,
+        unit: None,
         ask_about: args.ask_about,
         relays: ids(&args.answered_by)?,
     };
