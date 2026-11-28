@@ -148,6 +148,17 @@ async fn the_owner_and_a_guest_are_admitted() {
         200,
         "one of several audiences"
     );
+    for verified in [json!(true), json!("true")] {
+        assert_eq!(
+            me(
+                &running,
+                token(OWNER, |c| c["email_verified"] = verified.clone())
+            )
+            .await,
+            200,
+            "an email the provider verified: {verified}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -210,6 +221,17 @@ async fn a_token_that_fails_any_check_is_refused() {
     )
     .unwrap();
     assert_eq!(me(&running, hs256).await, 403, "a token that is not RS256");
+    for unverified in [json!(false), json!("false"), json!(null), json!(0)] {
+        assert_eq!(
+            me(
+                &running,
+                token(OWNER, |c| c["email_verified"] = unverified.clone())
+            )
+            .await,
+            403,
+            "an email the provider did not verify: {unverified}"
+        );
+    }
     assert_eq!(me_with(&running, None).await, 403, "no token");
     assert_eq!(
         me_with(

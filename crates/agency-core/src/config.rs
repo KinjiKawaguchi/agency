@@ -431,7 +431,6 @@ impl NodeConfig {
         }
     }
 
-    /// Whether the Client API admits direct local requests (`localClients`).
     /// The same configuration with `oidc` in front of the Client API.
     pub fn with_oidc(self, oidc: OidcConfig) -> Self {
         Self {
@@ -454,6 +453,7 @@ impl NodeConfig {
             .or_else(|| self.oidc.as_ref().map(|oidc| oidc.public_host.as_str()))
     }
 
+    /// Whether the Client API admits direct local requests (`localClients`).
     pub fn with_local_clients(self, local_clients: bool) -> Self {
         Self {
             local_clients,

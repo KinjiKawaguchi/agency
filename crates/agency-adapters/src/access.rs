@@ -251,6 +251,16 @@ impl SignInVerifier {
         if time("nbf")?.is_some_and(|nbf| nbf - SKEW_SECONDS > now) {
             return Err("not valid yet".into());
         }
+        // A provider that lets people type their own address says whether it checked it. An address it says
+        // it did not check (`email_verified` false, or anything but true) names no one: whoever registered the
+        // owner's address there would otherwise be the owner. A provider that leaves the claim out vouches for
+        // the address itself, as Access does.
+        let is_unverified = claims
+            .get("email_verified")
+            .is_some_and(|verified| verified != &Value::Bool(true) && verified != "true");
+        if is_unverified {
+            return Err("the provider did not verify the email".into());
+        }
         let email = claims
             .get(&self.provider.email_claim)
             .and_then(Value::as_str)
