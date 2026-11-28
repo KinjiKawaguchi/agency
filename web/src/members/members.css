@@ -1,0 +1,44 @@
+.mb-lead {
+  max-width: 60ch;
+}
+
+.mb-org {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.mb-section {
+  margin: 20px 0;
+}
+
+.mb-list,
+.mb-devices {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mb-member {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.mb-name,
+.mb-facts {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.mb-devices li {
+  margin: 4px 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.mb-source {
+  margin-top: 24px;
+  font-size: 13px;
+}

@@ -61,6 +61,28 @@ pub struct DecisionNote {
 }
 
 impl DecisionRecord {
+    /// Whether the record is of this very envelope, so that one sent again is the one that was kept.
+    pub(crate) fn is_of(&self, envelope: &Envelope, node_account: &Id) -> bool {
+        self.is_by(&envelope.account, node_account)
+            && (
+                &self.id,
+                &self.org,
+                &self.team,
+                self.kind,
+                &self.target,
+                &self.payload,
+                &self.at,
+            ) == (
+                &envelope.id,
+                &envelope.org,
+                &envelope.team,
+                envelope.kind,
+                &envelope.target,
+                &envelope.payload,
+                &envelope.at,
+            )
+    }
+
     /// The record of a decision whose envelope this node has verified: the signing device is the one the signed
     /// document names, never a value a client sends beside it.
     pub(crate) fn of(signed: &Signed<Envelope>, note: DecisionNote, is_local: bool) -> Self {

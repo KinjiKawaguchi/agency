@@ -106,3 +106,70 @@ async fn a_version_that_only_spells_the_place_another_way_is_no_move() {
         "the same origin, written another way"
     );
 }
+
+const RENAMED: &str = "http://127.0.0.1:7";
+
+#[tokio::test]
+async fn a_version_that_renames_this_nodes_own_origin_is_no_move_and_an_envelope_made_before_is_taken(
+) {
+    let (alice, phone) = with_phone().await;
+    let made_before = signed_answer(&alice, &phone, "r-1", "a");
+    // The node is reached by another origin from now on (its `url` changes), and the root moves the team's place
+    // to it: the same node under a new name.
+    alice.clock.advance(Duration::minutes(1));
+    alice
+        .node
+        .update_config(|config| config.url = RENAMED.into())
+        .unwrap();
+    move_team(&alice.node, &id("acme"), &id("app"), RENAMED.into()).unwrap();
+    alice.clock.advance(Duration::minutes(1));
+
+    let accepted = accept_envelope(&alice.node, &id("acme"), &id("app"), made_before)
+        .await
+        .unwrap();
+    assert_eq!(accepted, Accepted::Applied, "the team never left this node");
+}
+
+#[tokio::test]
+async fn a_move_to_another_node_is_still_refused_after_this_nodes_origin_was_renamed() {
+    let (alice, phone) = with_phone().await;
+    let made_before = signed_answer(&alice, &phone, "r-1", "a");
+    alice.clock.advance(Duration::minutes(1));
+    alice
+        .node
+        .update_config(|config| config.url = RENAMED.into())
+        .unwrap();
+    // The team goes to another node, and then comes back to this node under its new name.
+    move_team(&alice.node, &id("acme"), &id("app"), ELSEWHERE.into()).unwrap();
+    alice.clock.advance(Duration::minutes(1));
+    move_team(&alice.node, &id("acme"), &id("app"), RENAMED.into()).unwrap();
+    alice.clock.advance(Duration::minutes(1));
+
+    let refused = accept_envelope(&alice.node, &id("acme"), &id("app"), made_before)
+        .await
+        .unwrap_err();
+    assert!(
+        refused.message.contains("before the team came"),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_origin_this_node_was_never_configured_with_is_another_node() {
+    let (alice, phone) = with_phone().await;
+    let made_before = signed_answer(&alice, &phone, "r-1", "a");
+    alice.clock.advance(Duration::minutes(1));
+    // The place names an origin that was never this node's, and then this node's own again.
+    move_team(&alice.node, &id("acme"), &id("app"), RENAMED.into()).unwrap();
+    alice.clock.advance(Duration::minutes(1));
+    move_team(&alice.node, &id("acme"), &id("app"), alice.url()).unwrap();
+    alice.clock.advance(Duration::minutes(1));
+
+    let refused = accept_envelope(&alice.node, &id("acme"), &id("app"), made_before)
+        .await
+        .unwrap_err();
+    assert!(
+        refused.message.contains("before the team came"),
+        "{refused:?}"
+    );
+}

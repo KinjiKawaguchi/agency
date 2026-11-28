@@ -80,15 +80,20 @@ fn route_group(template: &str) -> &'static str {
         "metrics"
     } else if starts("/api/push") {
         "push"
-    } else if starts("/api/devices") {
+    } else if starts("/api/devices") || template == "/api/claim" {
         "devices"
     } else if starts("/api/orgs/{org}/outcomes") {
         "outcomes"
     } else if starts("/api/orgs/{org}/evaluation") || starts("/api/orgs/{org}/effort") {
         "evaluation"
-    } else if starts("/api/orgs/{org}/teams/{team}/usage") {
+    } else if starts("/api/orgs/{org}/teams/{team}/usage")
+        || starts("/api/orgs/{org}/teams/{team}/budget")
+    {
         "usage"
-    } else if template == "/api/orgs/{org}" || starts("/api/orgs/{org}/teams/") {
+    } else if template == "/api/orgs/{org}"
+        || starts("/api/orgs/{org}/history")
+        || starts("/api/orgs/{org}/teams/")
+    {
         "teams"
     } else if ["/api/me", "/api/session", "/api/decisions", "/api/about"].contains(&template) {
         "desk"
@@ -101,7 +106,8 @@ fn route_group(template: &str) -> &'static str {
 /// `IN_NODE_READ_P95_BUDGET_MS` applies to: a `serve` series of a GET of the desk, the devices, the push
 /// settings, the outcomes the owner entered, an org, a team's view (kept in memory and refreshed in the
 /// background), and, between nodes, an org's about and versions and a team's view. What calls the team's
-/// runtime, GitHub, or a peer (usage, evaluation, activity) is not one.
+/// runtime, GitHub, or a peer (usage, evaluation, activity) is not one. An org's history is in the `teams`
+/// group but is not one either: it reads and words every version the node keeps, so its time grows with them.
 pub fn is_in_node_read(kind: SeriesKind, name: &str) -> bool {
     if kind != SeriesKind::Serve {
         return false;

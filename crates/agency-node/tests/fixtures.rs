@@ -48,9 +48,18 @@ async fn read(running: &Running, path: &str) -> Value {
 }
 
 async fn write(running: &Running, path: &str, input: &Value) -> Value {
+    write_answered(running, path, input, StatusCode::OK).await
+}
+
+async fn write_answered(
+    running: &Running,
+    path: &str,
+    input: &Value,
+    expected: StatusCode,
+) -> Value {
     let request = post(running, path, input).header("x-agency-token", TOKEN);
     let (status, answer) = body(request.send().await.unwrap()).await;
-    assert_eq!(status, StatusCode::OK, "{path}: {answer}");
+    assert_eq!(status, expected, "{path}: {answer}");
     answer
 }
 
@@ -236,7 +245,13 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     };
     decide_as(alice, &key, "r-2", comment).await.unwrap();
     let envelope = signed_answer(alice, &key, "r-2", "b");
-    let decided = write(alice, ENVELOPES, &json!({ "envelope": envelope })).await;
+    let envelope_id = envelope.body.id.as_str().to_owned();
+    let input = json!({ "envelope": envelope });
+    let kept = write_answered(alice, ENVELOPES, &input, StatusCode::ACCEPTED).await;
+    assert_eq!(kept, json!({ "outcome": "queued" }));
+    agency_core::outbox::deliver_due(&alice.node).await.unwrap();
+    let decided = write(alice, ENVELOPES, &input).await;
+    let entry = read(alice, &format!("/api/decisions/{}", envelope_id)).await;
     let phone = AccountKey::from_seed([10; 32]).public();
     let request = json!({ "label": "iPhone", "publicKey": phone });
     let requested = write(alice, "/api/devices/requests", &request).await;
@@ -275,6 +290,7 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
         ),
         ("decision-log", read(alice, "/api/decisions").await),
         ("decision-result", decided),
+        ("decision-entry", entry),
         ("device-list", read(alice, "/api/devices").await),
         ("device-request", requested),
         ("push-token", registered),
@@ -295,7 +311,69 @@ async fn alice_answers(alice: &Running, bob: &Running) -> Answers {
     ];
     answers.extend(alice_device_changes(alice, bob, &key).await);
     answers.push(("evaluation", evaluation_answer(alice).await));
+    answers.push(("org-members", org_members_answer(alice).await));
     answers
+}
+
+/// alice's `/api/orgs/acme/members` once the org has a hosted member with a sign-in, an open seat, an external
+/// party and a change that waits for the root key, besides the members and the devices the other answers made.
+async fn org_members_answer(alice: &Running) -> Value {
+    use agency_core::pending_root::{PendingRootChange, RootChange};
+    use agency_proto::org::Person;
+    use agency_proto::seat::{External, Seat};
+    let laptop = AccountKey::from_seed([0x81; 32]);
+    let device = Device {
+        id: laptop.public().device_id(),
+        label: "Laptop".into(),
+        public_key: laptop.public(),
+        added_at: Timestamp::parse(T0).unwrap(),
+    };
+    agency_core::orgs::amend(&alice.node, &id("acme"), |definition| {
+        definition
+            .people
+            .push(Person::hosted(id("carol"), "Carol", vec![device]));
+        definition.seats.push(Seat {
+            id: id("dan"),
+            label: "Dan (finance)".into(),
+            department: None,
+            ask_about: vec!["invoices".into()],
+            relays: vec![id("bob")],
+        });
+        definition.externals.push(External {
+            id: id("erin"),
+            label: "Erin (outside counsel)".into(),
+            ask_about: vec!["contracts".into()],
+            relays: vec![id("alice")],
+        });
+        Ok(())
+    })
+    .unwrap();
+    agency_core::guests::keep(
+        &alice.node,
+        &agency_core::guests::Guest::new("carol@example.com", id("acme"), id("carol")),
+    )
+    .unwrap();
+    let removal = DeviceChange {
+        org: id("acme"),
+        account: id("carol"),
+        op: DeviceOp::Remove {
+            device: laptop.public().device_id(),
+        },
+        at: Timestamp::parse(T0).unwrap(),
+    };
+    let signed = Signed::sign(Kind::Device, removal, laptop.public().device_id(), &laptop).unwrap();
+    let held = PendingRootChange {
+        id: "held-device-removal".into(),
+        org: id("acme"),
+        received_at: T0.into(),
+        order: 0,
+        change: RootChange::Device {
+            change: Box::new(signed),
+        },
+        signed_version: None,
+    };
+    alice.node.store().put_pending_root(&held).unwrap();
+    read(alice, "/api/orgs/acme/members").await
 }
 
 /// alice's `/api/orgs/acme/evaluation` for a team that reads two repositories: three pull requests
@@ -382,12 +460,11 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
     let added = agency_core::devices::add_device(&bob.node, "Laptop", &key.public(), None).await;
     assert_eq!(added.len(), 1, "{added:?}");
     alice.stop().await;
-    let queued = write(
-        bob,
-        ENVELOPES,
-        &json!({ "envelope": signed_answer(bob, &key, "r-1", "b") }),
-    )
-    .await;
+    let input = json!({ "envelope": signed_answer(bob, &key, "r-1", "b") });
+    let kept = write_answered(bob, ENVELOPES, &input, StatusCode::ACCEPTED).await;
+    assert_eq!(kept, json!({ "outcome": "queued" }));
+    agency_core::outbox::deliver_due(&bob.node).await.unwrap();
+    let queued = write_answered(bob, ENVELOPES, &input, StatusCode::ACCEPTED).await;
     assert_eq!(queued["outcome"], "queued", "{queued}");
     let phone = AccountKey::from_seed([13; 32]).public();
     let change = signed_add("bob", "iPhone", &phone, &key);
@@ -397,6 +474,7 @@ async fn bob_answers(alice: &mut Running, bob: &Running) -> Answers {
         ("device-change-result-queued", change_queued),
         ("team-snapshot-replica", replica),
         ("me-member", me),
+        ("decision-result-kept", kept),
         ("decision-result-queued", queued),
         ("decision-log-member", read(bob, "/api/decisions").await),
     ]

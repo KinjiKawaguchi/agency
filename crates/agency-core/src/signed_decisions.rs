@@ -11,17 +11,19 @@ use crate::orgs;
 use crate::views::{is_addressed_to, remote_addressed_party, Reader};
 use agency_proto::client::RelayedFor;
 use agency_proto::device::envelope_signer;
+use agency_proto::org::{SignedOrg, TeamPlace};
 use agency_proto::{Envelope, EnvelopeId, EnvelopeKind, Id, Kind, OrgDefinition, Payload, Signed};
 
-/// Relays a decision signed by one of this node's account's devices to its team.
-pub async fn decide_signed(
+/// What a decision signed by one of this node's account's devices must be before the node keeps it: its
+/// own account's, for the team it was sent to, well formed, fresh, and signed by one of the account's
+/// devices in an org the node has. It gives the org's definition and where the org places the team.
+pub(crate) fn check_signed(
     node: &Node,
     account: &Id,
     org: &Id,
     team: &Id,
-    signed: Signed<Envelope>,
-    note: DecisionNote,
-) -> Result<Decided> {
+    signed: &Signed<Envelope>,
+) -> Result<(SignedOrg, TeamPlace)> {
     let envelope = &signed.body;
     // The account the caller acts as: the node's own, or the hosted member a guest is.
     if &envelope.account != account {
@@ -42,12 +44,27 @@ pub async fn decide_signed(
         ));
     }
     let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
-    envelope_signer(&doc.body, &signed).map_err(Error::unauthorized)?;
+    envelope_signer(&doc.body, signed).map_err(Error::unauthorized)?;
     let place = doc
         .body
         .team(team)
         .ok_or_else(|| Error::not_found("not found"))?
         .clone();
+    Ok((doc, place))
+}
+
+/// Relays a decision signed by one of this node's account's devices to its team, and waits for the answer:
+/// the CLI's way. A client's decision is kept and answered at once instead (`kept::keep_signed`).
+pub async fn decide_signed(
+    node: &Node,
+    account: &Id,
+    org: &Id,
+    team: &Id,
+    signed: Signed<Envelope>,
+    note: DecisionNote,
+) -> Result<Decided> {
+    let (doc, place) = check_signed(node, account, org, team, &signed)?;
+    let envelope = &signed.body;
     let is_local = node.runs_here(org, team);
     let record = DecisionRecord::of(&signed, note, is_local);
     if !is_local {
@@ -75,7 +92,7 @@ pub async fn decide_signed(
 /// definition of the org have it: the seat or external party the decided request is addressed to, when the
 /// team's node said the signer answers for it. The team's node decides whether to accept the decision; this
 /// is only what the decision log says it was made for.
-fn remote_relayed_for(
+pub(crate) fn remote_relayed_for(
     node: &Node,
     definition: &OrgDefinition,
     org: &Id,
@@ -90,8 +107,12 @@ fn remote_relayed_for(
             && request.answer_with.target == envelope.target
             && is_addressed_to(&reader, request)
     })?;
-    let (id, label) =
-        remote_addressed_party(definition, &replica.answers_for, request.to.as_deref())?;
+    let (id, label) = remote_addressed_party(
+        definition,
+        &replica.answers_for,
+        &envelope.account,
+        request.to.as_deref(),
+    )?;
     Some(RelayedFor {
         id: id.clone(),
         label: label.to_owned(),

@@ -1,14 +1,14 @@
 //! The Client API's use cases: what the node's own account sees and decides through a client.
 //! Only orgs the account belongs to are visible; anything else is reported as not found.
 use crate::config::{HostedTeam, NodeConfig};
-use crate::decisions::{Decided, DecisionNote, DecisionRecord};
+use crate::decisions::{DecisionNote, DecisionRecord};
 use crate::error::{Error, ErrorKind, Result};
 use crate::guests::Caller;
+use crate::kept::{keep_signed, Kept};
 use crate::node::Node;
 use crate::orgs::is_root;
 use crate::outbox::Parcel;
 use crate::push::is_hiding_titles;
-use crate::signed_decisions::decide_signed;
 use crate::views::{
     addressed_party, mine, remote_addressed_party, runtime_view, viewer_name, waiting_on_viewer,
     Reader, Replica,
@@ -165,6 +165,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         view,
         viewer,
         answers_for,
+        ..
     } = replica;
     let Some(view) = view else {
         let why = error.unwrap_or_else(|| "not read yet".to_owned());
@@ -186,7 +187,7 @@ pub async fn team_snapshot(node: &Node, org: &Id, team: &Id) -> Result<TeamSnaps
         error,
     };
     Ok(TeamSnapshot {
-        relayed_for: remote_relayed_for(&doc.body, &answers_for, &view, &mine),
+        relayed_for: remote_relayed_for(&doc.body, &answers_for, &node.account(), &view, &mine),
         waiting_on_viewer: waiting_on_viewer(&view, viewer.as_deref()),
         mine,
         view,
@@ -216,6 +217,7 @@ pub(crate) fn relayed_for(
 fn remote_relayed_for(
     definition: &OrgDefinition,
     answers_for: &[AnswersFor],
+    reader: &Id,
     view: &TeamView,
     mine: &[String],
 ) -> BTreeMap<String, String> {
@@ -223,7 +225,7 @@ fn remote_relayed_for(
     requests
         .filter_map(|request| {
             let (_, label) =
-                remote_addressed_party(definition, answers_for, request.to.as_deref())?;
+                remote_addressed_party(definition, answers_for, reader, request.to.as_deref())?;
             Some((request.id.clone(), label.to_owned()))
         })
         .collect()
@@ -245,8 +247,9 @@ fn note_text(raw: Option<String>, field: &str) -> Result<Option<String>> {
     Ok(text)
 }
 
-/// Relays a decision signed by one of the account's devices. The node only checks and relays it.
-pub async fn submit_signed_decision(
+/// Keeps a decision signed by one of the account's devices and answers at once; the node applies or sends it
+/// in the background (see `kept`). The same envelope sent again gets the answer for where it is now.
+pub fn submit_signed_decision(
     node: &Node,
     caller: &Caller,
     org: &Id,
@@ -268,17 +271,24 @@ pub async fn submit_signed_decision(
         return Err(Error::bad_request("choiceLabel needs a choice"));
     }
     let account = caller.account(node);
-    result_of(decide_signed(node, &account, org, team, input.envelope, note).await?)
+    result_of(keep_signed(
+        node,
+        &account,
+        org,
+        team,
+        input.envelope,
+        note,
+    )?)
 }
 
-/// A refusal by the team's node is a conflict: the client should re-read the team, because the request
-/// has most likely been answered or closed.
-fn result_of(decided: Decided) -> Result<DecisionResult> {
-    let (outcome, message) = match decided {
-        Decided::Applied => (DecisionOutcome::Applied, None),
-        Decided::Delivered => (DecisionOutcome::Delivered, None),
-        Decided::Queued(why) => (DecisionOutcome::Queued, Some(why)),
-        Decided::Refused(why) => {
+/// A refusal by the team's node or runtime is a conflict: the client should re-read the team, because the
+/// request has most likely been answered or closed.
+fn result_of(kept: Kept) -> Result<DecisionResult> {
+    let (outcome, message) = match kept {
+        Kept::Applied => (DecisionOutcome::Applied, None),
+        Kept::Delivered => (DecisionOutcome::Delivered, None),
+        Kept::Queued(why) => (DecisionOutcome::Queued, why),
+        Kept::Refused(why) => {
             return Err(Error::new(
                 ErrorKind::Conflict,
                 format!("the team's node refused: {why}"),
@@ -288,16 +298,14 @@ fn result_of(decided: Decided) -> Result<DecisionResult> {
     Ok(DecisionResult { outcome, message })
 }
 
-/// Where a logged decision is now: applied locally, waiting in the outbox, refused, or delivered.
+/// Where a logged decision is now: waiting in the outbox, refused, or (once nothing waits for it)
+/// applied to a team on this node or delivered to the team's node.
 fn state_of(
     record: &DecisionRecord,
     decided_at: &Timestamp,
     pending: &[Parcel],
     refused: &[Parcel],
 ) -> DecisionState {
-    if record.is_local {
-        return DecisionState::Applied;
-    }
     let id = record.id.as_str();
     if let Some(parcel) = pending.iter().find(|parcel| parcel.id == id) {
         let next_at = timestamp(Some(&parcel.next_at)).unwrap_or_else(|| decided_at.clone());
@@ -311,6 +319,7 @@ fn state_of(
         Some(parcel) => DecisionState::Refused {
             message: parcel.last_error.clone().unwrap_or_default(),
         },
+        None if record.is_local => DecisionState::Applied,
         None => DecisionState::Delivered,
     }
 }
@@ -339,28 +348,54 @@ pub fn decision_log_of(node: &Node, caller: &Caller, limit: Option<usize>) -> De
         .filter(|record| record.is_by(&caller.account(node), &node.account()))
         .filter(|record| membership_of(node, caller, &record.org).is_ok())
         .take(limit);
-    let entries = visible.filter_map(|record| {
-        let decided_at = timestamp(Some(&record.at))?;
-        let state = state_of(&record, &decided_at, &pending, &refused);
-        Some(DecisionEntry {
-            id: record.id.as_str().to_owned(),
-            org: record.org,
-            team: record.team,
-            kind: record.kind,
-            target: record.target,
-            title: record.title,
-            text: record.payload.text,
-            choice: record.payload.choice,
-            choice_label: record.choice_label,
-            relayed_for: record.relayed_for,
-            signer: record.signer,
-            decided_at,
-            state,
-        })
-    });
     DecisionLog {
-        entries: entries.collect(),
+        entries: visible
+            .filter_map(|record| entry_of(record, &pending, &refused))
+            .collect(),
     }
+}
+
+/// One logged decision of the account, with where it is now. Not found for an id the log does not hold
+/// (it keeps the last 500), and for a decision in an org the account no longer belongs to.
+pub fn decision_entry(node: &Node, id: &str) -> Result<DecisionEntry> {
+    let (pending, refused) = (
+        node.store().pending_parcels(),
+        node.store().refused_parcels(),
+    );
+    node.store()
+        .recent_decisions(usize::MAX)
+        .into_iter()
+        .find(|record| {
+            record.id.as_str() == id
+                && record.is_by(&node.account(), &node.account())
+                && membership_of(node, &Caller::Owner, &record.org).is_ok()
+        })
+        .and_then(|record| entry_of(record, &pending, &refused))
+        .ok_or_else(|| Error::not_found("not found"))
+}
+
+fn entry_of(
+    record: DecisionRecord,
+    pending: &[Parcel],
+    refused: &[Parcel],
+) -> Option<DecisionEntry> {
+    let decided_at = timestamp(Some(&record.at))?;
+    let state = state_of(&record, &decided_at, pending, refused);
+    Some(DecisionEntry {
+        id: record.id.as_str().to_owned(),
+        org: record.org,
+        team: record.team,
+        kind: record.kind,
+        target: record.target,
+        title: record.title,
+        text: record.payload.text,
+        choice: record.payload.choice,
+        choice_label: record.choice_label,
+        relayed_for: record.relayed_for,
+        signer: record.signer,
+        decided_at,
+        state,
+    })
 }
 
 /// The other home nodes the owner configured (`homeNodes`), each with a label of 1 to 80 characters and

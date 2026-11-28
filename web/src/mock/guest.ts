@@ -19,8 +19,9 @@ export function answererView(view: TeamView, guest: MockGuest): TeamView {
   }
 }
 
-const ORG_ROUTE = /^\/api\/orgs\/[^/]+(\/(evaluation|effort)|\/outcomes(\/readings|\/observations)?)?$/
-const TEAM_OWNER_ROUTE = /^\/api\/orgs\/[^/]+\/teams\/[^/]+\/(usage|activity)$/
+const ORG_ROUTE = /^\/api\/orgs\/[^/]+(\/(evaluation|effort|members|history)|\/outcomes(\/readings|\/observations)?)?$/
+const TEAM_OWNER_ROUTE = /^\/api\/orgs\/[^/]+\/teams\/[^/]+\/(usage|activity|budget)$/
 
 /** The routes that are the owner's: a hosted member has no owner action, and no read beyond their seat. */
-export const isRefusedToGuest = (pathname: string): boolean => ORG_ROUTE.test(pathname) || TEAM_OWNER_ROUTE.test(pathname) || pathname === '/api/push/tokens' || pathname.startsWith('/api/push/tokens/')
+export const isRefusedToGuest = (pathname: string): boolean =>
+  ORG_ROUTE.test(pathname) || TEAM_OWNER_ROUTE.test(pathname) || pathname === '/api/push/tokens' || pathname.startsWith('/api/push/tokens/') || pathname === '/api/telemetry'
