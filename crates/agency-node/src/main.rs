@@ -25,7 +25,6 @@ use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::signed_decisions::decide_with_device;
-use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
 use agency_node::Overrides;
 use agency_proto::org::{is_node_origin, TeamPlace};
@@ -109,6 +108,15 @@ enum Command {
     Audit(audit_cli::Audit),
     MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
+    /// Makes a seven-day claim link for one seat and one email (on the root key's node)
+    SeatInvite {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        email: String,
+    },
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -205,6 +213,7 @@ enum Command {
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
+    Export(agency_node::export::ExportArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -290,10 +299,10 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
 }
 
 /// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
-/// move only spelled the same origin another way.
+/// move only spelled the same origin another way or renamed this node's own origin.
 const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
 whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
-the default port) changes nothing.";
+the default port), or that renames this node's own origin to one it was configured with, changes nothing.";
 
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
@@ -309,8 +318,14 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::views::waiting_lines(node) {
+        println!("{line}");
+    }
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
+    }
+    if let Err(error) = node.store().own_origins() {
+        println!("{}", agency_core::node::own_origins_unreadable_line(&error));
     }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
@@ -547,6 +562,11 @@ async fn run(cli: Cli) -> Result<()> {
     if let Command::Metrics(args) = &cli.command {
         return metrics_cli::run(&data, args);
     }
+    if let Command::Export(args) = &cli.command {
+        if let Some(dir) = args.only_verifies() {
+            return agency_node::export::verify_dir(dir);
+        }
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
@@ -622,6 +642,17 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Audit(args) => audit_cli::audit(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::SeatInvite { org, seat, email } => {
+            let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
+            println!("{}", invite.link);
+            println!(
+                "Add {} to the Access policy by hand; the node does not change Access.",
+                invite.email
+            );
+            if invite.local_only {
+                println!("This link works on this machine only.");
+            }
+        }
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
@@ -729,7 +760,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
-            refresh(&node).await?;
+            agency_core::views::refresh_now(&node).await?;
             for joined in finish_joins(&node).await? {
                 if let Joined::Member(doc) = joined {
                     println!("Joined org {} (version {})", doc.body.org, doc.body.version);
@@ -742,6 +773,7 @@ async fn run(cli: Cli) -> Result<()> {
             );
         }
         Command::Status => status(&node),
+        Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }
     Ok(())

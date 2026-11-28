@@ -293,6 +293,16 @@ A malformed setting is reported at start (see [Troubleshooting](#troubleshooting
 
 ## Adding a phone or a browser
 
+### Send a claim link for a seat
+
+On the root's node, make a claim link for one unclaimed seat and one email:
+
+```sh
+agency seat-invite --org acme --seat finance --email carol@example.com
+```
+
+It prints the email to add to the Access policy by hand, then a seven-day link. The node never calls Cloudflare and keeps the email only on this node. With Access the link uses the public host; without it, use the local link on this machine only. A newer link for the same seat replaces the old one.
+
 Each browser and phone that decides for you has its own key, which it makes and keeps; the key never leaves it.
 
 1. On the new device, open the web client: `http://127.0.0.1:4400/` on the node's machine, or `https://agency.example.com/` after signing in to Access. The iPhone app opens the same page ([apple.md](apple.md)).

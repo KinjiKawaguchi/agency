@@ -22,6 +22,5 @@
       "changes": ["add member bob (Bob)", "add device Laptop for bob"],
       "isKept": true
     }
-  ],
-  "more": true
+  ]
 }

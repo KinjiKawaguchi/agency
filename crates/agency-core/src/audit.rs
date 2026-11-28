@@ -60,58 +60,19 @@ fn entry(kept_before: Option<&SignedOrg>, doc: &SignedOrg) -> HistoryEntry {
     }
 }
 
-/// What a read of the history asks for.
-#[derive(Clone, Copy, Debug)]
-pub struct HistoryQuery {
-    /// Only the versions signed at or after this time (a version this node does not keep is always listed).
-    pub since: Option<OffsetDateTime>,
-    /// Only the versions above this number.
-    pub after: u64,
-    /// At most this many entries.
-    pub limit: usize,
-}
-
-impl HistoryQuery {
-    /// Every version, as `agency audit` lists them.
-    pub fn all(since: Option<OffsetDateTime>) -> Self {
-        Self {
-            since,
-            after: 0,
-            limit: usize::MAX,
-        }
-    }
-}
-
-/// The entries a read asked for, and whether more would have followed them.
-pub struct HistoryPage {
-    pub entries: Vec<HistoryEntry>,
-    pub is_cut: bool,
-}
-
-/// The history of `org` from its first version to the one this node holds now, oldest first, as `query` asks. A
-/// version that is not returned (at or below `after`, or signed before `since`) is loaded, since the next one is
-/// compared with it, but its signature is not checked and its changes are not worded.
-pub fn org_history_page(node: &Node, org: &Id, query: &HistoryQuery) -> Result<HistoryPage> {
+/// The history of `org` from its first version to the one this node holds now, oldest first; with `since`, only the
+/// versions signed at or after it.
+pub fn org_history(
+    node: &Node,
+    org: &Id,
+    since: Option<OffsetDateTime>,
+) -> Result<Vec<HistoryEntry>> {
     let current = load(node, org)?;
     let mut before: Option<SignedOrg> = None;
-    let mut entries = vec![];
+    let mut history = vec![];
     for version in 1..=current.body.version {
-        let doc = node.store().load_org_version(org, version);
-        let is_wanted = version > query.after
-            && doc.as_ref().is_none_or(|doc| {
-                let at = clock::parse(&doc.body.at);
-                query
-                    .since
-                    .is_none_or(|since| at.is_none_or(|at| at >= since))
-            });
-        if is_wanted && entries.len() >= query.limit {
-            return Ok(HistoryPage {
-                entries,
-                is_cut: true,
-            });
-        }
-        match doc {
-            None if is_wanted => entries.push(HistoryEntry {
+        let Some(doc) = node.store().load_org_version(org, version) else {
+            history.push(HistoryEntry {
                 version,
                 at: None,
                 signature: None,
@@ -120,28 +81,15 @@ pub fn org_history_page(node: &Node, org: &Id, query: &HistoryQuery) -> Result<H
                 compared_with: None,
                 changes: vec![],
                 is_kept: false,
-            }),
-            None => {}
-            Some(doc) => {
-                if is_wanted {
-                    entries.push(entry(before.as_ref(), &doc));
-                }
-                before = Some(doc);
-            }
-        }
+            });
+            continue;
+        };
+        history.push(entry(before.as_ref(), &doc));
+        before = Some(doc);
     }
-    Ok(HistoryPage {
-        entries,
-        is_cut: false,
-    })
-}
-
-/// The history of `org` from its first version to the one this node holds now, oldest first; with `since`, only the
-/// versions signed at or after it.
-pub fn org_history(
-    node: &Node,
-    org: &Id,
-    since: Option<OffsetDateTime>,
-) -> Result<Vec<HistoryEntry>> {
-    org_history_page(node, org, &HistoryQuery::all(since)).map(|page| page.entries)
+    let is_since = |entry: &HistoryEntry| {
+        let at = entry.at.as_deref().and_then(clock::parse);
+        since.is_none_or(|since| at.is_none_or(|at| at >= since))
+    };
+    Ok(history.into_iter().filter(is_since).collect())
 }

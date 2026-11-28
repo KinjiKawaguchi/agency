@@ -2,11 +2,6 @@
 import type { HistoryEntry } from "./HistoryEntry.js";
 
 /**
- * `GET /api/orgs/<org>/history`: the entries `agency audit --json` prints, oldest first, at most `limit` of them.
+ * `GET /api/orgs/<org>/history`: the entries `agency audit --json` prints, oldest first.
  */
-export type OrgHistory = { entries: Array<HistoryEntry>, 
-/**
- * Entries after the last one were left out because of `limit`: ask again with `after` set to its `version`.
- * Left out when false.
- */
-more?: boolean, };
+export type OrgHistory = { entries: Array<HistoryEntry>, };

@@ -51,22 +51,12 @@ pub struct HistoryEntry {
     pub is_kept: bool,
 }
 
-/// The entries a read of the history returns when it names no `limit`.
-pub const DEFAULT_LIMIT: usize = 200;
-/// The most entries a read of the history may ask for.
-pub const MOST_LIMIT: usize = 1000;
-
-/// `GET /api/orgs/<org>/history`: the entries `agency audit --json` prints, oldest first, at most `limit` of them.
+/// `GET /api/orgs/<org>/history`: the entries `agency audit --json` prints, oldest first.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, optional_fields)]
+#[ts(export)]
 pub struct OrgHistory {
     pub entries: Vec<HistoryEntry>,
-    /// Entries after the last one were left out because of `limit`: ask again with `after` set to its `version`.
-    /// Left out when false.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[ts(optional, type = "boolean")]
-    pub more: bool,
 }
 
 #[cfg(test)]
@@ -95,17 +85,6 @@ mod tests {
         assert!(!entries[1].is_kept && entries[1].at.is_none());
         assert_eq!(entries[2].signature, Some(SignatureCheck::NotChecked));
         assert_eq!(entries[2].compared_with, Some(1));
-    }
-
-    #[test]
-    fn more_is_written_only_when_there_is_more() {
-        let history: OrgHistory = serde_json::from_str(SAMPLE).unwrap();
-        assert!(history.more);
-        let none = OrgHistory {
-            more: false,
-            ..history
-        };
-        assert!(serde_json::to_value(&none).unwrap().get("more").is_none());
     }
 
     #[test]
