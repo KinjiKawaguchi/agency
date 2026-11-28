@@ -120,6 +120,51 @@ async fn a_member_reads_the_evaluation_of_a_team_that_has_repositories() {
     assert_eq!(asked[0].1, at("2026-11-11T00:00:00Z"), "the period's start");
 }
 
+#[tokio::test]
+async fn a_team_with_two_repositories_reports_each_ones_numbers_beside_its_own() {
+    let (alice, _) = alice().await;
+    alice
+        .node
+        .update_config(|config| {
+            let team = config.teams.remove(0);
+            config.teams.insert(
+                0,
+                team.with_delivery(vec!["acme/app".into(), "acme/web".into()]),
+            );
+        })
+        .unwrap();
+    let mut both = facts();
+    let mut in_web = both.pull_requests[0].clone();
+    in_web.repo = "acme/web".into();
+    in_web.number = 7;
+    in_web.title = "fix(web): a crash".into();
+    both.pull_requests.push(in_web);
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(both));
+    let bob = joined_bob(&alice).await;
+
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let evaluation: Evaluation = serde_json::from_value(answer).unwrap();
+    assert_eq!(evaluation.check(&id("acme"), 14), Ok(()));
+    let team = &evaluation.teams[0];
+    let [app, web] = &team.by_repository[..] else {
+        panic!("two repositories: {:?}", team.by_repository);
+    };
+    assert_eq!(
+        (app.repo.as_str(), web.repo.as_str()),
+        ("acme/app", "acme/web")
+    );
+    assert_eq!((app.summary.merged.feat, app.summary.merged.fix), (1, 0));
+    assert_eq!((web.summary.merged.feat, web.summary.merged.fix), (0, 1));
+    assert_eq!(
+        (app.summary.main_red_seconds, web.summary.main_red_seconds),
+        (3600, 0),
+        "the red run is acme/app's"
+    );
+    assert_eq!(team.summary.merged.feat + team.summary.merged.fix, 2);
+    assert_eq!(team.summary.main_red_seconds, 3600);
+}
+
 const PARTICIPANTS: &str = include_str!("../../../testdata/participantmetrics.sample.json");
 
 /// alice's evaluation of `acme/app` over 14 days as bob reads it, and what her runtime was asked.
@@ -543,4 +588,45 @@ async fn a_team_of_this_node_without_repositories_is_listed_as_unavailable_with_
         .as_str()
         .unwrap()
         .contains("no repositories"));
+}
+
+#[tokio::test]
+async fn a_repository_that_is_not_written_owner_name_stops_the_node_and_names_the_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = agency_adapters::files::DataDir::new(dir.path().join("node"));
+    data.create_key().unwrap();
+    let account = agency_core::config::Account {
+        id: id("alice"),
+        label: "ALICE".into(),
+    };
+    for (repos, wanted) in [
+        (
+            vec!["acme"],
+            "teams[0].delivery.repos[0] is not written owner/name",
+        ),
+        (
+            vec!["acme/app", "ACME/app"],
+            "teams[0].delivery.repos[1] names a repository twice",
+        ),
+    ] {
+        let mut config = agency_core::config::NodeConfig::new(
+            "http://127.0.0.1:1",
+            "127.0.0.1:1",
+            account.clone(),
+            "scrum",
+        );
+        config.teams = vec![agency_core::config::HostedTeam::new(
+            id("acme"),
+            id("app"),
+            id("alice"),
+            agency_core::config::RuntimeCommand::of(vec!["/nonexistent".into()]),
+        )
+        .with_delivery(repos.into_iter().map(String::from).collect())];
+        agency_core::ports::ConfigStore::save_config(&data, &config).unwrap();
+        let error = match agency_node::open(data.clone(), agency_node::Overrides::default()) {
+            Ok(_) => panic!("the node started"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains(wanted), "{error}");
+    }
 }

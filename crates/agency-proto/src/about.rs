@@ -156,10 +156,12 @@ pub enum Capability {
     ReadAudience,
     /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
     Budget,
+    /// An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.
+    History,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 14] = [
+    pub const ALL: [Capability; 15] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -174,6 +176,7 @@ impl Capability {
         Capability::Effort,
         Capability::ReadAudience,
         Capability::Budget,
+        Capability::History,
     ];
 
     pub fn name(self) -> &'static str {
@@ -192,6 +195,7 @@ impl Capability {
             Capability::Effort => "effort",
             Capability::ReadAudience => "readAudience",
             Capability::Budget => "budget",
+            Capability::History => "history",
         }
     }
 

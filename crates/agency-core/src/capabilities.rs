@@ -5,7 +5,7 @@
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::peer_about::{peer_origins, peers_of, PeerAbout};
-use agency_proto::about::Capability;
+use agency_proto::about::{About, Capability};
 use agency_proto::clock::{self, Duration, OffsetDateTime};
 use agency_proto::OrgDefinition;
 use std::collections::BTreeSet;
@@ -14,19 +14,19 @@ use std::collections::BTreeSet;
 /// replaced since.
 pub const MAX_AGE: Duration = Duration::days(3);
 
-/// Why `origin` may not be relied on for `needed`, or `None` when it lists them all in a recent answer.
-fn gap(
+/// What `origin` last said about itself, when that is an answer that counts: it was read, it answered, and
+/// the answer is not older than `MAX_AGE`. Otherwise why it does not count.
+pub(crate) fn recent_about<'a>(
     origin: &str,
-    kept: Option<&PeerAbout>,
-    needed: &BTreeSet<Capability>,
+    kept: Option<&'a PeerAbout>,
     now: OffsetDateTime,
-) -> Option<String> {
+) -> std::result::Result<&'a About, String> {
     let Some(kept) = kept else {
-        return Some(format!("{origin} has not been read yet"));
+        return Err(format!("{origin} has not been read yet"));
     };
     let Some(about) = &kept.about else {
         let why = kept.error.as_deref().unwrap_or("no answer");
-        return Some(format!("{origin} has not answered ({why})"));
+        return Err(format!("{origin} has not answered ({why})"));
     };
     let age = kept
         .read_at
@@ -35,11 +35,25 @@ fn gap(
         .map(|at| now - at);
     if age.is_none_or(|age| age > MAX_AGE) {
         let why = kept.error.as_deref().unwrap_or("it was not read again");
-        return Some(format!(
+        return Err(format!(
             "{origin} was last read more than {} days ago ({why})",
             MAX_AGE.whole_days()
         ));
     }
+    Ok(about)
+}
+
+/// Why `origin` may not be relied on for `needed`, or `None` when it lists them all in a recent answer.
+fn gap(
+    origin: &str,
+    kept: Option<&PeerAbout>,
+    needed: &BTreeSet<Capability>,
+    now: OffsetDateTime,
+) -> Option<String> {
+    let about = match recent_about(origin, kept, now) {
+        Ok(about) => about,
+        Err(why) => return Some(why),
+    };
     let missing: Vec<&str> = needed
         .iter()
         .filter(|one| !about.lists(**one))

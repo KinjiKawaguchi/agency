@@ -1,7 +1,9 @@
 //! Agency's node: wires agency-core to its adapters. One node runs per machine; it serves the teams it
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
+pub mod background;
 pub mod budget;
+pub mod export;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
@@ -20,6 +22,7 @@ use agency_adapters::peers::HttpPeers;
 use agency_adapters::refusal_log::RefusalLog;
 use agency_adapters::root_keys::FileRootKeys;
 use agency_adapters::runtime::CommandRuntime;
+use agency_adapters::runtime_releases::ReleaseLog;
 use agency_adapters::server;
 use agency_adapters::system::{OsRandom, SystemClock, TokioWriteLock};
 use agency_adapters::usage_collector;
@@ -147,18 +150,20 @@ pub struct Opened {
 
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
+    data.check_format()?;
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
     let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let config = data.load_config()?;
+    data.ensure_format()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
-    for (at, team) in config.teams.iter().enumerate() {
+    for (index, team) in config.teams.iter().enumerate() {
         if let Some(delivery) = &team.delivery {
             delivery
-                .check(&format!("teams[{at}].delivery"))
+                .check(&format!("teams[{index}].delivery"))
                 .map_err(anyhow::Error::msg)?;
         }
     }
@@ -172,13 +177,19 @@ pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
         Some(notifier) => notifier,
         None => notifier(&config, &data_dir, clock.clone(), &logger),
     };
+    let release_log = ReleaseLog::new(
+        &data,
+        clock.clone(),
+        config.teams.iter().map(|team| (&team.org, &team.team)),
+    );
     let ports = Ports {
         store: Arc::new(data),
         peers: Arc::new(HttpPeers::new()?),
         runtime: overrides.runtime.unwrap_or_else(|| {
             Arc::new(
                 CommandRuntime::with_log(logger.sink(LogLevel::Warn, "runtime"))
-                    .recording(recorder.clone()),
+                    .recording(recorder.clone())
+                    .reporting_releases(release_log),
             )
         }),
         clock: clock.clone(),

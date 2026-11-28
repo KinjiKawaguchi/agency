@@ -62,7 +62,7 @@ public final class DevicesStore {
     @ObservationIgnored private let adder: any DeviceAdder
     @ObservationIgnored private let ownKey: String
     @ObservationIgnored private let remover: (any DeviceRemover)?
-    @ObservationIgnored private let hasKeptDecisions: @MainActor () -> Bool
+    @ObservationIgnored private let hasKeptDecisions: @MainActor (_ deviceID: String) -> Bool
     /// The node's list as last read, which a removal is worked out from.
     @ObservationIgnored private var list: DeviceList?
 
@@ -76,16 +76,17 @@ public final class DevicesStore {
         self.adder = adder
         self.ownKey = ownKey?.string ?? ""
         remover = nil
-        hasKeptDecisions = { false }
+        hasKeptDecisions = { _ in false }
     }
 
     /// - Parameters:
     ///   - remover: removes a device of the person's; `nil` where this build has no way to (the removal is then not offered).
-    ///   - hasKeptDecisions: whether decisions signed with this device's key are kept on it, waiting to be sent. This device is not
-    ///     removed while they are, since removing its key would make each of them fail for good.
+    ///   - hasKeptDecisions: whether decisions signed by the device with this id are kept on this phone, waiting to be sent (this device, or an
+    ///     earlier key of it that was made again). A device is not removed while they are, since removing its key would make each of them
+    ///     fail for good.
     public init(
         source: any DevicesSource, adder: any DeviceAdder, ownKey: DevicePublicKey, remover: (any DeviceRemover)? = nil,
-        hasKeptDecisions: @escaping @MainActor () -> Bool = { false }
+        hasKeptDecisions: @escaping @MainActor (_ deviceID: String) -> Bool = { _ in false }
     ) {
         self.hasKeptDecisions = hasKeptDecisions
         self.source = source
@@ -122,7 +123,7 @@ public final class DevicesStore {
 
     /// What removing this device comes to, from the node's list as last read.
     public func removalPlan(for row: DeviceFacts.Row) -> DeviceRemovalPlan? {
-        list.map { DeviceRemovalPlan(for: row, in: $0, ownKey: ownKey, hasKeptDecisions: hasKeptDecisions()) }
+        list.map { DeviceRemovalPlan(for: row, in: $0, ownKey: ownKey, hasKeptDecisions: hasKeptDecisions(row.id)) }
     }
 
     /// Removes the device, after the person has confirmed. The device leaves the list when the node stops listing it: not before, and not
