@@ -508,6 +508,18 @@ impl OrgDefinition {
         accounts.chain(roots).collect()
     }
 
+    /// Whether `key` is already a key of this definition: an account, root or recovery key, a device's key, or a
+    /// revoked one. A device key made for a member must be none of these.
+    pub fn has_key(&self, key: &PublicKey) -> bool {
+        self.node_keys().contains(key)
+            || self.revoked.contains(key)
+            || self
+                .people
+                .iter()
+                .flat_map(|one| &one.devices)
+                .any(|device| &device.public_key == key)
+    }
+
     /// A recovery key that is also the root key or an account key would be kept on a node, which defeats it; a
     /// new root key a started recovery names is no account key either.
     fn are_recovery_keys_apart(&self) -> bool {
