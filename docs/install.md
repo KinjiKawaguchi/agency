@@ -12,8 +12,8 @@ Ids are lowercase letters, digits, and hyphens (`[a-z0-9][a-z0-9-]{0,39}`).
 ## Requirements
 
 - macOS on Apple silicon or Intel, or Linux on x86_64 or arm64 with glibc 2.34 or later, and systemd to run the node as a service.
-- macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler and `curl`, for example `sudo apt install build-essential curl`.
-- Rust, stable, 1.87 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
+- macOS: Xcode Command Line Tools: `xcode-select --install`. Linux: a C compiler, `curl` and the `ca-certificates` package (the node checks the certificates of the services it calls against the system's trusted roots), for example `sudo apt install build-essential curl ca-certificates`.
+- Rust, stable, 1.89 or later, from [rustup](https://rustup.rs). Check with `rustc --version`.
 - Node.js 24 with npm, to build the web client. Check with `node --version`.
 - The team's harness and the tools it uses (see [The team runtime](#the-team-runtime)).
 

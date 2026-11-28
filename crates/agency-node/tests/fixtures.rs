@@ -72,7 +72,7 @@ fn waiting_person(id: &str, on: &str) -> Value {
 /// is written (`p256:` and the uncompressed point).
 fn p256_public(byte: u8) -> PublicKey {
     let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     PublicKey::try_from(format!("p256:{}", STANDARD.encode(point.as_bytes()))).unwrap()
 }
 

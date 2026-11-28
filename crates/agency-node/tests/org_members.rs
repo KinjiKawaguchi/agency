@@ -24,7 +24,7 @@ const MEMBERS: &str = "/api/orgs/acme/members";
 /// A browser's P-256 device key.
 fn browser_key() -> PublicKey {
     let key = SigningKey::from_slice(&[0x0b; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     PublicKey::try_from(format!("p256:{}", STANDARD.encode(point.as_bytes()))).unwrap()
 }
 
