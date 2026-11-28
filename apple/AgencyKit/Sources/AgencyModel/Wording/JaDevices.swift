@@ -21,11 +21,11 @@ extension Ja {
         public static let nowhereToAdd = "追加できる組織がありません。この端末が追加されている組織が必要です。"
         public static let accountUnknown = "アカウントを読めませんでした。"
         public static let codeMismatch = "ノードが示したコードが、この端末の鍵から計算したコードと違います。追加しないでください。"
-        public static let malformedRequest = "この依頼の鍵が正しくありません。追加しないでください。"
+        public static let malformedRequest = "このリクエストの鍵が正しくありません。追加しないでください。"
 
         public static func addedAs(_ id: String) -> String { "端末 ID は \(id) です。" }
         public static func addedOn(_ when: String) -> String { "\(when)に追加" }
-        public static func requestedAt(_ when: String) -> String { "\(when)に依頼" }
+        public static func requestedAt(_ when: String) -> String { "\(when)にリクエスト" }
         public static func codeOf(_ label: String) -> String { "\(label) の照合コード" }
         public static func inOrgs(_ orgs: String) -> String { "組織: \(orgs)" }
         public static func confirmed(_ label: String) -> String { "\(label) を追加しました。" }
@@ -44,7 +44,7 @@ extension Ja {
             public static func fromOrgs(_ orgs: String) -> String { "\(orgs) から削除されます。" }
             public static let thisDevice = "いま使っている端末です。削除すると、この端末はこの鍵では署名できなくなり、この鍵をもう一度追加することもできません。そのあと端末は新しい鍵を作り、それは新しい端末として追加する必要があります。"
             /// Said after this device's own removal took effect and it made a new key: the removed key cannot sign, and the new one is not added yet.
-            public static let thisDeviceRemoved = "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加を依頼してください。"
+            public static let thisDeviceRemoved = "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加をリクエストしてください。"
             /// Said instead of the confirmation when the decisions kept on this phone cannot be read now, so that nothing is known of which device
             /// signed them: there is nothing to send or discard, and the cause is said.
             public static let keptDecisionsUnreadable = "このアプリに残した決定を、いま読めないため、端末を削除できません。端末のロックを解除し、アプリを開き直してから、もう一度削除してください。"
@@ -66,7 +66,7 @@ extension Ja {
             public static let cannotHere = "この端末は、ここでは削除できません。一覧を読み直してください。"
             /// Said when the root's node holds the removal for its owner to sign: the same sentence as for an approval, with its own verb.
             public static func pendingRoot(command: String) -> String {
-                "ここでは削除を依頼しました。ルート鍵のノードが署名すると有効になります。そのノードで \(command) を実行してください。"
+                "ここでは削除をリクエストしました。組織のルートキーのノードが署名すると有効になります。そのノードで \(command) を実行してください。"
             }
             public static func faceIDReason(_ label: String) -> String { "端末を削除する: \(label)" }
         }

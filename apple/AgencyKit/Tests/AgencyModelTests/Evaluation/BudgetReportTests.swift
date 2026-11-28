@@ -13,7 +13,7 @@ struct BudgetReportTests {
     func states() throws {
         let ok = try #require(report(BudgetPart(capUsd: 200, spentUsd: 40, state: .ok)).meter)
         #expect(ok.stateText == "予算の範囲内です" && ok.state == .ok && ok.fraction == 0.2)
-        #expect(ok.spoken == "週の予算 $200 のうち $40 を使用: 予算の範囲内です")
+        #expect(ok.spoken == "週次予算 $200 のうち $40 を使用: 予算の範囲内です")
         #expect(report(BudgetPart(capUsd: 200, spentUsd: 40, state: .ok)).line == "今週(2026-11-23 の月曜から)は $200 のうち $40")
         let warning = try #require(report(BudgetPart(capUsd: 100, spentUsd: 86.4, state: .warning)).meter)
         #expect(warning.stateText == "予算に近づいています" && warning.state == .warning)
@@ -27,7 +27,7 @@ struct BudgetReportTests {
         #expect(said.state == .ok && said.stateText == "予算の範囲内です")
         let unknown = try #require(report(BudgetPart(capUsd: 100, spentUsd: 120, state: .unknown)).meter)
         #expect(unknown.stateText == nil, "a state the app does not know is said as none")
-        #expect(unknown.spoken == "週の予算 $100 のうち $120 を使用")
+        #expect(unknown.spoken == "週次予算 $100 のうち $120 を使用")
     }
 
     @Test("a cap of nothing: the fill is empty, or full when the node says over")
@@ -55,10 +55,10 @@ struct BudgetReportTests {
     @Test("the org's budget is said when it is not ok, since an org that is over makes its teams over, and a lower bound is said as one")
     func org() {
         let team = BudgetPart(capUsd: 200, spentUsd: 10, state: .over)
-        #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 600, state: .over)).orgNote == "組織は週の予算を超えています: $500 のうち $600。")
-        #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 420, state: .warning)).orgNote == "組織は週の予算に近づいています: $500 のうち $420。")
+        #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 600, state: .over)).orgNote == "組織は週次予算を超えています: $500 のうち $600。")
+        #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 420, state: .warning)).orgNote == "組織は週次予算に近づいています: $500 のうち $420。")
         #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 600, state: .over, isPartial: true)).orgNote
-            == "組織は週の予算を超えています: $500 のうち $600。 読めなかった使用量があるため、少なくともこれだけです。")
+            == "組織は週次予算を超えています: $500 のうち $600。 読めなかった使用量があるため、少なくともこれだけです。")
         #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 311, state: .ok, isPartial: true)).orgNote
             == "組織の使用量に読めなかったものがあります: 今週は $500 のうち、少なくとも $311。")
         #expect(report(team, org: BudgetPart(capUsd: 500, spentUsd: 311, state: .ok)).orgNote == nil)

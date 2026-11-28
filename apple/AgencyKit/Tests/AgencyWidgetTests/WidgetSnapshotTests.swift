@@ -58,7 +58,7 @@ struct WidgetSnapshotTests {
 
     @Test("the words of the widgets follow the glossary")
     func wording() {
-        #expect(WidgetWording.inline(3) == "決めること 3 件")
+        #expect(WidgetWording.inline(3) == "リクエスト 3 件")
         #expect(WidgetWording.count(12) == "12 件")
         #expect(WidgetWording.more(2) == "ほか 2 件")
         #expect(WidgetWording.updated(minutes: 180) == "3 時間前に更新")
@@ -67,7 +67,7 @@ struct WidgetSnapshotTests {
         #expect(WidgetWording.updated(minutes: 3 * 24 * 60) == "3 日前に更新")
         #expect(WidgetWording.kind(.proposal) == "稟議")
         #expect(WidgetWording.kind(.question) == "質問")
-        #expect(WidgetWording.kind(.pendingDecision) == "判断待ち")
+        #expect(WidgetWording.kind(.pendingDecision) == "相談")
         let words = [WidgetWording.displayName, WidgetWording.description, WidgetWording.nothingWaits, WidgetWording.notSynced, WidgetWording.waitingLabel]
         for forbidden in ["ユーザー", "デバイス", "サーバー"] { #expect(!words.contains { $0.contains(forbidden) }) }
     }

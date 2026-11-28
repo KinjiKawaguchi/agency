@@ -13,7 +13,7 @@ extension Ja {
         /// Approve it from a device the person already has, named by its label.
         public static func fromDevices(_ labels: [String]) -> String {
             let places = labels.count == 1 ? labels[0] : labels.joined(separator: "、") + " のどれか"
-            return "\(places)で Agency を開き、「端末」の画面で、このコードの依頼を承認してください。"
+            return "\(places)で Agency を開き、「端末」の画面で、このコードのリクエストを承認してください。"
         }
 
         /// The account has no device yet: the node's machine approves the first one.

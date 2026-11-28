@@ -66,8 +66,8 @@ struct AnswerForTests {
 
     @Test("the words are the web's")
     func words() {
-        #expect(Ja.Desk.answerFor("Dan (tax)") == "Dan (tax) の代理で答える")
-        #expect(Ja.Recent.answeredFor("Dan (tax)") == "Dan (tax) の代理で答えました。")
+        #expect(Ja.Desk.answerFor("Dan (tax)") == "Dan (tax) の代理回答")
+        #expect(Ja.Recent.answeredFor("Dan (tax)") == "Dan (tax) の代理回答をしました。")
     }
 
     private func entry(_ relayed: String) throws -> DecisionEntry {

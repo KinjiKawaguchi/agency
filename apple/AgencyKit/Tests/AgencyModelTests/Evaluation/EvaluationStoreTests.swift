@@ -188,7 +188,7 @@ struct EvaluationStoreTests {
             await store.budgetsSettled()
         await store.budgetsSettled()
             #expect(source.budgetAsks.isEmpty, "not asked")
-            #expect(store.budgets["app"] == .plain("週の予算は $140 です。このノードは、今週の使用額をまだ返しません。"))
+            #expect(store.budgets["app"] == .plain("週次予算は $140 です。このノードは、今週の使用額をまだ返しません。"))
         }
     }
 

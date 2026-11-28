@@ -77,7 +77,7 @@ struct NodeCompatibilityTests {
     func notices() {
         #expect(NodeCompatibility.compatible.notice(isGuest: false) == nil && NodeCompatibility.compatible.notice(isGuest: true) == nil)
         #expect(NodeCompatibility.nodeTooOld.notice(isGuest: false) == "ホームノードが古いため、このアプリは通信できません。ノードを更新してください。")
-        #expect(NodeCompatibility.nodeTooOld.notice(isGuest: true) == "ホームノードが古いため、このアプリは通信できません。ノードの持ち主に伝えてください。")
+        #expect(NodeCompatibility.nodeTooOld.notice(isGuest: true) == "ホームノードが古いため、このアプリは通信できません。ノードの管理者に伝えてください。")
         for isGuest in [false, true] {
             #expect(NodeCompatibility.appTooOld.notice(isGuest: isGuest) == "アプリが古いため、ホームノードと通信できません。アプリを更新してください。", "the app is the viewer's own")
         }

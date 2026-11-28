@@ -37,7 +37,7 @@ public struct WorkRow: Equatable, Sendable, Identifiable {
     public let title: String
     public let assigneeLabel: String
     public let assigneeKind: PersonStatus.Kind
-    /// `判断待ち 11月23日 から`, for work that cannot move.
+    /// `相談待ち 11月23日 から`, for work that cannot move.
     public let blockedText: String?
     /// The forecast, for work in progress.
     public let etaText: String?

@@ -21,11 +21,11 @@ struct NewsSnapshotTests {
     func banners() {
         let one = [banner(.request, "app: 「Which database should the app use in production?」があなたを待っています")]
         let three = [
-            banner(.request, "3 件の依頼があなたを待っています", count: 3),
+            banner(.request, "3 件のリクエストがあなたを待っています", count: 3),
             banner(.device, "端末「Tablet」が追加を待っています"),
             banner(.decision, "「Drop support for the old export format?」の決定は断られました"),
         ]
-        let long = [banner(.blocked, "app: 「" + String(repeating: "とても長い題名の仕事", count: 12) + "feature-branch-with-a-very-long-name-and-no-spaces-0123456789-abcdefghijklmnopqrstuvwxyz」が止まりました (判断待ち)")]
+        let long = [banner(.blocked, "app: 「" + String(repeating: "とても長い題名の仕事", count: 12) + "feature-branch-with-a-very-long-name-and-no-spaces-0123456789-abcdefghijklmnopqrstuvwxyz」が止まりました (相談待ち)")]
         for scheme in [ColorScheme.light, .dark] {
             expectFits(Snapshot.capture("news-one", NewsBannerStack(banners: one, onOpen: { _ in }, onClose: {}), scheme: scheme), "one (\(scheme))")
             expectFits(Snapshot.capture("news-three", NewsBannerStack(banners: three, onOpen: { _ in }, onClose: {}), scheme: scheme), "three (\(scheme))")

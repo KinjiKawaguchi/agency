@@ -23,10 +23,10 @@ struct WordingTests {
 
     @Test("the desk's group names and the three request kinds")
     func names() {
-        #expect(DeskGroup.allCases.map(Ja.Desk.group) == ["決裁する稟議", "あなたへの質問", "ボードで判断待ちのもの", "このアプリが知らない種類の依頼", "ほかの人の返事待ち"])
+        #expect(DeskGroup.allCases.map(Ja.Desk.group) == ["決裁する稟議", "あなたへの質問", "ボードで相談待ちのもの", "このアプリが知らない種類のリクエスト", "ほかの人の返事待ち"])
         #expect([Request.Kind.proposal, .question, .pendingDecision].map(Ja.Paper.verb) == ["決裁する", "答える", "判断を送る"])
         #expect(Ja.Paper.sendWith("決裁する", choice: "承認") == "「承認」で決裁する")
-        #expect([Request.Kind.proposal, .question, .pendingDecision, .unknown].map(Ja.Paper.type) == ["稟議", "質問", "判断待ち", "依頼"], "the kinds' names are the glossary's")
+        #expect([Request.Kind.proposal, .question, .pendingDecision, .unknown].map(Ja.Paper.type) == ["稟議", "質問", "相談", "リクエスト"], "the kinds' names are the glossary's")
         #expect(Ja.Paper.commentExplain(.proposal).hasPrefix("決裁はしません。"))
         #expect(Ja.Paper.commentExplain(.question).hasPrefix("決めません。"))
         #expect(!Ja.Paper.commentExplain(.question).contains("決裁"))
@@ -36,13 +36,13 @@ struct WordingTests {
     @Test("the tab names are the web client's navigation labels")
     func tabs() {
         #expect([Ja.Tabs.desk, Ja.Tabs.overview, Ja.Tabs.people, Ja.Tabs.costs, Ja.Tabs.devices, Ja.Tabs.orgChart]
-            == ["決めること", "全体", "参加者と仕事", "費用", "端末", "組織図"])
+            == ["あなた宛てのリクエスト", "チームの状況", "メンバーの作業状況", "コスト", "端末", "組織図"])
     }
 
     @Test("the pairing card says how the device gets approved, by labels or by the node's command")
     func pairing() {
-        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook"])) == "MacBookで Agency を開き、「端末」の画面で、このコードの依頼を承認してください。")
-        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook", "iPad"])) == "MacBook、iPad のどれかで Agency を開き、「端末」の画面で、このコードの依頼を承認してください。")
+        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook"])) == "MacBookで Agency を開き、「端末」の画面で、このコードのリクエストを承認してください。")
+        #expect(Ja.Pairing.instruction(.fromDevices(labels: ["MacBook", "iPad"])) == "MacBook、iPad のどれかで Agency を開き、「端末」の画面で、このコードのリクエストを承認してください。")
         #expect(Ja.Pairing.instruction(.atTheNode(command: "agency device-add --dir /srv/agency"))
             == "ノードを動かしているマシンで、「agency device-add --dir /srv/agency」を実行し、表示されたコードを確かめて承認してください。")
         #expect(Ja.Pairing.compare.contains("1 文字でも違えば承認しないでください"))

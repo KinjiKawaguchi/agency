@@ -88,7 +88,7 @@ struct WidgetRenderingTests {
 
     @Test("a count of three digits fits")
     func bigCount() {
-        check("count", snapshot(count: 128, titles: ["決めること"]))
+        check("count", snapshot(count: 128, titles: ["承認をお願いします"]))
     }
 
     @Test("nothing waiting, and no snapshot yet, say so")

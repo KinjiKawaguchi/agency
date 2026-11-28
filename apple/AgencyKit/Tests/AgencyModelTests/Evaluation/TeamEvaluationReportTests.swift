@@ -32,7 +32,7 @@ struct TeamEvaluationReportTests {
         let tiles = try report().tiles
         #expect(tiles.map(\.label) == [
             "マージした新機能", "マージしたプルリクエスト", "リードタイム (プルリクエスト)", "リードタイム (issue)",
-            "main が赤かった時間", "リバート", "マージ 1 件あたりの費用",
+            "main の CI が失敗していた時間", "リバート", "マージ 1 件あたりのコスト",
         ])
         #expect(tiles[0].value == "3")
         #expect(tiles[0].note == "1 日あたり 0.2")
@@ -63,8 +63,8 @@ struct TeamEvaluationReportTests {
     func charts() throws {
         let charts = try report().charts
         #expect(charts.map(\.title) == [
-            "1 日にマージしたプルリクエスト", "リードタイム", "マージ 1 件あたりの費用",
-            "main の CI が赤かった時間 (1 日ごと)", "1 日あたりのリバート",
+            "1 日にマージしたプルリクエスト", "リードタイム", "マージ 1 件あたりのコスト",
+            "main の CI が失敗していた時間 (1 日ごと)", "1 日あたりのリバート",
         ])
         #expect(charts.map(\.kind) == [.columns, .lines, .lines, .columns, .columns])
         for chart in charts {

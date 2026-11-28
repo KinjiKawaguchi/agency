@@ -29,7 +29,7 @@ struct MenuBarWordingTests {
         #expect(Ja.MenuBar.status(.noHomeNode) == "ホームノードが設定されていません")
         #expect(Ja.MenuBar.status(.notRead) == "まだ読み込んでいません")
         #expect(Ja.MenuBar.status(.readFailed) == "読み込めませんでした")
-        #expect(Ja.MenuBar.status(.count(0, isStale: false)) == "あなたを待っている依頼はありません")
+        #expect(Ja.MenuBar.status(.count(0, isStale: false)) == "あなたを待っているリクエストはありません")
         #expect(Ja.MenuBar.status(.count(2, isStale: false)) == "2 件があなたを待っています")
         #expect(Ja.MenuBar.status(.count(2, isStale: true)) == "2 件があなたを待っています")
     }
@@ -61,7 +61,7 @@ struct MenuBarWordingTests {
         #expect(Ja.MenuBar.symbol(.count(0, isStale: false), hasRecovery: false) == "tray")
         #expect(Ja.MenuBar.symbol(.count(3, isStale: false), hasRecovery: false) == "tray.full")
         #expect(Ja.MenuBar.symbol(.notRead, hasRecovery: false) == "tray")
-        #expect(Ja.MenuBar.accessibility(.count(2, isStale: false), recoveries: ["アクミ のルート鍵の回復が始まりました。"]) == "Agency: 2 件があなたを待っています。アクミ のルート鍵の回復が始まりました。")
+        #expect(Ja.MenuBar.accessibility(.count(2, isStale: false), recoveries: ["アクミ のルートキーの回復が始まりました。"]) == "Agency: 2 件があなたを待っています。アクミ のルートキーの回復が始まりました。")
         #expect(Ja.MenuBar.accessibility(.count(2, isStale: false), recoveries: []) == "Agency: 2 件があなたを待っています")
     }
 }

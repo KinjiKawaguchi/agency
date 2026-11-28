@@ -5,7 +5,7 @@ extension Ja {
     /// ルートの区分, ノード内の読み取り, 目標. A percentile is always 「以下」: it is the upper bound of its bucket.
     public enum NodeSpeed {
         public static let title = "このノードの応答時間"
-        public static let lead = "このノードが答えるまでにかかった時間と、このノードが行う呼び出しにかかった時間を、ルートの区分ごとに示します。読めるのはオーナーだけで、数字はこのノードの外には出ません。p50、p95、p99 の時間は、リクエストが入った区間の上限なので「以下」です。それより細かい時間は分かりません。"
+        public static let lead = "このノードが答えるまでにかかった時間と、このノードが行う呼び出しにかかった時間を、ルートの区分ごとに示します。読めるのはノードの管理者だけで、数字はこのノードの外には出ません。p50、p95、p99 の時間は、リクエストが入った区間の上端なので「以下」です。それより細かい時間は分かりません。"
         public static let period = "期間"
         public static func days(_ count: Int) -> String { count == 1 ? "直近 1 日" : "直近 \(count) 日" }
         public static let loading = "計測を読み込んでいます…"
@@ -36,16 +36,16 @@ extension Ja {
         }
 
         public enum Budget {
-            public static let title = "ノード内の読み取りと予算"
-            public static func lead(_ p95: String) -> String { "ノード内の読み取りは、ノードが自分の状態だけから答える読み取りです。予算は、基準の環境で p95 が \(p95) 以下です。" }
+            public static let title = "ノード内の読み取りと上限"
+            public static func lead(_ p95: String) -> String { "ノード内の読み取りは、ノードが自分の状態だけから答える読み取りです。上限は、基準の環境で p95 が \(p95) 以下です。" }
             public static let noReads = "この期間は、ノード内の読み取りが計測されていません。"
-            public static func within(_ p95: String) -> String { "予算の内です: p95 は \(p95)。" }
-            public static func over(_ p95: String) -> String { "予算を超えています: p95 は \(p95)。" }
+            public static func within(_ p95: String) -> String { "上限の内です: p95 は \(p95)。" }
+            public static func over(_ p95: String) -> String { "上限を超えています: p95 は \(p95)。" }
             public static func undetermined(_ p95: String, _ budget: String) -> String {
-                "予算に対して判断できません: p95 は \(p95) で、予算の \(budget) はその範囲の中にあります。"
+                "上限に対して判断できません: p95 は \(p95) で、上限の \(budget) はその範囲の中にあります。"
             }
             public static func requests(_ count: Int) -> String { "\(JaFormat.integer(count)) 件の読み取りを計測しました。" }
-            public static let overRoutes = "予算を超えている読み取り"
+            public static let overRoutes = "上限を超えている読み取り"
         }
 
         public enum Groups {
@@ -56,7 +56,7 @@ extension Ja {
             public static let errors = "エラー"
             public static let inNodeRead = "ノード内の読み取り"
             static let names = [
-                "desk": "デスク", "teams": "チーム", "usage": "使用量", "evaluation": "評価", "outcomes": "成果の指標", "devices": "端末",
+                "desk": "デスク", "teams": "チーム", "usage": "使用量", "evaluation": "評価", "outcomes": "KPI", "devices": "端末",
                 "push": "プッシュ通知", "federation": "連合", "metrics": "計測", "unmatched": "このノードのルートではないもの", "other": "その他",
                 "runtime": "チームのランタイム", "peer": "別のノード", "github": "GitHub",
             ]
@@ -68,13 +68,13 @@ extension Ja {
         /// The hour-by-hour trend, in the web's words (`metrics.trend` in `ja/metrics.ts`).
         public enum Trend {
             public static let title = "時間ごとの推移"
-            public static let lead = "ルートの区分ごとの、各時間の p95 です。p95 は区間の上限なので「以下」です。目盛りは 1 つで、単位はミリ秒（0.5 ミリ秒から 30 秒）、対数目盛りです。呼び出しがなかった時間は 0 ではなく、線の切れ目になります。"
+            public static let lead = "ルートの区分ごとの、各時間の p95 です。p95 は区間の上端なので「以下」です。目盛りは 1 つで、単位はミリ秒（0.5 ミリ秒から 30 秒）、対数目盛りです。呼び出しがなかった時間は 0 ではなく、線の切れ目になります。"
             public static let approximateNote = "1 点は、いちばん遅いルートの p95 です（このノードは時間ごとの区間の数を返しません）。その区分自身の p95 は、その時間についてこれ以下です。"
-            public static let budgetNote = "予算の線より上にある点は、予算を破ったことを言いません。ノード内の読み取りすべてをまとめた p95 は、その点以下です。"
+            public static let budgetNote = "上限の線より上にある点は、上限を破ったことを言いません。ノード内の読み取りすべてをまとめた p95 は、その点以下です。"
             public static let onlyShort = "ノードが時間ごとの数字を返すのは、7 日までの期間です。もっと短い期間を選ぶと見られます。"
             public static let inNodeReads = "ノード内の読み取り"
             public static func callGroup(_ group: String) -> String { "呼び出し: \(group)" }
-            public static func budget(_ value: String) -> String { "予算 \(value)" }
+            public static func budget(_ value: String) -> String { "上限 \(value)" }
             public static func summary(_ title: String, _ hours: String, _ latest: String) -> String {
                 "\(title): ルートをまとめた各時間の p95。呼び出しのあった時間は \(hours) 時間で、直近は \(latest)。"
             }

@@ -65,9 +65,9 @@ struct EffortReportTests {
         #expect(report.rows.map(\.label) == ["新機能", "改善", "保守", "技術的負債", "障害対応", "未分類"])
         #expect(report.rows.map(\.slot) == [1, 2, 3, 4, 5, nil])
         // 8.1 of 13.3 is 60.9%; the plan says 50.
-        #expect(report.rows[0].shareText == "費用の 61%")
+        #expect(report.rows[0].shareText == "コストの 61%")
         #expect(report.rows[0].intendedText == "意図 50%、11 ポイント上")
-        #expect(report.rows[1].shareText == "費用の 0%")
+        #expect(report.rows[1].shareText == "コストの 0%")
         #expect(report.rows[1].intendedText == "意図 20%、20 ポイント下")
         #expect(report.rows[5].intended == nil)
         #expect(report.rows[5].intendedText == nil)
@@ -79,18 +79,18 @@ struct EffortReportTests {
         let sample = try Self.sample()
         let exact = TeamPlan(allocation: [.newFeature: 61, .improvement: 0, .maintenance: 24, .debt: 11, .incident: 4], weeklyBudgetUsd: 10)
         let report = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .stated(exact))
-        #expect(report.rows[0].intendedText == "意図 61%、計画どおり")
+        #expect(report.rows[0].intendedText == "意図 61%、プランどおり")
     }
 
     @Test("without a plan nothing is compared, and the screen says why; an unreadable plan says that")
     func noPlan() throws {
         let sample = try Self.sample()
         let none = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .none)
-        #expect(none.planNote == "このチームには組織の計画がまだ示されていないので、比べるものがありません。")
+        #expect(none.planNote == "このチームには組織のプランがまだ示されていないので、比べるものがありません。")
         #expect(none.rows.allSatisfy { $0.intendedText == nil })
         #expect(none.plannedBudget == nil)
         let unreadable = TeamEffortReport(effort: sample.teams[0], label: "App", days: 14, plan: .unreadable)
-        #expect(unreadable.planNote == "このチームの組織の計画を読み取れなかったので、比べていません。")
+        #expect(unreadable.planNote == "このチームの組織のプランを読み取れなかったので、比べていません。")
     }
 
     @Test("the report keeps what the plan states of the weekly budget, and works out no spend: how the week stands is the node's")

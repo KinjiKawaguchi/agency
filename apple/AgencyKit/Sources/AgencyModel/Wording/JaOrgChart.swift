@@ -9,7 +9,7 @@ extension Ja {
         public static let org = "組織"
         public static let orgUnavailable = "読み込めません"
         public static let whole = "組織全体に戻る"
-        public static let noHead = "長はいません"
+        public static let noHead = "部長はいません"
         public static let you = "あなた"
         public static let answerer = "回答のみ"
         public static let oldData = "古いデータ"
@@ -20,10 +20,10 @@ extension Ja {
         public static let organization = "組織"
         public static let department = "部署"
         public static let team = "チーム"
-        public static let member = "メンバー"
+        public static let member = "組織のメンバー"
 
         public static func orgTitle(_ label: String) -> String { "\(label) の組織" }
-        public static func ledBy(_ name: String) -> String { "長は \(name)" }
+        public static func ledBy(_ name: String) -> String { "部長は \(name)" }
         public static func moreAgents(_ count: Int) -> String { "+\(count)" }
     }
 }

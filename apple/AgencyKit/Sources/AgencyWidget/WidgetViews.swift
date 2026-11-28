@@ -87,7 +87,7 @@ public struct WidgetContent: View {
 
     private var small: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(WidgetWording.displayName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(WidgetWording.displayName).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(countText).font(.system(size: 40, weight: .bold, design: .rounded).monospacedDigit())
                 Text("件").font(.footnote).foregroundStyle(.secondary)
@@ -107,7 +107,7 @@ public struct WidgetContent: View {
     private var medium: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(WidgetWording.displayName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(WidgetWording.displayName).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
                 Text(countText).font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
                 Text(WidgetWording.waitingLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                 Spacer(minLength: 0)

@@ -86,7 +86,7 @@ struct OrgChartStoreTests {
         await store.refresh()
         store.focus(on: "engineering")
         guard case .top(let kind, let name, let sub) = store.rows[0].content else { Issue.record("no top"); return }
-        #expect([kind, name, sub ?? ""] == ["部署", "Engineering", "長は Alice"])
+        #expect([kind, name, sub ?? ""] == ["部署", "Engineering", "部長は Alice"])
         #expect(!store.isEmptyDepartment)
         store.focus(on: "platform")
         #expect(store.rows.count == 2)
@@ -205,8 +205,8 @@ struct TeamBoxTextTests {
     @Test("a team waiting on the viewer says how many requests, in the overview's words, and how many work")
     func waiting() {
         let text = TeamBoxText(node: node(Teams.team()))
-        #expect(text.waiting == "あなたを待っている依頼 \(Teams.team().mine.count) 件")
-        #expect(text.working == "参加者 4 人のうち 2 人が作業中")
+        #expect(text.waiting == "あなたを待っているリクエスト \(Teams.team().mine.count) 件")
+        #expect(text.working == "メンバー 4 人のうち 2 人が作業中")
         #expect(text.tag == nil)
         #expect(text.unavailable == nil)
         #expect(text.oldData == nil)
@@ -218,7 +218,7 @@ struct TeamBoxTextTests {
         #expect(TeamBoxText(node: node(stuck)).tag == "止まっている")
         let idle = OverviewTeams.team(people: [OverviewTeams.person("a", "idle", status: "Nothing in Next")])
         #expect(TeamBoxText(node: node(idle)).tag == "動いていない")
-        #expect(TeamBoxText(node: node(OverviewTeams.team())).working == "参加者の報告がありません。")
+        #expect(TeamBoxText(node: node(OverviewTeams.team())).working == "メンバーの報告がありません。")
     }
 
     @Test("a copy that could not be renewed carries the old-data mark, and a team that is loading says nothing is wrong")

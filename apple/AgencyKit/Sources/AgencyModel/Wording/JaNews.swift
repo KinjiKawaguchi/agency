@@ -4,10 +4,10 @@ extension Ja {
     /// What the in-app banner says when something new needs the viewer (agency#167).
     public enum News {
         public static func request(team: String, title: String) -> String { "\(team): 「\(title)」があなたを待っています" }
-        public static func requests(_ count: Int) -> String { "\(count) 件の依頼があなたを待っています" }
+        public static func requests(_ count: Int) -> String { "\(count) 件のリクエストがあなたを待っています" }
 
         public static func participant(label: String) -> String { "\(label) があなたの返事を待っています" }
-        public static func participants(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています" }
+        public static func participants(_ count: Int) -> String { "メンバー \(count) 人があなたの返事を待っています" }
 
         public static func blocked(team: String, title: String, reason: String) -> String { "\(team): 「\(title)」が止まりました (\(reason))" }
         public static func blockedMany(_ count: Int) -> String { "\(count) 件の仕事が止まりました" }
@@ -24,11 +24,11 @@ extension Ja {
             case "delivered": return "\(named)が届きました"
             case "queued": return "\(named)は保存済みですが、まだ届いていません"
             case "refused": return "\(named)は断られました" + (reason.map { ": \($0)" } ?? "")
-            default: return "\(named)に動きがありました"
+            default: return "\(named)に変化がありました"
             }
         }
 
-        public static func decisions(_ count: Int) -> String { "\(count) 件の決定に動きがありました" }
+        public static func decisions(_ count: Int) -> String { "\(count) 件の決定に変化がありました" }
         public static let unknownTitle = "(題名なし)"
         public static let close = "閉じる"
     }

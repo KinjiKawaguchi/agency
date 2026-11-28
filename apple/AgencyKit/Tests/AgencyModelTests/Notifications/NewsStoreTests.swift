@@ -79,7 +79,7 @@ struct NewsStoreTests {
         await news.poll()
         source.snapshot = .success(Teams.snapshot(addRequests: [newRequest("r-1x"), newRequest("r-2x"), newRequest("r-3x")]))
         await news.poll()
-        #expect(news.banners.map(\.text) == ["3 件の依頼があなたを待っています"])
+        #expect(news.banners.map(\.text) == ["3 件のリクエストがあなたを待っています"])
         #expect(news.banners[0].count == 3)
         #expect(news.banners[0].destination == .desk(itemID: nil), "several are on the desk; none of them is opened for the person")
     }
@@ -216,7 +216,7 @@ struct NewsStoreTests {
         await news.poll()
         source.snapshot = .success(Teams.snapshot(waitingOnViewer: ["backend", "frontend", "devops"]))
         await news.poll()
-        #expect(news.banners.map(\.text) == ["参加者 2 人があなたの返事を待っています"])
+        #expect(news.banners.map(\.text) == ["メンバー 2 人があなたの返事を待っています"])
     }
 
     @Test("a work item newly blocked makes a banner with its title and the reason; several say how many")
@@ -229,7 +229,7 @@ struct NewsStoreTests {
         source.snapshot = .success(Teams.snapshot(addWork: [item("app#31", "Migrate the store")]))
         await news.poll()
         #expect(news.banners.map(\.kind) == [.blocked])
-        #expect(news.banners[0].text.contains("Migrate the store") && news.banners[0].text.contains("判断待ち"))
+        #expect(news.banners[0].text.contains("Migrate the store") && news.banners[0].text.contains("相談"))
         #expect(news.banners[0].destination == .people)
         source.snapshot = .success(Teams.snapshot(addWork: [item("app#31", "Migrate the store"), item("app#32", "Two"), item("app#33", "Three")]))
         await news.poll()

@@ -21,7 +21,7 @@ struct ParticipantsSectionTests {
         let section = try #require(ParticipantsSection(numbers: try owner()))
         #expect(section.rows.map(\.name) == ["backend", "lead", "reviewer"])
         let backend = section.rows[0]
-        #expect(backend.times.map(\.label) == ["作業", "判断待ち（下限）", "待機"])
+        #expect(backend.times.map(\.label) == ["作業", "相談待ち（下限）", "待機"])
         #expect(backend.times.map(\.duration) == [DurationFormat.text(30_600), DurationFormat.text(2_400), DurationFormat.text(4_800)])
         let total = 30_600.0 + 2_400 + 4_800
         #expect(backend.times.map(\.share) == [30_600 / total, 2_400 / total, 4_800 / total])
@@ -30,7 +30,7 @@ struct ParticipantsSectionTests {
         #expect(backend.tokens == "2,745,000 トークン", "all four kinds added up, said as tokens")
         #expect(backend.merged == "3" && backend.mergedSpoken == "マージしたプルリクエスト 3 件")
         #expect(backend.costPerPullRequest == JaFormat.money(try #require(try owner().participants?[0].costPerMergedPrUsd)))
-        #expect(backend.timesSpoken.hasPrefix("作業 ") && backend.timesSpoken.contains("判断待ち ") && backend.timesSpoken.contains("以上"))
+        #expect(backend.timesSpoken.hasPrefix("作業 ") && backend.timesSpoken.contains("相談待ち ") && backend.timesSpoken.contains("以上"))
     }
 
     @Test("a participant who merged nothing says so: never a $0 cost per pull request")
@@ -52,7 +52,7 @@ struct ParticipantsSectionTests {
     @Test("the pull requests no participant is named the author of are said only when there are some, and add up with the participants")
     func unattributed() throws {
         let sample = try #require(ParticipantsSection(numbers: try owner()))
-        #expect(sample.unattributed?.hasPrefix("参加者が分からないマージ: 1 件。") == true)
+        #expect(sample.unattributed?.hasPrefix("メンバーが分からないマージ: 1 件。") == true)
         let none = try team(#","participants":[\#(participant("a", busy: 10))],"unattributedMerged":0"#)
         #expect(ParticipantsSection(numbers: none)?.unattributed == nil, "a 0 is not said")
         let absent = try team(#","participants":[\#(participant("a", busy: 10))]"#)
@@ -76,7 +76,7 @@ struct ParticipantsSectionTests {
 
     @Test("the words are the web's")
     func words() {
-        #expect(Ja.Evaluation.Participants.title == "参加者")
+        #expect(Ja.Evaluation.Participants.title == "メンバー")
         #expect(Ja.Evaluation.Participants.timeNote.contains("重なったセッションは 1 回として数えます"))
         #expect(Ja.Evaluation.Participants.timeNote.contains("下限"))
         #expect(Ja.Evaluation.Participants.noSession == "この期間に生きていたセッションはありません。")

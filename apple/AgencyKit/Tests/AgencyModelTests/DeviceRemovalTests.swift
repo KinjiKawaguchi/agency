@@ -71,7 +71,7 @@ struct DeviceRemovalPlanTests {
         #expect(removal.isThisDevice && removal.targets.first?.signer == Keys.id(Keys.own) && removal.targets.first?.deviceID == Keys.id(Keys.own))
         #expect(removal.confirmation.last == Ja.Devices.Remove.thisDevice)
         #expect(Ja.Devices.Remove.thisDevice == "いま使っている端末です。削除すると、この端末はこの鍵では署名できなくなり、この鍵をもう一度追加することもできません。そのあと端末は新しい鍵を作り、それは新しい端末として追加する必要があります。")
-        #expect(Ja.Devices.Remove.thisDeviceRemoved == "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加を依頼してください。")
+        #expect(Ja.Devices.Remove.thisDeviceRemoved == "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加をリクエストしてください。")
         #expect(Ja.Devices.Remove.keyNotMade("no key") == "端末は削除しましたが、この端末は新しい鍵を作れませんでした: no key")
         #expect(try plan(for: Keys.own, in: list([("acme", [device(Keys.own, "This phone")])])).isBlocked)
     }
@@ -82,7 +82,7 @@ struct DeviceRemovalPlanTests {
         #expect(Ja.Devices.Remove.confirm == "この端末を削除する" && Ja.Devices.Remove.cancel == "キャンセル" && Ja.Devices.Remove.removing == "削除しています…")
         #expect(Ja.Devices.Remove.removed("Old phone") == "Old phoneを削除しました。二度と署名できません。")
         #expect(Ja.Devices.Remove.failed("no") == "端末を削除できませんでした: no")
-        #expect(Ja.Devices.Remove.pendingRoot(command: "agency root-sign") == "ここでは削除を依頼しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
+        #expect(Ja.Devices.Remove.pendingRoot(command: "agency root-sign") == "ここでは削除をリクエストしました。組織のルートキーのノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
     }
 }
 
@@ -350,7 +350,7 @@ struct DeviceRemovalStoreTests {
         await store.refresh()
         let target = try row(store, Keys.phone)
         await store.remove(target)
-        #expect(store.removalNotes[target.id] == "ここでは削除を依頼しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
+        #expect(store.removalNotes[target.id] == "ここでは削除をリクエストしました。組織のルートキーのノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
         #expect(store.removedNotice == nil && !store.didRemoveThisDevice)
         await store.remove(target)
         #expect(remover.plans.count == 1)

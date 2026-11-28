@@ -398,7 +398,7 @@ struct DevicesHeldTests {
     @Test("a pending approval is said in the app's words, with the node's message ignored, and is not said as an add")
     func pending() async {
         let store = await confirmed(.success([result(.pending, "Approved here; it takes effect once the root key's node signs it")]))
-        #expect(store.held[newKey.publicKey] == "ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
+        #expect(store.held[newKey.publicKey] == "ここでは承認しました。組織のルートキーのノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
         #expect(store.confirmed.isEmpty && store.confirmFailures.isEmpty)
     }
 

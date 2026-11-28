@@ -38,7 +38,7 @@ public enum PushNotice {
     // MARK: The words
 
     private static func recoveryJa(_ org: String?, started: String?, finishes: String?) -> String {
-        let head = org.map { "\($0) のルート鍵の回復が始まりました" } ?? "組織のルート鍵の回復が始まりました"
+        let head = org.map { "\($0) のルートキーの回復が始まりました" } ?? "組織のルートキーの回復が始まりました"
         return head + (started.map { "（\($0)）" } ?? "") + "。" + (finishes.map { "\($0) に有効になります。" } ?? "") + "机で確認してください。"
     }
 
@@ -48,7 +48,7 @@ public enum PushNotice {
     }
 
     private static func rootJa(_ org: String?, waiting: Int) -> String {
-        (org.map { "\($0) の" } ?? "") + "変更" + (waiting > 1 ? " \(waiting) 件が" : "が") + "、ルート鍵の署名を待っています。机で確認してください。"
+        (org.map { "\($0) の" } ?? "") + "変更" + (waiting > 1 ? " \(waiting) 件が" : "が") + "、組織のルートキーの署名を待っています。机で確認してください。"
     }
 
     private static func rootEn(_ org: String?, waiting: Int) -> String {
