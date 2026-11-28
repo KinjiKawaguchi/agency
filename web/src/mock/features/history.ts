@@ -2,8 +2,17 @@
 // (`testdata/history.sample.json`) is what a short one looks like; a long one is made of its entries repeated under version numbers that go on, so that
 // a screen is drawn against several pages. `after` keeps only the versions above it, and `limit` (1 to 1000, default 200) cuts the answer, with `more`
 // when entries after the last one were left out. A bad `limit` or `after` is 400, as it is on the node.
-import sample from '../../../testdata/history.sample.json' with { type: 'json' }
-import type { HistoryEntry, OrgHistory } from '../api/clientApi.ts'
+import sample from '../../../../testdata/history.sample.json' with { type: 'json' }
+import type { HistoryEntry, OrgHistory } from '../../api/clientApi.ts'
+import { ORG_DEFINITION } from '../fixtures.ts'
+import { failure, json, type MockFeature } from './feature.ts'
+
+export interface HistoryOptions {
+  /** A node that serves the org's change history to its owner and lists the `history` capability: the number of versions the org has; otherwise the route answers 404. */
+  history?: number
+}
+
+const PATH = /^\/api\/orgs\/([^/]+)\/history$/
 
 const DEFAULT_LIMIT = 200
 const MOST_LIMIT = 1000
@@ -35,4 +44,23 @@ export function pageOf(entries: readonly HistoryEntry[], url: URL): OrgHistory |
   const later = entries.filter((entry) => entry.version > (after ?? 0))
   const page = later.slice(0, limit ?? DEFAULT_LIMIT)
   return { entries: [...page], ...(page.length < later.length ? { more: true } : {}) }
+}
+
+export const historyFeature: MockFeature<HistoryOptions, HistoryOptions> = {
+  capability: 'history',
+  isOn: (options) => options.history !== undefined,
+  answer: (request, url, options) => {
+    const matched = PATH.exec(url.pathname)
+    if (matched === null || request.method !== 'GET' || options.history === undefined) return undefined
+    if (matched[1] !== ORG_DEFINITION.org) return failure(404, 'No such organization.')
+    const page = pageOf(historyOf(options.history), url)
+    return 'refused' in page ? failure(400, page.refused) : json(page)
+  },
+  isOwnerRoute: (pathname) => PATH.test(pathname),
+  fromQuery: (query) => {
+    const length = Number(query?.get('history'))
+    return Number.isInteger(length) && length > 0 ? { history: length } : {}
+  },
+  /** How many versions the org has. */
+  toQuery: ({ history }) => (history === undefined ? [] : [['history', String(history)]]),
 }

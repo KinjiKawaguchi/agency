@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 import type { Connect, Plugin } from 'vite'
-import { budgetFor } from '../src/mock/budget.ts'
+import { optionsFromQuery } from '../src/mock/features/index.ts'
 import { createMockNode, MOCK_TOKEN } from '../src/mock/node.ts'
 
 async function readBody(message: IncomingMessage): Promise<Buffer> {
@@ -41,10 +41,8 @@ function nodeOptions(query: URLSearchParams | undefined): Parameters<typeof crea
   return {
     usage: usage === '1',
     evaluation: evaluation === '1',
-    // The weekly budget is the node's answer, which the evaluation screen shows beside the effort; `budgetState` fixes where the app team stands (for the screenshots).
-    ...(evaluation === '1' ? { budget: budgetFor(query?.get('budgetState')) } : {}),
-    members: query?.get('members') === '1',
-    ...(Number.isInteger(Number(query?.get('history'))) && Number(query?.get('history')) > 0 ? { history: Number(query?.get('history')) } : {}),
+    // What each feature of the Client API takes (its own module says how it is asked for).
+    ...optionsFromQuery(query),
     activity: activity === '1',
     participants: participants === '1',
     outcomes: outcomes === '1',
