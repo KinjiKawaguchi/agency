@@ -46,6 +46,8 @@ final class NativeSession {
     let orgChart: OrgChartStore
     /// The owner's numbers for what each org measures: offered only when the node lets the owner read them.
     let outcomes: OutcomesStore
+    /// What the app observed of its calls to this home node, for the node to show beside its own timing.
+    let telemetry: ClientTelemetry
     /// What is new since the last read, as banners.
     let news: NewsStore
     /// What the widgets show, written after the desk is read.
@@ -62,8 +64,12 @@ final class NativeSession {
     ///     screens the viewer had are then not closed while the node is asked again.
     init(homeNode: HomeNodeURL, tokens: AccessTokenStore, signIn: AccessSignInFlow, deviceLabel: String, key: KeyLoad, standing: Standing = .loading) {
         self.signIn = signIn
+        // Every call to the home node is timed on its way out and back; what is seen goes to `telemetry`, made below, through a tap that
+        // starts empty because the telemetry needs the client that this transport is for.
+        let tap = TelemetryTap()
         let client = NodeClient(
-            transport: URLSessionTransport(homeNode: homeNode), accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
+            transport: TimedTransport(URLSessionTransport(homeNode: homeNode)) { sample in Task { @MainActor in tap.telemetry?.record(sample) } },
+            accessToken: { tokens.current()?.value }, clientIdentity: ClientIdentity.current()
         )
         self.client = client
         let signer: (any DeviceSigner)?
@@ -97,6 +103,9 @@ final class NativeSession {
             afterSend: { await cache.invalidate() },
             standing: standing
         )
+        let telemetry = ClientTelemetry(sender: client, standing: { [desk] in desk.standing })
+        tap.telemetry = telemetry
+        self.telemetry = telemetry
         overview = OverviewStore(source: cached)
         people = PeopleStore(source: cache)
         costs = CostsStore(source: cached)
@@ -193,6 +202,12 @@ final class NativeSession {
             // Tried again at the next change or the next launch.
         }
     }
+}
+
+/// A place for the telemetry, which is made after the client whose transport reports to it.
+@MainActor
+private final class TelemetryTap {
+    var telemetry: ClientTelemetry?
 }
 
 /// A place for this phone's push token, which `NativeSession` learns after it has built what asks for it.
