@@ -21,8 +21,6 @@ on:
       - scripts/release/**
       - docs/install.md
       - docs/install.ja.md
-      - Cargo.lock
-      - web/package-lock.json
       - LICENSE-MIT
       - LICENSE-APACHE
 
@@ -92,36 +90,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # What the node is made of: its Rust crates and the npm packages of the web client it embeds, as CycloneDX
-  # lists (SBOMs). The script fails on a list with no components.
+  # The lists of what the node is made of, made by sbom.yml (which a pull request that changes a lock file runs
+  # by itself, without the builds above).
   sbom:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.tag || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 24
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          toolchain: stable
-      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
-        with:
-          tool: cargo-cyclonedx@0.5.10
-      - name: Write the SBOMs
-        env:
-          RELEASE_FLAG: ${{ inputs.tag != '' && '--release' || '' }}
-        run: |
-          args=()
-          [ -z "$RELEASE_FLAG" ] || args+=(--release)
-          scripts/release/sbom.sh dist "${args[@]}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sbom
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 30
+    uses: ./.github/workflows/sbom.yml
+    with:
+      tag: ${{ inputs.tag }}
 
   # Attaches the builds and the SBOMs to the release that was just made, with SHA256SUMS over all of them,
   # signed with this workflow's identity (Sigstore keyless signing: no key is kept anywhere).

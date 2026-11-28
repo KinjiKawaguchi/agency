@@ -14,11 +14,11 @@ trap 'rm -rf "$work"' EXIT
 failures=0
 fail() { echo "FAIL: $*" >&2; failures=$((failures + 1)); }
 
-# fresh_root: a copy of the two workflow files, in $work/root.
+# fresh_root: a copy of the three workflow files, in $work/root.
 fresh_root() {
   rm -rf "$work/root"
   mkdir -p "$work/root/.github/workflows"
-  cp .github/workflows/release.yml .github/workflows/release-please.yml "$work/root/.github/workflows/"
+  cp .github/workflows/release.yml .github/workflows/release-please.yml .github/workflows/sbom.yml "$work/root/.github/workflows/"
 }
 run() { status=0; output="$("$check_script" "$work/root" 2>&1)" || status=$?; }
 
@@ -37,10 +37,11 @@ fresh_root; run
 fresh_root; sed -i 's|^# Release builds of the node for Linux.|# Release builds, in other words, of the node for Linux.|' "$work/root/.github/workflows/release.yml"; run
 [ "$status" -eq 0 ] || fail "a change to a comment fails the check: $output"
 
-broken "the SBOM script is not run" release.yml 's|scripts/release/sbom.sh|true|' "no job 'sbom' that runs scripts/release/sbom.sh"
-broken "the SBOM job is gone" release.yml '/^  sbom:/,/^  # Attaches the builds/{/^  sbom:/d;/^  # Attaches the builds/!d}' "no job 'sbom'"
-broken "the lists are not uploaded" release.yml '/^  sbom:/,/^  attach:/ s|actions/upload-artifact|actions/cache|' "does not upload its lists"
-broken "an upload in the next job is not the SBOM job's" release.yml '/^  sbom:/,/^  attach:/ s|actions/upload-artifact|actions/cache|;/^  attach:/a\    # actions/upload-artifact' "does not upload its lists"
+broken "the SBOM script is not run" sbom.yml 's|scripts/release/sbom.sh|true|' "sbom.yml has no job 'sbom' that runs scripts/release/sbom.sh"
+broken "the SBOM job is gone from the release workflow" release.yml '/^  sbom:/,/^  # Attaches the builds/{/^  sbom:/d;/^  # Attaches the builds/!d}' "release.yml has no job 'sbom'"
+broken "the release workflow does not call sbom.yml" release.yml 's|uses: ./.github/workflows/sbom.yml|uses: ./.github/workflows/other.yml|' "release.yml has no job 'sbom' that calls sbom.yml"
+broken "the SBOM job is gone from sbom.yml" sbom.yml 's|^  sbom:|  lists:|' "sbom.yml has no job 'sbom'"
+broken "the lists are not uploaded" sbom.yml 's|actions/upload-artifact|actions/cache|' "does not upload its lists"
 broken "attach does not wait for the SBOMs" release.yml 's|needs: \[linux, sbom\]|needs: linux|' "does not wait for the 'sbom' job"
 broken "the checksums are not written" release.yml 's|scripts/release/checksums.sh|true|' "does not write the checksums"
 broken "the checksums are not signed" release.yml 's|cosign sign-blob|true|' "does not sign SHA256SUMS"

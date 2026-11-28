@@ -5,11 +5,13 @@
 #
 #   scripts/ci/check-release-workflow.sh [repository root]
 #
-# It reads the workflow files as text: a job is the lines from its two-space-indented name to the next one.
+# It reads the workflow files as text: a job is the lines from its two-space-indented name to the next one. The
+# lists are made by sbom.yml, which release.yml's job 'sbom' calls.
 set -euo pipefail
 root="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
 release="$root/.github/workflows/release.yml"
 caller="$root/.github/workflows/release-please.yml"
+sbom_workflow="$root/.github/workflows/sbom.yml"
 failures=0
 
 # job_block <file> <job>: the lines of a job.
@@ -24,13 +26,15 @@ require() {
   fi
 }
 
-[ -f "$release" ] && [ -f "$caller" ] || { echo "no release workflows in $root" >&2; exit 2; }
-sbom="$(job_block "$release" sbom)"
+[ -f "$release" ] && [ -f "$caller" ] && [ -f "$sbom_workflow" ] || { echo "no release workflows in $root" >&2; exit 2; }
+sbom_call="$(job_block "$release" sbom)"
+sbom="$(job_block "$sbom_workflow" sbom)"
 attach="$(job_block "$release" attach)"
 builds="$(job_block "$caller" builds)"
 
-require "release.yml has no job 'sbom' that runs scripts/release/sbom.sh: a release would carry no SBOM." "$sbom" "scripts/release/sbom.sh"
-require "the 'sbom' job of release.yml does not upload its lists as an artifact, so the release cannot carry them." "$sbom" "actions/upload-artifact"
+require "release.yml has no job 'sbom' that calls sbom.yml: a release would carry no SBOM." "$sbom_call" "uses: ./.github/workflows/sbom.yml"
+require "sbom.yml has no job 'sbom' that runs scripts/release/sbom.sh: a release would carry no SBOM." "$sbom" "scripts/release/sbom.sh"
+require "the 'sbom' job of sbom.yml does not upload its lists as an artifact, so the release cannot carry them." "$sbom" "actions/upload-artifact"
 require "the 'attach' job of release.yml does not wait for the 'sbom' job (needs), so the release could go out without the SBOMs." "$attach" "needs: [linux, sbom]"
 require "the 'attach' job of release.yml does not write the checksums (scripts/release/checksums.sh)." "$attach" "scripts/release/checksums.sh"
 require "the 'attach' job of release.yml does not sign SHA256SUMS (cosign sign-blob)." "$attach" "cosign sign-blob"

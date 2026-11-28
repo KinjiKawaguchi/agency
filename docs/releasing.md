@@ -118,7 +118,7 @@ The first command takes the signed list and the files you want, the second check
 
 The lists of materials are ordinary CycloneDX files, to be read by any tool that reads them; they are in the same list of checksums. Each is the list of what went into the build, as it is in `Cargo.lock` and `web/package-lock.json` at the tag, so a newly reported vulnerability in a dependency can be matched against a release you run.
 
-CI fails a change that takes the lists, the checksums, or the signature out of the release workflow (`scripts/ci/check-release-workflow.sh`). The release workflow itself runs on a pull request that changes it, up to the signing, which needs a tag.
+CI fails a change that takes the lists, the checksums, or the signature out of the release workflow (`scripts/ci/check-release-workflow.sh`). The release workflow itself runs on a pull request that changes it, up to the signing, which needs a tag. A pull request that changes only a lock file (a dependency update) runs just the `sbom` workflow, which makes the lists and checks them, not the builds.
 
 ## Settings it needs
 
