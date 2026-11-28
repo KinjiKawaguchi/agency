@@ -1,6 +1,6 @@
 import { HOURS_UP_TO_DAYS } from './metricsApi'
-import { queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import type { ApiClient } from './client'
+import { infiniteQueryOptions, queryOptions, useQueries, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { ApiError, type ApiClient } from './client'
 import { useApi } from './context'
 import type { Me, OrgRef, TeamRef } from './clientApi'
 import { isRetryable, RETRY_DELAYS_MS, withRetry } from './retry'
@@ -65,6 +65,12 @@ export const DECISIONS_KEY = ['decisions'] as const
 
 export const RECENT_DECISIONS = 20
 
+/** The most entries the node gives of its decision log in one read. */
+export const MOST_DECISIONS = 200
+
+/** The whole of what the node gives of the log in one read, for what is counted over it (not polled: read when it is asked for). */
+export const allDecisionsQuery = (api: ApiClient) => queryOptions({ queryKey: [...DECISIONS_KEY, MOST_DECISIONS], queryFn: () => api.decisions(MOST_DECISIONS) })
+
 export const decisionsQuery = (api: ApiClient) =>
   queryOptions({ queryKey: [...DECISIONS_KEY, RECENT_DECISIONS], queryFn: () => api.decisions(RECENT_DECISIONS), refetchInterval: POLL_MS })
 
@@ -76,6 +82,21 @@ export const usageQuery = (api: ApiClient, org: string, team: string, days: numb
 
 export const evaluationQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['evaluation', org, days], queryFn: () => api.evaluation(org, days), staleTime: 2 * POLL_MS })
+
+/** An org's members, devices, open seats and what waits for the root key: the owner's. */
+export const membersQuery = (api: ApiClient, org: string) => queryOptions({ queryKey: ['members', org], queryFn: () => api.orgMembers(org), staleTime: 2 * POLL_MS })
+/** How many entries of an org's history one read asks for: the node's own default, so a page is what the node gives when asked for none. */
+export const HISTORY_PAGE = 200
+
+/** An org's change history, a page at a time from the oldest: the next page asks for the entries after the last version read, while the node says there are more. */
+export const historyQuery = (api: ApiClient, org: string) =>
+  infiniteQueryOptions({
+    queryKey: ['history', org],
+    queryFn: ({ pageParam }) => api.orgHistory(org, { ...(pageParam === undefined ? {} : { after: pageParam }), limit: HISTORY_PAGE }),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => (last.more === true ? last.entries.at(-1)?.version : undefined),
+    staleTime: 2 * POLL_MS,
+  })
 
 export const outcomesQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['outcomes', org, days], queryFn: () => api.outcomes(org, days), staleTime: 2 * POLL_MS })
@@ -91,6 +112,10 @@ export const numberHistoryQuery = (api: ApiClient, org: string, kpi: string) =>
 
 export const readingsQuery = (api: ApiClient, org: string) =>
   queryOptions({ queryKey: ['readings', org], queryFn: () => api.readings(org), staleTime: 2 * POLL_MS })
+
+/** A team's weekly budget as the node computes it. */
+export const budgetQuery = (api: ApiClient, org: string, team: string) =>
+  queryOptions({ queryKey: ['budget', org, team], queryFn: () => api.budget(org, team), staleTime: 2 * POLL_MS })
 
 export const effortQuery = (api: ApiClient, org: string, days: number) =>
   queryOptions({ queryKey: ['effort', org, days], queryFn: () => api.effort(org, days), staleTime: 2 * POLL_MS })
@@ -173,3 +198,24 @@ export function useSuspenseTeamStates(): { me: Me; orgs: readonly OrgStates[]; t
   const loading = new Set(orgs.flatMap(({ org, teams }) => teams.flatMap(({ ref, state }) => (state.status === 'loading' ? [`${org.id}/${ref.id}`] : []))))
   return { me, orgs, teams: orgs.flatMap(({ teams }) => teams.flatMap(({ state }) => (state.status === 'ready' ? [state.team] : []))), loading }
 }
+
+export const DESTINATIONS_KEY = ['destinations'] as const
+
+/** What the node says about itself: read once, since its capabilities change only when it is replaced. */
+export const aboutQuery = (api: ApiClient) => queryOptions({ queryKey: ['about'], queryFn: () => api.about(), staleTime: 10 * 60_000 })
+
+/** The browsers the node sends notices to. */
+/** A node without Web Push (or without APNs) answers 404 for its list: it sends notices nowhere of that kind, which is an answer, not a failure. */
+const emptyWhenAbsent = async <T>(read: () => Promise<T>, none: T): Promise<T> => {
+  try {
+    return await read()
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return none
+    throw error
+  }
+}
+
+export const pushSubscriptionsQuery = (api: ApiClient) => queryOptions({ queryKey: [...DESTINATIONS_KEY, 'browsers'], queryFn: () => emptyWhenAbsent(() => api.pushSubscriptions(), { subscriptions: [] }), refetchInterval: POLL_MS })
+
+/** The apps (APNs tokens) the node sends notices to: the owner's. */
+export const pushTokensQuery = (api: ApiClient) => queryOptions({ queryKey: [...DESTINATIONS_KEY, 'apps'], queryFn: () => emptyWhenAbsent(() => api.pushTokens(), { tokens: [] }), refetchInterval: POLL_MS })

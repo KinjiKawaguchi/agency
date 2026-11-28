@@ -1,12 +1,16 @@
 //! The merged pull requests of a repository, with their first commit and the board moves of the issues
 //! they close, in one GraphQL query for each page of 50.
 use super::gh::{Gh, GhError};
-use agency_core::delivery::MergedPullRequest;
+use super::Repo;
+use agency_core::delivery::{board_work_type, MergedPullRequest};
 use agency_proto::clock::{self, OffsetDateTime};
+use agency_proto::view::WorkType;
 use serde::Deserialize;
 
 /// The board status whose first appearance on an issue is when work on it started.
 const STARTED_STATUS: &str = "In Progress";
+/// The label of an issue whose fix is incident work. GitHub label names ignore case, so does the match.
+const INCIDENT_LABEL: &str = "incident";
 const PAGES_AT_MOST: usize = 20;
 
 const QUERY: &str = "query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){\
@@ -14,7 +18,9 @@ pullRequests(states:MERGED,first:50,after:$after,orderBy:{field:UPDATED_AT,direc
 pageInfo{hasNextPage endCursor}\
 nodes{number title body createdAt mergedAt updatedAt \
 commits(first:1){nodes{commit{authoredDate}}} \
-closingIssuesReferences(first:5){nodes{timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){\
+closingIssuesReferences(first:5){nodes{labels(first:20){nodes{name}} \
+projectItems(first:10){nodes{fieldValueByName(name:\"Work type\"){... on ProjectV2ItemFieldSingleSelectValue{name}}}} \
+timelineItems(first:50,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){\
 nodes{... on ProjectV2ItemStatusChangedEvent{createdAt status}}}}}}}}}";
 
 #[derive(Deserialize)]
@@ -79,7 +85,26 @@ struct Commit {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Issue {
+    labels: Nodes<Label>,
+    project_items: Nodes<ProjectItem>,
     timeline_items: Nodes<Event>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectItem {
+    /// `null` when the project has no such field or the item has no value; `{}` for a value of another kind.
+    field_value_by_name: Option<FieldValue>,
+}
+
+#[derive(Deserialize)]
+struct FieldValue {
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Label {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +128,24 @@ fn issue_started_at(issues: &[Issue]) -> Option<OffsetDateTime> {
         .min()
 }
 
+/// Whether an issue a pull request closes carries the label that says the work was an incident.
+fn closes_incident(issues: &[Issue]) -> bool {
+    issues
+        .iter()
+        .flat_map(|issue| &issue.labels.nodes)
+        .any(|label| label.name.eq_ignore_ascii_case(INCIDENT_LABEL))
+}
+
+/// The board's "Work type" of the first issue a pull request closes that has one, in the order GitHub lists
+/// the issues and their projects. An option that names none of the five work types is no value.
+fn work_type(issues: &[Issue]) -> Option<WorkType> {
+    issues
+        .iter()
+        .flat_map(|issue| &issue.project_items.nodes)
+        .filter_map(|item| item.field_value_by_name.as_ref()?.name.as_deref())
+        .find_map(board_work_type)
+}
+
 /// The pull request, if it was merged and its times can be read.
 fn merged_pull_request(repo: &str, node: &Node) -> Option<MergedPullRequest> {
     Some(MergedPullRequest {
@@ -119,6 +162,8 @@ fn merged_pull_request(repo: &str, node: &Node) -> Option<MergedPullRequest> {
             .and_then(|commit| time(&commit.commit.authored_date)),
         has_issue: !node.closing_issues_references.nodes.is_empty(),
         issue_started_at: issue_started_at(&node.closing_issues_references.nodes),
+        closes_incident: closes_incident(&node.closing_issues_references.nodes),
+        work_type: work_type(&node.closing_issues_references.nodes),
     })
 }
 
@@ -157,29 +202,28 @@ fn read_page(
 /// The pull requests of `owner/name` merged since `since`.
 pub async fn merged_since(
     gh: &dyn Gh,
-    owner: &str,
-    name: &str,
+    repo: &Repo<'_>,
     since: OffsetDateTime,
 ) -> Result<Vec<MergedPullRequest>, GhError> {
     let mut all = vec![];
     let mut after: Option<String> = None;
     for _ in 0..PAGES_AT_MOST {
-        let mut args: Vec<String> = [
-            "api",
+        let mut rest: Vec<String> = [
             "graphql",
             "-f",
             &format!("query={QUERY}"),
             "-f",
-            &format!("owner={owner}"),
+            &format!("owner={}", repo.owner),
             "-f",
-            &format!("name={name}"),
+            &format!("name={}", repo.name),
         ]
         .map(String::from)
         .to_vec();
         if let Some(cursor) = &after {
-            args.extend(["-f".into(), format!("after={cursor}")]);
+            rest.extend(["-f".into(), format!("after={cursor}")]);
         }
-        let (found, next) = read_page(&format!("{owner}/{name}"), &gh.run(&args).await?, since)?;
+        let args = repo.api(rest);
+        let (found, next) = read_page(&repo.full_name(), &gh.run(&args).await?, since)?;
         all.extend(found);
         match next {
             Some(cursor) => after = Some(cursor),
@@ -218,7 +262,26 @@ mod tests {
     }
 
     fn issue(events: serde_json::Value) -> serde_json::Value {
-        json!({"timelineItems": {"nodes": events}})
+        labeled_issue(&[], events)
+    }
+
+    fn labeled_issue(labels: &[&str], events: serde_json::Value) -> serde_json::Value {
+        let labels: Vec<_> = labels.iter().map(|name| json!({"name": name})).collect();
+        json!({"labels": {"nodes": labels}, "projectItems": {"nodes": []}, "timelineItems": {"nodes": events}})
+    }
+
+    /// An issue on projects whose "Work type" values are `values` (`None` for a project without the field,
+    /// which GitHub answers with `null`, and `Some("")` for a value of another kind, answered as `{}`).
+    fn issue_on_boards(values: &[Option<&str>]) -> serde_json::Value {
+        let items: Vec<_> = values
+            .iter()
+            .map(|value| match value {
+                None => json!({"fieldValueByName": null}),
+                Some("") => json!({"fieldValueByName": {}}),
+                Some(name) => json!({"fieldValueByName": {"name": name}}),
+            })
+            .collect();
+        json!({"labels": {"nodes": []}, "projectItems": {"nodes": items}, "timelineItems": {"nodes": []}})
     }
 
     #[test]
@@ -424,5 +487,69 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_pull_request_that_closes_an_issue_labeled_incident_says_so() {
+        let merged = Some("2026-11-22T02:00:00Z");
+        let nodes = vec![
+            node(
+                "fix: a",
+                merged,
+                "2026-11-22T02:00:00Z",
+                json!([labeled_issue(&["bug", "Incident"], json!([]))]),
+            ),
+            node(
+                "fix: b",
+                merged,
+                "2026-11-22T02:00:00Z",
+                json!([labeled_issue(&["bug", "incident-review"], json!([]))]),
+            ),
+            node("fix: c", merged, "2026-11-22T02:00:00Z", json!([])),
+        ];
+        let (found, _) =
+            read_page("acme/web", &page(nodes, None), at("2026-11-01T00:00:00Z")).unwrap();
+        let flags: Vec<bool> = found.iter().map(|one| one.closes_incident).collect();
+        assert_eq!(flags, [true, false, false]);
+    }
+
+    fn work_types(issues: Vec<serde_json::Value>) -> Vec<Option<WorkType>> {
+        let merged = Some("2026-11-22T02:00:00Z");
+        let nodes = vec![node(
+            "feat: a",
+            merged,
+            "2026-11-22T02:00:00Z",
+            json!(issues),
+        )];
+        let (found, _) =
+            read_page("acme/web", &page(nodes, None), at("2026-11-01T00:00:00Z")).unwrap();
+        found.iter().map(|one| one.work_type).collect()
+    }
+
+    #[test]
+    fn the_boards_work_type_of_the_issue_a_pull_request_closes_is_read() {
+        assert_eq!(
+            work_types(vec![issue_on_boards(&[Some("Tech debt")])]),
+            [Some(WorkType::Debt)]
+        );
+    }
+
+    #[test]
+    fn a_project_without_the_field_or_with_another_option_gives_no_work_type() {
+        assert_eq!(
+            work_types(vec![issue_on_boards(&[None, Some(""), Some("Spike")])]),
+            [None]
+        );
+        assert_eq!(work_types(vec![]), [None]);
+    }
+
+    #[test]
+    fn the_first_issue_and_project_that_has_a_work_type_decides() {
+        let issues = vec![
+            issue_on_boards(&[None]),
+            issue_on_boards(&[Some("Spike"), Some("improvement"), Some("incident")]),
+            issue_on_boards(&[Some("maintenance")]),
+        ];
+        assert_eq!(work_types(issues), [Some(WorkType::Improvement)]);
     }
 }

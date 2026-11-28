@@ -1,10 +1,12 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod audit_cli;
 mod dept_cli;
 mod device_cli;
 mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
+mod member_cli;
 mod metrics_cli;
 mod outcome_cli;
 mod peer_cli;
@@ -22,10 +24,7 @@ use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
-use agency_core::push::notify_waiting;
-use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
-use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
 use agency_node::Overrides;
 use agency_proto::org::{is_node_origin, TeamPlace};
@@ -67,6 +66,10 @@ enum Command {
         /// The path of the harness CLI (scrum)
         #[arg(long, default_value = "scrum")]
         scrum: PathBuf,
+        /// Refuse every direct local request to the Client API and the web client (`"localClients": false`),
+        /// for a machine that other accounts log in to. Federation keeps working
+        #[arg(long)]
+        no_local_clients: bool,
     },
     /// Creates an org (this node's account becomes its root key)
     OrgCreate {
@@ -102,7 +105,20 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    Audit(audit_cli::Audit),
+    MemberRemove(member_cli::MemberRemove),
+    GuestRemove(member_cli::GuestRemove),
+    Guests(member_cli::Guests),
     SeatMerge(seat_cli::SeatMerge),
+    /// Makes a seven-day claim link for one seat and one email (on the root key's node)
+    SeatInvite {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        email: String,
+    },
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -190,12 +206,29 @@ enum Command {
         #[command(subcommand)]
         command: funding_cli::FundingCommand,
     },
+    /// Shows this week's team and organization spending against their plans as JSON
+    Budget {
+        #[command(subcommand)]
+        command: BudgetCommand,
+    },
     /// Prints the node's log (logs/node.jsonl and the closed files), oldest first, filtered; reads no key and needs no running node
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
+    Export(agency_node::export::ExportArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
+}
+
+#[derive(Subcommand)]
+enum BudgetCommand {
+    /// Shows the current Monday-based week's spending and budget state as JSON
+    Status {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        team: String,
+    },
 }
 
 fn data_dir(cli: &Cli) -> DataDir {
@@ -230,35 +263,56 @@ fn harness_command(scrum: &Path) -> Result<PathBuf> {
     }
 }
 
-fn init(
-    data: &DataDir,
-    account: &str,
-    label: &str,
-    url: &str,
-    listen: &str,
-    scrum: PathBuf,
-) -> Result<()> {
+fn owner_of(account: &str, label: &str) -> Result<Account> {
+    Ok(Account {
+        id: id(account)?,
+        label: label.to_owned(),
+    })
+}
+
+fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
+    data.check_format()?;
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
-    if !is_node_origin(url) {
+    if !is_node_origin(&config.url) {
         bail!("--url must be http(s)://host[:port]");
     }
+    if agency_proto::runtime::is_reserved_name(&config.account.id) {
+        bail!(
+            "--account {} is a name a team runtime reserves; choose another account id",
+            config.account.id
+        );
+    }
     let key = data.create_key()?;
-    let owner = Account {
-        id: id(account)?,
-        label: label.to_owned(),
-    };
-    data.save_config(&NodeConfig::new(url, listen, owner, scrum))?;
+    let account = config.account.id.clone();
+    let admits_local_clients = config.local_clients;
+    data.save_config(&config)?;
+    data.ensure_format()?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
         key.public().fingerprint()
     );
+    if admits_local_clients {
+        println!("{LOCAL_CLIENTS_HINT}");
+    }
     Ok(())
 }
 
-fn status(node: &Node) {
+/// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
+/// move only spelled the same origin another way or renamed this node's own origin.
+const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
+whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
+the default port), or that renames this node's own origin to one it was configured with, changes nothing.";
+
+/// What `init` says when the node admits local clients, as every node does unless told otherwise.
+const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
+If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
+--no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
+
+fn status(node: &Node, data: &DataDir) {
+    let releases = agency_adapters::runtime_releases::read(data);
     let config = node.config();
     println!(
         "Account: {} ({}), key fingerprint {}",
@@ -267,6 +321,18 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::views::waiting_lines(node) {
+        println!("{line}");
+    }
+    for line in agency_core::read_auth::status_lines(node) {
+        println!("{line}");
+    }
+    if let Err(error) = node.store().own_origins() {
+        println!("{}", agency_core::node::own_origins_unreadable_line(&error));
+    }
+    if !config.local_clients {
+        println!("Local clients: refused (localClients is false); reach this node through federation or Access");
+    }
     for doc in node.store().orgs() {
         let role = if orgs::is_root(node, &doc) {
             "root key"
@@ -347,11 +413,12 @@ fn status(node: &Node) {
     }
     for team in &config.teams {
         println!(
-            "Team on this node: {}/{} (owner {}) runs {}",
+            "Team on this node: {}/{} (owner {}) runs {}; {}",
             team.org,
             team.team,
             team.owner,
-            team.runtime.command.join(" ")
+            team.runtime.command.join(" "),
+            agency_adapters::runtime_releases::say(&releases, &team.org, &team.team)
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
@@ -379,7 +446,12 @@ fn warn_misplaced(node: &Node, write: impl Fn(String)) {
         };
         write(format!(
             "team {}/{} runs on this node ({}), but the org places it at {place}; other nodes look for it there. On the root key's node, run: agency team-move --org {} --team {} --node {}",
-            misplaced.org, misplaced.team, node.url(), misplaced.org, misplaced.team, node.url()
+            misplaced.org,
+            misplaced.team,
+            node.url(),
+            misplaced.org,
+            misplaced.team,
+            node.url()
         ));
     }
 }
@@ -438,55 +510,11 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
-    let background = node.clone();
-    let background_log = logger.clone();
-    tokio::spawn(async move {
-        let logger = background_log;
-        let mut tick = 0u64;
-        loop {
-            if tick.is_multiple_of(2) {
-                // Expired held changes are dropped, and a held join's invite freed, even when nobody looks.
-                if let Err(error) = agency_core::pending_root::waiting(&background) {
-                    logger.warn("root", &format!("sweeping held changes failed: {error}"));
-                }
-                if let Err(error) = finish_joins(&background).await {
-                    logger.warn("joins", &format!("asking for held joins failed: {error}"));
-                }
-                if let Err(error) = refresh(&background).await {
-                    logger.warn(
-                        "replicas",
-                        &format!("re-reading the replicas failed: {error}"),
-                    );
-                }
-                if let Err(error) = record_all(&background).await {
-                    eprintln!("agency: remembering the days epics shipped failed: {error}");
-                }
-                match notify_waiting(&background).await {
-                    Ok(pass) => {
-                        for recovery in pass.recoveries {
-                            logger.warn("recovery", &recovery);
-                            eprintln!("agency: {recovery}");
-                        }
-                        for failure in pass.failures {
-                            logger.warn(
-                                "push",
-                                &format!("a push notification was not sent: {failure}"),
-                            );
-                        }
-                    }
-                    Err(error) => logger.warn(
-                        "requests",
-                        &format!("checking for new requests failed: {error}"),
-                    ),
-                }
-            }
-            if let Err(error) = deliver_due(&background).await {
-                logger.warn("outbox", &format!("retrying the outbox failed: {error}"));
-            }
-            tick += 1;
-            tokio::time::sleep(Duration::from_secs(15)).await;
-        }
-    });
+    agency_node::background::start(
+        node.clone(),
+        logger.clone(),
+        agency_node::background::Schedule::default(),
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -499,6 +527,14 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     Ok(())
 }
 
+/// Prints the budget status, which the Client API answers too: an unavailable team's runtime makes the
+/// report `partial` and does not prevent it.
+async fn print_budget_status(node: &Node, org: &Id, team: &Id) -> Result<()> {
+    let report = agency_adapters::budget::budget_status(node, org, team).await?;
+    println!("{}", agency_node::budget::json_line(&report)?);
+    Ok(())
+}
+
 async fn run(cli: Cli) -> Result<()> {
     let data = data_dir(&cli);
     if let Command::Init {
@@ -507,10 +543,19 @@ async fn run(cli: Cli) -> Result<()> {
         url,
         listen,
         scrum,
+        no_local_clients,
     } = &cli.command
     {
-        return init(&data, account, label, url, listen, harness_command(scrum)?);
+        let config = NodeConfig::new(
+            url,
+            listen,
+            owner_of(account, label)?,
+            harness_command(scrum)?,
+        )
+        .with_local_clients(!no_local_clients);
+        return init(&data, config);
     }
+    data.check_format()?;
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
@@ -521,6 +566,11 @@ async fn run(cli: Cli) -> Result<()> {
     if let Command::Metrics(args) = &cli.command {
         return metrics_cli::run(&data, args);
     }
+    if let Command::Export(args) = &cli.command {
+        if let Some(dir) = args.only_verifies() {
+            return agency_node::export::verify_dir(dir);
+        }
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
@@ -528,6 +578,11 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Init { .. } | Command::Funding { .. } | Command::Logs(_) | Command::Metrics(_) => {
             unreachable!()
         }
+        Command::Budget { command } => match command {
+            BudgetCommand::Status { org, team } => {
+                print_budget_status(&node, &id(&org)?, &id(&team)?).await?
+            }
+        },
         Command::OrgCreate { org, label } => {
             let doc = orgs::create(&node, id(&org)?, label)?;
             println!(
@@ -588,7 +643,22 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::Audit(args) => audit_cli::audit(&node, args)?,
+        Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
+        Command::GuestRemove(args) => member_cli::guest_remove(&node, args)?,
+        Command::Guests(args) => member_cli::guests(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::SeatInvite { org, seat, email } => {
+            let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
+            println!("{}", invite.link);
+            println!(
+                "Add {} to the Access policy by hand; the node does not change Access.",
+                invite.email
+            );
+            if invite.local_only {
+                println!("This link works on this machine only.");
+            }
+        }
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
@@ -628,6 +698,7 @@ async fn run(cli: Cli) -> Result<()> {
                 "Moved team {team} of org {org} to {origin} (version {})",
                 doc.body.version
             );
+            println!("{TEAM_MOVE_NOTE}");
         }
         Command::Invite {
             org,
@@ -653,7 +724,9 @@ async fn run(cli: Cli) -> Result<()> {
             match join(&node, &link, |definition| yes || confirm_join(definition)).await? {
                 Joined::Member(doc) => println!(
                     "Joined org {} ({}) (version {})",
-                    doc.body.org, agency_proto::org::printable(&doc.body.label), doc.body.version
+                    doc.body.org,
+                    agency_proto::org::printable(&doc.body.label),
+                    doc.body.version
                 ),
                 Joined::Waiting(message) => println!(
                     "The org's root key's node holds the join for its owner. {message} This node asks again on its own, and with `agency sync`."
@@ -693,7 +766,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
-            refresh(&node).await?;
+            agency_core::views::refresh_now(&node).await?;
             for joined in finish_joins(&node).await? {
                 if let Joined::Member(doc) = joined {
                     println!("Joined org {} (version {})", doc.body.org, doc.body.version);
@@ -705,7 +778,8 @@ async fn run(cli: Cli) -> Result<()> {
                 outcomes.len()
             );
         }
-        Command::Status => status(&node),
+        Command::Status => status(&node, &cli_data),
+        Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }
     Ok(())

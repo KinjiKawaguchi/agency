@@ -40,6 +40,15 @@ extension Ja {
             }
         }
 
+        /// The screen for a key that is stored and cannot be used now.
+        public enum Unusable {
+            public static let title = "この端末の鍵を使えません"
+            public static let explain = "決定に署名する鍵は端末に残っていますが、いまは使えません。端末がロックされている、Face ID の登録を変えた、などが考えられます。鍵は自動では作り直しません。"
+            public static func reason(_ text: String) -> String { "理由: \(text)" }
+            public static let tryAgain = "もう一度試す"
+            public static let makeExplain = "使えない鍵は残したまま、新しい鍵を作って、この端末をもう一度追加します。追加するまで、この端末では決めることも、コメントすることもできません。"
+        }
+
         public static func noKey(_ protection: KeyProtection) -> String {
             switch protection {
             case .faceID: "この端末では、決定に署名する鍵を作れません。Face ID を設定してから、アプリを開き直してください。"

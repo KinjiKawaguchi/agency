@@ -8,7 +8,7 @@ use crate::node::Node;
 use crate::outbox::{enqueue, Parcel, ParcelBody};
 use crate::ports::RootSigner;
 use crate::push_devices::keep_org;
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::clock::{self, Duration, OffsetDateTime};
@@ -16,6 +16,7 @@ use agency_proto::org::{
     verify_genesis, verify_successor, Root, SignedOrg, Succession, TeamPlace, Versions,
     RECOVERY_WAIT_SECONDS,
 };
+use agency_proto::runtime::is_reserved_name;
 use agency_proto::{Id, Kind, OrgDefinition, Person, PublicKey, Signed};
 
 pub(crate) fn load(node: &Node, org: &Id) -> Result<SignedOrg> {
@@ -140,6 +141,42 @@ fn refuse_new_hidden_labels(node: &Node, body: &OrgDefinition) -> Result<()> {
     Ok(())
 }
 
+/// The ids of the people, seats, and external parties of `body`, with what each names.
+fn identities(body: &OrgDefinition) -> Vec<(&'static str, &Id)> {
+    let people = body.people.iter().map(|one| ("a member", &one.id));
+    let seats = body.seats.iter().map(|one| ("a seat", &one.id));
+    let externals = body
+        .externals
+        .iter()
+        .map(|one| ("an external party", &one.id));
+    people.chain(seats).chain(externals).collect()
+}
+
+/// Refuses a version that gives a member, a seat, or an external party a name a team runtime reserves
+/// (`RESERVED_NAMES`), which the current version does not already have: a runtime would read a decision by
+/// it as one by that name. One that is already there is kept, so that an org that has one still signs.
+fn refuse_new_reserved_ids(node: &Node, body: &OrgDefinition) -> Result<()> {
+    let before = node.store().load_org(&body.org);
+    let kept: Vec<&Id> = before
+        .as_ref()
+        .map(|doc| {
+            identities(&doc.body)
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect()
+        })
+        .unwrap_or_default();
+    let taken = identities(body)
+        .into_iter()
+        .find(|(_, id)| is_reserved_name(id) && !kept.contains(id));
+    match taken {
+        Some((what, id)) => Err(Error::bad_request(format!(
+            "{id} is a name a team runtime reserves, so it cannot be the id of {what}"
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Signs a version with `sign`, a root signer the caller holds (one signature, or a run of them after one
 /// presence prompt: `RootKeys::with_signer`).
 pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Result<SignedOrg> {
@@ -148,6 +185,7 @@ pub(crate) fn sign_by(node: &Node, body: OrgDefinition, sign: &RootSigner) -> Re
     body.root.pending = None;
     body.validate().map_err(Error::bad_request)?;
     refuse_new_hidden_labels(node, &body)?;
+    refuse_new_reserved_ids(node, &body)?;
     let org = body.org.clone();
     let signed = Signed::sign_with(Kind::Org, body, node.account(), sign)
         .map_err(|error| Error::internal(error.to_string()))?;
@@ -486,6 +524,11 @@ pub fn read_definition(
 /// root key this node knows for the org (the current one, or the trusted one) is refused like an
 /// unknown org (see `unseen`), so only the root's node learns which version this node has.
 pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
+    // Anyone can send a definition, so nobody waits for the write lock for one that no key this node
+    // accepts signed. What is read here may change before the lock is taken, so it is checked again under it.
+    if !is_taken(node, &doc) {
+        refuse_unsigned(node, node.store().load_org(&doc.body.org).as_ref(), &doc)?;
+    }
     let _guard = node.write_lock().lock().await;
     let org = doc.body.org.clone();
     let Some(current) = node.store().load_org(&org) else {
@@ -494,23 +537,10 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // A version this node already took, byte for byte, is answered as taken. It is checked by its
     // digest against this node's own history before any signature: a version that named a new root is
     // signed by the old one, which is no longer the root of the copy here.
-    let kept = node.store().load_org_version(&org, doc.body.version);
-    if kept.is_some_and(|kept| kept.digest() == doc.digest()) {
+    if is_taken(node, &doc) {
         return Ok(());
     }
-    let root = &current.body.root;
-    let key = (doc.signer == root.account).then_some(&root.public_key);
-    let recovery = root
-        .recovery
-        .as_ref()
-        .filter(|_| doc.signer == root.account);
-    let is_by_recovery = || recovery.is_some_and(|key| doc.verify(Kind::Org, key));
-    if !unseen::check(&doc, Kind::Org, key) && !is_by_recovery() {
-        return Err(unseen::refused(format!(
-            "a definition of {org} signed as {}, not with the root key of this node's copy",
-            doc.signer
-        )));
-    }
+    refuse_unsigned(node, Some(&current), &doc)?;
     if current.body.version >= doc.body.version {
         let is_same = current.body.version == doc.body.version && current.digest() == doc.digest();
         return if is_same {
@@ -567,7 +597,37 @@ fn refuse_an_early_finish(node: &Node, start: &SignedOrg) -> Result<()> {
     }
 }
 
-fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
+/// Whether this node took this version already, byte for byte.
+fn is_taken(node: &Node, doc: &SignedOrg) -> bool {
+    node.store()
+        .load_org_version(&doc.body.org, doc.body.version)
+        .is_some_and(|kept| kept.digest() == doc.digest())
+}
+
+/// Refuses a definition that is not signed by a key this node accepts for the org: against the copy it has, the root
+/// key or the recovery key of that copy; without one, the root key it trusts.
+fn refuse_unsigned(node: &Node, current: Option<&SignedOrg>, doc: &SignedOrg) -> Result<()> {
+    let org = &doc.body.org;
+    let Some(current) = current else {
+        return refuse_untrusted_first(node, doc);
+    };
+    let root = &current.body.root;
+    let key = (doc.signer == root.account).then_some(&root.public_key);
+    let recovery = root
+        .recovery
+        .as_ref()
+        .filter(|_| doc.signer == root.account);
+    let is_by_recovery = || recovery.is_some_and(|key| doc.verify(Kind::Org, key));
+    if !unseen::check(doc, Kind::Org, key) && !is_by_recovery() {
+        return Err(unseen::refused(format!(
+            "a definition of {org} signed as {}, not with the root key of this node's copy",
+            doc.signer
+        )));
+    }
+    Ok(())
+}
+
+fn refuse_untrusted_first(node: &Node, doc: &SignedOrg) -> Result<()> {
     let root = &doc.body.root;
     let trusted = node
         .config()
@@ -575,15 +635,20 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
         .map(str::to_owned);
     let is_trusted_root =
         trusted == Some(root.public_key.fingerprint()) && doc.signer == root.account;
-    if !unseen::check(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
-        let org = &doc.body.org;
-        return Err(unseen::refused(match trusted {
-            None => format!("a first definition of {org}, an org this node does not trust"),
-            Some(_) => {
-                format!("a first definition of {org} not signed by the root key this node trusts")
-            }
-        }));
+    if unseen::check(doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
+        return Ok(());
     }
+    let org = &doc.body.org;
+    Err(unseen::refused(match trusted {
+        None => format!("a first definition of {org}, an org this node does not trust"),
+        Some(_) => {
+            format!("a first definition of {org} not signed by the root key this node trusts")
+        }
+    }))
+}
+
+fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
+    refuse_untrusted_first(node, &doc)?;
     if doc.body.version == 1 {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }
@@ -634,7 +699,7 @@ pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Resul
             return Ok(());
         }
         let path = routes::versions(org, current);
-        let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+        let auth = sign_for_peer(node, org, origin, &path);
         let fetched = node
             .peers()
             .get_versions(origin, &path, &auth)

@@ -4,8 +4,9 @@
 use agency_core::guests::Guest;
 use axum::http::Method;
 
-/// A guest's routes: `(method, path)`, where `{org}` must be the guest's own org and `{team}` any team.
-pub(super) const GUEST_ROUTES: [(&str, &str); 8] = [
+/// A guest's routes: `(method, path)`, where `{org}` must be the guest's own org, `{team}` any team, and
+/// `{token}` or `{id}` any one segment (the handler finds only the guest's own).
+pub(super) const GUEST_ROUTES: [(&str, &str); 16] = [
     ("GET", "/api/about"),
     ("GET", "/api/me"),
     ("GET", "/api/session"),
@@ -14,6 +15,14 @@ pub(super) const GUEST_ROUTES: [(&str, &str); 8] = [
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
     ("POST", "/api/devices/changes"),
+    ("POST", "/api/devices/requests"),
+    ("GET", "/api/push/tokens"),
+    ("POST", "/api/push/tokens"),
+    ("DELETE", "/api/push/tokens/{token}"),
+    ("GET", "/api/push/vapid"),
+    ("GET", "/api/push/subscriptions"),
+    ("POST", "/api/push/subscriptions"),
+    ("DELETE", "/api/push/subscriptions/{id}"),
 ];
 
 /// Whether `path` fits `pattern`, with `{org}` the guest's org and `{team}` one well-formed segment.
@@ -24,13 +33,14 @@ fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
         && wanted.iter().zip(&given).all(|(want, part)| match *want {
             "{org}" => *part == guest.org.as_str(),
             "{team}" => agency_proto::Id::parse(part).is_ok(),
+            "{token}" | "{id}" => !part.is_empty(),
             fixed => fixed == *part,
         })
 }
 
 /// Whether `path` is the web client itself (its page and files), which holds none of the node's data: not
 /// under `/api`, not the node's own measurements (`/metrics`), and not the app sign-in (`/app`).
-fn is_the_client(path: &str) -> bool {
+pub(super) fn is_the_client(path: &str) -> bool {
     let reserved = ["/api", "/metrics", "/app"];
     !reserved
         .iter()
@@ -86,7 +96,14 @@ mod tests {
         );
         assert!(!may(&guest, &Method::GET, "/api/orgs/acme/teams/app/usage"));
         assert!(!may(&guest, &Method::GET, "/api/orgs/acme"));
-        assert!(!may(&guest, &Method::POST, "/api/push/tokens"));
+        assert!(may_write(&guest, &Method::POST, "/api/push/tokens"));
+        assert!(may_write(
+            &guest,
+            &Method::DELETE,
+            "/api/push/subscriptions/abc"
+        ));
+        assert!(!may(&guest, &Method::DELETE, "/api/push/subscriptions/"));
+        assert!(!may(&guest, &Method::POST, "/api/telemetry"));
         assert!(!may(&guest, &Method::DELETE, "/api/devices/changes"));
         assert!(!may(
             &guest,

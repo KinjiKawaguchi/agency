@@ -150,10 +150,22 @@ pub enum Capability {
     /// `device` in a push registration (an APNs token or a Web Push subscription), and the registrations
     /// dropped with the device they name.
     PushDevice,
+    /// Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and the federation read of it.
+    Effort,
+    /// A signed read that names the node it is made for (`x-agency-audience`, `agency/v2/read`).
+    ReadAudience,
+    /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
+    Budget,
+    /// An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.
+    History,
+    /// The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.
+    Members,
+    /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
+    ClaimLinks,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 17] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -165,6 +177,12 @@ impl Capability {
         Capability::Activity,
         Capability::Outcomes,
         Capability::PushDevice,
+        Capability::Effort,
+        Capability::ReadAudience,
+        Capability::Budget,
+        Capability::History,
+        Capability::Members,
+        Capability::ClaimLinks,
     ];
 
     pub fn name(self) -> &'static str {
@@ -180,6 +198,12 @@ impl Capability {
             Capability::Activity => "activity",
             Capability::Outcomes => "outcomes",
             Capability::PushDevice => "pushDevice",
+            Capability::Effort => "effort",
+            Capability::ReadAudience => "readAudience",
+            Capability::Budget => "budget",
+            Capability::History => "history",
+            Capability::Members => "members",
+            Capability::ClaimLinks => "claimLinks",
         }
     }
 

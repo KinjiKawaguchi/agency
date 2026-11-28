@@ -72,6 +72,7 @@ version = "0.3.0"
 dependencies = [
  "agency-proto",
  "async-trait",
+ "futures-util",
  "serde",
  "serde_json",
 ]
@@ -89,6 +90,7 @@ dependencies = [
  "base64 0.22.1",
  "bip39",
  "clap",
+ "futures-util",
  "jsonwebtoken",
  "p256",
  "reqwest",
@@ -98,6 +100,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tower",
 ]
 

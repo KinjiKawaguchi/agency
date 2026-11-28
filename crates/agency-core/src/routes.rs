@@ -43,6 +43,11 @@ pub fn evaluation(org: &Id, team: &Id, days: u32) -> String {
 }
 
 /// The query is part of the signed path, so a signature for one range cannot read another.
+pub fn effort(org: &Id, team: &Id, days: u32) -> String {
+    format!("/fed/v1/teams/{org}/{team}/effort?days={days}")
+}
+
+/// The query is part of the signed path, so a signature for one range cannot read another.
 pub fn activity(org: &Id, team: &Id, since: &Timestamp, limit: u32) -> String {
     format!("/fed/v1/teams/{org}/{team}/activity?since={since}&limit={limit}")
 }

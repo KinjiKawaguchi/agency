@@ -1,5 +1,5 @@
 //! The TeamView and agency-runtime/1 contracts: the shared sample fixture, and the JSON shapes in docs/protocol.md.
-use agency_proto::runtime::{Decided, Describe, RuntimeError};
+use agency_proto::runtime::{Decided, Describe, RuntimeError, MOST_RELEASE_CHARS};
 use agency_proto::view::{PersonState, RequestKind, WaitingOn, WorkStatus, WorkType};
 use agency_proto::{
     EnvelopeKind, Id, Payload, RuntimeCall, RuntimeDecision, RuntimeRequest, RuntimeResponse,
@@ -316,5 +316,61 @@ fn a_node_id_is_the_hash_of_the_origin_and_the_same_for_every_way_to_write_it() 
     assert_eq!(distinct.len(), 5, "five different origins, one id each");
     for url in file["none"].as_array().unwrap() {
         assert_eq!(node_id(url.as_str().unwrap()), None, "{url}");
+    }
+}
+
+fn described_with(version: serde_json::Value) -> Describe {
+    serde_json::from_value(json!({
+        "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": "App", "version": version
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_runtime_may_say_which_harness_release_it_is() {
+    let said = described_with(json!("0.7.2"));
+    assert_eq!(said.release(), Some("0.7.2"));
+    assert_eq!(
+        serde_json::to_value(&said).unwrap()["version"],
+        "0.7.2",
+        "it is passed on as it came"
+    );
+}
+
+#[test]
+fn a_runtime_without_a_version_is_read_as_before_and_none_is_written_for_it() {
+    let old = json!({ "runtimes": ["agency-runtime/1"], "ops": ["describe", "view", "decide"], "label": "App" });
+    let described: Describe = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(described.release(), None);
+    assert!(described.speaks(agency_proto::RUNTIME_VERSION));
+    assert_eq!(serde_json::to_value(&described).unwrap(), old);
+}
+
+#[test]
+fn a_version_beyond_the_limits_is_ignored_and_the_runtime_is_still_read() {
+    let longest = "v".repeat(MOST_RELEASE_CHARS);
+    assert_eq!(
+        described_with(json!(longest)).release(),
+        Some(longest.as_str())
+    );
+    let too_long = "v".repeat(MOST_RELEASE_CHARS + 1);
+    assert_eq!(described_with(json!(too_long)).release(), None);
+    let many_characters_in_few_bytes = "あ".repeat(MOST_RELEASE_CHARS);
+    assert_eq!(
+        described_with(json!(many_characters_in_few_bytes))
+            .release()
+            .map(str::len),
+        Some(MOST_RELEASE_CHARS * 3),
+        "the limit counts characters, not bytes"
+    );
+    assert_eq!(described_with(json!("")).release(), None);
+    assert_eq!(described_with(json!("0.7\u{1b}[31m")).release(), None);
+    assert_eq!(described_with(json!("0.7\n2")).release(), None);
+    for hidden in ["0.7\u{202e}2", "0.7\u{2066}2", "0.7\u{200b}", "\u{feff}0.7"] {
+        assert_eq!(
+            described_with(json!(hidden)).release(),
+            None,
+            "a character that hides or reorders text: {hidden:?}"
+        );
     }
 }

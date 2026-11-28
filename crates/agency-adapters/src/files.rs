@@ -1,7 +1,9 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::claims::ClaimRecord;
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
+use agency_core::data_format::{is_unknown_setting, unknown_setting};
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::guests::Guest;
@@ -10,21 +12,23 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, ClientsSeenStore, ConfigStore, DecisionLogStore, DeviceRequestStore,
-    GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore, PendingRootStore, PushStore,
-    ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, OwnOriginStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger,
+    ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
-use agency_proto::client::PushToken;
+use agency_proto::client::{GuestRef, PushToken};
+use agency_proto::digest::sha256_hex;
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Digest;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -175,6 +179,17 @@ impl DataDir {
             .map_err(|error| io_error(path, error))
     }
 
+    fn guest_notified_path(&self, guest: &GuestRef) -> PathBuf {
+        let name: String =
+            sha2::Sha256::digest(format!("{}/{}", guest.org, guest.member).as_bytes())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+        self.dir("guests")
+            .join("notified")
+            .join(format!("{name}.json"))
+    }
+
     fn guest_path(&self, email: &str) -> PathBuf {
         let name: String = sha2::Sha256::digest(email.trim().to_lowercase().as_bytes())
             .iter()
@@ -221,11 +236,20 @@ impl DataDir {
 impl ConfigStore for DataDir {
     fn load_config(&self) -> Result<NodeConfig> {
         let path = self.config_path();
-        read_json(&path).ok_or_else(|| {
+        let cannot_read = || {
             Error::internal(format!(
                 "cannot read {} (create it with agency init)",
                 path.display()
             ))
+        };
+        let text = fs::read_to_string(&path).map_err(|_| cannot_read())?;
+        serde_json::from_str(&text).map_err(|error| {
+            let reading_error = error.to_string();
+            if is_unknown_setting(&reading_error) {
+                unknown_setting(&reading_error)
+            } else {
+                cannot_read()
+            }
         })
     }
 
@@ -301,6 +325,66 @@ impl InviteStore for DataDir {
     }
 }
 
+impl ClaimStore for DataDir {
+    fn load_claim(&self, digest: &str) -> Option<ClaimRecord> {
+        read_json(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    /// Every file of `claims/`, named by the digest it holds.
+    fn claims(&self) -> Vec<(String, ClaimRecord)> {
+        let Ok(entries) = fs::read_dir(self.dir("claims")) else {
+            return vec![];
+        };
+        entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let digest = path.file_stem()?.to_str()?.to_owned();
+                let is_json = path.extension().is_some_and(|ext| ext == "json");
+                is_json.then(|| read_json(&path).map(|record| (digest, record)))?
+            })
+            .collect()
+    }
+
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String> {
+        read_json(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
+
+    fn save_claim(&self, digest: &str, record: &ClaimRecord) -> Result<()> {
+        write_json(&self.dir("claims").join(format!("{digest}.json")), record)
+    }
+
+    fn remove_claim(&self, digest: &str) -> Result<()> {
+        remove(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()> {
+        write_json(
+            &self.dir("claims-by-seat").join(format!(
+                "{}-{}.json",
+                sha256_hex(org.as_str().as_bytes()),
+                sha256_hex(seat.as_str().as_bytes())
+            )),
+            &digest,
+        )
+    }
+
+    fn remove_claim_for_seat(&self, org: &Id, seat: &Id) -> Result<()> {
+        if let Some(digest) = self.claim_for_seat(org, seat) {
+            self.remove_claim(&digest)?;
+        }
+        remove(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
+}
+
 impl AppliedLog for DataDir {
     fn is_applied(&self, id: &EnvelopeId) -> bool {
         self.applied().contains_key(id.as_str())
@@ -308,6 +392,12 @@ impl AppliedLog for DataDir {
 
     fn record_applied(&self, id: &EnvelopeId, at: &str) -> Result<()> {
         let mut applied = self.applied();
+        // What was applied longer ago than an envelope can be sent again is dropped as a new one is written, so
+        // the file (read and written for each decision) holds the ids of the window and not of every decision.
+        if let Some(now) = agency_proto::clock::parse(at) {
+            applied
+                .retain(|_, recorded| agency_proto::envelope::is_still_replayable(recorded, now));
+        }
         applied.insert(id.as_str().to_owned(), at.to_owned());
         write_json(&self.applied_path(), &applied)
     }
@@ -354,6 +444,24 @@ impl GuestStore for DataDir {
     fn remove_guest(&self, email: &str) -> Result<()> {
         remove(&self.guest_path(email))
     }
+
+    /// The records in `guests/`, one file each (the notified lists are in a directory of their own).
+    fn guests(&self) -> Vec<Guest> {
+        read_all(&self.dir("guests"))
+    }
+
+    /// `guests/notified/<sha256 of org/member>.json`.
+    fn guest_notified(&self, guest: &GuestRef) -> Option<Vec<String>> {
+        read_json(&self.guest_notified_path(guest))
+    }
+
+    fn save_guest_notified(&self, guest: &GuestRef, keys: &[String]) -> Result<()> {
+        write_json(&self.guest_notified_path(guest), &keys)
+    }
+
+    fn remove_guest_notified(&self, guest: &GuestRef) -> Result<()> {
+        remove(&self.guest_notified_path(guest))
+    }
 }
 
 impl ClientsSeenStore for DataDir {
@@ -367,6 +475,23 @@ impl ClientsSeenStore for DataDir {
     }
 }
 
+impl OwnOriginStore for DataDir {
+    /// `own-origins.json`: origins only, no key and no secret. A file that is not there is no origins; one that is
+    /// there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>> {
+        let path = self.0.join("own-origins.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_own_origins(&self, origins: &[String]) -> Result<()> {
+        write_json(&self.0.join("own-origins.json"), origins)
+    }
+}
+
 impl AboutStore for DataDir {
     /// `about/<org>.json`: one file for the org, since an origin is not a file name.
     fn peer_abouts(&self, org: &Id) -> BTreeMap<String, PeerAbout> {
@@ -375,6 +500,23 @@ impl AboutStore for DataDir {
 
     fn save_peer_abouts(&self, org: &Id, abouts: &BTreeMap<String, PeerAbout>) -> Result<()> {
         write_json(&self.dir("about").join(format!("{org}.json")), abouts)
+    }
+}
+
+impl BoundReaderStore for DataDir {
+    /// `bound-readers.json`: account ids only, no key and no signature. A file that is not there is no accounts;
+    /// one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn bound_readers(&self) -> Result<BTreeSet<Id>> {
+        let path = self.0.join("bound-readers.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_bound_readers(&self, accounts: &BTreeSet<Id>) -> Result<()> {
+        write_json(&self.0.join("bound-readers.json"), accounts)
     }
 }
 
@@ -428,6 +570,16 @@ impl DecisionLogStore for DataDir {
         let records: Vec<DecisionRecord> =
             read_json(&self.0.join("decisions.json")).unwrap_or_default();
         records.into_iter().rev().take(limit).collect()
+    }
+
+    fn replace_decision(&self, record: &DecisionRecord) -> Result<()> {
+        let path = self.0.join("decisions.json");
+        let mut records: Vec<DecisionRecord> = read_json(&path).unwrap_or_default();
+        let Some(kept) = records.iter_mut().find(|one| one.id == record.id) else {
+            return Ok(());
+        };
+        *kept = record.clone();
+        write_json(&path, &records)
     }
 }
 

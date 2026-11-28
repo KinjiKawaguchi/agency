@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { queryOfFeatures, type AskedOfFeatures } from '../src/mock/features/index'
 
-export interface NodeOptions {
+/** What a test may ask of the mock node: the features of the Client API (`src/mock/features`, each states how it is asked for), and the rest. */
+export interface NodeOptions extends AskedOfFeatures {
   /** Serve the mock token use (the real node does not yet). */
   usage?: boolean
   /** Serve the mock evaluation numbers (the real node does not yet). */
@@ -36,6 +38,10 @@ export interface NodeOptions {
   participants?: boolean
   /** Adds the orgs Lab and Club: a stuck team, a stale copy, a busy team, and one that cannot be read. */
   moreOrgs?: boolean
+  /** The account has a second device, Work laptop, which can be removed. */
+  laptop?: boolean
+  /** The node ties push registrations to devices (the capability `pushDevice`). */
+  pushDevice?: boolean
   /** The viewer is this member of the org, hosted by the node as a guest (an id such as `carol`). */
   guest?: string
 }
@@ -45,6 +51,7 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   const query = new URLSearchParams()
   if (options.usage === true) query.set('usage', '1')
   if (options.evaluation === true) query.set('evaluation', '1')
+  for (const [key, value] of queryOfFeatures(options)) query.set(key, value)
   if (options.activity === true) query.set('activity', '1')
   if (options.siteError !== undefined) query.set('siteError', options.siteError)
   if (options.outcome !== undefined) query.set('outcome', options.outcome)
@@ -61,6 +68,8 @@ export async function resetNode(request: APIRequestContext, options: NodeOptions
   if (options.pendingRoot === true) query.set('pendingRoot', '1')
   if (options.relayedFor === true) query.set('relayedFor', '1')
   if (options.guest !== undefined) query.set('guest', options.guest)
+  if (options.laptop === true) query.set('laptop', '1')
+  if (options.pushDevice === true) query.set('pushDevice', '1')
   if (options.claim !== undefined) {
     query.set('claim', options.claim.code)
     if (options.claim.fails !== undefined) query.set('claimFails', options.claim.fails)

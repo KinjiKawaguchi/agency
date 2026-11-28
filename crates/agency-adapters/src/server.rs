@@ -1,12 +1,13 @@
 //! The federation routes (`/fed/v1`), checked with account signatures. Each handler parses the request,
 //! calls a use case in agency-core, and maps its error kind to an HTTP status. A refusal that looks like
 //! "not found" to the caller is logged here with its real reason (see `agency_core::unseen`).
-use crate::peers::{ACCOUNT, DATE, SIGNATURE};
+use crate::peers::{ACCOUNT, AUDIENCE, DATE, SIGNATURE};
 use crate::refusal_log::RefusalLog;
 use agency_core::about::read_about;
 use agency_core::activity::{hosted_activity, Asked};
 use agency_core::decisions::{accept_envelope, Accepted};
 use agency_core::devices::accept_device_change;
+use agency_core::effort::hosted_effort;
 use agency_core::evaluation::hosted_evaluation;
 use agency_core::invites::accept_join;
 use agency_core::orgs::{read_definition, read_versions, receive};
@@ -49,6 +50,7 @@ pub fn status_of(kind: ErrorKind) -> StatusCode {
         ErrorKind::Forbidden => StatusCode::FORBIDDEN,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::Conflict => StatusCode::CONFLICT,
+        ErrorKind::Gone => StatusCode::GONE,
         ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     }
@@ -100,6 +102,10 @@ fn read_auth(headers: &HeaderMap) -> ReadAuth {
         account: header(ACCOUNT),
         date: header(DATE),
         signature: header(SIGNATURE),
+        // Present means the signature claims to cover it: a value that is no node id is checked, and refused.
+        audience: headers
+            .get(AUDIENCE)
+            .map(|value| value.to_str().unwrap_or("").to_owned()),
     }
 }
 
@@ -319,6 +325,27 @@ async fn get_evaluation(
     respond(&fed, &method, &uri, result.await)
 }
 
+/// The effort of a team on this node, for a signed read by a member of its org. The signature covers the
+/// path with its `days` query.
+async fn get_effort(
+    State(fed): Shared,
+    method: Method,
+    uri: Uri,
+    Path((org, team)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let (org, team) = (parse_id(&org)?, parse_id(&team)?);
+        let days = query
+            .get("days")
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .ok_or_else(|| Error::bad_request("days must be a number"))?;
+        hosted_effort(&fed.node, &org, &team, days, &read_auth(&headers)).await
+    };
+    respond(&fed, &method, &uri, result.await)
+}
+
 async fn post_envelope(
     State(fed): Shared,
     method: Method,
@@ -359,6 +386,7 @@ pub fn router_with_log(node: Arc<Node>, refusals: RefusalLog) -> Router {
         .route("/fed/v1/teams/{org}/{team}/usage", get(get_usage))
         .route("/fed/v1/teams/{org}/{team}/activity", get(get_activity))
         .route("/fed/v1/teams/{org}/{team}/evaluation", get(get_evaluation))
+        .route("/fed/v1/teams/{org}/{team}/effort", get(get_effort))
         .route("/fed/v1/teams/{org}/{team}/envelopes", post(post_envelope))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(Arc::new(Fed { node, refusals }))

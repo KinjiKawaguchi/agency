@@ -1,7 +1,10 @@
 //! The node's configuration (`config.json` in its data directory): its account, its URL, the teams it hosts, and the orgs it trusts.
+use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
+use crate::oidc_config::OidcConfig;
 use agency_proto::client::FundingKind;
+use agency_proto::evaluation::{is_repository, MAX_REPOSITORIES};
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -52,12 +55,39 @@ impl HostedTeam {
         Self { people, ..self }
     }
 
-    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`).
+    /// The same team, whose delivery numbers are worked out from these GitHub repositories (`owner/name`)
+    /// on github.com.
     pub fn with_delivery(self, repos: Vec<String>) -> Self {
         Self {
-            delivery: Some(DeliveryConfig { repos }),
+            delivery: Some(DeliveryConfig { repos, host: None }),
             ..self
         }
+    }
+
+    /// The same team, whose delivery numbers are worked out from these repositories (`owner/name`) on
+    /// the GitHub host `host` (a host name, for a GitHub Enterprise Server).
+    pub fn with_delivery_on(self, host: impl Into<String>, repos: Vec<String>) -> Self {
+        Self {
+            delivery: Some(DeliveryConfig {
+                repos,
+                host: Some(host.into()),
+            }),
+            ..self
+        }
+    }
+
+    /// What a read of the team's delivery numbers depends on, when the configuration names at least one
+    /// repository: no repository, no source.
+    pub fn delivery_source(&self) -> Option<DeliverySite> {
+        let delivery = self.delivery.as_ref()?;
+        if delivery.repos.is_empty() {
+            return None;
+        }
+        let site = DeliverySite::new(delivery.repos.clone());
+        Some(match &delivery.host {
+            Some(host) => site.with_host(host),
+            None => site,
+        })
     }
 
     /// The same team run by another command.
@@ -142,6 +172,9 @@ pub struct NodeConfig {
     /// local requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<AccessConfig>,
+    /// An OpenID Connect provider in front of the Client API, in place of `access`. A node has one or neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oidc: Option<OidcConfig>,
     /// Apple Push Notification service, for the owner's iPhone. Without it, nothing is sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push: Option<PushConfig>,
@@ -166,6 +199,14 @@ pub struct NodeConfig {
     /// Where the org root keys this node holds are kept.
     #[serde(default, skip_serializing_if = "RootKeyStore::is_default")]
     pub root_keys: RootKeyStore,
+    /// How the node takes the signed reads of other nodes.
+    #[serde(default, skip_serializing_if = "FederationConfig::is_default")]
+    pub federation: FederationConfig,
+    /// Whether the Client API and the web client admit direct local requests (loopback, a local `Host`).
+    /// `false` refuses every one of them with 403, for a machine that other accounts log in to: each of them
+    /// reaches the loopback address as well. The federation routes answer either way.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub local_clients: bool,
 }
 
 /// Where a node keeps the org root keys it holds.
@@ -251,6 +292,82 @@ pub struct WebPushConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
+    /// The host the repositories are on: a host name, for a GitHub Enterprise Server. Without it,
+    /// github.com. `gh` is told the host, and its login for that host is the one used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+/// The host that is read when a team names none.
+const GITHUB_COM: &str = "github.com";
+
+/// A GitHub host name: dot-separated labels of letters, digits and hyphens, none empty, none starting or
+/// ending with a hyphen, at most 253 characters in all. No scheme, port or path. The host goes to `gh` as
+/// the value of `--hostname`, so nothing else is let in.
+pub fn is_host_name(host: &str) -> bool {
+    let is_label = |label: &str| {
+        (1..=63).contains(&label.len())
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    host.len() <= 253 && host.split('.').all(is_label)
+}
+
+impl DeliveryConfig {
+    /// Why these settings cannot be used, in words that name the setting; `at` is where they sit
+    /// (`teams[0].delivery`).
+    pub fn check(&self, at: &str) -> Result<(), String> {
+        // The repositories are what a report names, so they have its limits: at most `MAX_REPOSITORIES`, each
+        // written `owner/name`, none twice (GitHub names ignore case).
+        if self.repos.len() > MAX_REPOSITORIES {
+            return Err(format!(
+                "{at}.repos has more than {MAX_REPOSITORIES} entries"
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for (index, repo) in self.repos.iter().enumerate() {
+            if !is_repository(repo) {
+                return Err(format!("{at}.repos[{index}] is not written owner/name"));
+            }
+            if !seen.insert(repo.to_ascii_lowercase()) {
+                return Err(format!(
+                    "{at}.repos[{index}] names a repository twice (names ignore case)"
+                ));
+            }
+        }
+        match &self.host {
+            Some(host) if !is_host_name(host) => Err(format!(
+                "{at}.host is not a host name (letters, digits, hyphens and dots; no scheme, port or path)"
+            )),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// What a read of a team's delivery numbers depends on: the repositories (`owner/name`) and the GitHub host
+/// they are on, and nothing else of the team's delivery setting. A read is kept by it, so two teams that
+/// differ in anything else share one read. The host is `None` for github.com, and is in lower case,
+/// since a host name is the same in any case.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct DeliverySite {
+    pub repos: Vec<String>,
+    pub host: Option<String>,
+}
+
+impl DeliverySite {
+    /// These repositories on github.com.
+    pub fn new(repos: Vec<String>) -> Self {
+        Self { repos, host: None }
+    }
+
+    /// The same repositories on the GitHub host `host`; github.com, in any case, is no host.
+    pub fn with_host(self, host: impl AsRef<str>) -> Self {
+        let host = host.as_ref().to_ascii_lowercase();
+        let host = (host != GITHUB_COM).then_some(host);
+        Self { host, ..self }
+    }
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -379,6 +496,12 @@ pub struct AccessConfig {
     /// no app association file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
+    /// Whether the app may sign in through its custom scheme (`via=scheme`), for a host that is not in the app
+    /// build's associated domains. Off by default: the scheme is delivered to the app that starts the sign-in,
+    /// whatever app that is, so an app of someone else's on the owner's device could start it and redeem the
+    /// owner's token; the universal link of `via=link` reaches only the app the association file names.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_scheme_sign_in: bool,
 }
 
 impl NodeConfig {
@@ -399,6 +522,7 @@ impl NodeConfig {
             trusted: vec![],
             funding: vec![],
             access: None,
+            oidc: None,
             push: None,
             web_push: None,
             hide_titles: false,
@@ -406,7 +530,44 @@ impl NodeConfig {
             logging: LoggingConfig::default(),
             metrics: MetricsConfig::default(),
             root_keys: RootKeyStore::Files,
+            federation: FederationConfig::default(),
+            local_clients: true,
         }
+    }
+
+    /// The same configuration with `oidc` in front of the Client API.
+    pub fn with_oidc(self, oidc: OidcConfig) -> Self {
+        Self {
+            oidc: Some(oidc),
+            ..self
+        }
+    }
+
+    /// Whether a sign-in provider (`access` or `oidc`) is set, well formed or not: with one, a direct local
+    /// request may read but never write, and a malformed one must not make loopback the owner again.
+    pub fn has_sign_in(&self) -> bool {
+        self.access.is_some() || self.oidc.is_some()
+    }
+
+    /// The host name requests from outside name, from whichever sign-in provider is set.
+    pub fn public_host(&self) -> Option<&str> {
+        self.access
+            .as_ref()
+            .map(|access| access.public_host.as_str())
+            .or_else(|| self.oidc.as_ref().map(|oidc| oidc.public_host.as_str()))
+    }
+
+    /// Whether the Client API admits direct local requests (`localClients`).
+    pub fn with_local_clients(self, local_clients: bool) -> Self {
+        Self {
+            local_clients,
+            ..self
+        }
+    }
+
+    /// How the node takes the signed reads of other nodes (`federation`).
+    pub fn with_federation(self, federation: FederationConfig) -> Self {
+        Self { federation, ..self }
     }
 
     /// The owner's other home nodes (`homeNodes`).
@@ -482,6 +643,25 @@ mod tests {
     }
 
     #[test]
+    fn the_apps_scheme_sign_in_is_off_unless_the_access_setting_turns_it_on() {
+        let base = r#""publicHost":"agency.example.com","teamDomain":"acme.cloudflareaccess.com","audience":"a","ownerEmail":"alice@example.com""#;
+        let without: AccessConfig = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(
+            !without.allow_scheme_sign_in,
+            "a configuration from before keeps the scheme off"
+        );
+        assert!(!serde_json::to_string(&without)
+            .unwrap()
+            .contains("allowSchemeSignIn"));
+        let with: AccessConfig =
+            serde_json::from_str(&format!("{{{base},\"allowSchemeSignIn\":true}}")).unwrap();
+        assert!(with.allow_scheme_sign_in);
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .contains("\"allowSchemeSignIn\":true"));
+    }
+
+    #[test]
     fn a_team_may_name_the_repositories_its_delivery_numbers_come_from() {
         let old = r#"{"org":"acme","team":"app","owner":"owner","runtime":{"command":["scrum","runtime"]}}"#;
         let without: HostedTeam = serde_json::from_str(old).unwrap();
@@ -509,6 +689,183 @@ mod tests {
             serde_json::from_str::<HostedTeam>(&unknown).is_err(),
             "no other key, a token least of all"
         );
+    }
+
+    #[test]
+    fn a_team_may_name_the_github_host_its_repositories_are_on() {
+        let team = HostedTeam::new(
+            Id::parse("acme").unwrap(),
+            Id::parse("app").unwrap(),
+            Id::parse("owner").unwrap(),
+            RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
+        );
+        let on_github = team.clone().with_delivery(vec!["acme/app".into()]);
+        let site = on_github.delivery_source().unwrap();
+        assert_eq!(site.host, None, "no host is github.com");
+        assert_eq!(site.repos, ["acme/app"]);
+        assert!(
+            !serde_json::to_string(&on_github).unwrap().contains("host"),
+            "and is written without one"
+        );
+
+        let enterprise = team
+            .clone()
+            .with_delivery_on("git.example.test", vec!["acme/app".into()]);
+        let text = serde_json::to_string(&enterprise).unwrap();
+        assert!(
+            text.contains(r#""delivery":{"repos":["acme/app"],"host":"git.example.test"}"#),
+            "{text}"
+        );
+        let again: HostedTeam = serde_json::from_str(&text).unwrap();
+        assert_eq!(again.delivery, enterprise.delivery);
+        assert_eq!(
+            again.delivery_source().unwrap().host.as_deref(),
+            Some("git.example.test")
+        );
+
+        let named = team
+            .clone()
+            .with_delivery_on("GitHub.com", vec!["acme/app".into()]);
+        assert_eq!(
+            named.delivery_source().unwrap().host,
+            None,
+            "github.com named is github.com, in any case"
+        );
+        let upper = team.with_delivery_on("Git.Example.TEST", vec!["acme/app".into()]);
+        assert_eq!(
+            upper.delivery_source().unwrap().host.as_deref(),
+            Some("git.example.test"),
+            "a host is the same in any case, and is kept in lower case"
+        );
+    }
+
+    #[test]
+    fn a_site_is_the_host_and_the_repositories_and_nothing_else() {
+        let site = DeliverySite::new(vec!["acme/app".into()]);
+        assert_eq!(site.host, None);
+        assert_eq!(site.clone().with_host("github.com"), site);
+        assert_eq!(site.clone().with_host("GITHUB.COM"), site);
+        assert_ne!(site.clone().with_host("git.example.test"), site);
+        assert_eq!(
+            site.clone().with_host("git.example.test"),
+            site.with_host("GIT.example.test")
+        );
+    }
+
+    #[test]
+    fn a_host_is_a_host_name_or_the_node_does_not_start() {
+        for good in [
+            "github.com",
+            "git.example.test",
+            "ghe",
+            "a-b.c-d.example.test",
+            "10.0.0.7",
+        ] {
+            assert!(is_host_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            "-evil",
+            "--hostname",
+            "git.example.test --jq x",
+            "git example",
+            "git.example.test/path",
+            "https://git.example.test",
+            "git.example.test:8443",
+            "git..example.test",
+            ".example.test",
+            "example.test.",
+            "ex_ample.test",
+            "git.example.test?x=1",
+            "-a.example.test",
+            "a-.example.test",
+        ] {
+            assert!(!is_host_name(bad), "{bad:?}");
+        }
+        assert!(!is_host_name(&"a".repeat(64)), "a label of at most 63");
+        assert!(is_host_name(&"a".repeat(63)));
+        assert!(
+            !is_host_name(&format!("{}.com", "a.".repeat(127))),
+            "at most 253 in all"
+        );
+
+        let at = "teams[1].delivery";
+        let with = |host: Option<&str>| DeliveryConfig {
+            repos: vec!["acme/app".into()],
+            host: host.map(str::to_owned),
+        };
+        assert_eq!(with(None).check(at), Ok(()));
+        assert_eq!(with(Some("git.example.test")).check(at), Ok(()));
+        let error = with(Some("https://git.example.test"))
+            .check(at)
+            .unwrap_err();
+        assert!(
+            error.starts_with("teams[1].delivery.host is not a host name"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_team_with_no_repository_has_no_delivery_source() {
+        let team = HostedTeam::new(
+            Id::parse("acme").unwrap(),
+            Id::parse("app").unwrap(),
+            Id::parse("owner").unwrap(),
+            RuntimeCommand::of(vec!["scrum".into(), "runtime".into()]),
+        );
+        assert_eq!(team.delivery_source(), None);
+        assert!(team
+            .clone()
+            .with_delivery(vec![])
+            .delivery_source()
+            .is_none());
+        assert!(team
+            .with_delivery(vec!["acme/app".into()])
+            .delivery_source()
+            .is_some());
+    }
+
+    #[test]
+    fn the_repositories_of_a_team_are_few_written_owner_name_and_none_twice() {
+        let delivery = |repos: &[&str]| DeliveryConfig {
+            repos: repos.iter().map(|one| (*one).to_owned()).collect(),
+            host: None,
+        };
+        let at = "teams[1].delivery";
+        assert_eq!(delivery(&["acme/app", "acme/web"]).check(at), Ok(()));
+        assert_eq!(
+            delivery(&[]).check(at),
+            Ok(()),
+            "none is the team having no numbers, which is not this check's"
+        );
+        for (repos, wanted) in [
+            (
+                vec!["acme"],
+                "teams[1].delivery.repos[0] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "acme/web/x"],
+                "teams[1].delivery.repos[1] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "Acme/App"],
+                "teams[1].delivery.repos[1] names a repository twice",
+            ),
+            (vec!["acme/app", "acme/app"], "names a repository twice"),
+        ] {
+            let error = delivery(&repos).check(at).unwrap_err();
+            assert!(error.contains(wanted), "{error}");
+        }
+        let many: Vec<String> = (0..=MAX_REPOSITORIES)
+            .map(|n| format!("acme/r{n}"))
+            .collect();
+        let many = delivery(&many.iter().map(String::as_str).collect::<Vec<_>>());
+        assert!(many.check(at).unwrap_err().contains("more than 50"));
+        let fifty: Vec<String> = (0..MAX_REPOSITORIES)
+            .map(|n| format!("acme/r{n}"))
+            .collect();
+        let fifty = delivery(&fifty.iter().map(String::as_str).collect::<Vec<_>>());
+        assert_eq!(fifty.check(at), Ok(()));
     }
 
     #[test]

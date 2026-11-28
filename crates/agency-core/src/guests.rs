@@ -3,8 +3,23 @@
 //! definition, and admits such a sign-in as that member only while the definition still names it hosted.
 use crate::error::Result;
 use crate::node::Node;
+use agency_proto::client::{GuestRef, PushEvent};
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
+
+/// Normalizes an email the node matches against an Access identity.
+pub fn check_email(raw: &str) -> crate::Result<String> {
+    let email = raw.trim().to_lowercase();
+    let parts: Vec<_> = email.split('@').collect();
+    if email.chars().count() > 254
+        || email.chars().any(char::is_control)
+        || parts.len() != 2
+        || parts.iter().any(|part| part.is_empty())
+    {
+        return Err(crate::Error::bad_request("email must have one @, text on both sides, at most 254 characters, and no control character"));
+    }
+    Ok(email)
+}
 
 /// A sign-in email that is a hosted member of an org on this node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +73,29 @@ impl Caller {
         match self {
             Self::Owner => node.account(),
             Self::Guest(guest) => guest.member.clone(),
+        }
+    }
+
+    /// Whose its push destinations are: none for the owner, the guest's member and org for a guest.
+    pub fn guest_of(&self) -> Option<GuestRef> {
+        match self {
+            Self::Owner => None,
+            Self::Guest(guest) => Some(GuestRef {
+                member: guest.member.clone(),
+                org: guest.org.clone(),
+            }),
+        }
+    }
+
+    /// The kinds of notice the caller's destination gets of those it asked for: a guest gets only requests,
+    /// since devices, decisions and root changes are the owner's.
+    pub(crate) fn events(&self, asked: Vec<PushEvent>) -> Vec<PushEvent> {
+        match self {
+            Self::Owner => asked,
+            Self::Guest(_) => asked
+                .into_iter()
+                .filter(|event| *event == PushEvent::Request)
+                .collect(),
         }
     }
 

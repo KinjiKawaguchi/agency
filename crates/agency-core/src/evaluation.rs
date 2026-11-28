@@ -7,7 +7,7 @@ use crate::delivery::{attribute, evaluate, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use crate::usage::check_days;
@@ -76,15 +76,6 @@ async fn participants_of(
     Some(report)
 }
 
-/// The repositories of a hosted team, if its configuration names any.
-fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
-    hosted
-        .delivery
-        .as_ref()
-        .map(|delivery| delivery.repos.clone())
-        .filter(|repos| !repos.is_empty())
-}
-
 /// The evaluation of a team on this node over the last `days` days, as the answer of one team: the team
 /// in `teams`, or in `unavailable` with the reason it has no numbers. It does not fail: a team that cannot
 /// be evaluated is a result that a screen shows, not an error that blanks it. What each participant did
@@ -98,11 +89,11 @@ pub async fn evaluate_hosted(
 ) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
-    let Some(repos) = repositories(hosted) else {
+    let Some(source) = hosted.delivery_source() else {
         let reason = "no repositories are configured for this team".to_owned();
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(&repos, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };
@@ -145,7 +136,7 @@ async fn remote_evaluation(
     days: u32,
 ) -> std::result::Result<Evaluation, String> {
     let path = routes::evaluation(org, &place.id, days);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let answer = node
         .peers()
         .get_evaluation(&place.node, &path, &auth)

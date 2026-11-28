@@ -76,19 +76,24 @@ fn route_group(template: &str) -> &'static str {
     let starts = |prefix: &str| template.starts_with(prefix);
     if starts("/fed/v1/") {
         "federation"
-    } else if template == "/metrics" || starts("/api/metrics") {
+    } else if template == "/metrics" || starts("/api/metrics") || template == "/api/telemetry" {
         "metrics"
     } else if starts("/api/push") {
         "push"
-    } else if starts("/api/devices") {
+    } else if starts("/api/devices") || template == "/api/claim" {
         "devices"
     } else if starts("/api/orgs/{org}/outcomes") {
         "outcomes"
     } else if starts("/api/orgs/{org}/evaluation") || starts("/api/orgs/{org}/effort") {
         "evaluation"
-    } else if starts("/api/orgs/{org}/teams/{team}/usage") {
+    } else if starts("/api/orgs/{org}/teams/{team}/usage")
+        || starts("/api/orgs/{org}/teams/{team}/budget")
+    {
         "usage"
-    } else if template == "/api/orgs/{org}" || starts("/api/orgs/{org}/teams/") {
+    } else if template == "/api/orgs/{org}"
+        || starts("/api/orgs/{org}/history")
+        || starts("/api/orgs/{org}/teams/")
+    {
         "teams"
     } else if ["/api/me", "/api/session", "/api/decisions", "/api/about"].contains(&template) {
         "desk"
@@ -101,7 +106,8 @@ fn route_group(template: &str) -> &'static str {
 /// `IN_NODE_READ_P95_BUDGET_MS` applies to: a `serve` series of a GET of the desk, the devices, the push
 /// settings, the outcomes the owner entered, an org, a team's view (kept in memory and refreshed in the
 /// background), and, between nodes, an org's about and versions and a team's view. What calls the team's
-/// runtime, GitHub, or a peer (usage, evaluation, activity) is not one.
+/// runtime, GitHub, or a peer (usage, evaluation, activity) is not one. An org's history is in the `teams`
+/// group but is not one either: it reads and words every version the node keeps, so its time grows with them.
 pub fn is_in_node_read(kind: SeriesKind, name: &str) -> bool {
     if kind != SeriesKind::Serve {
         return false;
@@ -163,15 +169,23 @@ pub struct ObjectiveResult {
 /// before it, 0 for the first) is at or above it, and `Undetermined` when the objective falls inside it.
 pub fn judge(group: &str, p95_ms: u32, series: &[Series]) -> ObjectiveResult {
     let mut buckets = [0u64; BUCKETS];
+    let mut is_too_many = false;
     for one in series
         .iter()
         .filter(|one| one.kind == SeriesKind::Serve && one.group == group)
     {
         for (total, count) in buckets.iter_mut().zip(&one.buckets) {
-            *total += count;
+            match total.checked_add(*count) {
+                Some(sum) => *total = sum,
+                None => is_too_many = true,
+            }
         }
     }
-    let bucket = percentile_bucket(&buckets, 95);
+    // More durations than a count holds are not ones a node recorded: nothing is said of them.
+    let bucket = match is_too_many {
+        true => None,
+        false => percentile_bucket(&buckets, 95),
+    };
     let measured = bucket.and_then(|index| BUCKET_BOUNDS_MS.get(index).copied());
     let state = match bucket {
         None => ObjectiveState::Unknown,
@@ -292,7 +306,7 @@ impl HourSeries {
     pub fn is_consistent(&self) -> bool {
         self.buckets.as_ref().is_none_or(|buckets| {
             buckets.len() == BUCKETS
-                && buckets.iter().sum::<u64>() == self.count
+                && bucket_total(buckets) == Some(self.count)
                 && self.p95_ms == percentile_ms(buckets, 95)
         })
     }
@@ -382,14 +396,22 @@ pub fn percentile_ms(buckets: &[u64], percent: u64) -> Option<u32> {
     percentile_bucket(buckets, percent).and_then(|index| BUCKET_BOUNDS_MS.get(index).copied())
 }
 
+/// How many durations the buckets hold, or `None` when they hold more than a `u64` counts: a count that
+/// large is not one a node recorded, so what carries it is read as inconsistent and not as a wrapped sum.
+pub fn bucket_total(buckets: &[u64]) -> Option<u64> {
+    buckets
+        .iter()
+        .try_fold(0u64, |total, count| total.checked_add(*count))
+}
+
 /// The index of the bucket the `percent`th percentile of the durations in `buckets` lies in, by nearest rank.
 /// `None` without durations or for a percent outside 1 to 100.
 pub fn percentile_bucket(buckets: &[u64], percent: u64) -> Option<usize> {
-    let total: u64 = buckets.iter().sum();
+    let total = bucket_total(buckets)?;
     if total == 0 || !(1..=100).contains(&percent) {
         return None;
     }
-    let rank = (total * percent).div_ceil(100);
+    let rank = u64::try_from((u128::from(total) * u128::from(percent)).div_ceil(100)).ok()?;
     let mut seen = 0;
     for (index, count) in buckets.iter().enumerate() {
         seen += count;
@@ -432,7 +454,7 @@ impl Series {
             && errors_agree
             && self.by_hour.iter().all(HourSeries::is_consistent)
             && self.buckets.len() == BUCKETS
-            && self.buckets.iter().sum::<u64>() == self.count
+            && bucket_total(&self.buckets) == Some(self.count)
             && self.p50_ms == percentile_ms(&self.buckets, 50)
             && self.p95_ms == percentile_ms(&self.buckets, 95)
             && self.p99_ms == percentile_ms(&self.buckets, 99)
