@@ -32,7 +32,7 @@ extension Ja {
         public static func confirmFailed(_ reason: String) -> String { "追加できませんでした: \(reason)" }
         public static func listFailed(_ reason: String) -> String { "端末の一覧を読めませんでした: \(reason)" }
         public static func faceIDReason(_ label: String) -> String { "端末を追加する: \(label)" }
-        /// Removing one of the person's devices, in the web's words (`devices.remove` in `ja.ts`, agency#442) with this phone's own sentence for the
+        /// Removing one of the person's devices, in the web's words (`devices.remove` in `ja/devices.ts`, agency#442) with this phone's own sentence for the
         /// device in use: its key cannot be added again, and the way back is a new key made in the settings.
         public enum Remove {
             public static let button = "削除"

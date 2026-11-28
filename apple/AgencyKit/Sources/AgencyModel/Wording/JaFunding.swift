@@ -2,7 +2,7 @@ import AgencyAPI
 import Foundation
 
 extension Ja {
-    /// A funding source and its usage windows, from the web client's Japanese (`costs` in `ja.ts`).
+    /// A funding source and its usage windows, from the web client's Japanese (`costs` in `ja/costs.ts`).
     public enum Funding {
         public static let unknownUsage = "この資金源の使用状況は読み取れませんでした。"
 
