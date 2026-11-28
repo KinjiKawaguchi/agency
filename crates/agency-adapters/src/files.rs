@@ -1,7 +1,9 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::claims::ClaimRecord;
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
+use agency_core::data_format::{is_unknown_setting, unknown_setting};
 use agency_core::decisions::DecisionRecord;
 use agency_core::devices::DeviceRequestRecord;
 use agency_core::guests::Guest;
@@ -10,15 +12,16 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, BoundReaderStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
-    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
 use agency_proto::client::{GuestRef, PushToken};
+use agency_proto::digest::sha256_hex;
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
@@ -232,11 +235,20 @@ impl DataDir {
 impl ConfigStore for DataDir {
     fn load_config(&self) -> Result<NodeConfig> {
         let path = self.config_path();
-        read_json(&path).ok_or_else(|| {
+        let cannot_read = || {
             Error::internal(format!(
                 "cannot read {} (create it with agency init)",
                 path.display()
             ))
+        };
+        let text = fs::read_to_string(&path).map_err(|_| cannot_read())?;
+        serde_json::from_str(&text).map_err(|error| {
+            let reading_error = error.to_string();
+            if is_unknown_setting(&reading_error) {
+                unknown_setting(&reading_error)
+            } else {
+                cannot_read()
+            }
         })
     }
 
@@ -309,6 +321,35 @@ impl InviteStore for DataDir {
 
     fn save_invite(&self, digest: &str, record: &InviteRecord) -> Result<()> {
         write_json(&self.dir("invites").join(format!("{digest}.json")), record)
+    }
+}
+
+impl ClaimStore for DataDir {
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String> {
+        read_json(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
+
+    fn save_claim(&self, digest: &str, record: &ClaimRecord) -> Result<()> {
+        write_json(&self.dir("claims").join(format!("{digest}.json")), record)
+    }
+
+    fn remove_claim(&self, digest: &str) -> Result<()> {
+        remove(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()> {
+        write_json(
+            &self.dir("claims-by-seat").join(format!(
+                "{}-{}.json",
+                sha256_hex(org.as_str().as_bytes()),
+                sha256_hex(seat.as_str().as_bytes())
+            )),
+            &digest,
+        )
     }
 }
 
