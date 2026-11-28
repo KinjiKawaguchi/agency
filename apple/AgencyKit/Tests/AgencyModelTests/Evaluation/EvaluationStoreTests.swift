@@ -68,12 +68,18 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
 
     private var aboutCount = 0
     private var budgetHeld = false
-    private var budgetGates: [CheckedContinuation<Void, Never>] = []
+    private var budgetArrivals = 0
+    private var budgetGates: [Int: CheckedContinuation<Void, Never>] = [:]
     var aboutAsks: Int { lock.withLock { aboutCount } }
-    /// Holds the budget reads until `releaseBudgets()`.
+    /// Holds the budget reads until they are released.
     func holdBudgets() { lock.withLock { budgetHeld = true } }
-    func releaseBudgets() { lock.withLock { let waiting = budgetGates; budgetGates = []; budgetHeld = false; return waiting }.forEach { $0.resume() } }
+    /// Lets every held read answer, and no later one wait.
+    func releaseBudgets() { lock.withLock { let waiting = budgetGates; budgetGates = [:]; budgetHeld = false; return waiting }.values.forEach { $0.resume() } }
+    /// Lets one held read answer, by the order the reads arrived in (0 is the first).
+    func releaseBudgetRead(_ number: Int) { lock.withLock { budgetGates.removeValue(forKey: number) }?.resume() }
     var heldBudgetReads: Int { lock.withLock { budgetGates.count } }
+    /// For a team that is not asked for in another org: its answer in `org`.
+    func set(budget: Result<BudgetStatus, Error>, for team: String, in org: String) { lock.withLock { budgetAnswers["\(org)/\(team)"] = budget } }
 
     func about() async throws -> About {
         try lock.withLock {
@@ -83,13 +89,18 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
     }
 
     func budget(org: String, team: String) async throws -> BudgetStatus {
-        if lock.withLock({ budgetHeld }) {
-            await withCheckedContinuation { continuation in lock.withLock { budgetGates.append(continuation) } }
-        }
-        return try lock.withLock {
+        // The answer is the one standing when the read starts; a held read delivers it late.
+        let (answer, number): (Result<BudgetStatus, Error>, Int?) = lock.withLock {
             budgetAsked.append("\(org)/\(team)")
-            return try (budgetAnswers[team] ?? .failure(NodeError.http(status: 404, message: nil))).get()
+            let answer = budgetAnswers["\(org)/\(team)"] ?? budgetAnswers[team] ?? .failure(NodeError.http(status: 404, message: nil))
+            guard budgetHeld else { return (answer, nil) }
+            budgetArrivals += 1
+            return (answer, budgetArrivals - 1)
         }
+        if let number {
+            await withCheckedContinuation { continuation in lock.withLock { budgetGates[number] = continuation } }
+        }
+        return try answer.get()
     }
 }
 
@@ -188,6 +199,103 @@ struct EvaluationStoreTests {
         await store.refresh()
         await store.budgetsSettled()
         #expect(store.budgets["app"] == BudgetRead.none)
+    }
+
+    private func settle() async {
+        for _ in 0..<100 { await Task.yield() }
+    }
+
+    @Test("a budget read of the org that was shown does not land on the org chosen after it, whenever it answers")
+    func oldOrgBudgetsDoNotLand() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        let acme = status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))
+        let zed = status(BudgetPart(capUsd: 100, spentUsd: 260, state: .over))
+        source.set(budget: .success(acme), for: "app", in: "acme")
+        source.set(budget: .success(zed), for: "app", in: "zed")
+        source.holdBudgets()
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        while source.heldBudgetReads < 1 { await Task.yield() }
+        await store.choose(org: "zed")
+        while source.heldBudgetReads < 2 { await Task.yield() }
+        #expect(store.budgets["app"] == .loading, "the new org says it is loading, and nothing of the old one")
+        // The new org's read answers first, and then the old one's, late.
+        source.releaseBudgetRead(1)
+        await store.budgetsSettled()
+        #expect(store.budgets["app"] == .reported(BudgetReport(zed)))
+        source.releaseBudgetRead(0)
+        await settle()
+        #expect(store.budgets["app"] == .reported(BudgetReport(zed)), "the old org's answer did not overwrite the new one's")
+    }
+
+    @Test("a budget read of the org that was shown, answering before the new org's, leaves the new org loading and not answered with the old")
+    func oldOrgAnswersFirst() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        let acme = status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))
+        let zed = status(BudgetPart(capUsd: 100, spentUsd: 260, state: .over))
+        source.set(budget: .success(acme), for: "app", in: "acme")
+        source.set(budget: .success(zed), for: "app", in: "zed")
+        source.holdBudgets()
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        while source.heldBudgetReads < 1 { await Task.yield() }
+        await store.choose(org: "zed")
+        while source.heldBudgetReads < 2 { await Task.yield() }
+        source.releaseBudgetRead(0)
+        await settle()
+        #expect(store.budgets["app"] == .loading, "the old org's answer is not the new org's")
+        source.releaseBudgetRead(1)
+        await store.budgetsSettled()
+        #expect(store.budgets["app"] == .reported(BudgetReport(zed)))
+    }
+
+    @Test("an older read of the same org does not overwrite what a newer read said")
+    func olderReadDoesNotOverwrite() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        let before = status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))
+        let after = status(BudgetPart(capUsd: 200, spentUsd: 170, state: .warning))
+        source.set(budget: .success(before), for: "app")
+        source.holdBudgets()
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        while source.heldBudgetReads < 1 { await Task.yield() }
+        source.set(budget: .success(after), for: "app")
+        await store.refresh()
+        while source.heldBudgetReads < 2 { await Task.yield() }
+        source.releaseBudgetRead(1)
+        await store.budgetsSettled()
+        #expect(store.budgets["app"] == .reported(BudgetReport(after)))
+        source.releaseBudgetRead(0)
+        await settle()
+        #expect(store.budgets["app"] == .reported(BudgetReport(after)), "the read that began earlier did not overwrite the later one")
+    }
+
+    @Test("a budget read of an org that is gone from the account does not land while the whole screen is read again, before the new read has begun")
+    func orgGoneBeforeTheNewRead() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))), for: "app", in: "acme")
+        source.holdBudgets()
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        while source.heldBudgetReads < 1 { await Task.yield() }
+        #expect(store.budgets["app"] == .loading)
+        // The account no longer lists the org that was shown, and the read of the whole screen is under way, not yet at its end.
+        source.set(me: .success(me(#"{\#(account),"orgs":[{"id":"zed","isRoot":false,"label":"Zed","teams":[{"id":"app","label":"The app","location":"local","viewer":"owner"}]}]}"#)))
+        source.hold(days: 14)
+        let again = Task { await store.refresh() }
+        while source.holding < 1 { await Task.yield() }
+        #expect(store.org?.id == "zed")
+        source.releaseBudgetRead(0)
+        await settle()
+        #expect(store.budgets["app"] == .loading, "the answer for the org that is gone is not shown for the one that replaced it")
+        source.release()
+        source.releaseBudgets()
+        await again.value
+        await store.budgetsSettled()
     }
 
     @Test("a 404 for a team on a node that lists the capability says what the plan states; any other failure is said, with its reason")
