@@ -68,7 +68,7 @@ pub fn app_id(config: &AccessConfig) -> Option<&str> {
 }
 
 fn configured_app(api: &ClientApi) -> Option<(&AccessConfig, &str)> {
-    let config = api.access.as_ref()?.config();
+    let config = api.access.as_ref()?.provider().access_config()?;
     Some((config, app_id(config)?))
 }
 

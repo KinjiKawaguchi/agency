@@ -119,9 +119,28 @@ pub struct Describe {
     /// Operation names. Unknown names are ignored, so a newer runtime still describes itself.
     pub ops: Vec<String>,
     pub label: String,
+    /// The harness release that runs the team, as a short text. Optional: a runtime without it is read as
+    /// before. Read it through `release`, which leaves out a value beyond `MOST_RELEASE_CHARS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
 }
 
+/// The most characters of a runtime's `version` that a node takes.
+pub const MOST_RELEASE_CHARS: usize = 64;
+
 impl Describe {
+    /// The harness release the runtime reported, or `None` when it reported none or a text that is empty,
+    /// longer than `MOST_RELEASE_CHARS` characters, or holds a control character or one that reorders or hides
+    /// how a line reads (`is_hidden_char`).
+    pub fn release(&self) -> Option<&str> {
+        self.version.as_deref().filter(|text| {
+            !text.is_empty()
+                && text.chars().count() <= MOST_RELEASE_CHARS
+                && !text.chars().any(crate::org::is_hidden_char)
+        })
+    }
+
     pub fn speaks(&self, version: &str) -> bool {
         self.runtimes.iter().any(|one| one == version)
     }

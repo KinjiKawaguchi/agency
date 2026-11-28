@@ -6,13 +6,14 @@ import { metricsAnswer, type MetricsVariant } from './metrics'
 import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
-import type { About, PushToken, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
+import type { About, BudgetStatus, PushToken, DecisionAnswer, DecisionEntry, Device, Envelope, Signed, DecisionLog, DecisionResult, Me, OrgRef, PushSubscription, Session, StartedRecovery, TeamSnapshot, SnapshotSource } from '../api/clientApi.ts'
 import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
 import { answererView, isRefusedToGuest, type MockGuest } from './guest.ts'
 import type { MeWithGuest } from '../guest/provisional.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
+import { budgetOf } from './budget.ts'
 import { effortReport, withPlans } from './effort.ts'
 import { historyOf, pageOf } from './history.ts'
 import { evaluationReport } from './evaluation.ts'
@@ -103,6 +104,8 @@ interface MockNodeOptions {
   nothingWaiting?: boolean
   /** True for a node that ties a push registration to the device it names (the capability `pushDevice`): it takes `device` on a registration and drops the registrations of a device that is removed. Otherwise a registration that names one is refused as an unknown field, as an older node does. */
   pushDevice?: boolean
+  /** A node that computes the weekly budget (it lists the `budget` capability and serves the route): `true` for the default figures of each team, or the answer of each team by its id (a team with none answers 404). */
+  budget?: true | Readonly<Record<string, BudgetStatus>>
   /** A node that serves the org's change history to its owner (`GET /api/orgs/{org}/history`) and lists the `history` capability: the number of versions the org has; otherwise the route answers 404. */
   history?: number
   /** A node with the evaluation also serves where a team's tokens went by work type (`GET /api/orgs/{org}/effort`) and says so with the `effort` capability; `false` makes it a node without it: not listed, and the route answers 404. */
@@ -171,13 +174,14 @@ const MAX_NOTE = 200
 const ORG_PATH = /^\/api\/orgs\/([^/]+)$/
 const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations)?$/
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
+const BUDGET_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/budget$/
 const HISTORY_PATH = /^\/api\/orgs\/([^/]+)\/history$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; effort?: boolean; history?: number }): About => ({
+const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; budget?: unknown; effort?: boolean; history?: number }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.history === undefined ? [] : ['history']), ...(options.effort === true ? ['effort'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...(options.budget === undefined ? [] : ['budget']), ...(options.effort === true ? ['effort'] : []), ...(options.history === undefined ? [] : ['history']), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -339,6 +343,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     return 'refused' in page ? failure(400, page.refused) : json(page)
   }
 
+  const handleBudget = (team: string): Response => {
+    if (options.budget === undefined) return failure(404, 'No such route.')
+    const answer = options.budget === true ? budgetOf(team, now) : options.budget[team]
+    return answer === undefined ? failure(404, 'No such team.') : json(answer)
+  }
+
   const handleMetrics = (url: URL): Response => {
     if (options.metrics === 'absent') return failure(404, 'No such route.')
     if (options.metricsFailWith !== undefined) return failure(options.metricsFailWith, 'The measurements could not be read.')
@@ -446,6 +456,8 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       if (answered !== undefined) return answered
     }
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
+    const budgetMatch = BUDGET_PATH.exec(url.pathname)
+    if (budgetMatch !== null && request.method === 'GET') return handleBudget(budgetMatch[2] ?? '')
     const historyMatch = HISTORY_PATH.exec(url.pathname)
     if (historyMatch !== null && request.method === 'GET') return handleHistory(historyMatch[1] ?? '', url)
     const orgMatch = ORG_PATH.exec(url.pathname)

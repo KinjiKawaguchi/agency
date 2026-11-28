@@ -104,7 +104,7 @@ agency status
 - `--state-dir` is the team's state directory for the harness. A relative path is stored as an absolute one.
 - `org-create` makes a root key for the new org and makes this node its root's node. `team-add` without `--node` runs the team on this node, owned by this node's account.
 
-`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`.
+`agency status` should show the account, `Org acme (Acme), version 2, root key`, and `Team on this node: acme/app (owner alice) runs <scrum> runtime`. `agency audit --org acme` lists every version of the org, who signed it, and what it changed, oldest first.
 
 The data directory now holds `account.key`, the node's account key. It signs the node's reads, join requests, and your first device in an org, so anyone who can read it can read what you can read.
 The org's root key, which signs every version of the org (its members, devices, and teams), is kept apart from it, in `~/.config/agency/root-keys/` (one file per org and key, readable by its owner only), and is read only when a version is signed.
@@ -291,6 +291,55 @@ Add `access` to `~/.agency/config.json` and restart the node:
 A malformed setting is reported at start (see [Troubleshooting](#troubleshooting)); the node then refuses every request through Cloudflare.
 "Who is let in" in [protocol.md](protocol.md) says exactly what the node checks.
 
+## Reaching a node from outside with an OpenID Connect provider
+
+Use this when your organization signs people in with its own OpenID Connect provider and not with Cloudflare Access. A node signs people in from outside in one way, `access` or `oidc`, never both: it does not start with both set, nor with either malformed, and says which field is wrong.
+
+### What you need
+
+- An application registered with the provider for this node. Its client id is the audience of its tokens, and its tokens are RS256-signed JWTs. The owner is named by the token's `sub`. A guest is named by an email in a claim (`email` unless you say another) that the provider marks verified (`email_verified` true). The provider's issuer is exactly the `iss` of those tokens.
+- A gateway your organization approves (a reverse proxy or an access proxy) at the node's public host name, which signs people in with the provider and sends the signed token to the node in a header on every request. The node checks each token itself and trusts nothing about how the request came, so the gateway does not tell the node who is asking; it only carries the token.
+- A node `url` and a public host name as in "Change the node's address", whatever they are called in your network.
+
+### The oidc setting
+
+Add `oidc` to `~/.agency/config.json` (and no `access`), and restart the node:
+
+```json
+"oidc": {
+  "publicHost": "agency.example.com",
+  "issuer": "https://login.example.com/realms/acme",
+  "audience": "agency-node",
+  "ownerSubject": "00000000-0000-0000-0000-00000000a11c"
+}
+```
+
+- `issuer` and `keysUrl` are `https://<host>[:<port>][/<path>]`, with no user information, query or fragment. The node finds the provider's keys at `keysUrl`; when you leave it out, it asks `<issuer>/.well-known/openid-configuration` for `jwks_uri`. It follows no redirect, waits at most 10 seconds, and asks again for an unknown key id at most once a minute, so a provider that rotates its keys is followed.
+- `tokenHeader` (default `authorization`, read as `Bearer <token>`) is the header the gateway puts the token in. `emailClaim` (default `email`) is the claim that holds the email.
+- `ownerSubject` is the owner's `sub` in the provider's tokens. The node takes a token as the owner's only when its `iss` is `issuer` and its `sub` is `ownerSubject`; both are compared exactly, a trailing slash included. An email does not name the owner here, since a provider may let people type their own. Find the `sub` by signing in once through this node's own application registration (through the gateway) and reading it from that token, or from the provider's userinfo endpoint. With the token in `$TOKEN`:
+
+  ```sh
+  printf '%s' "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq '{iss, sub, email, email_verified}'
+  ```
+
+  A `sub` taken from another application's token will not match: some providers give each application registration its own `sub` for the same person.
+- Guests (the members this node hosts) are named by an email, and only by one the token marks verified: `email_verified` is `true`, or the text `true`. A token with an email that is not marked so names no guest, and the log says that. A provider that sends no `email_verified` (some send none unless you turn it on) can sign the owner in by `sub`, but cannot admit a guest by email: turn the claim on at the provider, or the node's guests will not work with it. Any other token gets 403, and so does a request with none. Only the owner may write as the owner (decide, add devices).
+- As with Access, once `oidc` is set, `http://127.0.0.1:4400/` on the node's machine is for reading only: write through the public host name, signed in.
+- The iPhone app's own sign-in (`appId`) is Cloudflare Access's and is not available with `oidc`; use the web client in the browser.
+
+### What the path must keep
+
+Whatever stands between the browser and the node is your deployment's choice, but it must keep these:
+
+- TLS from the browser to the gateway, and from the gateway to the node unless they are on one machine: the node itself serves plain `http`.
+- The token header, unchanged: not rewritten, not stripped, and not replaced by a token the gateway made.
+- The host name the browser used (`Host`), and the path as sent: the node refuses a path with an encoded separator or a dot segment.
+- `/fed/*` reaching the node with no sign-in: other nodes authenticate with signatures, not with your provider.
+
+### Check that it works
+
+With a token from the provider for the owner, `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" https://agency.example.com/api/me` prints `200`; without the header, or with another person's token, it prints `403`. The start-up messages for a wrong setting are in "Log lines".
+
 ## Adding a phone or a browser
 
 ### Send a claim link for a seat
@@ -455,6 +504,20 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
+- A team whose repositories are on a GitHub Enterprise Server names its host in `delivery.host`: a host name with no scheme, path or port, and `github.com` when it is left out.
+
+  ```json
+  "delivery": { "host": "git.example.com", "repos": ["acme/app"] }
+  ```
+
+  `owner/name` is then a repository on that host. A host that is not a host name (letters, digits, hyphens and dots, with no scheme, port or path) stops the node at start, naming `teams[n].delivery.host`. The node tells `gh` the host (`gh api --hostname`, which wins over `GH_HOST`) and asks the same questions as for github.com, so the host has to know the types of the board's projects that they read. To check, run the command below as the account that runs the node: both `a` and `b` must answer a name, and a `null` means the Server is too old for that type, so its numbers show the reason that the host did not answer the request.
+
+  ```sh
+  gh api --hostname git.example.com graphql -f query='{ a: __type(name: "ProjectV2ItemStatusChangedEvent") { name } b: __type(name: "ProjectV2ItemFieldSingleSelectValue") { name } }'
+  ```
+
+  The login the node needs is the host's own: run `gh auth login --hostname git.example.com` as the account that runs the node, with the same advice as below. A team that names no host, or `github.com`, is read exactly as before. The reasons below that say "the GitHub host the team names" never name it, since they go to everyone who reads the team.
+- `delivery.repos` holds at most 50 repositories, each written `owner/name`, none twice (names ignore case); a node that finds otherwise stops at start and names `teams[n].delivery.repos`. A team that works in two or more repositories is also shown the numbers of each (`byRepository`, see [protocol.md](protocol.md#evaluation)).
 - The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
@@ -470,6 +533,9 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 | the GitHub CLI (gh) on the team's node is not logged in | Run `gh auth login` as the account that runs that node. |
 | GitHub's rate limit is used up for now | Wait; the node asks again after ten minutes. |
 | GitHub did not answer in time, or did not answer the request | Check that machine's network, and that the login can read the repositories. |
+| the GitHub CLI (gh) on the team's node is not logged in to the GitHub host the team names | Run `gh auth login --hostname <host>` as the account that runs that node. |
+| the rate limit of the GitHub host the team names is used up for now | Wait; the node asks again after ten minutes. |
+| the GitHub host the team names did not answer in time, or did not answer the request | Check that machine's network to the host, that the login can read the repositories, and that the host can answer the same questions as github.com. |
 | the team's node does not give delivery numbers | That node is older than this feature: update it. |
 | the team's node does not give delivery numbers to this account | The account is an answerer in the org, who does not read them. |
 | the team's runtime does not report token usage | Use a runtime that lists `tokenUsage`; until then the team's effort is not shown. |
@@ -595,7 +661,8 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
 | `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
-| `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
+| The node does not start and says `access.<field> …` or `oidc.<field> …` | That field of the setting is wrong: fix it in `config.json`. |
+| The node does not start and says `access and oidc are both set …` | Keep one of them. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
 | The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |
@@ -626,8 +693,8 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `421` `wrong host` | The page was opened at an address other than `127.0.0.1:<port>` or `localhost:<port>`. |
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
-| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`. |
-| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token. |
+| `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`, or through an OpenID Connect provider with a `sub` other than `ownerSubject`. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token; or through an OpenID Connect provider with a `sub` that is not `ownerSubject` and an email that is not a guest's or that the token does not mark verified. |
 
 ## The team runtime
 
