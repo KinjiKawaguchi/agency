@@ -210,7 +210,8 @@ struct DecisionOutboxTests {
         storage.failsToRead = true
         let (outbox, _, _) = outbox([], storage: storage)
         #expect(!outbox.isReadable)
-        #expect(outbox.hasSignedEntries, "what is in the file is not known to be empty: a device that signed it is not removed")
+        #expect(outbox.keptDecisions == .unreadable, "what is in the file is not known to be empty: a device that signed it is not removed")
+        #expect(!outbox.hasSignedEntries, "and there is nothing in memory for a send to do")
         #expect(throws: OutboxError.notKept) { try outbox.keep(decision(2)) }
         #expect(storage.entries.map(\.id) == ["id-1"], "the file was not written over")
         storage.failsToRead = false
@@ -218,12 +219,16 @@ struct DecisionOutboxTests {
         #expect(outbox.isReadable && storage.entries.map(\.id) == ["id-1", "id-2"], "what was kept is there, and the new one with it")
     }
 
-    @Test("a decision is kept for a device's removal only while one is kept or cannot be read: nothing kept and readable is free")
-    func signedEntries() throws {
+    @Test("what a removal asks: nothing kept and readable is free; a kept decision waits to be sent; one that cannot be read is its own answer")
+    func keptDecisionsAnswer() throws {
         let (outbox, _, _) = outbox([])
-        #expect(!outbox.hasSignedEntries && outbox.isReadable)
+        #expect(outbox.keptDecisions == .noneKept && !outbox.hasSignedEntries && outbox.isReadable)
         try outbox.keep(decision(1))
-        #expect(outbox.hasSignedEntries)
+        #expect(outbox.keptDecisions == .kept && outbox.hasSignedEntries)
+        let storage = MemoryOutboxStorage()
+        storage.failsToRead = true
+        let (unreadable, _, _) = self.outbox([], storage: storage)
+        #expect(unreadable.keptDecisions == .unreadable && !unreadable.hasSignedEntries)
     }
 
     @Test("kept decisions are not read again in the middle of a send: the send has its own view of them")
