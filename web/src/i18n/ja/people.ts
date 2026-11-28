@@ -1,0 +1,43 @@
+// The participants and work screen.
+import type { Messages } from '../en'
+
+export const people: Messages['people'] = {
+  title: '参加者と仕事',
+  team: (label) => `${label} チーム`,
+  summary: (working, total) => `参加者 ${total} 人のうち ${working} 人が作業中です。`,
+  waitingOnYou: (count) => `参加者 ${count} 人があなたの返事を待っています。`,
+  roles: { lead: 'リード' },
+  stateTags: { 'needs-you': 'あなたの番', working: '作業中', waiting: '待ち', idle: '待機中', away: '離席' },
+  since: (when) => `${when} から`,
+  holding: '担当',
+  moreHeld: (count) => `ほか ${count} 件`,
+  moreWork: (count) => `あと ${count} 件を表示`,
+  openDecisions: '決めることを開く',
+  waitingForAnswer: 'あなたの返事を待っています',
+  workTitle: '進行中の仕事',
+  noWork: '進行中の仕事はありません。',
+  blockedTitle: '止まっている仕事',
+  unassigned: '担当なし',
+  blockedReasons: {
+    needsDecision: '判断待ち',
+    external: '外部の対応待ち',
+    waitingOnPrevious: '先行する仕事待ち',
+    timeOrEquipment: '時間か機材待ち',
+  },
+  blockedSince: (when) => `${when} から`,
+  eta: {
+    none: '見込みはまだありません',
+    around: (when) => `${when} ごろに終わる見込み`,
+    latest: (when) => `遅くとも ${when}`,
+    overBudget: (basis) => `見込みを過ぎています (${basis})`,
+  },
+  epicsTitle: 'エピックの見込み',
+  noEpics: 'エピックはまだありません。',
+  epicBar: (total, done, doing, blocked) => `${total} 件のうち、完了 ${done}、進行中 ${doing}、停止 ${blocked}`,
+  legend: { done: '完了', doing: '進行中', blocked: '停止', rest: '未着手' },
+  epicDone: '完了',
+  epicDoneOn: (when) => `${when} に完了`,
+  epicFinish: (when) => `${when} ごろに終わる見込み`,
+  epicBlockedBy: (list) => `停止: ${list}`,
+  noTeams: 'まだチームがありません。',
+}
