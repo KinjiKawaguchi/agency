@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.5.0](https://github.com/KinjiKawaguchi/agency/compare/v0.4.0...v0.5.0) (2026-11-28)
+
+
+### Features
+
+* **apple:** report the response time the app saw to its home node ([#624](https://github.com/KinjiKawaguchi/agency/issues/624)) ([79b4a0a](https://github.com/KinjiKawaguchi/agency/commit/79b4a0a9705e2d4d771eeed6bc728f694b3d7bc6))
+* **apple:** show a team's weekly budget status as the node says it ([#630](https://github.com/KinjiKawaguchi/agency/issues/630)) ([9137eab](https://github.com/KinjiKawaguchi/agency/commit/9137eabc9029cf9425c446d564993ef04645cd81))
+* **node:** give the lead times of new features alone ([#550](https://github.com/KinjiKawaguchi/agency/issues/550)) ([e87b628](https://github.com/KinjiKawaguchi/agency/commit/e87b628b1eb10444929169995141e61fb8ba5d09))
+* **node:** let a KPI take its daily number from delivery numbers ([#587](https://github.com/KinjiKawaguchi/agency/issues/587)) ([1d491a2](https://github.com/KinjiKawaguchi/agency/commit/1d491a2722b73b3fe836470be24f84c0cc3e5dcd))
+* **node:** read a team node again when it answers another way ([#562](https://github.com/KinjiKawaguchi/agency/issues/562)) ([e339f64](https://github.com/KinjiKawaguchi/agency/commit/e339f64850a318060d03535234833cb0cb2b54a3))
+* **node:** split a shared repository's pull requests by board Team ([#584](https://github.com/KinjiKawaguchi/agency/issues/584)) ([44720f5](https://github.com/KinjiKawaguchi/agency/commit/44720f5b91d4d95d998aa03b462a7b74d8ff1fb0))
+* **proto:** the org chart's answer, its bindings and a sample ([#687](https://github.com/KinjiKawaguchi/agency/issues/687)) ([8ca752f](https://github.com/KinjiKawaguchi/agency/commit/8ca752f669af5d20d0f58c583e920d5aecc78fbe))
+* **proto:** the tickets op of agency-runtime/1 ([#704](https://github.com/KinjiKawaguchi/agency/issues/704)) ([9af10e5](https://github.com/KinjiKawaguchi/agency/commit/9af10e5fb9e6a26efa4a08e9728a8959ee9ee8e5))
+* **web:** show every agent of a team in the chart of every org ([#685](https://github.com/KinjiKawaguchi/agency/issues/685)) ([89c1bd9](https://github.com/KinjiKawaguchi/agency/commit/89c1bd93e81368bbe9b6a0ec50000c16b44e546d)), closes [#675](https://github.com/KinjiKawaguchi/agency/issues/675)
+* **web:** show what each client waited for beside the node's own times ([#608](https://github.com/KinjiKawaguchi/agency/issues/608)) ([4e30ca0](https://github.com/KinjiKawaguchi/agency/commit/4e30ca0cb6c77f9f02c6defa8f1a954e5f3d5aba)), closes [#546](https://github.com/KinjiKawaguchi/agency/issues/546)
+
+
+### Bug fixes
+
+* **apple:** bring the app's route table up to the node's list ([#672](https://github.com/KinjiKawaguchi/agency/issues/672)) ([0eab3d3](https://github.com/KinjiKawaguchi/agency/commit/0eab3d3188760a6de984100350d0fb2bcf23bb99))
+
+
+### Refactoring
+
+* **core:** split config.rs by kind of setting ([#657](https://github.com/KinjiKawaguchi/agency/issues/657)) ([3a69910](https://github.com/KinjiKawaguchi/agency/commit/3a69910c26c04eca33eb9f55ad6640c4e15e002b)), closes [#652](https://github.com/KinjiKawaguchi/agency/issues/652)
+* **core:** split views.rs by what each part does ([#653](https://github.com/KinjiKawaguchi/agency/issues/653)) ([2cea0d8](https://github.com/KinjiKawaguchi/agency/commit/2cea0d894e1c4b2a2f933e6c73983abac7bbc6be)), closes [#652](https://github.com/KinjiKawaguchi/agency/issues/652)
+* **node:** declare each Client API route once ([#644](https://github.com/KinjiKawaguchi/agency/issues/644)) ([2681584](https://github.com/KinjiKawaguchi/agency/commit/2681584cffbf0cc1d2faa7fd2749e8e067db3f85))
+* **node:** move each CLI command out of main.rs into its area's module ([#658](https://github.com/KinjiKawaguchi/agency/issues/658)) ([6329886](https://github.com/KinjiKawaguchi/agency/commit/6329886d2abcbfbd5d9c9f036b31fba4ef62742c)), closes [#621](https://github.com/KinjiKawaguchi/agency/issues/621)
+* **node:** split client_api.rs by what each part serves ([#654](https://github.com/KinjiKawaguchi/agency/issues/654)) ([7f215a8](https://github.com/KinjiKawaguchi/agency/commit/7f215a8154af1ccb7834773ac5bea460225455f5)), closes [#652](https://github.com/KinjiKawaguchi/agency/issues/652)
+* **proto:** declare each capability once ([#643](https://github.com/KinjiKawaguchi/agency/issues/643)) ([2a3e42b](https://github.com/KinjiKawaguchi/agency/commit/2a3e42b30284b62f235cb0d102ef369c746a902b)), closes [#635](https://github.com/KinjiKawaguchi/agency/issues/635)
+* **proto:** read an org's teams and departments through one model ([#692](https://github.com/KinjiKawaguchi/agency/issues/692)) ([c592752](https://github.com/KinjiKawaguchi/agency/commit/c59275290964fe78fad6ab51b512d2884bb77db4))
+* **web:** split the en and ja dictionaries by area ([#662](https://github.com/KinjiKawaguchi/agency/issues/662)) ([aab5e3b](https://github.com/KinjiKawaguchi/agency/commit/aab5e3bedd3f5f9711cf7cea0337337a6152164d))
+
+
+### Documentation
+
+* number the release steps and add the release PR's reopen ([#689](https://github.com/KinjiKawaguchi/agency/issues/689)) ([509c891](https://github.com/KinjiKawaguchi/agency/commit/509c89118e326667fb827518e23daca030fc6f74))
+* **web:** rename the Japanese terms and menu names ([#703](https://github.com/KinjiKawaguchi/agency/issues/703)) ([bb4dbc6](https://github.com/KinjiKawaguchi/agency/commit/bb4dbc6c5202bdbffda0d4d3cc4ff351af7da114))
+
 ## [0.4.0](https://github.com/KinjiKawaguchi/agency/compare/v0.3.0...v0.4.0) (2026-11-28)
 
 
