@@ -496,6 +496,7 @@ mod tests {
             id: id(raw),
             label: format!("{raw} (seat)"),
             department: None,
+            unit: None,
             ask_about: vec![],
             relays: relays.iter().map(|one| id(one)).collect(),
         };

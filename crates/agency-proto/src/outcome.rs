@@ -129,7 +129,7 @@ pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
         return Err("malformed KPI label".into());
     }
     let known: HashSet<&Id> = definition.kpis.iter().map(|kpi| &kpi.id).collect();
-    for team in &definition.teams {
+    for team in definition.teams() {
         let aims = team.plan.as_ref().map_or(&[][..], |plan| &plan.aims[..]);
         if aims.len() > MAX_AIMS {
             return Err(format!("a team's plan has at most {MAX_AIMS} aims"));

@@ -1,6 +1,7 @@
 //! Org definitions. Only the org's root key signs them; versions grow by one and link to the previous version's fingerprint (one writer).
 use crate::ids::Id;
 use crate::keys::PublicKey;
+use crate::org_units::{Agent, MemberKind, OrgUnit};
 use crate::outcome::{Aim, Kpi};
 use crate::seat::{External, Seat};
 use crate::signed::{Kind, Signed};
@@ -120,6 +121,14 @@ pub struct Person {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub hosted_by: Option<HostedBy>,
+    /// The unit the member is in, in a definition written in units (`department` is then left out).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub unit: Option<Id>,
+    /// Set for an account that is not a person (`node`: it only hosts teams), in a definition written in units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub kind: Option<MemberKind>,
 }
 
 /// Which node hosts a member that has no node of its own.
@@ -146,6 +155,8 @@ impl Person {
             formerly: vec![],
             ask_about: vec![],
             hosted_by: None,
+            unit: None,
+            kind: None,
         }
     }
 
@@ -163,6 +174,8 @@ impl Person {
             formerly: vec![],
             ask_about: vec![],
             hosted_by: Some(HostedBy::Root),
+            unit: None,
+            kind: None,
         }
     }
 
@@ -340,6 +353,25 @@ pub struct OrgDefinition {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<External>>", optional)]
     pub externals: Vec<External>,
+    /// The shape the definition is written in: `2` when it is written in units (`units`, `agents`, `head`).
+    /// Left out for a definition written with departments and teams, so every version signed before units keeps
+    /// its canonical JSON and signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) shape: Option<u8>,
+    /// The org's head, in a definition written in units: a person or an agent. Left out, the head is the root's
+    /// person. A head holds no authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) head: Option<Id>,
+    /// The org's units, in a definition written in units. Left out when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<OrgUnit>>", optional)]
+    pub(crate) units: Vec<OrgUnit>,
+    /// The org's agents, in a definition written in units: no key, no account, never members. Left out when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Agent>>", optional)]
+    pub(crate) agents: Vec<Agent>,
     pub at: String,
 }
 
@@ -459,6 +491,10 @@ impl OrgDefinition {
             kpis: vec![],
             seats: vec![],
             externals: vec![],
+            shape: None,
+            head: None,
+            units: vec![],
+            agents: vec![],
             at,
         }
     }
@@ -569,18 +605,28 @@ impl OrgDefinition {
         Ok(())
     }
 
-    /// Checks the shape: label lengths, duplicate ids, and that departments, heads, people, and team places refer to each other correctly.
+    /// Checks the definition: label lengths, duplicate ids, keys, and that its units, heads, people and teams refer
+    /// to each other correctly. A definition written in units (shape 2) is not taken by this release yet: its move
+    /// from departments and teams comes with the rules that check it (agency#678).
     pub fn validate(&self) -> Result<(), String> {
+        if self.shape.is_some() {
+            return Err(
+                "the definition is written in units, which this release does not take yet".into(),
+            );
+        }
+        self.validate_any_shape()
+    }
+
+    /// `validate`, for either shape.
+    pub(crate) fn validate_any_shape(&self) -> Result<(), String> {
         if !label_ok(&self.label) || self.version == 0 || (self.version == 1) != self.prev.is_none()
         {
             return Err("malformed org label or version".into());
         }
-        if !unique(self.departments.iter().map(|d| &d.id))
-            || !unique(self.people.iter().map(|p| &p.id))
-            || !unique(self.teams.iter().map(|t| &t.id))
+        if !unique(self.people.iter().map(|p| &p.id))
             || !unique(self.people.iter().map(|p| &p.account))
         {
-            return Err("a department, person, team, or account appears twice".into());
+            return Err("a person or an account appears twice".into());
         }
         let are_node_keys_ed25519 = self.node_keys().into_iter().all(PublicKey::is_ed25519);
         if !self.are_recovery_keys_apart() {
@@ -591,6 +637,46 @@ impl OrgDefinition {
         }
         if !are_node_keys_ed25519 {
             return Err("account and root keys must be Ed25519".into());
+        }
+        self.validate_hosted()?;
+        if !self.people.iter().all(|p| label_ok(&p.label)) {
+            return Err("malformed person label".into());
+        }
+        match self.shape {
+            None => self.validate_departments_and_teams()?,
+            Some(crate::org_units::UNIT_SHAPE) => crate::org_units::validate(self)?,
+            Some(other) => return Err(format!("unknown shape {other}")),
+        }
+        let plans: Vec<TeamPlan> = self.teams().filter_map(|t| t.plan).collect();
+        if !plans.iter().all(|plan| plan.allocation.total() == 100) {
+            return Err("a team's plan allocation does not add up to 100".into());
+        }
+        crate::outcome::validate(self)?;
+        crate::seat::validate(self)?;
+        self.validate_devices()
+    }
+
+    /// The structure of a definition written with departments and teams, which holds none of the fields of one
+    /// written in units: the two shapes never mix.
+    fn validate_departments_and_teams(&self) -> Result<(), String> {
+        let has_unit_fields = self.head.is_some()
+            || !self.units.is_empty()
+            || !self.agents.is_empty()
+            || self
+                .people
+                .iter()
+                .any(|p| p.unit.is_some() || p.kind.is_some())
+            || self.seats.iter().any(|seat| seat.unit.is_some());
+        if has_unit_fields {
+            return Err(
+                "a definition with no shape has a field of one written in units (units, agents, head, unit, kind)"
+                    .into(),
+            );
+        }
+        if !unique(self.departments.iter().map(|d| &d.id))
+            || !unique(self.teams.iter().map(|t| &t.id))
+        {
+            return Err("a department or a team appears twice".into());
         }
         let departments: HashSet<_> = self.departments.iter().map(|d| &d.id).collect();
         let people: HashSet<_> = self.people.iter().map(|p| &p.id).collect();
@@ -603,29 +689,22 @@ impl OrgDefinition {
         }) {
             return Err("malformed department label, or its parent or head is missing".into());
         }
-        self.validate_hosted()?;
         if self.has_department_cycle() {
             return Err("a department is under itself".into());
         }
         if !self
             .people
             .iter()
-            .all(|p| label_ok(&p.label) && is_known_department(&p.department))
+            .all(|p| is_known_department(&p.department))
         {
-            return Err("malformed person label, or their department is missing".into());
+            return Err("a person's department is missing".into());
         }
         if !self.teams.iter().all(|t| {
             label_ok(&t.label) && is_known_department(&t.department) && is_node_origin(&t.node)
         }) {
             return Err("malformed team label, department, or node URL".into());
         }
-        let plans = self.teams.iter().filter_map(|t| t.plan.as_ref());
-        if !plans.into_iter().all(|plan| plan.allocation.total() == 100) {
-            return Err("a team's plan allocation does not add up to 100".into());
-        }
-        crate::outcome::validate(self)?;
-        crate::seat::validate(self)?;
-        self.validate_devices()
+        Ok(())
     }
 
     /// A member has an account key exactly when it is not hosted. A hosted member's account is its member id,

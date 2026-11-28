@@ -193,6 +193,7 @@ fn seats_for(
         id: id.clone(),
         label: person.label.clone(),
         department: person.department.clone(),
+        unit: None,
         ask_about: person.ask_about.clone(),
         relays: answered_by.to_vec(),
     };

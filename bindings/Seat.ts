@@ -7,6 +7,10 @@ import type { Id } from "./Id.js";
  */
 export type Seat = { id: Id, label: string, department?: Id, 
 /**
+ * The unit the seat is in, in a definition written in units (`department` is then left out).
+ */
+unit?: Id, 
+/**
  * What to ask this seat about, in the org's own words.
  */
 askAbout?: Array<string>, 

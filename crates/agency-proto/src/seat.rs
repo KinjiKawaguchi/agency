@@ -34,6 +34,9 @@ pub struct Seat {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub department: Option<Id>,
+    /// The unit the seat is in, in a definition written in units (`department` is then left out).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<Id>,
     /// What to ask this seat about, in the org's own words.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<String>>", optional)]
@@ -79,11 +82,12 @@ pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
     let taken = definition.people.iter().flat_map(|one| &one.formerly);
     let named = taken
         .chain(definition.seats.iter().map(|one| &one.id))
-        .chain(definition.externals.iter().map(|one| &one.id));
+        .chain(definition.externals.iter().map(|one| &one.id))
+        .chain(definition.agents().iter().map(|one| &one.id));
     for id in named {
         if !used.insert(id) {
             return Err(format!(
-                "{id} is the id of more than one member, seat, or external party"
+                "{id} is the id of more than one member, seat, external party, or agent"
             ));
         }
     }
@@ -98,13 +102,17 @@ pub(crate) fn validate(definition: &OrgDefinition) -> Result<(), String> {
             return Err(format!("malformed label of seat {}", seat.id));
         }
         if let Some(department) = &seat.department {
-            if !definition
-                .departments
-                .iter()
-                .any(|one| &one.id == department)
-            {
+            if definition.group(department).is_none() {
                 return Err(format!(
                     "seat {} is in department {department}, which the org does not have",
+                    seat.id
+                ));
+            }
+        }
+        if let Some(unit) = &seat.unit {
+            if !definition.units().any(|one| &one.id == unit) {
+                return Err(format!(
+                    "seat {} is in unit {unit}, which the org does not have",
                     seat.id
                 ));
             }
@@ -204,6 +212,7 @@ mod tests {
             id: id(raw),
             label: "Carol (finance)".into(),
             department: Some(id("dev")),
+            unit: None,
             ask_about: vec!["invoices".into()],
             relays: vec![id("alice")],
         }
@@ -234,6 +243,7 @@ mod tests {
             id: id("dan"),
             label: "Dan".into(),
             department: None,
+            unit: None,
             ask_about: vec![],
             relays: vec![],
         };

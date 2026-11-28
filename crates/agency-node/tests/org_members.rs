@@ -49,6 +49,7 @@ fn fill_the_org(alice: &Running) {
             id: id("dan"),
             label: "Dan (finance)".into(),
             department: None,
+            unit: None,
             ask_about: vec!["invoices".into()],
             relays: vec![id("carol")],
         });

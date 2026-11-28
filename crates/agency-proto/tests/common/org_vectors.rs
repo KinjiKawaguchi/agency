@@ -212,6 +212,7 @@ pub fn org_with_seats(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
         id: id("carol"),
         label: "Carol (finance)".into(),
         department: Some(id("dev")),
+        unit: None,
         ask_about: vec!["invoices".into(), "budget approval".into()],
         relays: vec![id("owner")],
     });

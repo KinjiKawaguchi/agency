@@ -2,6 +2,7 @@
 import type { Device } from "./Device.js";
 import type { HostedBy } from "./HostedBy.js";
 import type { Id } from "./Id.js";
+import type { MemberKind } from "./MemberKind.js";
 import type { PublicKey } from "./PublicKey.js";
 import type { Role } from "./Role.js";
 
@@ -31,4 +32,12 @@ askAbout?: Array<string>,
  * Set when the member has no node of its own: the root's node hosts it, and its clients use that node's
  * Client API (a hosted member, docs/glossary.md). Left out for every other member.
  */
-hostedBy?: HostedBy, };
+hostedBy?: HostedBy, 
+/**
+ * The unit the member is in, in a definition written in units (`department` is then left out).
+ */
+unit?: Id, 
+/**
+ * Set for an account that is not a person (`node`: it only hosts teams), in a definition written in units.
+ */
+kind?: MemberKind, };

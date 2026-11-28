@@ -19,6 +19,7 @@ fn seat(raw: &str) -> Seat {
         id: id(raw),
         label: "Finance".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![],
     }

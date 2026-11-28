@@ -101,6 +101,7 @@ async fn the_root_an_unknown_member_and_a_member_still_named_are_refused() {
         id: id("finance"),
         label: "Finance".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("bob")],
     };
@@ -180,6 +181,7 @@ async fn a_team_that_addresses_a_seat_the_member_took_names_the_member() {
         id: id("dan"),
         label: "Dan (tax)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![],
     };

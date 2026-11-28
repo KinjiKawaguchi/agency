@@ -217,6 +217,7 @@ async fn the_seats_a_member_took_come_back_and_a_pending_claim_of_one_is_dropped
         id: id("dan"),
         label: "Dan (tax)".into(),
         department: Some(id("tax")),
+        unit: None,
         ask_about: vec!["tax".into()],
         relays: vec![],
     };
@@ -301,6 +302,7 @@ async fn a_seat_comes_back_with_the_answerers_asked_for_and_without_a_department
         id: id("dan"),
         label: "Dan (tax)".into(),
         department: Some(id("tax")),
+        unit: None,
         ask_about: vec![],
         relays: vec![id("bob")],
     };
@@ -339,6 +341,7 @@ async fn a_seat_no_kept_version_has_comes_back_as_the_member_is_and_is_said() {
         id: id("dan"),
         label: "Dan (tax)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![],
     };

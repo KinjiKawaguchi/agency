@@ -113,6 +113,7 @@ fn carol_seat() -> Seat {
         id: id("carol"),
         label: "Carol (finance)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![id("alice")],
     }

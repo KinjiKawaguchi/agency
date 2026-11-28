@@ -27,6 +27,7 @@ async fn every_version_is_listed_with_its_signer_and_every_change() {
         id: id("dan"),
         label: "Dan (tax)".into(),
         department: None,
+        unit: None,
         ask_about: vec![],
         relays: vec![],
     };
@@ -132,6 +133,7 @@ async fn a_version_with_many_changes_lists_every_one() {
             id: id(&format!("s{n}")),
             label: format!("Seat {n}"),
             department: None,
+            unit: None,
             ask_about: vec![],
             relays: vec![],
         }));

@@ -353,6 +353,7 @@ mod tests {
                 id: Id::parse(&format!("seat-{n}")).unwrap(),
                 label: format!("Seat {n}"),
                 department: None,
+                unit: None,
                 ask_about: vec![],
                 relays: vec![],
             })

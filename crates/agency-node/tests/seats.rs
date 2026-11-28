@@ -36,6 +36,7 @@ fn carol() -> Seat {
         id: id("carol"),
         label: "Carol (finance)".into(),
         department: Some(id("ops")),
+        unit: None,
         ask_about: vec!["invoices".into(), "budget approval".into()],
         relays: vec![id("alice")],
     }

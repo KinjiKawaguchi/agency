@@ -336,6 +336,7 @@ async fn org_members_answer(alice: &Running) -> Value {
             id: id("dan"),
             label: "Dan (finance)".into(),
             department: None,
+            unit: None,
             ask_about: vec!["invoices".into()],
             relays: vec![id("bob")],
         });

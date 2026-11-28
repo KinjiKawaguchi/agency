@@ -10,6 +10,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 - **Human** (人). A real person. The system does not represent humans. One human has one or more accounts, for example a personal one and a work one, one for each boundary the data must not cross. Nothing in the system links two accounts of one human; only a client that holds both does. (Today a client talks to one home node, so none does.)
 - **Account** (アカウント). One human's identity in the system: an id, a label, and an account key (Ed25519). It belongs to exactly one human and is never shared, because a device signature attributes a decision to the human behind the account. The account key signs reads, join requests, and the account's first device in an org. It never signs a decision.
+- **Node account** (ノードのアカウント). An account that only hosts teams and is no human's, marked `people[].kind: "node"` in a definition written in units. It signs reads and runs harnesses; it has no devices, heads nothing, and is not drawn as a person.
 - **Home node** (ホームノード). The node an account lives on. It holds the account key, keeps replicas of what the account sees, and serves the account's clients under `/api`. A node's configuration holds exactly one account (`account` in `config.json`), so a node is the home node of one account, and an account's home node is the one node that holds its key. The code has no register of this, so "exactly one per account" is a rule for the owner, not a check. One browser or the app can list several home nodes. Each is its own origin in a browser, with its own sign-in and its own device key, and nothing is copied between them.
 - **Member** (メンバー). An account's seat in one org: `id`, `label`, `account`, `publicKey`, `department`, `role`, and `devices`. An account has no member, or one, in each org (an org definition refuses two members with the same account), so it has as many members as orgs it belongs to. In the protocol a member is `people[]` of the org definition, with the type `Person`; the names stay for now. A member's `role` is `member` (reads and answers) or `answerer` (only answers).
 - **Participant** (参加者). One who takes part in a team's work: a human or an agent, as the team's runtime reports it (`TeamView.people[]`, the type `PersonStatus`, `kind` `human` or `agent`). A participant is named by the runtime's own name, not by a member id. The two are matched only through the hosted team's configuration. This is a third thing the protocol calls "person"; the screen "Participants and work" (参加者と仕事) lists them. A participant's `role` is `lead` or `member`: a *team role*, reported by the team's runtime. The screens show only the lead (リード) and do not name the other role, because "member" is the org seat; the protocol keeps the value `member` for now. Do not confuse it with a member's org role (`member` or `answerer`).
@@ -26,13 +27,17 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 
 ## Orgs and teams
 
-- **Org** (組織). A set of departments, members, and teams under one root key. Its definition is the signed `OrgDefinition`.
+- **Org** (組織). A set of units (its departments and teams), members, and agents under one root key. Its definition is the signed `OrgDefinition`.
 - **Root key** (ルート鍵). The Ed25519 key that signs an org's definition versions. It is held by the root's node (`root` in the definition names its account and key).
 - **Recovery key** (回復用の鍵). A second key of an org, named in `root.recovery`, that no machine keeps: the owner keeps it as written **recovery words** (回復用の単語). It may only move the root key or itself, and only after a **recovery** (ルート鍵の回復) waits 72 hours, in which the root key cancels it by signing any version.
 - **Org definition** (組織定義) and its **versions**. The signed body listing the org's departments, members, teams, and revoked keys. Version 1 starts it; each next version is one higher and refers to the one before (`prev`). Every piece is written only by the root key.
 - **History** (履歴), of an org. Every version of the org definition a node keeps, oldest first, each with when the root signed it, what its signature showed against the version just before it (*valid*, *invalid*, or *not checked* when that version is not kept here), whether it follows that version (one that does not is a *fork* of the history), and every change it made in words. A version the node does not keep is listed as *not kept*, so that a gap is never silent. The node works it out (`GET /api/orgs/<org>/history`, and `agency audit`, the same function); a screen draws it, and gives no verdict on a signature of its own. Not the *decision log* of decisions made.
-- **Department** (部署). A unit of the org that groups members and teams, with an optional parent and an optional head (a member).
-- **Team** (チーム). One harness, running on exactly one node: the *team's node* (`teams[].node`). Requests, activity, and the board belong to a team, and the team's node is their only writer.
+- **Unit** (ユニット). A place in the org's structure that holds members, agents, and other units: a department or a team. Units nest by `parent`. A definition is written either with departments and teams (no `shape`) or in units (`"shape": 2`, `units`), never both.
+- **Department** (部署). A unit that no harness runs, with an optional parent and an optional head. In a definition written in units, a unit with no `team`.
+- **Head** (責任者), of a unit. Whom the unit's members and agents report to: a person or an agent (`units[].head`, `departments[].head`). One may head several units. A head holds no authority: nothing needs a head's signature or lets a head do more.
+- **Org head** (組織の責任者). The head of the whole org (`head`), apart from the root key. Left out, it is the root's person.
+- **Agent** (エージェント). A participant of a team's harness that the org names (`agents`): an id and a place, with no key, no account, and no devices. It is not a member, so it never signs or answers anything, and it is not a seat.
+- **Team** (チーム). A unit that one harness runs, on exactly one node: the *team's node* (`teams[].node`, or `units[].team.node` in a definition written in units). Requests, activity, and the board belong to a team, and the team's node is their only writer.
 
 ## Devices and keys
 
@@ -140,6 +145,7 @@ What a node measures of itself, kept on the node and read only by its owner (`/a
 | デバイス | 端末 | The Japanese name of a device is 端末. |
 | 判断のお願い | 判断待ち | The kind `pendingDecision` has one name. A sentence may say 「…さんの判断待ち」. |
 | person, for a member | member (メンバー) | "Person" stays for the human. |
+| manager, boss; 上司, マネージャー | head (責任者) | One word for whom a unit's people report to. "Lead" stays the harness's own word for its lead (`role: lead`). |
 | unclaimed member; 未参加のメンバー | seat (席) | A seat is not a member: it has no account, key, or device. |
 | relay, for answering on someone's behalf | answer for (代理で答える) | A node relays changes to another node; a person answers for someone. |
 | person, for a participant; 人 for a participant or a count of them | participant (参加者) | A participant may be an agent. |
