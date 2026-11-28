@@ -3,6 +3,7 @@
 //! the web client with its Client API.
 pub mod background;
 pub mod budget;
+pub mod export;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
