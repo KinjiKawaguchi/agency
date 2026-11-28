@@ -310,10 +310,10 @@ struct DeviceRemovalStoreTests {
         let plan = try #require(store.removalPlan(for: target))
         #expect(plan.isBlocked && !plan.canConfirm)
         #expect(plan.message == Ja.Devices.Remove.keptDecisionsUnreadable)
-        #expect(Ja.Devices.Remove.keptDecisionsUnreadable == "この端末に残した決定を、いま読めません。読めるようになってから削除してください。")
+        #expect(Ja.Devices.Remove.keptDecisionsUnreadable == "このアプリに残した決定を、いま読めないため、端末を削除できません。端末のロックを解除し、アプリを開き直してから、もう一度削除してください。")
         #expect(!Ja.Devices.Remove.keptDecisionsUnreadable.contains("送るか破棄"), "nothing the owner can send or discard")
         await store.remove(target)
-        #expect(remover.plans.isEmpty && store.removalFailures[target.id]?.contains("いま読めません") == true)
+        #expect(remover.plans.isEmpty && store.removalFailures[target.id]?.contains("いま読めないため") == true)
     }
 
     @Test("this device is not removed while decisions it signed are kept either")

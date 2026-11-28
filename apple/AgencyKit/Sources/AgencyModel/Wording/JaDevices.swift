@@ -48,7 +48,7 @@ extension Ja {
             /// Said instead of the confirmation when decisions signed with the key of the device to remove still wait to be sent.
             /// Said instead of the confirmation when the decisions kept on this phone cannot be read now, so that nothing is known of which device
             /// signed them: there is nothing to send or discard, and the cause is said.
-            public static let keptDecisionsUnreadable = "この端末に残した決定を、いま読めません。読めるようになってから削除してください。"
+            public static let keptDecisionsUnreadable = "このアプリに残した決定を、いま読めないため、端末を削除できません。端末のロックを解除し、アプリを開き直してから、もう一度削除してください。"
             public static let keptDecisions = "まだ届いていない決定が残っています。削除する端末の鍵で署名したものは、削除するとすべて無効になります。送るか破棄してから削除してください。"
             /// Said when the list the node gave just before the removal is not the one the person confirmed.
             public static let listChanged = "端末の一覧が、確認したときと変わっていました。一覧を読み直したので、もう一度確認してください。"
