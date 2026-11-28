@@ -1,0 +1,51 @@
+{
+  "body": {
+    "org": "acme",
+    "label": "Acme",
+    "version": 4,
+    "prev": "0810f1cbcda638110f19c2e70cf3092dc7121a66234f8576ebd8d435e6419a4f",
+    "root": {
+      "account": "alice",
+      "publicKey": "h6lyp7/egGLWX9XoC2+Q+YtfnXBE7qTOyNJOrvuLqYA="
+    },
+    "departments": [],
+    "people": [
+      {
+        "id": "alice",
+        "label": "Alice",
+        "account": "alice",
+        "publicKey": "Zw7Hm42ytxNZ46mN1Ivvdqr6zRJXbZuIYciQNjGcZHQ=",
+        "department": null,
+        "role": "member",
+        "devices": [
+          {
+            "id": "d-eafb25c93790",
+            "label": "CLI",
+            "publicKey": "1D/w5Je6bELNaTqOR1k3e1sl/cgbKns6eGmRSU+s1Nw=",
+            "addedAt": "2026-11-28T08:04:13Z"
+          }
+        ]
+      },
+      {
+        "id": "bob",
+        "label": "Bob",
+        "account": "bob",
+        "publicKey": "/M0rSbAAM9JRZD2zRLxVKrW08M8f0aX/xFCyGa+/fdc=",
+        "department": null,
+        "role": "member"
+      }
+    ],
+    "teams": [
+      {
+        "id": "app",
+        "label": "App",
+        "department": null,
+        "node": "http://127.0.0.1:4791"
+      }
+    ],
+    "revoked": [],
+    "at": "2026-11-28T08:04:13Z"
+  },
+  "signer": "alice",
+  "signature": "dQVysBYVFkkFh6NDU245Ig9vvc0cJOtbgNHtHFU3LLvMvQs4olRmXoN4UiJJrtssLkCuKzpFtT4/irApMAd6Bw=="
+}
