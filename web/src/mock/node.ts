@@ -3,6 +3,7 @@
 import { sampleReadings } from '../api/outcomesSamples'
 import { createMockOutcomes } from './outcomes'
 import { metricsAnswer, type MetricsVariant } from './metrics'
+import { createMockTelemetry, type KeptSample } from './telemetry'
 import { createMockWebPush, idOf } from './webPush'
 import type { ClaimState } from '../claim/provisional'
 import { createMockClaim, type MockClaimOptions } from './claim'
@@ -10,6 +11,8 @@ import type { About, PushToken, DecisionAnswer, DecisionEntry, Device, Envelope,
 import type { HeldChange } from '../rootchange/changes'
 import { sampleTeamView, type AnswerWith, type TeamView } from '../api/teamview.ts'
 import { createMockDevices, isRefusal } from './devices.ts'
+import { answerOf, capabilitiesOf, type FeatureOptions } from './features/index.ts'
+import { failure, json } from './features/feature.ts'
 import { answererView, isRefusedToGuest, type MockGuest } from './guest.ts'
 import type { MeWithGuest } from '../guest/provisional.ts'
 import { activityFor, MAX_EVENTS } from './activity.ts'
@@ -36,6 +39,8 @@ export interface MockNode {
   pushTokenEntries: () => ReadonlyArray<PushToken>
   /** The browsers subscribed through Web Push so far. */
   pushSubscriptions: () => readonly PushSubscription[]
+  /** The samples of how long a client's calls took, as the node kept them from the reports it took (`POST /api/telemetry`). */
+  telemetry: () => readonly KeptSample[]
   /** The node comes to know how a browser's push service answered: when it last took a notice, and when it last did not. */
   recordPushDelivery: (id: string, delivery: Pick<PushSubscription, 'lastSucceededAt' | 'lastFailure'>) => void
   /** Envelopes that were accepted, oldest first. */
@@ -55,7 +60,7 @@ export interface MockNode {
 /** What the root's node says to the person who approved here, when it holds the change for its owner's `agency root-sign`. */
 export const PENDING_ROOT_MESSAGE = 'Approved here; it takes effect once the root key\'s node signs it: run `agency root-sign` there.'
 
-interface MockNodeOptions {
+type MockNodeOptions = FeatureOptions & {
   /** Requests of the sample that are addressed to a seat or an external party the viewer answers for (request id → whom it is for), as `TeamSnapshot.relayedFor` says; the node, not the client, says it again in the decision log. */
   relayedFor?: Readonly<Record<string, { id: string; label: string }>>
   /** Makes a device change answer `pending`, as when the root's node holds it for its owner to sign: the device is not added. */
@@ -150,11 +155,6 @@ function shiftTimes<T>(value: T, delta: number): T {
   return value
 }
 
-const json = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-
-const failure = (status: number, message: string): Response => json({ error: message }, status)
-
 const MINUTE = 60_000
 
 /** Where an expired session is sent: another origin, as the access login is. */
@@ -170,10 +170,10 @@ const OUTCOMES_PATH = /^\/api\/orgs\/([^/]+)\/outcomes(\/readings|\/observations
 const EVALUATION_PATH = /^\/api\/orgs\/([^/]+)\/(evaluation|effort)$/
 const TEAM_PATH = /^\/api\/orgs\/([^/]+)\/teams\/([^/]+)\/(view|usage|activity|envelopes)$/
 /** What the mock node says about itself: the capabilities it has by its options, as `testdata/about.sample.json` names them. */
-const aboutOf = (options: { webPush?: boolean; pushDevice?: boolean; effort?: boolean }): About => ({
+const aboutOf = (options: FeatureOptions & { webPush?: boolean; pushDevice?: boolean; effort?: boolean }): About => ({
   node: '0.4.0',
   contracts: { federation: [1], signedText: [1], runtime: [1], clientApi: { current: 1, oldest: 1 } },
-  capabilities: [...(options.effort === true ? ['effort'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
+  capabilities: [...capabilitiesOf(options), ...(options.effort === true ? ['effort'] : []), ...(options.webPush === true ? ['webPush'] : []), ...(options.pushDevice === true ? ['pushDevice'] : [])],
 })
 
 const DEVICES_PATH = '/api/devices'
@@ -247,6 +247,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
   }
 
   const outcomes = createMockOutcomes(now)
+  const telemetry = createMockTelemetry()
   const webPush = createMockWebPush(() => now.toISOString(), options.webPushFailing === true, options.pushDevice === true ? () => devices.deviceIds() : undefined)
 
   /** The node's own account, with the devices it holds: the signed routes check against them. */
@@ -267,12 +268,12 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     for (const [field, text] of [['title', notes.title], ['choiceLabel', notes.choiceLabel]] as const) {
       if (text !== undefined && [...text.trim()].length > MAX_NOTE) return failure(400, `${field} is at most ${MAX_NOTE} characters`)
     }
-    const reply = await accept(view, { id: signed.body.id, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
+    const reply = await accept(view, { id: signed.body.id, signer: signed.signer, kind, target, text: payload.text, ...(payload.choice === undefined ? {} : { choice: payload.choice }), ...(notes.title === undefined ? {} : { title: notes.title }), ...(notes.choiceLabel === undefined ? {} : { choiceLabel: notes.choiceLabel }) })
     if (reply.ok) accepted = [...accepted, signed]
     return reply
   }
 
-  const accept = async (view: TeamView, body: AnswerWith & { id?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
+  const accept = async (view: TeamView, body: AnswerWith & { id?: string; signer?: string; text: string; choice?: string; choiceLabel?: string; title?: string }): Promise<Response> => {
     const target = view.requests.find((one) => one.answerWith.kind === body.kind && one.answerWith.target === body.target)
     if (target === undefined) return failure(404, 'That request is not open.')
     received = [...received, { org: view.org, team: view.team, answerWith: target.answerWith, title: body.title ?? '', text: body.text, ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel })}]
@@ -282,7 +283,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       outcome === 'queued' ? { kind: 'queued', attempts: 0, nextAt: new Date(now.getTime() + 5 * MINUTE).toISOString() } : { kind: outcome === 'applied' ? 'applied' : 'delivered' }
     log = [
       // The log names a decision by its envelope's id, as the real node does.
-      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }), ...(options.relayedFor?.[target.id] === undefined ? {} : { relayedFor: options.relayedFor[target.id] }) },
+      { id: body.id ?? `e-${log.length + 1}`, org: view.org, team: view.team, kind: body.kind, target: body.target, text: body.text, ...(body.signer === undefined ? {} : { signer: body.signer }), decidedAt: new Date().toISOString(), state, ...(body.title === undefined ? {} : { title: body.title }), ...(body.choice === undefined ? {} : { choice: body.choice }), ...(body.choiceLabel === undefined ? {} : { choiceLabel: body.choiceLabel }), ...(options.relayedFor?.[target.id] === undefined ? {} : { relayedFor: options.relayedFor[target.id] }) },
       ...log,
     ]
     return json({ outcome, ...(outcome === 'queued' ? { message: 'Its node is not reachable right now.' } : {}) } satisfies DecisionResult)
@@ -434,7 +435,11 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
       const answered = webPush.handle(request, url, () => readWrite(request))
       if (answered !== undefined) return answered
     }
+    const reported = telemetry.handle(request, url, () => readWrite(request))
+    if (reported !== undefined) return reported
     if (url.pathname.startsWith(DEVICES_PATH)) return handleDevices(request, url)
+    const featured = answerOf(request, url, options, { now })
+    if (featured !== undefined) return featured
     const orgMatch = ORG_PATH.exec(url.pathname)
     if (request.method === 'GET' && orgMatch) {
       const extra = options.moreOrgs === true ? MORE_ORGS.find((org) => org.id === orgMatch[1]) : undefined
@@ -463,6 +468,7 @@ export function createMockNode(options: MockNodeOptions = {}): MockNode {
     pushTokens: () => pushTokenEntries.map(({ token, environment, label }) => ({ token, environment, label })),
     pushTokenEntries: () => pushTokenEntries,
     pushSubscriptions: () => webPush.subscriptions(),
+    telemetry: telemetry.kept,
     recordPushDelivery: webPush.recordDelivery,
     addDeviceFromTerminal: devices.addFromTerminal,
     signRootChanges: () => {

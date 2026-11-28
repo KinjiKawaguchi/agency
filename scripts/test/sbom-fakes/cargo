@@ -1,0 +1,12 @@
+#!/bin/bash
+# A stand-in for `cargo cyclonedx`: like the real one, it writes a list next to each crate of the workspace.
+# FAKE_MODE=empty writes lists with no components, and FAKE_MODE=other writes a list that is not CycloneDX.
+[ "$1" = "cyclonedx" ] || { echo "cargo stand-in: unexpected $*" >&2; exit 64; }
+echo "$*" >> "${FAKE_STATE:?}/cargo"
+for crate in agency-proto agency-core agency-adapters agency-node; do
+  case "${FAKE_MODE:-ok}" in
+    ok) printf '{"bomFormat":"CycloneDX","specVersion":"1.5","components":[{"type":"library","name":"dep-of-%s"}]}\n' "$crate" ;;
+    empty) printf '{"bomFormat":"CycloneDX","specVersion":"1.5","components":[]}\n' ;;
+    other) printf '{"bomFormat":"SPDX","components":[{"name":"a-package"}]}\n' ;;
+  esac > "crates/$crate/$crate.cdx.json"
+done

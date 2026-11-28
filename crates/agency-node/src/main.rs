@@ -1,4 +1,6 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod audit_cli;
+mod claim_cli;
 mod dept_cli;
 mod device_cli;
 mod directory_cli;
@@ -104,7 +106,10 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    Audit(audit_cli::Audit),
     MemberRemove(member_cli::MemberRemove),
+    GuestRemove(member_cli::GuestRemove),
+    Guests(member_cli::Guests),
     SeatMerge(seat_cli::SeatMerge),
     /// Makes a seven-day claim link for one seat and one email (on the root key's node)
     SeatInvite {
@@ -115,6 +120,10 @@ enum Command {
         #[arg(long)]
         email: String,
     },
+    /// Lists the claims of seats that a person's browser redeemed and that wait for you to confirm
+    Claims,
+    ClaimConfirm(claim_cli::ClaimConfirm),
+    ClaimReject(claim_cli::ClaimReject),
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -297,17 +306,18 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
 }
 
 /// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
-/// move only spelled the same origin another way.
+/// move only spelled the same origin another way or renamed this node's own origin.
 const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
 whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
-the default port) changes nothing.";
+the default port), or that renames this node's own origin to one it was configured with, changes nothing.";
 
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
 If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
 --no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
 
-fn status(node: &Node) {
+fn status(node: &Node, data: &DataDir) {
+    let releases = agency_adapters::runtime_releases::read(data);
     let config = node.config();
     println!(
         "Account: {} ({}), key fingerprint {}",
@@ -321,6 +331,13 @@ fn status(node: &Node) {
     }
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
+    }
+    if let Err(error) = node.store().own_origins() {
+        println!("{}", agency_core::node::own_origins_unreadable_line(&error));
+    }
+    let waiting = agency_core::claims::pending(node).len();
+    if waiting > 0 {
+        println!("Claims waiting for you: {waiting} (agency claims)");
     }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
@@ -405,11 +422,12 @@ fn status(node: &Node) {
     }
     for team in &config.teams {
         println!(
-            "Team on this node: {}/{} (owner {}) runs {}",
+            "Team on this node: {}/{} (owner {}) runs {}; {}",
             team.org,
             team.team,
             team.owner,
-            team.runtime.command.join(" ")
+            team.runtime.command.join(" "),
+            agency_adapters::runtime_releases::say(&releases, &team.org, &team.team)
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
@@ -634,8 +652,14 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::Audit(args) => audit_cli::audit(&node, args)?,
         Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
+        Command::GuestRemove(args) => member_cli::guest_remove(&node, args)?,
+        Command::Guests(args) => member_cli::guests(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::Claims => claim_cli::list(&node),
+        Command::ClaimConfirm(args) => claim_cli::confirm(&node, args).await?,
+        Command::ClaimReject(args) => claim_cli::reject(&node, args).await?,
         Command::SeatInvite { org, seat, email } => {
             let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
             println!("{}", invite.link);
@@ -766,7 +790,7 @@ async fn run(cli: Cli) -> Result<()> {
                 outcomes.len()
             );
         }
-        Command::Status => status(&node),
+        Command::Status => status(&node, &cli_data),
         Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }

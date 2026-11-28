@@ -3,12 +3,13 @@
 //! it. The rules (an id used once, a department of the org, members to answer for them) are the definition's
 //! own, checked when the version is signed, so a refusal names the id that broke one.
 use crate::error::{Error, ErrorKind, Result};
+use crate::guests::{self, Guest};
 use crate::invites::take_seat;
 use crate::node::Node;
-use crate::orgs::amend;
-use agency_proto::org::SignedOrg;
+use crate::orgs::{amend, amend_with};
+use agency_proto::org::{Device, SignedOrg};
 use agency_proto::seat::{External, Seat};
-use agency_proto::{Id, OrgDefinition};
+use agency_proto::{Id, OrgDefinition, Person};
 
 /// What to change in a seat. `None` leaves a field as it is; `Some(None)` clears the department.
 #[derive(Clone, Debug, Default)]
@@ -100,6 +101,88 @@ pub fn merge_seat(node: &Node, org: &Id, seat: &Id, into: &Id) -> Result<SignedO
         }
         Ok(())
     })
+}
+
+/// The longest a sign-in email may be (RFC 5321).
+const MOST_EMAIL_CHARACTERS: usize = 254;
+
+/// The email, lowercased, when it can be a sign-in address: text with one `@` that has text on both sides, no control
+/// character, at most `MOST_EMAIL_CHARACTERS` characters.
+fn check_email(email: &str) -> Result<String> {
+    let email = email.trim().to_lowercase();
+    let is_shaped = email.chars().count() <= MOST_EMAIL_CHARACTERS
+        && !email.chars().any(char::is_control)
+        && email.split_once('@').is_some_and(|(name, host)| {
+            !name.is_empty() && !host.is_empty() && !host.contains('@')
+        });
+    if is_shaped {
+        return Ok(email);
+    }
+    Err(Error::bad_request(
+        "the sign-in address must be text with one @ and something on both sides",
+    ))
+}
+
+/// Refuses an email that cannot be this seat's guest: the owner's own sign-in (the owner is never a guest), or
+/// one that already is the guest of another member.
+fn check_email_is_free(node: &Node, email: &str, org: &Id, seat: &Id) -> Result<()> {
+    let owner = node
+        .config()
+        .access
+        .map(|access| access.owner_email.trim().to_lowercase());
+    if owner.as_deref() == Some(email) {
+        return Err(Error::new(
+            ErrorKind::Conflict,
+            "that address is the node owner's sign-in, and the owner is never a guest",
+        ));
+    }
+    match guests::admit(node, email) {
+        Some(guest) if guest.org != *org || guest.member != *seat => Err(Error::new(
+            ErrorKind::Conflict,
+            "that address is already the sign-in of another member this node hosts",
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// A seat becomes a member this node hosts, for a person with no node of their own (docs/glossary.md, "Hosted
+/// member"): one version removes `seats[seat]` and adds the member with **the same id**, so requests, `people`
+/// maps of a team's node and history stay attached; it has the seat's label, department and what to ask about, its
+/// member id as its account, no account key, and `device` as its only device. Those who answered for the seat
+/// (`relays`) no longer do: the request is the member's own. The record that makes `email` the member's sign-in
+/// is kept once the root has signed and before the version is published, so a refusal leaves nothing behind.
+///
+/// Refused: not the root's node (403); no such seat (404); a device whose id is not the one its key has, a key the
+/// definition already has, or one that is not a device key (400, from the definition's own checks); an address that
+/// is no sign-in address (400), is the owner's, or is another member's (409); an org one of whose nodes does not
+/// list `hostedMembers` (409, as for any version that needs a capability).
+pub fn host_seat(
+    node: &Node,
+    org: &Id,
+    seat: &Id,
+    device: Device,
+    email: &str,
+) -> Result<SignedOrg> {
+    let email = check_email(email)?;
+    check_email_is_free(node, &email, org, seat)?;
+    if device.id != device.public_key.device_id() {
+        return Err(Error::bad_request(
+            "a device's id is d- and the pairing code of its key",
+        ));
+    }
+    amend_with(
+        node,
+        org,
+        |body| {
+            let taken = take_seat(body, seat).map_err(|_| not_found("seat", seat, org))?;
+            let member = Person::hosted(taken.id, taken.label, vec![device])
+                .with_department(taken.department)
+                .with_ask_about(taken.ask_about);
+            body.people.push(member);
+            Ok(())
+        },
+        |_| guests::keep(node, &Guest::new(&email, org.clone(), seat.clone())),
+    )
 }
 
 pub fn remove_seat(node: &Node, org: &Id, id: &Id) -> Result<SignedOrg> {

@@ -21,6 +21,8 @@ final class NativeSession {
     /// Whether APNs takes the notices the node sends this phone, read from the node's list of the owner's tokens.
     let pushDelivery: PushDeliveryStore
     private(set) var signInProblem: String?
+    /// Whether this app and the home node still fit each other, once the node has said what it serves.
+    private(set) var compatibility: NodeCompatibility = .compatible
 
     /// The client of the home node, for the screens that read from it.
     @ObservationIgnored let client: NodeClient
@@ -29,7 +31,7 @@ final class NativeSession {
     @ObservationIgnored private var registeredPush: RegisteredPush?
     /// This phone's push token, once Apple has given it one: what `pushDelivery` looks for among the node's listed tokens.
     @ObservationIgnored private let ownPushToken = PushTokenBox()
-    /// What the home node said of itself, once it has: whether it takes `device` in a registration.
+    /// What the home node said of itself, once it has: what it serves, and whether it takes `device` in a registration.
     @ObservationIgnored private var nodeAbout: About?
     /// Whether the home node took the kinds of push the owner chose; `false` for a node that sends requests only.
     /// Whether the home node sends the kinds the owner chose, or `nil` until it has answered the registration.
@@ -82,7 +84,7 @@ final class NativeSession {
         devices = signer.map { signer in
             let sender = DeviceChangeSender(poster: client, signer: signer)
             return DevicesStore(
-                source: client, adder: sender, ownKey: signer.publicKey, remover: sender, hasKeptDecisions: { _ in outbox.hasSignedEntries }
+                source: client, adder: sender, ownKey: signer.publicKey, remover: sender, keptDecisions: { _ in outbox.keptDecisions }
             )
         }
         let ownToken = ownPushToken
@@ -153,6 +155,15 @@ final class NativeSession {
         guard let me = try? await cache.me() else { return }
         widgets.preferences.nodeSays(hidesTitles: me.hidesTitles)
         widgets.publish(items: desk.items)
+    }
+
+    /// Compares what the home node serves with this app's Client API version and own version, and keeps the answer for the desk to say. A node
+    /// that cannot be read now is judged at the next desk read.
+    func checkNodeVersion() async {
+        await readAbout()
+        compatibility = NodeCompatibility.judge(
+            about: nodeAbout, clientApi: ClientApi.spoken, appVersion: ClientIdentity.currentVersion(), platform: ClientIdentity.platform
+        )
     }
 
     /// What the node says of itself, read until it has answered: a node that has no such route (404) has no capabilities, once and for good,

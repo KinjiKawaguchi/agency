@@ -93,6 +93,25 @@ describe('readEvaluation', () => {
     expect(summary && 'costPerMergedPrUsd' in summary).toBe(false)
   })
 
+  it('reads the numbers of each repository of a team, and leaves them out for a team that has none', () => {
+    const team = (extra: object) => ({ team: 'app', ...period, summary: { merged: {} }, byDay: [], ...extra })
+    const read = readEvaluation({
+      ...header,
+      teams: [
+        team({ byRepository: [{ repo: 'acme/app', summary: { merged: { feat: 2 }, mainRedSeconds: 60 } }, { repo: 'acme/web', summary: { merged: { docs: 1 }, prLeadMedianSeconds: 90 } }] }),
+        team({ team: 'docs' }),
+      ],
+    }).teams
+    expect(read[0]?.byRepository?.map((one) => [one.repo, one.summary.merged.feat, one.summary.mainRedSeconds])).toEqual([
+      ['acme/app', 2, 60],
+      ['acme/web', 0, 0],
+    ])
+    expect(read[0]?.byRepository?.[1]?.summary.prLeadMedianSeconds).toBe(90)
+    expect(read[1] && 'byRepository' in read[1]).toBe(false)
+    expect(() => readEvaluation({ ...header, teams: [team({ byRepository: [{ summary: {} }] })] })).toThrow(/bad/)
+    expect(() => readEvaluation({ ...header, teams: [team({ byRepository: [{ repo: 'acme/app', summary: { merged: { feat: -1 } } }] })] })).toThrow(/bad/)
+  })
+
   it('refuses a negative count and a lead time that is not a number', () => {
     const answer = (day: unknown) => ({ ...header, teams: [{ team: 'app', ...period, summary: {}, byDay: [day] }] })
     expect(() => readEvaluation(answer({ date: '2026-11-26', merged: { feat: -1 } }))).toThrow(/bad/)

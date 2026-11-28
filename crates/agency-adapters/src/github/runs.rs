@@ -1,5 +1,6 @@
 //! The runs of CI on a repository's default branch (every workflow), from what a push started.
 use super::gh::{Gh, GhError};
+use super::Repo;
 use agency_core::delivery::{MainRun, Verdict};
 use agency_proto::clock::{self, Duration, OffsetDateTime};
 
@@ -34,14 +35,16 @@ fn read_runs(repo: &str, text: &str) -> Vec<MainRun> {
 }
 
 /// The default branch of `owner/name`.
-async fn default_branch(gh: &dyn Gh, owner: &str, name: &str) -> Result<String, GhError> {
-    let args = [
-        "api",
-        &format!("repos/{owner}/{name}"),
-        "--jq",
-        ".default_branch",
-    ]
-    .map(String::from);
+async fn default_branch(gh: &dyn Gh, repo: &Repo<'_>) -> Result<String, GhError> {
+    let args = repo.api(
+        [
+            &format!("repos/{}", repo.full_name()),
+            "--jq",
+            ".default_branch",
+        ]
+        .map(String::from)
+        .to_vec(),
+    );
     let branch = gh.run(&args).await?.trim().to_owned();
     if branch.is_empty() {
         Err(GhError::Failed)
@@ -53,15 +56,13 @@ async fn default_branch(gh: &dyn Gh, owner: &str, name: &str) -> Result<String, 
 /// The completed runs on the default branch of `owner/name` created from a week before `since`.
 pub async fn main_runs(
     gh: &dyn Gh,
-    owner: &str,
-    name: &str,
+    repo: &Repo<'_>,
     since: OffsetDateTime,
 ) -> Result<Vec<MainRun>, GhError> {
-    let branch = default_branch(gh, owner, name).await?;
+    let branch = default_branch(gh, repo).await?;
     let from = (since - MARGIN).date();
-    let args: Vec<String> = [
-        "api",
-        &format!("repos/{owner}/{name}/actions/runs"),
+    let rest: Vec<String> = [
+        &format!("repos/{}/actions/runs", repo.full_name()),
         "--method",
         "GET",
         "-f",
@@ -80,7 +81,8 @@ pub async fn main_runs(
     ]
     .map(String::from)
     .to_vec();
-    Ok(read_runs(&format!("{owner}/{name}"), &gh.run(&args).await?))
+    let args = repo.api(rest);
+    Ok(read_runs(&repo.full_name(), &gh.run(&args).await?))
 }
 
 #[cfg(test)]

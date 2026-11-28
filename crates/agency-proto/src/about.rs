@@ -156,12 +156,18 @@ pub enum Capability {
     ReadAudience,
     /// A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`.
     Budget,
+    /// An org's change history for its owner: `GET /api/orgs/<org>/history`, the entries `agency audit --json` prints.
+    History,
+    /// The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.
+    Members,
+    /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
+    ClaimLinks,
     /// A team's view read with a tag (`ETag`, `If-None-Match`): `304` with no body when it did not change.
     ViewUnchanged,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 15] = [
+    pub const ALL: [Capability; 18] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -176,6 +182,9 @@ impl Capability {
         Capability::Effort,
         Capability::ReadAudience,
         Capability::Budget,
+        Capability::History,
+        Capability::Members,
+        Capability::ClaimLinks,
         Capability::ViewUnchanged,
     ];
 
@@ -195,6 +204,9 @@ impl Capability {
             Capability::Effort => "effort",
             Capability::ReadAudience => "readAudience",
             Capability::Budget => "budget",
+            Capability::History => "history",
+            Capability::Members => "members",
+            Capability::ClaimLinks => "claimLinks",
             Capability::ViewUnchanged => "viewUnchanged",
         }
     }
