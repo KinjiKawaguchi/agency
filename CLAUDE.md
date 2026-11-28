@@ -10,6 +10,8 @@ Words follow `docs/glossary.md`, the one place the project's terms are defined: 
 
 User-facing installation docs come in English and Japanese (`docs/install.md` is the source, `docs/install.ja.md` follows it section by section). A change to one changes the other in the same pull request. Japanese text uses the glossary's Japanese names.
 
+`docs/data.md` says what a node keeps, where, for how long, and how to delete it, its keys, and what leaves the machine. It follows `docs/protocol.md`: a change to what a node stores, keeps, or sends changes it in the same pull request (a test checks that every file the store writes is in it).
+
 ## Public repository hygiene
 
 This repository is public. Never write names or details that point at a specific company, customer, person, or internal event: no real organization or product names, customer identifiers, people's names, real issue numbers from other projects, internal tool names, credentials, account IDs, or local paths. Use fictional examples (`acme`, `app`, `alice`, `bob`). Read your diff for this before every push.
@@ -31,4 +33,5 @@ This repository is public. Never write names or details that point at a specific
 - Pull request body: **Why**, **What**, and **How** only when the implementation needs explaining. End with `Closes #N` on its own line when the pull request completes an issue.
 - Attach screenshots to pull requests that change what the user sees.
 - Before opening a pull request: `cargo test`, `cargo clippy --all-targets`, and, for the web client, `npm test` and `npm run build`.
+- Merging goes through GitHub's merge queue: nobody merges a pull request by hand. When a pull request is approved and its checks are green, the lead adds it to the queue (the queue button, or `gh pr merge --auto`), which tests it together with the ones ahead of it on top of `main` and merges it when that passes; one that fails is taken out of the queue with its failing check named. Only `ci.yml` listens to `merge_group`, so that the required checks report for a queued group: a workflow that writes (a release, a tag, a comment, a branch) must not listen to it, since a group has not merged yet and may be thrown away.
 - Security-critical code (signature checks, membership, expiry, replay protection, store-and-forward) needs tests that fail when the deciding line is removed. Check this by mutating the line before you ask for review.

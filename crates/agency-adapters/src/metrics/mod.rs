@@ -4,6 +4,7 @@
 //! phrase, never a path with ids in it, and nothing holds a body, a token, an address, or a query string.
 //! The cost of a measurement is one addition to a small map.
 
+pub mod calls;
 pub mod prometheus;
 pub mod serve;
 mod store;

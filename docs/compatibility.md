@@ -32,12 +32,13 @@ Each artifact states which contract versions it speaks, and a node says so throu
 - **Additive by default.** A change that an older peer can safely ignore or refuse needs no new contract version. It does need a rollout rule when an older peer *refuses* it (see "Signed data").
 - **Readers ignore what they do not know**, except where ignoring would be unsafe. A signed org definition is the exception: a node refuses a version with a field it does not know, because it cannot check what it cannot read (see "Signed data").
 - **A breaking change gets a new contract version, side by side with the old one.** Both are served during an overlap. The old one goes only when the rule for that boundary says nobody needs it any more, and never in the same release that adds the new one.
-- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and a test fails if an existing vector changes.
+- **A signature never stops being valid because the code changed.** Old documents keep their canonical JSON: new fields are left out when they are empty or absent. `testdata/vectors.json` pins every signed kind, and CI fails a pull request that changes or removes an existing vector (`scripts/check-vectors-append-only.sh`, which compares the file with the base branch; a new vector is added at the end). A vector that was itself a mistake is corrected only by a line `<entry>: <reason>` in `testdata/vectors-changed.txt`, which the pull request's reviewers read like code.
 
 ## Node and node (`/fed/v1`)
 
 May change without a new version:
 - A new route. An older node answers 404, so a caller treats 404 from an older node as "not supported", never as "not found".
+  - A feature that has a capability (the table under "Discovery") is checked before the route is called: when what the caller kept of the node's `about` is no older than 3 days (the age the root's check of signed fields counts) and does not list the capability, the route is not called, and the reason says that the node runs release X, does not have the feature, and needs an update. The reads of a remote team's `activity` and `effort` do this. With nothing kept, or nothing recent, the route is called as before, and a 404 from a node that lists the capability stays "not found" (the team is not there). A refused call is treated like a 404 for the node's `about`: it is read again ten minutes after, so a node that was updated since is asked again, and a 404 from either read marks it the same way. The release in the reason is another node's text and is printed as such (a character that hides or reorders text shows as `?`).
 - A new optional field in an answer. Readers ignore unknown fields in answers (TeamView, TokenUsage, and the rest).
 - Stricter limits on what a node keeps from others, as long as no current node sends beyond them.
 
@@ -65,6 +66,7 @@ May change without a new version:
   - the root's node checks that every node of the org lists the capability before it signs a version that uses it, and refuses otherwise, naming the nodes that are behind;
   - The check is made on every version the root signs, before it is signed, from what the node has kept of its peers (see "Discovery"), so signing never waits for the network. The nodes it checks are those of the **new** version's teams that do not run on the root's node, and it checks, for a node already in the org, the capabilities the new version uses and the current one does not use yet: a node that cannot read a field the current version already carries refuses the current version already, and refusing every later one would not help it. A node the version **brings into** the org (a first team on it, or a team moved to it) is checked against everything the version uses, since it would refuse every version from the start. The root cannot have read such a node yet, since only nodes of the org's teams are read, so `agency team-add --node` and `agency team-move` read it first; that works because a node that joined the org holds its definition and can answer. Taking a lagging node's teams out of the org leaves it out of the check.
   - A node counts as listing nothing when it was never read, never answered, or its last answer is more than **3 days** old. The refusal names each node, says why (not read, not answered, too old, or the capability it lacks and the release it runs), and says to update those nodes and run `agency sync`, which reads them again.
+  - So one team node that never lists a capability holds back every version that would use the field, for as long as it runs teams of the org: the root signs no such version over it. The owner's remedy is to move that node's teams to another node (`agency team-move`) or to take them out of the org; both take it out of the check. There is no option to sign over a node that lags, because that would cut the node off from the org without anyone being told.
   - a client checks the same before it signs something with a new field.
   - The root can check only the nodes it can name: the nodes of the org's teams, which are the ones it sends each version to. A member's home node that hosts no team is not named in the definition, so it is not checked, and it refuses a version it cannot read until it is updated.
 
@@ -86,7 +88,7 @@ The runtime lists what it speaks in `describe` (`runtimes`, `ops`), and the node
 
 May change without a new version:
 - **A new optional op.** The runtime lists it in `ops`; the node calls it only then, and treats its absence as "not reported" (for example `tokenUsage`, `activity`).
-- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer. Both sides ignore unknown fields.
+- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer (for example `version` in `describe`, the harness release). Both sides ignore unknown fields.
 - **A new value of an existing enum.** It is breaking for a reader that does not know it. The node therefore maps an unknown value to a safe default where one exists, and otherwise refuses the view (503) without crashing. The runtime adds such a value only after the node release that knows it.
 
 Breaking, so `agency-runtime/2`:
@@ -94,7 +96,7 @@ Breaking, so `agency-runtime/2`:
 - removing an op;
 - changing an error status's meaning.
 
-Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use.
+Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use. The node shows which release each hosted team's runtime says it is (`version` of `describe`) in `agency status`, so the owner can see what is in use and ask a team's owner to update the harness; a runtime that does not say its release is shown as not saying it, which the node cannot judge: that one is checked by hand.
 
 ## Node and apps (the Client API, `clientApi`)
 
@@ -121,6 +123,10 @@ Rollout:
 ## Node data and configuration
 
 - `config.json` and the data directory are read by one node only. Upgrades are forward-only: a newer node reads what an older one wrote, and migrates it on start if it must. A downgrade is not supported. A newer configuration may be refused by an older node, because the configuration is read strictly so that a typo never passes silently.
+- **The data format.** The data directory holds a file `format` with one number, the layout of the directory: 1 for everything the releases so far write. A node writes it when it opens a directory that has none (a directory without the file is format 1, since every earlier release wrote format 1), and `agency init` writes it.
+  - A node that finds a number higher than it knows stops before it reads or writes anything else, in every command that uses the directory. It says that the data was written by a newer release and that the node must be updated, or the data restored from a copy made before. The message has no path and no value from the directory, and the directory is left as it was. A `format` file that holds no number is refused the same way, since the node cannot tell which release wrote the data.
+  - A `config.json` with a setting the node does not know (an unknown field or an unknown variant) is refused with a message that says it may come from a newer release, or be misspelled. The node does not start with it.
+  - The number goes up only with a release that migrates the layout, and the step that does it (with the copy of what it replaced) comes with the first migration that needs it.
 - A new configuration field is optional and has a default, so an existing `config.json` keeps working unchanged.
 - The release notes name every migration. A migration keeps what it replaced, in the data directory under a dated name, so a failed upgrade can be undone by hand.
 
@@ -162,12 +168,15 @@ Names start at what came after the first release: every node has what the first 
 | `pushDevice` | feature | `device` in a push registration (an APNs token or a Web Push subscription), and a registration dropped with the device it names. |
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
+| `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
+| `history` | feature | An org's change history for the node's owner: `GET /api/orgs/<org>/history`, the entries of `agency audit --json`. |
+| `members` | feature | The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`. |
 | `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
 
 ## Checks in CI
 
 - **Vectors:** `testdata/vectors.json` must stay byte-identical for every existing entry, so signatures and canonical JSON never drift.
 - **Fixtures:** `testdata/client/` must equal what the node answers.
-- **Earlier versions:** the fixtures and vectors of each released version are kept, and today's code must still decode them (an app's decoding tests, and a node's reading of older org versions and replicas).
+- **Earlier versions:** the data and fixtures of each released version are kept in `testdata/releases/<tag>/` (the last two minor releases), and today's code must still read them: `crates/agency-node/tests/earlier_releases.rs` starts today's node on the data directories two nodes of the release wrote (org versions and their signatures, replicas, the decision log, the configuration), and an app's decoding tests decode what its node answered. [releasing.md](releasing.md) says how a release is kept.
 - **Bindings:** `bindings/` must equal what the Rust types generate.
 - **Unknown words (Apple apps):** every enum the Swift package decodes reads a word it does not know as its own `unknown` (`OpenWireEnum`, or a decoder of its own with an `unknown` case), so that a new value never fails the whole answer and is never taken for a known one. `OpenWireEnumsGuardTests` reads the sources and fails for a decoded enum that does not, unless it is named there with why it is not a word of a node's (what the app keeps on the device for itself).

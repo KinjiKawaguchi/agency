@@ -82,9 +82,9 @@ public enum Ja {
 
         public static func type(_ kind: Request.Kind) -> String {
             switch kind {
-            case .proposal: "稟議書"
+            case .proposal: "稟議"
             case .question: "質問"
-            case .pendingDecision: "判断のお願い"
+            case .pendingDecision: "判断待ち"
             case .unknown: "依頼"
             }
         }
@@ -98,15 +98,6 @@ public enum Ja {
             }
         }
 
-        public static func verbDone(_ kind: Request.Kind) -> String {
-            switch kind {
-            case .proposal: "決裁しました"
-            case .question: "答えました"
-            case .pendingDecision: "判断を送りました"
-            case .unknown: "返事を送りました"
-            }
-        }
-
         /// What Face ID says it is for: the action, then the request's title.
         public static func faceIDReason(_ decision: PreparedDecision) -> String {
             let action = decision.isComment ? "コメントを送る" : verb(decision.kind)
@@ -117,10 +108,6 @@ public enum Ja {
         public static func stoppedBy(_ names: String) -> String { "\(names) は、これが決まるまで先に進めません" }
         public static func waitingOn(_ name: String) -> String { "\(name) さんの判断待ちです。ここで読むことはできますが、答えることはできません。" }
         public static func readDocument(characters: Int) -> String { "本文を読む (約 \(characters) 文字)" }
-        public static func sent(to drafter: String) -> String { "送りました。\(drafter) に届きます。" }
-        public static func sentComment(to drafter: String, kind: Request.Kind) -> String {
-            "コメントしました。\(drafter) に届きます。" + (kind == .proposal ? "まだ決裁はされていません。" : "まだ決まっていません。")
-        }
         public static func sendFailed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static func team(org: String, team: String) -> String { "\(org) / \(team)" }
         public static func thread(name: String, choice: String?) -> String { choice.map { "\(name) は「\($0)」を選びました" } ?? name }

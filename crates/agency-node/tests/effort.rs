@@ -9,7 +9,7 @@ use agency_core::read_auth::sign_read;
 use agency_proto::clock;
 use agency_proto::effort::Effort;
 use agency_proto::Id;
-use common::{alice, id, joined_bob, memory_runtime, node_with, Running};
+use common::{alice, id, joined_bob, memory_runtime, node_with, read_delivery_on, Running};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 
@@ -30,6 +30,8 @@ fn merged(number: u64, title: &str, merged_at: &str) -> MergedPullRequest {
         first_commit_at: None,
         has_issue: false,
         issue_started_at: None,
+        closes_incident: false,
+        work_type: None,
     }
 }
 
@@ -107,6 +109,21 @@ async fn alice_with_everything() -> Running {
     alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
     memory.lock().unwrap().usage = Some(serde_json::from_str(USAGE).unwrap());
     alice
+}
+
+#[tokio::test]
+async fn a_team_on_a_github_host_of_its_own_has_its_effort_read_from_that_host() {
+    let (alice, memory) = alice().await;
+    read_delivery_on(&alice, "git.example.test");
+    alice.delivery.0.lock().unwrap().facts = Some(Ok(facts()));
+    memory.lock().unwrap().usage = Some(serde_json::from_str(USAGE).unwrap());
+    let bob = joined_bob(&alice).await;
+
+    let (status, answer) = federated(&alice, &bob, &id("bob"), &path(14), &path(14)).await;
+    assert_eq!(status, 200, "{answer}");
+    let asked = alice.delivery.0.lock().unwrap().asked.clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].0.host.as_deref(), Some("git.example.test"));
 }
 
 #[tokio::test]

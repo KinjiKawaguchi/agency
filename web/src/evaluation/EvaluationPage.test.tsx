@@ -99,10 +99,10 @@ describe('evaluation', () => {
   })
 })
 
-// What a team spent in the last seven days is made up from the dates of the days (a weekend costs less), so it is the same only
-// for the same days: a node whose clock is not pinned says a different thing each week, and a test of "over the weekly budget" then
-// passes or fails by the date it is run on. The days of this node are the week of 13 to 19 November 2026, which cost more than the weekly budget of the app team.
-const pinnedNode = () => createMockNode({ evaluation: true, now: new Date('2026-11-19T12:00:00Z') })
+// The effort of the days is made up from the dates of the days (a weekend costs less), so it is the same only for the same days, and the
+// week of the budget starts on a Monday: a node whose clock is not pinned says a different thing each week. The days of this node are the
+// week of 13 to 19 November 2026, and its budget is the week from Monday 16 November.
+const pinnedNode = (options: { budget?: true } = {}) => createMockNode({ evaluation: true, now: new Date('2026-11-19T12:00:00Z'), ...options })
 
 describe('evaluation: where effort goes', () => {
   const effortOf = async (team: string) => {
@@ -121,17 +121,58 @@ describe('evaluation: where effort goes', () => {
     expect(rows[5]?.querySelector('.ev-alloc-mark')).toBeNull()
   })
 
+  it('does not ask a node that does not list the effort capability, and says it does not report effort yet', async () => {
+    const node = createMockNode({ evaluation: true, effort: false, now: new Date('2026-11-19T12:00:00Z') })
+    const asked: string[] = []
+    const client = createApiClient((request) => {
+      asked.push(new URL(request.url).pathname)
+      return node.handle(request)
+    })
+    renderApp({ path: '/evaluation', node, client })
+    expect(await screen.findByText('This node does not report effort by work type yet.')).toBeInTheDocument()
+    expect(asked.some((path) => path.endsWith('/effort'))).toBe(false)
+    expect(screen.queryByRole('heading', { level: 3, name: 'App team' })).toBeNull()
+  })
+
+  it('asks a node that lists the effort capability, and shows what it answers', async () => {
+    const node = pinnedNode()
+    const asked: string[] = []
+    const client = createApiClient((request) => {
+      asked.push(new URL(request.url).pathname)
+      return node.handle(request)
+    })
+    renderApp({ path: '/evaluation', node, client })
+    expect(await effortOf('App')).toBeDefined()
+    expect(asked.some((path) => path.endsWith('/effort'))).toBe(true)
+  })
+
+  it('says a failure of the capability read in place, and does not make the section up', async () => {
+    const node = pinnedNode()
+    const client = createApiClient((request) => (new URL(request.url).pathname === '/api/about' ? Promise.resolve(new Response(JSON.stringify({ error: 'The node is busy.' }), { status: 409, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    renderApp({ path: '/evaluation', node, client })
+    expect(await screen.findByText(/The node is busy\./)).toBeInTheDocument()
+    expect(screen.queryByText('This node does not report effort by work type yet.')).toBeNull()
+  })
+
   it('says unclassified work is left unclassified, not guessed', async () => {
     renderApp({ path: '/evaluation', node: pinnedNode() })
     expect(await within((await effortOf('App')).getByText(/stays unclassified/).parentElement as HTMLElement).findByText(/It is not guessed\./)).toBeInTheDocument()
   })
 
-  it('measures the last seven days against the weekly budget', async () => {
+  it('shows the weekly budget as the node computes it, for the week from Monday, and the page computes none', async () => {
+    renderApp({ path: '/evaluation', node: pinnedNode({ budget: true }) })
+    const app = await effortOf('App')
+    expect(await app.findByText('$86 of $100 this week, from Monday 2026-11-16')).toBeInTheDocument()
+    expect(app.getByText('Close to the budget')).toBeInTheDocument()
+    expect(app.getByRole('img', { name: /spent of a weekly budget of \$100: Close to the budget$/ })).toBeInTheDocument()
+    expect(app.getByText('The org is close to its weekly budget: $86 of $100.')).toBeInTheDocument()
+  })
+
+  it('says the plan’s weekly budget, and that the node does not report the spend, when the node has no budget capability', async () => {
     renderApp({ path: '/evaluation', node: pinnedNode() })
     const app = await effortOf('App')
-    expect(app.getByRole('img', { name: /spent of a weekly budget of \$100$/ })).toBeInTheDocument()
-    expect(app.getByText(/over$/)).toBeInTheDocument()
-    expect(app.getByText(/over$/)).toBeInTheDocument()
+    expect(await app.findByText('Weekly budget $100. This node does not report the week’s spend yet.')).toBeInTheDocument()
+    expect(app.queryByRole('img', { name: /weekly budget/ })).toBeNull()
   })
 
   it('says a team has no plan, and compares nothing', async () => {

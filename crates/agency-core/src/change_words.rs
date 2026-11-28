@@ -1,12 +1,16 @@
 //! What a version changes, in words, for the owner's presence prompt: "acme: add member carol (Carol)",
 //! "acme: replace the key of member bob", "acme: move the root to a new key". Every kind of change the
 //! version makes is named, or at least counted by kind: a prompt that leaves a change out teaches the owner
-//! that it signs only what it says.
+//! that it signs only what it says. A member taking a seat (or anything else into its `formerly`, which
+//! moves to it what was addressed there) is always named, whatever else the version does.
 use agency_proto::org::{printable, Person, Role};
 use agency_proto::{Id, OrgDefinition};
 
-/// The most changes named one by one; the rest are counted by kind.
+/// The most changes named one by one; the rest are counted by kind. Claims are named whatever their number.
 const MOST_NAMED: usize = 4;
+
+/// The kind of a member taking or giving up an id in its `formerly`: never only counted.
+const CLAIM: &str = "claim";
 
 /// One change: its kind ("member", "device", "team", ...) and its words.
 struct Change {
@@ -60,6 +64,7 @@ fn member_changes(before: &OrgDefinition, after: &OrgDefinition, changes: &mut V
                 "member",
                 format!("add member {} ({label}){role}", person.id),
             ));
+            claim_changes(before, &[], person, changes);
             continue;
         };
         if old.public_key != person.public_key || old.account != person.account {
@@ -84,6 +89,7 @@ fn member_changes(before: &OrgDefinition, after: &OrgDefinition, changes: &mut V
         let without_devices = |one: &Person| {
             let mut kept = one.clone();
             kept.devices.clear();
+            kept.formerly.clear();
             kept
         };
         let is_named = changes.len() > named_before
@@ -94,11 +100,28 @@ fn member_changes(before: &OrgDefinition, after: &OrgDefinition, changes: &mut V
             changes.push(change("member", format!("change member {}", person.id)));
         }
         device_changes(old, person, changes);
+        claim_changes(before, &old.formerly, person, changes);
     }
     for old in &before.people {
         if !after.people.iter().any(|one| one.id == old.id) {
             changes.push(change("member", format!("remove member {}", old.id)));
         }
+    }
+}
+
+/// Each id a member takes into its `formerly` or gives up: what was addressed to it then reaches, or no
+/// longer reaches, that member. A seat of the version before is named with its label; any other id is
+/// said to be no seat, since that is not what a claim is for.
+fn claim_changes(before: &OrgDefinition, old: &[Id], person: &Person, changes: &mut Vec<Change>) {
+    for id in person.formerly.iter().filter(|id| !old.contains(id)) {
+        let what = match before.seats.iter().find(|seat| &seat.id == id) {
+            Some(seat) => format!("seat {id} ({})", printable(&seat.label)),
+            None => format!("{id}, which is no seat"),
+        };
+        changes.push(change(CLAIM, format!("{} takes {what}", person.id)));
+    }
+    for id in old.iter().filter(|id| !person.formerly.contains(id)) {
+        changes.push(change(CLAIM, format!("{} gives up {id}", person.id)));
     }
 }
 
@@ -214,6 +237,26 @@ fn all_changes(before: &OrgDefinition, after: &OrgDefinition) -> Vec<Change> {
     changes
 }
 
+/// Every change from `before` to `after` in words, one each, none left out: what an audit of the org lists
+/// (`audit`). A change these words do not know yet is said as such, never left unsaid.
+pub fn every_change(before: &OrgDefinition, after: &OrgDefinition) -> Vec<String> {
+    let changes: Vec<String> = all_changes(before, after)
+        .into_iter()
+        .map(|one| one.words)
+        .collect();
+    if !changes.is_empty() {
+        return changes;
+    }
+    let mut same_place = after.clone();
+    same_place.version = before.version;
+    same_place.prev = before.prev.clone();
+    same_place.at = before.at.clone();
+    if &same_place == before {
+        return vec![];
+    }
+    vec!["change something these words do not name".to_owned()]
+}
+
 /// The changes from `before` to `after`, for org `after.org`: up to `MOST_NAMED` named one by one, and the
 /// rest counted with their kinds, so nothing a press signs goes unsaid.
 pub fn describe(before: Option<&OrgDefinition>, after: &OrgDefinition) -> String {
@@ -233,12 +276,15 @@ pub fn describe(before: Option<&OrgDefinition>, after: &OrgDefinition) -> String
         }
         return format!("{org}: sign the next version, which changes nothing else");
     }
-    let named: Vec<&str> = changes
+    let (claims, others): (Vec<&Change>, Vec<&Change>) =
+        changes.iter().partition(|one| one.kind == CLAIM);
+    let shown = others.len().min(MOST_NAMED);
+    let named: Vec<&str> = claims
         .iter()
-        .take(MOST_NAMED)
+        .chain(&others[..shown])
         .map(|one| one.words.as_str())
         .collect();
-    let rest = &changes[named.len()..];
+    let rest = &others[shown..];
     let mut words = format!("{org}: {}", named.join(", "));
     if !rest.is_empty() {
         let mut kinds: Vec<&str> = rest.iter().map(|one| one.kind).collect();
@@ -267,6 +313,22 @@ mod tests {
     }
 
     #[test]
+    fn every_change_says_a_change_no_words_name_and_says_nothing_for_none() {
+        let mut before = org();
+        before.revoked = vec![AccountKey::from_seed([2; 32]).public()];
+        let mut after = before.clone();
+        after.version = 2;
+        after.revoked.clear();
+        assert_eq!(
+            every_change(&before, &after),
+            ["change something these words do not name"]
+        );
+        let mut same = before.clone();
+        same.version = 2;
+        assert!(every_change(&before, &same).is_empty());
+    }
+
+    #[test]
     fn a_change_no_words_name_is_still_said() {
         let mut before = org();
         before.revoked = vec![AccountKey::from_seed([2; 32]).public()];
@@ -282,5 +344,81 @@ mod tests {
             said,
             "acme: sign the next version, which changes nothing else"
         );
+    }
+
+    fn with_seats(count: usize) -> OrgDefinition {
+        let mut before = org();
+        before.seats = (0..count)
+            .map(|n| agency_proto::seat::Seat {
+                id: Id::parse(&format!("seat-{n}")).unwrap(),
+                label: format!("Seat {n}"),
+                department: None,
+                ask_about: vec![],
+                relays: vec![],
+            })
+            .collect();
+        let bob = AccountKey::from_seed([3; 32]).public();
+        before.people.push(Person::new(
+            Id::parse("bob").unwrap(),
+            "Bob",
+            Id::parse("bob").unwrap(),
+            bob,
+        ));
+        before
+    }
+
+    #[test]
+    fn every_claim_is_named_however_many_other_changes_there_are() {
+        let before = with_seats(6);
+        let mut after = before.clone();
+        after.version = 2;
+        let taken: Vec<Id> = before.seats.iter().map(|seat| seat.id.clone()).collect();
+        after.seats.clear();
+        after.people[0].formerly = taken;
+        let said = describe(Some(&before), &after);
+        for n in 0..6 {
+            assert!(
+                said.contains(&format!("bob takes seat seat-{n} (Seat {n})")),
+                "{said}"
+            );
+        }
+        assert!(
+            said.contains("and 2 other changes: seat"),
+            "the seats gone are counted: {said}"
+        );
+    }
+
+    #[test]
+    fn a_claim_of_an_id_that_is_no_seat_and_giving_one_up_are_said() {
+        let before = with_seats(0);
+        let mut after = before.clone();
+        after.version = 2;
+        after.people[0].formerly = vec![Id::parse("alice").unwrap()];
+        let said = describe(Some(&before), &after);
+        assert_eq!(said, "acme: bob takes alice, which is no seat");
+        let mut later = after.clone();
+        later.version = 3;
+        later.people[0].formerly.clear();
+        assert_eq!(describe(Some(&after), &later), "acme: bob gives up alice");
+    }
+
+    #[test]
+    fn a_new_member_who_takes_a_seat_is_said_to() {
+        let before = with_seats(1);
+        let mut after = before.clone();
+        after.version = 2;
+        after.seats.clear();
+        let carol = AccountKey::from_seed([4; 32]).public();
+        let person = Person::new(
+            Id::parse("carol").unwrap(),
+            "Carol",
+            Id::parse("carol").unwrap(),
+            carol,
+        )
+        .with_formerly(vec![Id::parse("seat-0").unwrap()]);
+        after.people.push(person);
+        let said = describe(Some(&before), &after);
+        assert!(said.contains("carol takes seat seat-0 (Seat 0)"), "{said}");
+        assert!(said.contains("add member carol (Carol)"), "{said}");
     }
 }
