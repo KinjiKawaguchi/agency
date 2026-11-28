@@ -3,6 +3,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod budget;
 pub mod canonical;
 pub mod claim;
 pub mod client;

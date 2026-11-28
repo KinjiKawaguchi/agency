@@ -5,6 +5,7 @@ mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
+mod member_cli;
 mod metrics_cli;
 mod outcome_cli;
 mod peer_cli;
@@ -22,8 +23,6 @@ use agency_core::logging_config::LogLevel;
 use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
-use agency_core::push::notify_waiting;
-use agency_core::ships::record_all;
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
@@ -33,7 +32,6 @@ use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use device_cli::{device_add, CliDevice};
-use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -107,6 +105,7 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    MemberRemove(member_cli::MemberRemove),
     SeatMerge(seat_cli::SeatMerge),
     /// Makes a seven-day claim link for one seat and one email (on the root key's node)
     SeatInvite {
@@ -268,16 +267,24 @@ fn owner_of(account: &str, label: &str) -> Result<Account> {
 }
 
 fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
+    data.check_format()?;
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
     if !is_node_origin(&config.url) {
         bail!("--url must be http(s)://host[:port]");
     }
+    if agency_proto::runtime::is_reserved_name(&config.account.id) {
+        bail!(
+            "--account {} is a name a team runtime reserves; choose another account id",
+            config.account.id
+        );
+    }
     let key = data.create_key()?;
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
     data.save_config(&config)?;
+    data.ensure_format()?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
@@ -288,6 +295,12 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     }
     Ok(())
 }
+
+/// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
+/// move only spelled the same origin another way.
+const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
+whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
+the default port) changes nothing.";
 
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
@@ -303,6 +316,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::read_auth::status_lines(node) {
+        println!("{line}");
+    }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
     }
@@ -482,55 +498,11 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
-    let background = node.clone();
-    let background_log = logger.clone();
-    tokio::spawn(async move {
-        let logger = background_log;
-        let mut tick = 0u64;
-        loop {
-            if tick.is_multiple_of(2) {
-                // Expired held changes are dropped, and a held join's invite freed, even when nobody looks.
-                if let Err(error) = agency_core::pending_root::waiting(&background) {
-                    logger.warn("root", &format!("sweeping held changes failed: {error}"));
-                }
-                if let Err(error) = finish_joins(&background).await {
-                    logger.warn("joins", &format!("asking for held joins failed: {error}"));
-                }
-                if let Err(error) = refresh(&background).await {
-                    logger.warn(
-                        "replicas",
-                        &format!("re-reading the replicas failed: {error}"),
-                    );
-                }
-                if let Err(error) = record_all(&background).await {
-                    eprintln!("agency: remembering the days epics shipped failed: {error}");
-                }
-                match notify_waiting(&background).await {
-                    Ok(pass) => {
-                        for recovery in pass.recoveries {
-                            logger.warn("recovery", &recovery);
-                            eprintln!("agency: {recovery}");
-                        }
-                        for failure in pass.failures {
-                            logger.warn(
-                                "push",
-                                &format!("a push notification was not sent: {failure}"),
-                            );
-                        }
-                    }
-                    Err(error) => logger.warn(
-                        "requests",
-                        &format!("checking for new requests failed: {error}"),
-                    ),
-                }
-            }
-            if let Err(error) = deliver_due(&background).await {
-                logger.warn("outbox", &format!("retrying the outbox failed: {error}"));
-            }
-            tick += 1;
-            tokio::time::sleep(Duration::from_secs(15)).await;
-        }
-    });
+    agency_node::background::start(
+        node.clone(),
+        logger.clone(),
+        agency_node::background::Schedule::default(),
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -543,42 +515,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     Ok(())
 }
 
-/// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
-/// report becomes `partial`, as calculated by `agency_core::budget::status`.
-async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
-    let definition = agency_core::client::org_definition(node, &org)?;
-    if definition.team(&team).is_none() {
-        bail!("not found");
-    }
-    let now = node.now();
-    let offset = node.utc_offset();
-    let start = agency_core::budget::week_start(now, offset);
-    let today = agency_proto::Date::parse(&now.to_offset(offset).date().to_string())
-        .expect("a time date is a valid protocol date");
-    let mut teams = definition
-        .teams
-        .iter()
-        .filter(|place| place.plan.is_some())
-        .map(|place| place.id.clone())
-        .collect::<BTreeSet<_>>();
-    teams.insert(team.clone());
-    let reads = teams.into_iter().map(|id| async {
-        let spend = tokio::time::timeout(
-            Duration::from_secs(8),
-            agency_core::usage::team_usage(node, &org, &id, Some(7)),
-        )
-        .await
-        .ok()
-        .and_then(|answer| answer.ok())
-        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
-        (id, spend)
-    });
-    let mut spends = BTreeMap::new();
-    for (id, spend) in futures_util::future::join_all(reads).await {
-        spends.insert(id, spend);
-    }
-    let report = agency_core::budget::status(&definition, start, &team, &spends)
-        .expect("the selected team was checked in the signed definition");
+/// Prints the budget status, which the Client API answers too: an unavailable team's runtime makes the
+/// report `partial` and does not prevent it.
+async fn print_budget_status(node: &Node, org: &Id, team: &Id) -> Result<()> {
+    let report = agency_adapters::budget::budget_status(node, org, team).await?;
     println!("{}", agency_node::budget::json_line(&report)?);
     Ok(())
 }
@@ -603,6 +543,7 @@ async fn run(cli: Cli) -> Result<()> {
         .with_local_clients(!no_local_clients);
         return init(&data, config);
     }
+    data.check_format()?;
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
@@ -622,7 +563,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Budget { command } => match command {
             BudgetCommand::Status { org, team } => {
-                budget_status(&node, id(&org)?, id(&team)?).await?
+                print_budget_status(&node, &id(&org)?, &id(&team)?).await?
             }
         },
         Command::OrgCreate { org, label } => {
@@ -685,6 +626,7 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
         Command::SeatInvite { org, seat, email } => {
             let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
@@ -736,6 +678,7 @@ async fn run(cli: Cli) -> Result<()> {
                 "Moved team {team} of org {org} to {origin} (version {})",
                 doc.body.version
             );
+            println!("{TEAM_MOVE_NOTE}");
         }
         Command::Invite {
             org,

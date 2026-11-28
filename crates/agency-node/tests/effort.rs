@@ -30,6 +30,8 @@ fn merged(number: u64, title: &str, merged_at: &str) -> MergedPullRequest {
         first_commit_at: None,
         has_issue: false,
         issue_started_at: None,
+        closes_incident: false,
+        work_type: None,
     }
 }
 

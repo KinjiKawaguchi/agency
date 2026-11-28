@@ -13,7 +13,7 @@ use agency_core::invites::{accept_join, invite, open_invite};
 use agency_core::orgs::{self, receive};
 use agency_core::outbox::{deliver_due, pending, Parcel, ParcelBody};
 use agency_core::ports::ConfigStore;
-use agency_core::read_auth::{sign_read, verify_read};
+use agency_core::read_auth::{sign_read, verify_read, ReadPolicy};
 use agency_core::signed_decisions::decide_with_device;
 use agency_core::{ErrorKind, Node, Ports};
 use agency_proto::clock::Duration;
@@ -259,7 +259,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
                 &signed_at(offset),
                 "GET",
                 path,
-                now
+                now,
+                &ReadPolicy::open(None)
             )
             .is_ok(),
             "{offset}"
@@ -273,7 +274,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
                 &signed_at(offset),
                 "GET",
                 path,
-                now
+                now,
+                &ReadPolicy::open(None)
             )
             .unwrap_err()
             .kind,
@@ -288,7 +290,8 @@ fn signed_reads_are_accepted_within_five_minutes_either_way() {
             &signed_at(0),
             "GET",
             "/fed/v1/teams/acme/other/view",
-            now
+            now,
+            &ReadPolicy::open(None)
         )
         .is_err(),
         "the signature covers the path"
@@ -462,4 +465,88 @@ async fn a_first_copy_must_be_signed_by_the_trusted_root_key() {
         .await
         .unwrap();
     assert!(carol.node.store().load_org(&id("acme")).is_some());
+}
+
+#[tokio::test]
+async fn an_applied_id_is_kept_while_its_envelope_can_still_be_sent_and_dropped_with_the_next_write_after(
+) {
+    let alice = alice();
+    let (org, team) = (id("acme"), id("app"));
+    let known = |byte: u8| {
+        alice
+            .node
+            .store()
+            .is_applied(&EnvelopeId::from_bytes([byte; 16]))
+    };
+    let applied = || alice.runtime.0.lock().unwrap().applied.len();
+    let at = |plus: Duration| {
+        let when = agency_proto::clock::parse(T0).unwrap() + plus;
+        when.format(&time::format_description::well_known::Rfc3339)
+            .unwrap()
+    };
+
+    assert_eq!(
+        accept_envelope(&alice.node, &org, &team, envelope(T0, 1)).await,
+        Ok(Accepted::Applied)
+    );
+    // Six days on: a copy within the envelope's life is still answered as a duplicate, and nothing is dropped.
+    alice.clock.advance(Duration::days(6));
+    assert_eq!(
+        accept_envelope(&alice.node, &org, &team, envelope(T0, 1)).await,
+        Ok(Accepted::Duplicate)
+    );
+    let now = at(Duration::days(6));
+    assert_eq!(
+        accept_envelope(&alice.node, &org, &team, envelope(&now, 2)).await,
+        Ok(Accepted::Applied)
+    );
+    assert!(known(1) && known(2));
+
+    // Seven days and two minutes: the first envelope has expired, but its id is kept for five minutes more
+    // (the skew an envelope's time may be ahead by), and a write now does not drop it.
+    alice
+        .clock
+        .set(&at(Duration::days(7) + Duration::minutes(2)));
+    assert_eq!(
+        accept_envelope(
+            &alice.node,
+            &org,
+            &team,
+            envelope(&alice.node.now_text(), 3)
+        )
+        .await,
+        Ok(Accepted::Applied)
+    );
+    assert!(known(1), "within the window of 7 days and 5 minutes");
+
+    // Past it, the next write drops the id, and a copy of the envelope is refused as expired: never applied again.
+    alice
+        .clock
+        .set(&at(Duration::days(7) + Duration::minutes(6)));
+    assert_eq!(
+        accept_envelope(
+            &alice.node,
+            &org,
+            &team,
+            envelope(&alice.node.now_text(), 4)
+        )
+        .await,
+        Ok(Accepted::Applied)
+    );
+    assert!(
+        !known(1),
+        "older than the window: dropped as a new id was written"
+    );
+    assert!(
+        known(2) && known(3) && known(4),
+        "what is within the window stays"
+    );
+    assert_eq!(
+        accept_envelope(&alice.node, &org, &team, envelope(T0, 1))
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::BadRequest
+    );
+    assert_eq!(applied(), 4, "each envelope was applied once");
 }

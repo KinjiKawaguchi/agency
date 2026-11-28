@@ -2,6 +2,7 @@
 //! repositories and about the CI runs on their default branches. An adapter reads them from where they
 //! live (GitHub); nothing here reaches outside.
 use agency_proto::clock::OffsetDateTime;
+use agency_proto::view::WorkType;
 
 /// What a team's delivery numbers are worked out from.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -26,6 +27,10 @@ pub struct MergedPullRequest {
     pub has_issue: bool,
     /// When the issue first moved to In Progress on the board, if it did.
     pub issue_started_at: Option<OffsetDateTime>,
+    /// Whether an issue it closes carries the label `incident`.
+    pub closes_incident: bool,
+    /// The board's "Work type" of the first issue it closes that has one, when the board has it.
+    pub work_type: Option<WorkType>,
 }
 
 /// How one workflow run on the default branch ended.

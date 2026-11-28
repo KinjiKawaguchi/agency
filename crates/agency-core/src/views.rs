@@ -5,7 +5,7 @@ use crate::node::Node;
 use crate::orgs;
 use crate::peer_about;
 use crate::ports::{DefinitionAccess, PeerError};
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::org::{SignedOrg, TeamPlace};
@@ -112,13 +112,14 @@ pub fn addressed_party<'a>(
 }
 
 /// The seat or external party a request is addressed to on a team elsewhere, as the team's node said the
-/// reader answers for it, with its id and its label as `definition` has it. When the definition has no such
-/// seat or external party yet (this node has not read the version that added it), the label is the id: the
-/// request is still the reader's to answer, and what it is for can still be said. `None` when `to` names no
-/// party the reader answers for, or a seat the reader took: the request is their own, and answers for no one.
+/// reader answers for it, with its id and label as `definition` has it. Only what this node's own definition
+/// confirms is said: a seat or external party the org has and whose `relays` name the reader (or a seat with
+/// none). `None` otherwise, when `to` names no party the reader answers for, or a seat the reader took. The
+/// request may still be the reader's to answer (the team's node decides that); it is then said to be for no one.
 pub fn remote_addressed_party<'a>(
     definition: &'a OrgDefinition,
-    answers_for: &'a [AnswersFor],
+    answers_for: &[AnswersFor],
+    reader: &Id,
     to: Option<&str>,
 ) -> Option<(&'a Id, &'a str)> {
     let answered = answers_for
@@ -127,14 +128,22 @@ pub fn remote_addressed_party<'a>(
     if is_taken_seat(definition, &answered.id) {
         return None;
     }
-    let seat = definition.seats.iter().find(|one| one.id == answered.id);
-    let external = definition
-        .externals
+    // Only what this node's own definition says: a seat or external party of the org that the reader answers
+    // for. A seat with no relays is answered by the team's owner, whom only the team's node knows.
+    let seat = definition
+        .seats
         .iter()
-        .find(|one| one.id == answered.id);
-    seat.map(|one| (&one.id, one.label.as_str()))
-        .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
-        .or(Some((&answered.id, answered.id.as_str())))
+        .find(|one| one.id == answered.id)
+        .filter(|one| one.relays.is_empty() || one.relays.contains(reader))
+        .map(|one| (&one.id, one.label.as_str()));
+    let external = || {
+        definition
+            .externals
+            .iter()
+            .find(|one| one.id == answered.id && one.relays.contains(reader))
+            .map(|one| (&one.id, one.label.as_str()))
+    };
+    seat.or_else(external)
 }
 
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team
@@ -306,7 +315,7 @@ async fn fetch_view(
     place: &TeamPlace,
 ) -> Result<FederatedView, FetchFailure> {
     let path = routes::view(org, &place.id);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let fetched = node
         .peers()
         .get_view(&place.node, &path, &auth)
@@ -359,25 +368,30 @@ async fn refresh_replica(node: &Node, org: &Id, place: &TeamPlace) -> Result<()>
     node.store().save_replica(org, &place.id, &next)
 }
 
-/// Takes a newer org definition from one of the org's other nodes, if it has one.
+/// Takes a newer org definition from one of the org's other nodes, if it has one: a node whose team was last read
+/// without an error, so that a node that does not answer is not the one asked every time.
 async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     let org = &doc.body.org;
-    let Some(place) = doc
+    let elsewhere: Vec<&TeamPlace> = doc
         .body
         .teams
         .iter()
-        .find(|place| !node.runs_here(org, &place.id))
+        .filter(|place| !node.runs_here(org, &place.id))
+        .collect();
+    let answered = |place: &&&TeamPlace| {
+        node.store()
+            .load_replica(org, &place.id)
+            .is_some_and(|replica| replica.error.is_none() && replica.fetched_at.is_some())
+    };
+    let Some(place) = elsewhere
+        .iter()
+        .find(answered)
+        .or_else(|| elsewhere.first())
     else {
         return;
     };
     let path = routes::definition(&doc.body.org);
-    let access = DefinitionAccess::Signed(sign_read(
-        node.key(),
-        &node.account(),
-        "GET",
-        &path,
-        node.now(),
-    ));
+    let access = DefinitionAccess::Signed(sign_for_peer(node, &doc.body.org, &place.node, &path));
     if let Ok(newer) = node
         .peers()
         .get_definition(&place.node, &path, &access)
@@ -390,24 +404,50 @@ async fn refresh_definition(node: &Node, doc: &SignedOrg) {
     }
 }
 
-/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to.
+/// How many teams on other nodes are read at once. A team node that does not answer holds one of these for its
+/// timeout, not the whole pass.
+pub const READS_AT_ONCE: usize = 8;
+
+/// Re-reads the replicas of every team on other nodes in the orgs this node's account belongs to, at most
+/// `READS_AT_ONCE` at a time, and, at the same time, org by org, what the org's other nodes say about themselves
+/// and the org's definition. The first failure to keep what was read is returned once everything was tried.
 pub async fn refresh(node: &Node) -> Result<()> {
+    use futures_util::stream::{self, StreamExt};
     let account = node.account();
-    for doc in node
+    let orgs: Vec<SignedOrg> = node
         .store()
         .orgs()
         .into_iter()
         .filter(|doc| doc.body.member(&account).is_some())
-    {
-        let org = &doc.body.org;
-        let elsewhere = doc.body.teams.iter();
-        for place in elsewhere.filter(|place| !node.runs_here(org, &place.id)) {
-            refresh_replica(node, org, place).await?;
-        }
-        peer_about::refresh(node, &doc.body).await?;
-        refresh_definition(node, &doc).await;
-    }
-    Ok(())
+        .collect();
+    let elsewhere: Vec<(Id, TeamPlace)> = orgs
+        .iter()
+        .flat_map(|doc| {
+            let org = &doc.body.org;
+            doc.body
+                .teams
+                .iter()
+                .filter(|place| !node.runs_here(org, &place.id))
+                .map(|place| (org.clone(), place.clone()))
+        })
+        .collect();
+    let replicas = stream::iter(elsewhere)
+        .map(|(org, place)| async move { refresh_replica(node, &org, &place).await })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let peers = stream::iter(orgs)
+        .map(|doc| async move {
+            let (about, ()) = futures_util::future::join(
+                peer_about::refresh(node, &doc.body),
+                refresh_definition(node, &doc),
+            )
+            .await;
+            about
+        })
+        .buffer_unordered(READS_AT_ONCE)
+        .collect::<Vec<Result<()>>>();
+    let (replicas, peers) = futures_util::future::join(replicas, peers).await;
+    replicas.into_iter().chain(peers).collect()
 }
 
 #[cfg(test)]

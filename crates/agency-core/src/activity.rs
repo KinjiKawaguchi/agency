@@ -5,7 +5,7 @@ use crate::config::HostedTeam;
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::PeerError;
-use crate::read_auth::{sign_read, verify_read_once, ReadAuth};
+use crate::read_auth::{sign_for_peer, verify_read_once, ReadAuth};
 use crate::routes;
 use crate::unseen;
 use agency_proto::activity::{
@@ -98,7 +98,7 @@ async fn remote_activity(
     limit: u32,
 ) -> Result<Activity> {
     let path = routes::activity(org, &place.id, since, limit);
-    let auth = sign_read(node.key(), &node.account(), "GET", &path, node.now());
+    let auth = sign_for_peer(node, org, &place.node, &path);
     let activity = node
         .peers()
         .get_activity(&place.node, &path, &auth)

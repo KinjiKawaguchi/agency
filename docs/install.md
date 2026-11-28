@@ -284,7 +284,7 @@ Add `access` to `~/.agency/config.json` and restart the node:
 
 - `ownerEmail` is the email you sign in to Access with. Only it, and the emails of the members this node hosts as guests, are let in; any other sign-in gets 403, even if your Access policy lets it through. Only `ownerEmail` may write as the owner (decide, add devices).
 - Once `access` is set, `http://127.0.0.1:4400/` on the node's Mac is for reading only: decide and add devices at `https://agency.example.com/`, signed in to Access, even on that Mac. This keeps other programs on the Mac from writing as you.
-- For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. See [apple.md](apple.md).
+- For the iPhone app's sign-in outside its web view, add `"appId": "ABCDE12345.com.example.agency"` (`<team id>.<bundle id>`) and the second bypass above. `appId` alone is enough only for a host that is in the app build's associated domains: the app then signs in through a universal link of the node's own host, which only the app the association file names receives. If you build the app yourself, put your host in `AGENCY_ASSOCIATED_HOST` and leave `allowSchemeSignIn` off: that is the safe way. With an app build whose associated domains you do not control, your host is not in them: either set `"allowSchemeSignIn": true` in `access`, beside `appId` (off by default, and it does nothing without `appId`), or do not sign in to the node from the app (the page at the node's address still works in the browser, and so do notices). The scheme is delivered to the app that started the sign-in, whatever app that is. Turn it on only if every app on every device you sign in from is one you trust. See [apple.md](apple.md).
 - To notify your iPhone of new requests, devices waiting to be added, and refused decisions, add a `push` setting with the app's APNs key; see the README. Add `"hideTitles": true` to it to send no title or label to Apple.
 - To notify your browsers too (Chrome, Edge, Firefox, and Safari on a Mac or in the installed app, on Android, Windows, Linux, and macOS; not a browser on an iPhone, which has its own app), add `"webPush": {}` to `config.json` and restart. The node makes its own key in the data directory (`web-push-vapid.key`; keep it private like the account key) and the **Devices** screen then offers to turn notifications on for each browser. The notices go through the browser's push service (Google, Mozilla, Apple, or Microsoft), encrypted to the browser. `"subject"` (a `mailto:` or `https://` address the push service may reach you at; the push services (Google, Mozilla, Apple, Microsoft) read it, so it tells them which node this is: use an alias made for this if you do not want that to be the node's host name; default the node's public host name, and without `access` the node's own address, which Apple's push service refuses: set it to a `mailto:` address then) and `"extraHosts"` (more push services to allow) are optional. To send no title or label to any of them, Apple included, put `"hideTitles": true` at the top of `config.json`; it hides them for the iPhone too.
 
@@ -455,10 +455,11 @@ To turn it on for a team, name its repositories (`owner/name`) in `teams[].deliv
 ]
 ```
 
-- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
+- The node reads GitHub through the machine's own `gh` login, read-only: it runs `gh api` for reads only (a GraphQL query for merged pull requests, the issues they close, their labels and their "Work type" on the board, and when those moved to In Progress on the board, and a read of the workflow runs on the default branch). It holds no token, and the configuration has none. `gh` must be installed, on the `PATH` of the launchd agent or the systemd unit (see "Run it with launchd"), and logged in as the account that runs the node (`gh auth login`). `GH_HOST` and the rest of `gh`'s environment work as they do for `gh`.
 - Prefer a login that can only read: `gh auth login --with-token` with a fine-grained token that has read access to the repositories' pull requests, issues, Actions, and metadata, and to the project (for the time an issue moved to In Progress).
 - When the team's runtime reports participants (`participantMetrics`), the team's numbers also say, for each participant, how long their sessions worked, waited for a human's decision, and sat idle, what their tokens cost, and how many of the merged pull requests are theirs (`merged`, and `unattributedMerged` for the ones whose author the runtime does not know). The node asks for the same days at its own time zone. Without the op, or when what the runtime answers is not what was asked for, the participants are left out and everything else is the same. The time spent waiting for a human is a lower bound where the runtime sees only some of the waits.
 - What GitHub said is kept for ten minutes for each team and period, so reading the screen does not spend the login's rate limit. Nothing is written to disk.
+- For the effort screen to tell improvement from new feature, give the board a single-select field named `Work type` with the options `New feature`, `Improvement`, `Maintenance`, `Tech debt`, and `Incident`, and set it on the issues. A pull request that closes an issue with no value is split by its title's type, and a fix of an issue labeled `incident` is incident.
 - The effort screen (where a team's tokens went, by work type, at `/api/orgs/<org>/effort`) is worked out from the same repositories and from the token usage the team's runtime reports (`tokenUsage`). It is an estimate: the runtime reports cost by day, so a day's cost is shared out among the types of the pull requests merged that day, or, on a day nothing merged, among those of the next day that has some ([protocol.md](protocol.md#evaluation) has the rule). A team whose runtime does not report token usage is listed with a reason, never with zero.
 - A team with no `delivery`, or whose numbers cannot be read, is not an error: the screen lists it with the reason:
 
@@ -514,6 +515,20 @@ The job must already be loaded (see "Run it with launchd"). The script does not 
 
 The data directory is not touched.
 The node picks a new write token each time it starts, so open pages reload once before their next write.
+
+### Signed reads between nodes of different releases
+
+Nodes of one org read each other with signed reads. A node of this release makes a read for one particular node (it signs that node's id with it), once it knows that node lists `readAudience`; a node takes such a read only if it names itself. Update the nodes of an org in any order. A node still reads an older one the old way, and answers an older one the old way too, with two things to know:
+
+- Once a node has taken a read that names it from an account, it takes no older read from that account. If one account has two nodes (for example one on a Mac and one on another machine) and you update one of them, the other one's reads of the updated node are refused (the node answers `404`, like for any read it refuses) until you update it as well. The updated node writes the reason to its log (`agency logs`): `a read signed by alice that names no node; …`.
+- To let the older node through until you update it, add the account to `config.json` of the node that refuses, and restart it:
+
+  ```json
+  "federation": { "unboundReadAccounts": ["alice"] }
+  ```
+
+  Take the line out once both nodes are updated. The same line helps an account whose node you rolled back to a release without `readAudience`. A node keeps the accounts it has taken such a read from in `bound-readers.json` in its data directory, so a restart does not reset anything, and `agency status` lists them.
+- When every node of the org is updated, set `"federation": { "requireReadAudience": true }` on each node to refuse the older reads from every account. Without it, a read that was made the old way and captured before its account first named the node can still be replayed there. `requireReadAudience` needs `url` to be this node's origin as `https://<host>[:<port>]` (or `http://` on a loopback address), and the node refuses to start otherwise.
 
 ### The measurements
 
@@ -579,9 +594,10 @@ The node writes these to `~/.agency/logs/node.jsonl`. The table shows each as `a
 |---|---|
 | `Node running: <url> (listening on <address>)` and `Web client: …` | The node started. |
 | `agency: cannot listen on 127.0.0.1:4400: Address already in use` | Another process holds the port; launchd or systemd tries again every 10 seconds. `lsof -nP -iTCP:4400 -sTCP:LISTEN` shows which. |
-| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. |
+| `agency: team acme/app runs on this node (…), but the org places it at …` | The node's `url` changed. Run the `agency team-move` the line gives. If only the spelling differs (the host's case, the default port), nothing else changes; after a real rename, decisions made before it and not yet delivered are refused and must be made again. |
 | `agency: the access setting is malformed (…)` | Fix `access` in `config.json`. Until then, every request through Cloudflare is refused. |
 | `agency: the access appId is malformed (…)` | Fix `appId`. The rest of `access` still works; the app sign-in does not. |
+| The app's sign-in sheet shows `this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)`, and the node answered `400` to `via=scheme` | Your host is not in the app build's associated domains, so the app asks for the custom scheme, which the node refuses by default. If you build the app yourself, put the host in the build's `AGENCY_ASSOCIATED_HOST`. Otherwise set `"allowSchemeSignIn": true` in `access`, beside `appId` (read the risk where it is described, above). |
 | `agency: refused an Access request (no Access token)` | A request came through Cloudflare without an Access sign-in: a bypass covers more than the two paths, or Access is not in front of the host name. |
 | `agency: refused an Access request (wrong audience)` | `audience` is not the application's AUD tag. |
 | `agency: refused an Access request (wrong issuer)` | `teamDomain` is not your team domain. |

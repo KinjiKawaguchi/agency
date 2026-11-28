@@ -21,6 +21,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Machine** (マシン). The computer a node runs on. A machine can run several nodes (each with its own data directory).
 - **Node** (ノード). One running `agency` with its data directory: its account key, its replicas, its outbox, its configuration. It serves federation routes, the Client API, and the web client on one port.
 - **Node origin**. The URL other nodes reach a node at (`url` in `config.json`, `teams[].node`, an invite's `node`).
+- **Node id**. The first 16 bytes of the SHA-256 of `agency-node:` and the node's origin, as 32 lowercase hex characters (`testdata/node-id.json`). A node puts it in its pushes (`agency.node`), and a node that reads another names it in a signed read (`x-agency-audience`), so that the read is good for that node only. It is not a secret and not the host name. A node whose `url` is not a node origin has none. Not shown to people.
 - **Public host name** (ホスト名). The name a node is reached at from outside, through Cloudflare (`access.publicHost`). It is a name, never a machine. The node's origin and its public host name can be the same host name, but they are two settings.
 
 ## Orgs and teams
@@ -73,7 +74,7 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 ## How data moves
 
 - **Replica** (写し). A copy of a team's view, or of an org definition, that a node keeps of what another node writes. It is never edited, and says when it was read.
-- **Outbox**. A node's queue of envelopes, device changes, and org versions that could not be delivered yet; it retries with backoff. No UI name of its own; the decision log shows a decision it holds as `queued` (保存済み・未配達). It is not the client's list of kept decisions (see **Kept decision**).
+- **Outbox**. A node's queue of envelopes, device changes, and org versions that are not delivered yet; it retries with backoff. A client's decision is put in it before the node answers, also for a team on the node itself, and a background task applies or sends it: the node says `queued` and never waits for a runtime or a peer. No UI name of its own; the decision log shows a decision it holds as `queued` (保存済み・未配達). It is not the client's list of kept decisions (see **Kept decision**).
 - **Federation** (連合). Nodes reading and writing each other's data through the `/fed/v1` routes, authenticated by signatures.
 - **Agent** (エージェント). A participant that is not a human: an AI that works in a team.
 - **Harness**. The program that runs a team's agents and keeps its work (for example the scrum harness). One team is one harness.
@@ -90,6 +91,7 @@ The numbers are worked out by the node and served at `/api/orgs/<org>/evaluation
 - **Cost per merged pull request**. The period's token cost, API-priced as in a token usage report, divided by the pull requests merged in it (the reverts included). It is not attributed to each pull request: token use is known by day and team only.
 - **Work type** (作業種別). What a piece of work is for: new feature (新機能), improvement (改善), maintenance (保守), tech debt (技術的負債), or incident (障害対応). It comes from the board's "Work type" field and, when an item has none, from its pull request's Conventional Commits type, by the rule the node documents (the node computes the split, not the screen). What neither classifies is *unclassified* (未分類); it is shown as such and never guessed. The wire names are `newFeature`, `improvement`, `maintenance`, `debt`, `incident`. A work item in a team's view carries the board's value as `workType`, and has none when the board has none (the view never carries the pull-request guess).
 - **Plan** (計画). What the org intends for a team (not a subscription's plan, the product tier of a funding source, which the costs screen calls a plan too), in `teams[].plan` of the org definition, signed by the root key: the *allocation* (割合), the share of the team's effort for each work type, whole numbers that sum to 100, and the *weekly budget* (週の予算), whole US dollars at API prices. A team may have none; the screen then compares nothing.
+- **Budget status** (予算の状況 *(proposed)*). Where this week's token cost stands against the plan's weekly budget, for a team and for the org's planned teams together: `ok`, `warning` (from 80% of the budget), or `over`, as the node works it out for the node's Monday-based week (`/api/orgs/<org>/teams/<team>/budget`). A team whose usage could not be read is *partial*, and its number is not known. Not the response-time budget of a node's own measurements, which has its own entry below.
 - **Effort** (労力). What a team spent, by work type: the token cost, API-priced as in a token usage report, served at `/api/orgs/<org>/effort`.
 
 ## Outcomes
