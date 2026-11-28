@@ -1,7 +1,9 @@
 //! Agency's node: wires agency-core to its adapters. One node runs per machine; it serves the teams it
 //! hosts, keeps replicas of teams on other nodes, sends signed decisions through its outbox, and serves
 //! the web client with its Client API.
+pub mod background;
 pub mod budget;
+pub mod export;
 use agency_adapters::access::{is_valid_config, AccessVerifier, CertSource, HttpCerts};
 use agency_adapters::apns::{Apns, ApnsHosts};
 use agency_adapters::client_api::{self, Assets, ClientApi};
@@ -148,14 +150,23 @@ pub struct Opened {
 
 /// Opens the node whose configuration and account key live in `data`.
 pub fn open(data: DataDir, overrides: Overrides) -> anyhow::Result<Opened> {
+    data.check_format()?;
     let key = data.load_key()?;
     let data_dir = data.root().to_owned();
     let launch = overrides.launch.or_else(|| Launch::of_process(&data_dir));
     let clock = overrides.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let random = overrides.random.unwrap_or_else(|| Arc::new(OsRandom));
     let config = data.load_config()?;
+    data.ensure_format()?;
     config.logging.check().map_err(anyhow::Error::msg)?;
     config.metrics.check().map_err(anyhow::Error::msg)?;
+    for (index, team) in config.teams.iter().enumerate() {
+        if let Some(delivery) = &team.delivery {
+            delivery
+                .check(&format!("teams[{index}].delivery"))
+                .map_err(anyhow::Error::msg)?;
+        }
+    }
     config
         .federation
         .check(&config.url)

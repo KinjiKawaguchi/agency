@@ -142,6 +142,19 @@ pub trait InviteStore {
     fn save_invite(&self, digest: &str, record: &InviteRecord) -> Result<()>;
 }
 
+/// Seat claim links, keyed by the SHA-256 of their secret code. The seat index lets a newer link replace
+/// the older open link without keeping the code itself.
+pub trait ClaimStore {
+    /// The claim link kept under `digest` (the SHA-256 of its code).
+    fn load_claim(&self, digest: &str) -> Option<crate::claims::ClaimRecord>;
+    /// Every claim link, with the digest it is kept under.
+    fn claims(&self) -> Vec<(String, crate::claims::ClaimRecord)>;
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String>;
+    fn save_claim(&self, digest: &str, record: &crate::claims::ClaimRecord) -> Result<()>;
+    fn remove_claim(&self, digest: &str) -> Result<()>;
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()>;
+}
+
 /// The envelopes already applied, for replay protection.
 pub trait AppliedLog {
     fn is_applied(&self, id: &EnvelopeId) -> bool;
@@ -275,11 +288,21 @@ pub trait ReplicaStore {
     fn delete_replica(&self, org: &Id, team: &Id) -> Result<()>;
 }
 
+/// The origins this node has been configured with (`url`), so that a team's place that names any of them is this
+/// node, however the node was reached when a version of the org was made.
+pub trait OwnOriginStore {
+    /// As `agency_proto::client::home_node_origin` writes them, the oldest first. A file that is not there is no
+    /// origins; one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>>;
+    fn save_own_origins(&self, origins: &[String]) -> Result<()>;
+}
+
 pub trait Store:
     ConfigStore
     + OrgStore
     + PendingRootStore
     + InviteStore
+    + ClaimStore
     + AppliedLog
     + OutboxStore
     + ReplicaStore
@@ -291,6 +314,7 @@ pub trait Store:
     + AboutStore
     + BoundReaderStore
     + ClientsSeenStore
+    + OwnOriginStore
     + GuestStore
     + Send
     + Sync
@@ -302,6 +326,7 @@ impl<
             + OrgStore
             + PendingRootStore
             + InviteStore
+            + ClaimStore
             + AppliedLog
             + OutboxStore
             + ReplicaStore
@@ -313,6 +338,7 @@ impl<
             + AboutStore
             + BoundReaderStore
             + ClientsSeenStore
+            + OwnOriginStore
             + GuestStore
             + Send
             + Sync,
