@@ -297,27 +297,6 @@ fn check_push_state(store: &dyn PushStore, data: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The `format` file, when a release wrote one: a whole number that today's release reads (a newer one is
-/// refused by the node when it opens, and a file that holds no number says nothing of its release).
-fn check_format(data: &Path) -> Result<(), String> {
-    let path = data.join("format");
-    if !path.exists() {
-        return Ok(());
-    }
-    let text = std::fs::read_to_string(&path).map_err(|error| format!("format: {error}"))?;
-    let found: u32 = text
-        .trim()
-        .parse()
-        .map_err(|_| "format does not hold a number".to_owned())?;
-    if found > agency_core::data_format::CURRENT {
-        return Err(format!(
-            "format is {found}, newer than the {} today's node reads",
-            agency_core::data_format::CURRENT
-        ));
-    }
-    Ok(())
-}
-
 fn check_nothing_unread(data: &Path) -> Result<(), String> {
     let known: BTreeSet<&str> = READ_BELOW.iter().copied().collect();
     for entry in sorted_entries(data) {
@@ -350,7 +329,6 @@ fn snapshot_time(data: &Path) -> Result<String, String> {
 /// Returns how many decisions it read, or what could not be read.
 async fn read_everything(data: &Path) -> Result<usize, String> {
     check_nothing_unread(data)?;
-    check_format(data)?;
     let store = DataDir::new(data.to_owned());
     let config = store
         .load_config()
@@ -664,10 +642,16 @@ fn a_data_format_file_with_a_newer_number_or_none_fails() {
         std::fs::write(data.join("format"), "999\n").unwrap()
     })
     .unwrap_err();
-    assert!(newer.contains("newer than"), "{newer}");
+    assert!(
+        newer.contains("written by a newer release (data format 999"),
+        "{newer}"
+    );
     let none = damaged("alice", |data| {
         std::fs::write(data.join("format"), "abc\n").unwrap()
     })
     .unwrap_err();
-    assert!(none.contains("format does not hold a number"), "{none}");
+    assert!(
+        none.contains("the data format file does not hold a number"),
+        "{none}"
+    );
 }

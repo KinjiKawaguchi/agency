@@ -37,6 +37,7 @@ const TYPE_OF: Record<string, string> = {
   'me-member': 'Me',
   'me-root-changes': 'Me',
   org: 'OrgDefinition',
+  'org-members': 'OrgMembers',
   'push-subscription': 'PushSubscription',
   'push-subscription-list': 'PushSubscriptionList',
   'push-token': 'PushToken',

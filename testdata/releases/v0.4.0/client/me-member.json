@@ -1,0 +1,24 @@
+{
+  "account": {
+    "fingerprint": "6a3803d5f059902a1c6dafbc9ba47292",
+    "id": "bob",
+    "label": "BOB"
+  },
+  "funding": [],
+  "nodeId": "5a91cd9a318da75cb6b2950b5af4efbf",
+  "orgs": [
+    {
+      "id": "acme",
+      "isRoot": false,
+      "label": "Acme",
+      "teams": [
+        {
+          "id": "app",
+          "label": "app",
+          "location": "remote",
+          "viewer": "reviewer"
+        }
+      ]
+    }
+  ]
+}

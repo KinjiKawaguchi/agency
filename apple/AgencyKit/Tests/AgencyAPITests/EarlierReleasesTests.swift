@@ -8,10 +8,10 @@ import Testing
 /// it does not know is that enum's `unknown`.
 @Suite("Answers of earlier nodes")
 struct EarlierReleasesTests {
-    /// The answers the app never reads, by the file's name: the web client's alone (the activity feed, the browser's
-    /// notice destinations, the push key) and the error body, which the client reads by hand.
+    /// The answers the app never reads, by the file's name: the web client's alone (the activity feed, the org's
+    /// members, the browser's notice destinations, the push key) and the error body, which the client reads by hand.
     private static let notReadByTheApps: Set<String> = [
-        "activity", "error", "push-subscription", "push-subscription-list", "push-vapid",
+        "activity", "error", "org-members", "push-subscription", "push-subscription-list", "push-vapid",
     ]
 
     private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws {
