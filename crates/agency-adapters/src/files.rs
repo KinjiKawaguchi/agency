@@ -14,7 +14,8 @@ use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
     AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
     DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
-    OutcomeStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    OutcomeStore, OwnOriginStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger,
+    ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
@@ -436,6 +437,23 @@ impl ClientsSeenStore for DataDir {
 
     fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()> {
         write_json(&self.0.join("clients-seen.json"), seen)
+    }
+}
+
+impl OwnOriginStore for DataDir {
+    /// `own-origins.json`: origins only, no key and no secret. A file that is not there is no origins; one that is
+    /// there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>> {
+        let path = self.0.join("own-origins.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_own_origins(&self, origins: &[String]) -> Result<()> {
+        write_json(&self.0.join("own-origins.json"), origins)
     }
 }
 

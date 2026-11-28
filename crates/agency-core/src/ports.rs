@@ -284,6 +284,15 @@ pub trait ReplicaStore {
     fn delete_replica(&self, org: &Id, team: &Id) -> Result<()>;
 }
 
+/// The origins this node has been configured with (`url`), so that a team's place that names any of them is this
+/// node, however the node was reached when a version of the org was made.
+pub trait OwnOriginStore {
+    /// As `agency_proto::client::home_node_origin` writes them, the oldest first. A file that is not there is no
+    /// origins; one that is there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>>;
+    fn save_own_origins(&self, origins: &[String]) -> Result<()>;
+}
+
 pub trait Store:
     ConfigStore
     + OrgStore
@@ -301,6 +310,7 @@ pub trait Store:
     + AboutStore
     + BoundReaderStore
     + ClientsSeenStore
+    + OwnOriginStore
     + GuestStore
     + Send
     + Sync
@@ -324,6 +334,7 @@ impl<
             + AboutStore
             + BoundReaderStore
             + ClientsSeenStore
+            + OwnOriginStore
             + GuestStore
             + Send
             + Sync,
