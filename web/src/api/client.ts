@@ -3,9 +3,10 @@ import { labelsMadePrintable } from '../shared/printable'
 import { at, type Target } from './routes'
 import { statusOf, wholeMs, type Sample } from '../telemetry/samples'
 import { looksLikeExpiredSignIn, SignInExpiredError } from './session'
-import type { About, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, PushTokenList, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
+import type { About, BudgetStatus, DecisionLog, DecisionResult, DeviceChange, DeviceChangeResult, DeviceList, DeviceRequest, DeviceRequestInput, Me, OrgDefinition, PushSubscription, PushSubscriptionInput, PushSubscriptionList, PushTokenInput, PushTokenList, Session, Signed, SignedDecisionInput, TeamSnapshot, TelemetryReport, TokenUsage, VapidKey } from './clientApi'
 import { MalformedAnswer, readEffort, readEvaluation } from './evaluationAnswers'
 import { readActivity } from './activityAnswers'
+import { readBudget } from './budgetAnswers'
 import type { Activity } from './activityApi'
 import type { Effort, Evaluation } from './evaluationApi'
 import type { Metrics } from './metricsApi'
@@ -80,6 +81,8 @@ export interface ApiClient {
   /** Reports how long the page's calls took (`POST /api/telemetry`, owner only): what the node took and what it dropped, when it says. Sent so that it outlives the page. Never itself timed. */
   reportTelemetry: (samples: readonly Sample[]) => Promise<{ accepted?: number; dropped?: number }>
   usage: (org: string, team: string, days: number) => Promise<TokenUsage>
+  /** The team's weekly budget as the node computes it (this week, from Monday in the node's time zone): the state, what was spent, the cap, and whether a usage could not be read. */
+  budget: (org: string, team: string) => Promise<BudgetStatus>
   /** How fast each team of the org ships: merged pull requests, lead times, red main, reverts, cost. */
   evaluation: (org: string, days: number) => Promise<Evaluation>
   /** What each team of the org spent, by work type. */
@@ -275,6 +278,7 @@ export function createApiClient(send: FetchLike = (request) => fetch(request), p
     teamSnapshot: (org, team) => get<TeamSnapshot>(at('GET /api/orgs/{org}/teams/{team}/view', { org, team })),
     orgDefinition: (org) => get<OrgDefinition>(at('GET /api/orgs/{org}', { org })),
     usage: (org, team, days) => get<TokenUsage>(at('GET /api/orgs/{org}/teams/{team}/usage', { org, team }, { days })),
+    budget: (org, team) => get<unknown>(at('GET /api/orgs/{org}/teams/{team}/budget', { org, team })).then(readBudget),
     evaluation: (org, days) => get<unknown>(at('GET /api/orgs/{org}/evaluation', { org }, { days })).then(checked(readEvaluation)),
     metrics: (days, hourBuckets = false) => get<unknown>(at('GET /api/metrics', {}, { days, hourBuckets: hourBuckets ? 1 : undefined })).then(checked(readMetrics)),
     activity: (org, team, since, signal) => get<unknown>(at('GET /api/orgs/{org}/teams/{team}/activity', { org, team }, { since }), signal).then(checked(readActivity)),

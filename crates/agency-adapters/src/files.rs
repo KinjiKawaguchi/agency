@@ -1,5 +1,6 @@
 //! The node's data directory. Writes go to a temporary file that then replaces the target, so readers never
 //! see a half-written file. The account key file and the directory are readable only by their owner.
+use agency_core::claims::ClaimRecord;
 use agency_core::clients_seen::ClientsSeen;
 use agency_core::config::NodeConfig;
 use agency_core::data_format::{is_unknown_setting, unknown_setting};
@@ -11,15 +12,17 @@ use agency_core::outbox::Parcel;
 use agency_core::peer_about::PeerAbout;
 use agency_core::pending_root::{PendingRootChange, WaitingJoin};
 use agency_core::ports::{
-    AboutStore, AppliedLog, BoundReaderStore, ClientsSeenStore, ConfigStore, DecisionLogStore,
-    DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore, OutcomeStore,
-    PendingRootStore, PushStore, ReplicaStore, ShipLedger, ShipRecord,
+    AboutStore, AppliedLog, BoundReaderStore, ClaimStore, ClientsSeenStore, ConfigStore,
+    DecisionLogStore, DeviceRequestStore, GuestStore, InviteStore, OrgStore, OutboxStore,
+    OutcomeStore, OwnOriginStore, PendingRootStore, PushStore, ReplicaStore, ShipLedger,
+    ShipRecord,
 };
 use agency_core::push_retries::Retry;
 use agency_core::views::Replica;
 use agency_core::web_push::WebSubscription;
 use agency_core::{Error, Result};
 use agency_proto::client::{GuestRef, PushToken};
+use agency_proto::digest::sha256_hex;
 use agency_proto::observation::Observation;
 use agency_proto::org::SignedOrg;
 use agency_proto::{AccountKey, EnvelopeId, Id};
@@ -322,6 +325,55 @@ impl InviteStore for DataDir {
     }
 }
 
+impl ClaimStore for DataDir {
+    fn load_claim(&self, digest: &str) -> Option<ClaimRecord> {
+        read_json(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    /// Every file of `claims/`, named by the digest it holds.
+    fn claims(&self) -> Vec<(String, ClaimRecord)> {
+        let Ok(entries) = fs::read_dir(self.dir("claims")) else {
+            return vec![];
+        };
+        entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let digest = path.file_stem()?.to_str()?.to_owned();
+                let is_json = path.extension().is_some_and(|ext| ext == "json");
+                is_json.then(|| read_json(&path).map(|record| (digest, record)))?
+            })
+            .collect()
+    }
+
+    fn claim_for_seat(&self, org: &Id, seat: &Id) -> Option<String> {
+        read_json(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
+
+    fn save_claim(&self, digest: &str, record: &ClaimRecord) -> Result<()> {
+        write_json(&self.dir("claims").join(format!("{digest}.json")), record)
+    }
+
+    fn remove_claim(&self, digest: &str) -> Result<()> {
+        remove(&self.dir("claims").join(format!("{digest}.json")))
+    }
+
+    fn save_claim_for_seat(&self, org: &Id, seat: &Id, digest: &str) -> Result<()> {
+        write_json(
+            &self.dir("claims-by-seat").join(format!(
+                "{}-{}.json",
+                sha256_hex(org.as_str().as_bytes()),
+                sha256_hex(seat.as_str().as_bytes())
+            )),
+            &digest,
+        )
+    }
+}
+
 impl AppliedLog for DataDir {
     fn is_applied(&self, id: &EnvelopeId) -> bool {
         self.applied().contains_key(id.as_str())
@@ -405,6 +457,23 @@ impl ClientsSeenStore for DataDir {
 
     fn save_clients_seen(&self, seen: &ClientsSeen) -> Result<()> {
         write_json(&self.0.join("clients-seen.json"), seen)
+    }
+}
+
+impl OwnOriginStore for DataDir {
+    /// `own-origins.json`: origins only, no key and no secret. A file that is not there is no origins; one that is
+    /// there and cannot be read or parsed is an error, so that nothing writes over it.
+    fn own_origins(&self) -> Result<Vec<String>> {
+        let path = self.0.join("own-origins.json");
+        match fs::read_to_string(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+            Err(error) => Err(io_error(&path, error)),
+            Ok(text) => serde_json::from_str(&text).map_err(|error| io_error(&path, error)),
+        }
+    }
+
+    fn save_own_origins(&self, origins: &[String]) -> Result<()> {
+        write_json(&self.0.join("own-origins.json"), origins)
     }
 }
 
