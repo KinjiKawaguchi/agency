@@ -2,8 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Dependency updates for this repository (Cargo, npm, GitHub Actions, Swift packages, XcodeGen packages).",
-    "Ordinary updates wait 2 days after a release and come grouped by ecosystem. For Cargo and npm an update whose registry gives no release time waits to be offered, instead of skipping the wait.",
-    "Only what does not reach the shipped node, the web client, or the release builds merges by itself when CI is green: dev-only npm packages that only test and check (not the ones that build the page) and the GitHub Actions that only the CI workflows use, patch and minor, each in a group of its own. Every other update, and the weekly lock file refresh, is a pull request for a person to read.",
+    "Ordinary updates wait 3 days after a release and come grouped by ecosystem. For Cargo and npm an update whose registry gives no release time waits to be offered, instead of skipping the wait.",
+    "A patch or minor update merges by itself once the required checks pass (GitHub's auto-merge, which goes through the merge queue). A person reads and merges the rest: a major update, a minor update of a crate before 1.0 (it may break its interface), the build tools that write the web page, the rust-toolchain action, the actions the release workflows use, and the weekly lock file refresh.",
+    "The RustCrypto crates come in one pull request, since they move to the same traits together and fail to build one by one.",
     "A security fix skips the wait and is labeled security, but a person reads it before it merges; none merges by itself.",
     "Every GitHub Action stays pinned to a commit SHA with its tag in a comment. A branch is rebased when it falls behind main, so an up-to-date rule does not leave it behind."
   ],
@@ -18,9 +19,10 @@
   "semanticCommits": "enabled",
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
-  "minimumReleaseAge": "2 days",
+  "minimumReleaseAge": "3 days",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "automergeStrategy": "squash",
+  "platformAutomerge": true,
   "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 6,
   "osvVulnerabilityAlerts": true,
@@ -39,6 +41,14 @@
     "automerge": false
   },
   "packageRules": [
+    {
+      "description": "A patch or minor update merges when the required checks pass. The rules below that say otherwise (a crate before 1.0, the web build tools, the release actions) come later and win.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "automerge": true
+    },
     {
       "description": "GitHub Actions that only CI uses: patch, minor, and pin updates merge when CI is green. A digest update (a tag that moved to another commit) is never merged by itself. The ones a release workflow uses are in a rule below.",
       "matchManagers": [
@@ -76,10 +86,10 @@
       "matchDepTypes": [
         "dependencies"
       ],
-      "description": "Production npm packages (the page imports them): patch and minor updates in one pull request for a person."
+      "description": "Production npm packages (the page imports them): patch and minor updates in one pull request."
     },
     {
-      "description": "Dev-only npm packages that only test and check (vitest, jsdom, the testing libraries, Playwright, the type packages): patch and minor merge when CI is green, in a group of their own so a production update does not hold them back. The page does not import them.",
+      "description": "Dev-only npm packages that only test and check (vitest, jsdom, the testing libraries, Playwright, the type packages): patch and minor updates in a group of their own, so a production update does not hold them back.",
       "matchManagers": [
         "npm"
       ],
@@ -91,8 +101,7 @@
         "patch"
       ],
       "groupName": "web dev tools",
-      "groupSlug": "web-dev",
-      "automerge": true
+      "groupSlug": "web-dev"
     },
     {
       "description": "vite and its React plugin are dev-only by type but write the page that signs with the device keys: a person reads their updates, in a group of their own.",
@@ -148,6 +157,36 @@
         "dependencies",
         "major"
       ]
+    },
+    {
+      "description": "The RustCrypto crates (and rand_core, which they build on) move to the same traits together, so each one's update fails to build alone: one pull request for all of them. A minor update of one before 1.0 and a major update stay for a person, by the rules around this one.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "p256",
+        "p384",
+        "k256",
+        "ecdsa",
+        "elliptic-curve",
+        "primeorder",
+        "rand_core",
+        "aes",
+        "aes-gcm",
+        "aead",
+        "cipher",
+        "crypto-common",
+        "digest",
+        "signature",
+        "sha2",
+        "hkdf",
+        "hmac",
+        "ed25519",
+        "ed25519-dalek",
+        "curve25519-dalek"
+      ],
+      "groupName": "RustCrypto crates",
+      "groupSlug": "rustcrypto"
     },
     {
       "description": "A major update is a pull request for a person to read and merge.",
