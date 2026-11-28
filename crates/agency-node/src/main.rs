@@ -24,7 +24,6 @@ use agency_core::outbox::{deliver_due, pending};
 use agency_core::peer_about;
 use agency_core::ports::ConfigStore;
 use agency_core::signed_decisions::decide_with_device;
-use agency_core::views::refresh;
 use agency_core::{invites, orgs, Node};
 use agency_node::Overrides;
 use agency_proto::org::{is_node_origin, TeamPlace};
@@ -317,6 +316,9 @@ fn status(node: &Node) {
         node.key().public().fingerprint()
     );
     println!("This node: {} (listening on {})", config.url, config.listen);
+    for line in agency_core::views::waiting_lines(node) {
+        println!("{line}");
+    }
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
     }
@@ -752,7 +754,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::DeviceAdd { cli } => device_add(&node, &cli_data, cli).await?,
         Command::Sync => {
-            refresh(&node).await?;
+            agency_core::views::refresh_now(&node).await?;
             for joined in finish_joins(&node).await? {
                 if let Joined::Member(doc) = joined {
                     println!("Joined org {} (version {})", doc.body.org, doc.body.version);
