@@ -131,13 +131,24 @@ pub fn keys_from_jwks(jwks: &Value) -> HashMap<String, DecodingKey> {
     rsa.collect()
 }
 
+/// Who the owner is: Access names it by email (Access checks the address), an OIDC setting by the issuer's
+/// subject.
+#[derive(Clone, Debug)]
+enum Owner {
+    Email(String),
+    Subject(String),
+}
+
 /// What the node checks a sign-in against: Access's setting or an OIDC provider's, in one form.
 #[derive(Clone, Debug)]
 pub struct Provider {
     public_host: String,
     issuer: String,
     audience: String,
-    owner_email: String,
+    owner: Owner,
+    /// Whether an email in a token is taken as the provider's word without `email_verified`: Access checks
+    /// the address itself; an OIDC provider may let people type their own.
+    is_email_trusted: bool,
     /// The key set's address, or none when it is read from the issuer's discovery document.
     keys_url: Option<String>,
     token_header: String,
@@ -156,7 +167,8 @@ impl Provider {
             public_host: config.public_host.clone(),
             issuer: format!("https://{}", config.team_domain),
             audience: config.audience.clone(),
-            owner_email: config.owner_email.clone(),
+            owner: Owner::Email(config.owner_email.clone()),
+            is_email_trusted: true,
             keys_url: Some(format!(
                 "https://{}/cdn-cgi/access/certs",
                 config.team_domain
@@ -175,7 +187,8 @@ impl Provider {
             public_host: config.public_host.clone(),
             issuer: config.issuer.clone(),
             audience: config.audience.clone(),
-            owner_email: config.owner_email.clone(),
+            owner: Owner::Subject(config.owner_subject.clone()),
+            is_email_trusted: false,
             keys_url: config.keys_url.clone(),
             is_bearer: token_header == DEFAULT_TOKEN_HEADER,
             token_header,
@@ -195,9 +208,16 @@ impl Provider {
         &self.public_host
     }
 
-    /// Only this signed-in email may write.
-    pub fn owner_email(&self) -> &str {
-        &self.owner_email
+    /// Whether `identity` is the owner's: Access's sign-in of the owner's email (in any case), or an OIDC
+    /// token of the issuer (checked before) whose subject is the owner's.
+    pub fn is_owner(&self, identity: &Identity) -> bool {
+        match &self.owner {
+            Owner::Email(owner) => identity
+                .email
+                .as_deref()
+                .is_some_and(|email| email.eq_ignore_ascii_case(owner)),
+            Owner::Subject(owner) => identity.subject.as_deref() == Some(owner.as_str()),
+        }
     }
 
     /// The Access setting, when the provider is Access.
@@ -223,7 +243,12 @@ impl Provider {
 /// Who the provider let in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
+    /// The email a guest is matched by: from Access, or from an OIDC token whose provider says it verified it.
     pub email: Option<String>,
+    /// The subject at the issuer (`sub`).
+    pub subject: Option<String>,
+    /// Whether the token named an email that is left out above because the provider did not say it verified it.
+    pub has_unverified_email: bool,
 }
 
 enum Check {
@@ -281,11 +306,22 @@ impl SignInVerifier {
         if time("nbf")?.is_some_and(|nbf| nbf - SKEW_SECONDS > now) {
             return Err("not valid yet".into());
         }
-        let email = claims
+        let named = claims
             .get(&self.provider.email_claim)
             .and_then(Value::as_str)
             .map(str::to_owned);
-        Ok(Identity { email })
+        // An OIDC provider may let people type their own address, so its email names a guest only when the
+        // token says the provider verified it (`email_verified` true); whoever registered a guest's address
+        // there would otherwise be that guest. Access checks the address itself.
+        let is_verified = self.provider.is_email_trusted
+            || claims
+                .get("email_verified")
+                .is_some_and(|verified| verified == &Value::Bool(true) || verified == "true");
+        Ok(Identity {
+            has_unverified_email: named.is_some() && !is_verified,
+            email: named.filter(|_| is_verified),
+            subject: claims.get("sub").and_then(Value::as_str).map(str::to_owned),
+        })
     }
 
     fn check(&self, token: &str) -> Check {
@@ -313,7 +349,7 @@ impl SignInVerifier {
     }
 
     /// The key set's address: the one the setting names, else the `jwks_uri` of the issuer's discovery
-    /// document, which must be `https` as the issuer is.
+    /// document, which must name that same issuer and an `https` key set as the issuer is.
     async fn keys_url(&self) -> Result<String, String> {
         if let Some(url) = &self.provider.keys_url {
             return Ok(url.clone());
@@ -323,6 +359,10 @@ impl SignInVerifier {
             self.provider.issuer.trim_end_matches('/')
         );
         let document = self.source.certs(&discovery).await?;
+        // OpenID Connect Discovery 1.0, 4.3: the document names the issuer it was asked for, exactly.
+        if document["issuer"].as_str() != Some(self.provider.issuer.as_str()) {
+            return Err("the discovery document names another issuer".into());
+        }
         let url = document["jwks_uri"]
             .as_str()
             .ok_or("the discovery document names no jwks_uri")?;

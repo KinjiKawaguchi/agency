@@ -167,8 +167,13 @@ async fn admit(
             .and_then(|email| agency_core::guests::admit(&api.node, email))
             .map(Admitted::Guest)
             .ok_or_else(|| {
+                let why = if identity.has_unverified_email {
+                    "whose email the provider did not say it verified, so it names no guest"
+                } else {
+                    "that is neither the owner nor a guest"
+                };
                 (api.log)(&format!(
-                    "refused an {} sign-in that is neither the owner nor a guest",
+                    "refused an {} sign-in {why}",
                     access.provider().name()
                 ));
                 (
@@ -247,15 +252,9 @@ fn check_write(
 
 /// Whether the sign-in is the configured owner's.
 pub(crate) fn is_owner(api: &ClientApi, identity: &Identity) -> bool {
-    let owner = api
-        .access
+    api.access
         .as_ref()
-        .map(|access| access.provider().owner_email());
-    identity
-        .email
-        .as_deref()
-        .zip(owner)
-        .is_some_and(|(email, owner)| email.eq_ignore_ascii_case(owner))
+        .is_some_and(|access| access.provider().is_owner(identity))
 }
 
 async fn guard(
