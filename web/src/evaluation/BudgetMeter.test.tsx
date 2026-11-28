@@ -143,7 +143,7 @@ describe('the weekly budget, as the node computed it', () => {
   it('says it in Japanese', () => {
     draw({ capUsd: 100, spentUsd: 120, state: 'over' }, { capUsd: 100, spentUsd: 120, state: 'over' }, 'ja')
     expect(screen.getByText('予算を超えています')).toBeInTheDocument()
-    expect(screen.getByText('組織は週の予算を超えています: $100 のうち $120。')).toBeInTheDocument()
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('週の予算'))
+    expect(screen.getByText('組織は週次予算を超えています: $100 のうち $120。')).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('週次予算'))
   })
 })

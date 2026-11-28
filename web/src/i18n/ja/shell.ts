@@ -20,20 +20,20 @@ export const app: Messages['app'] = {
 
 export const nav: Messages['nav'] = {
   label: 'メインメニュー',
-  desk: '決めること',
-  overview: '全体',
-  people: '参加者と仕事',
+  desk: 'あなた宛てのリクエスト',
+  overview: 'チームの状況',
+  people: 'メンバーの作業状況',
   org: '組織図',
   organization: '組織',
   results: '成果',
   section: (group) => `${group}のページ`,
-  costs: '費用',
+  costs: 'コスト',
   evaluation: '評価',
   live: 'ライブ',
-  outcomes: '成果の指標',
+  outcomes: 'KPI',
   devices: '端末',
-  members: 'メンバー',
-  history: '履歴',
+  members: '組織のメンバー',
+  history: '組織の変更履歴',
 }
 
 export const settings: Messages['settings'] = {
@@ -64,5 +64,5 @@ export const loading: Messages['loading'] = {
   retryIn: (seconds) => `${seconds} 秒後にもう一度試します。`,
   retrying: 'もう一度試しています…',
   tryAgain: 'もう一度試す',
-  what: { overview: '全体', orgChart: '組織図', people: '参加者と仕事' },
+  what: { overview: 'チームの状況', orgChart: '組織図', people: 'メンバーの作業状況' },
 }

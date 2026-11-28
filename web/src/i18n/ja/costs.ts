@@ -2,7 +2,7 @@
 import type { Messages } from '../en'
 
 export const costs: Messages['costs'] = {
-  title: '費用',
+  title: 'コスト',
   funding: 'サブスクリプション',
   noFunding: '資金源はまだありません。',
   kinds: { subscription: 'サブスクリプション', apiKey: 'API キー' },
@@ -14,7 +14,7 @@ export const costs: Messages['costs'] = {
   verdicts: {
     waste: 'このペースでは、リセットまでに使い切れません。重い仕事をここに寄せられます。',
     ok: 'このペースなら、リセットのころに使い切ります。',
-    overrun: 'リセットの前に上限に届き、届くとこの資金源のエージェントはすべて止まります。',
+    overrun: 'リセットの前に上限に届き、届くとこの資金源の AI エージェントはすべて止まります。',
   },
   barLabel: (window, used, projected) => `${window}: ${used} 使用、リセット時に約 ${projected}`,
   resetLine: (when, relative, projected) => `リセットは ${when} (${relative})。このペースなら、そのとき約 ${projected} です。`,
@@ -32,11 +32,11 @@ export const costs: Messages['costs'] = {
     inputSide: (value) => `入力側 ${value}`,
     cacheShare: 'キャッシュから読んだ入力',
     cacheNote: '高いほど安く済みます',
-    byDay: '日ごとの費用',
-    byDayHint: '参加者ごとの積み上げ',
+    byDay: '日ごとのコスト',
+    byDayHint: 'メンバーごとの積み上げ',
     dayTotal: (date, total) => `${date}: ${total}`,
-    byParticipant: '参加者ごと',
-    columns: { participant: '参加者', cost: 'API 換算', output: '出力', cacheRead: 'キャッシュ読み', inputWrite: '入力とキャッシュ書き込み' },
+    byParticipant: 'メンバーごと',
+    columns: { participant: 'メンバー', cost: 'API 換算', output: '出力', cacheRead: 'キャッシュ読み', inputWrite: '入力とキャッシュ書き込み' },
     other: 'その他',
     loading: 'トークンの集計を読み込み中…',
     unavailable: 'このチームはトークンの使用量を報告していません。',
