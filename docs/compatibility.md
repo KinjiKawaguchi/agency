@@ -151,7 +151,7 @@ Each node says what it is and what it speaks, in two places.
 
 ### Capabilities
 
-Names start at what came after the first release: every node has what the first release had (for example departments, devices, and P-256 keys). A name is one of two kinds: a **signed field**, which an older node refuses in a definition, so the root checks it before writing it; or a **feature**, which a client or a peer checks before relying on it instead of trying a route and reading a 404. A test keeps this table the same as the list in `agency-proto`, and another fails when an optional field is added to the org definition without a name here.
+Names start at what came after the first release: every node has what the first release had (for example departments, devices, and P-256 keys). A name is one of two kinds: a **signed field**, which an older node refuses in a definition, so the root checks it before writing it; or a **feature**, which a client or a peer checks before relying on it instead of trying a route and reading a 404. A test keeps this table the same as the list in `agency-proto`, and another fails when an optional field is added to the org definition without a name here. A capability is declared once, on one line of `capabilities!` in `agency-proto` (its type name, its wire name and what it is), which gives `Capability`, `Capability::ALL` and `name()`; a node lists them in that order. Adding one is that line, its row in the table below, and `AGENCY_WRITE_FIXTURES=1 cargo test -p agency-proto --lib about`, which writes `testdata/about.sample.json` again.
 
 | Name | Kind | What it is |
 |---|---|---|

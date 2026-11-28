@@ -1,10 +1,38 @@
 {
   "node": "0.3.0",
   "contracts": {
-    "federation": [1],
-    "signedText": [1],
-    "runtime": [1],
-    "clientApi": { "current": 1, "oldest": 1 }
+    "federation": [
+      1
+    ],
+    "signedText": [
+      1
+    ],
+    "runtime": [
+      1
+    ],
+    "clientApi": {
+      "current": 1,
+      "oldest": 1
+    }
   },
-  "capabilities": ["orgPlan", "orgAims", "orgKpis", "orgRecovery", "orgSeats", "orgExternals", "hostedMembers", "webPush", "activity", "outcomes", "pushDevice", "effort", "readAudience", "budget", "history", "members", "claimLinks", "viewUnchanged"]
+  "capabilities": [
+    "orgPlan",
+    "orgAims",
+    "orgKpis",
+    "orgRecovery",
+    "orgSeats",
+    "orgExternals",
+    "hostedMembers",
+    "webPush",
+    "activity",
+    "outcomes",
+    "pushDevice",
+    "effort",
+    "readAudience",
+    "budget",
+    "history",
+    "members",
+    "claimLinks",
+    "viewUnchanged"
+  ]
 }
