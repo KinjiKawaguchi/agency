@@ -5,7 +5,7 @@ extension Ja {
     /// The evaluation screen, from the web client's Japanese (`evaluation` in `ja/evaluation.ts`).
     public enum Evaluation {
         public static let title = "評価"
-        public static let lead = "組織が新機能をどれだけ速く出しているか、その費用はいくらか。数字はノードが返すので、エージェントも同じ数字を引用できます。"
+        public static let lead = "組織が新機能をどれだけ速く出しているか、そのコストはいくらか。数字はノードが返すので、AI エージェントも同じ数字を引用できます。"
         public static let org = "組織"
         public static let period = "期間"
         public static let loading = "数字を読み込んでいます…"
@@ -38,9 +38,9 @@ extension Ja {
             public static let merged = "マージしたプルリクエスト"
             public static let prLead = "リードタイム (プルリクエスト)"
             public static let issueLead = "リードタイム (issue)"
-            public static let red = "main が赤かった時間"
+            public static let red = "main の CI が失敗していた時間"
             public static let reverts = "リバート"
-            public static let cost = "マージ 1 件あたりの費用"
+            public static let cost = "マージ 1 件あたりのコスト"
             public static let costNote = "API 価格での概算"
 
             public static func perDay(_ value: String) -> String { "1 日あたり \(value)" }
@@ -56,9 +56,9 @@ extension Ja {
             public static let leadHint = "直近 7 日の中央値"
             public static let prLead = "プルリクエストを開いてからマージまで"
             public static let issueLead = "issue に着手してからマージまで"
-            public static let red = "main の CI が赤かった時間 (1 日ごと)"
+            public static let red = "main の CI が失敗していた時間 (1 日ごと)"
             public static let reverts = "1 日あたりのリバート"
-            public static let cost = "マージ 1 件あたりの費用"
+            public static let cost = "マージ 1 件あたりのコスト"
             public static let costHint = "直近 7 日、API 価格"
 
             public static func dayMerged(_ date: String, _ count: String) -> String { "\(date): \(count) 件マージ" }
@@ -70,16 +70,16 @@ extension Ja {
     /// Where each team's effort goes, from the web client's Japanese (`evaluation.effort` in `ja/evaluation.ts`).
     public enum Effort {
         public static let title = "労力の行き先"
-        public static let lead = "各チームが使った費用を、仕事の種類別に、組織の意図と並べて見ます。費用は API 価格での概算です。"
+        public static let lead = "各チームが使ったコストを、仕事の種類別に、組織の意図と並べて見ます。コストは API 価格での概算です。"
         public static let unavailable = "このノードはまだ作業種別ごとの労力を返しません。"
-        public static let noPlan = "このチームには組織の計画がまだ示されていないので、比べるものがありません。"
-        public static let planUnreadable = "このチームの組織の計画を読み取れなかったので、比べていません。"
-        public static let allocationTitle = "作業種別ごとの費用の割合"
+        public static let noPlan = "このチームには組織のプランがまだ示されていないので、比べるものがありません。"
+        public static let planUnreadable = "このチームの組織のプランを読み取れなかったので、比べていません。"
+        public static let allocationTitle = "作業種別ごとのコストの割合"
         public static let allocationHint = "印は組織が意図する割合"
-        public static let onPlan = "計画どおり"
+        public static let onPlan = "プランどおり"
         public static let unclassifiedNote = "作業種別がなく、プルリクエストの種類からも決められない仕事は、未分類のままにします。推測では埋めません。"
-        public static let budgetTitle = "週の予算"
-        public static let byDay = "1 日ごとの費用"
+        public static let budgetTitle = "週次予算"
+        public static let byDay = "1 日ごとのコスト"
         public static let byDayHint = "作業種別別"
         public static let tableShow = "数字を表で見る"
         public static let tableType = "作業種別"
@@ -100,13 +100,13 @@ extension Ja {
         }
 
         public static func couldNotAnswer(_ reason: String) -> String { "チームが今は労力を返せませんでした: \(reason)" }
-        public static func actual(_ share: String) -> String { "費用の \(share)" }
+        public static func actual(_ share: String) -> String { "コストの \(share)" }
         public static func intended(_ share: String) -> String { "意図 \(share)" }
         public static func above(_ points: Int) -> String { "\(points) ポイント上" }
         public static func below(_ points: Int) -> String { "\(points) ポイント下" }
         public static func budgetLine(spent: String, of budget: String) -> String { "直近 7 日で \(budget) のうち \(spent)" }
         public static func budgetLeft(_ amount: String) -> String { "残り \(amount)" }
         public static func budgetOver(_ amount: String) -> String { "\(amount) 超過" }
-        public static func budgetMeter(spent: String, of budget: String) -> String { "週の予算 \(budget) のうち \(spent) を使用" }
+        public static func budgetMeter(spent: String, of budget: String) -> String { "週次予算 \(budget) のうち \(spent) を使用" }
     }
 }

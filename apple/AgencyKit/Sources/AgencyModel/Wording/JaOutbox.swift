@@ -16,7 +16,7 @@ extension Ja {
         public static func failed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static let sendAgain = "もう一度送る"
         public static let discard = "破棄"
-        public static let discardExplain = "破棄すると、書いた内容つきで依頼が山に戻ります。"
+        public static let discardExplain = "破棄すると、書いた内容つきでリクエストが山に戻ります。"
         public static func more(_ count: Int) -> String { "ほか \(count) 件" }
         /// How many entries the tray lists before it says how many more there are.
         public static let shown = 4

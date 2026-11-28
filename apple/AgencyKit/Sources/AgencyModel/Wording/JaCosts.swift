@@ -3,7 +3,7 @@ import Foundation
 extension Ja {
     /// The costs screen, from the web client's Japanese (`costs` in `ja/costs.ts`).
     public enum Costs {
-        public static let title = "費用"
+        public static let title = "コスト"
         public static let funding = "サブスクリプション"
         public static let noFunding = "資金源はまだありません。"
         public static let period = "期間"
@@ -11,9 +11,9 @@ extension Ja {
         public static let output = "出力トークン"
         public static let cacheShare = "キャッシュから読んだ入力"
         public static let cacheNote = "高いほど安く済みます"
-        public static let byDay = "日ごとの費用"
-        public static let byDayHint = "参加者ごとの積み上げ"
-        public static let byParticipant = "参加者ごと"
+        public static let byDay = "日ごとのコスト"
+        public static let byDayHint = "メンバーごとの積み上げ"
+        public static let byParticipant = "メンバーごと"
         public static let other = "その他"
         public static let loading = "トークンの集計を読み込み中…"
         public static let unavailable = "このチームはトークンの使用量を報告していません。"

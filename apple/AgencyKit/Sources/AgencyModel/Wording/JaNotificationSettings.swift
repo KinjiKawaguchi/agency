@@ -6,17 +6,17 @@ extension Ja {
         public static let appOpenHeading = "アプリを開いているとき"
         public static let appOpenFooter = "画面の上に表示します。"
         public static let appClosedHeading = "アプリを閉じているとき"
-        public static let appClosedFooter = "端末に通知します。通知されるのは、依頼、端末の追加、断られた決定です。通知を許可していないときは、端末の設定で許可してください。"
+        public static let appClosedFooter = "端末に通知します。通知されるのは、リクエスト、端末の追加、断られた決定です。通知を許可していないときは、端末の設定で許可してください。"
 
-        public static let requestsOnly = "このホームノードは、依頼の通知だけを送ります。"
+        public static let requestsOnly = "このホームノードは、リクエストの通知だけを送ります。"
 
         public static func title(of kind: EventKind) -> String {
             switch kind {
-            case .request: "依頼があなたを待っているとき"
-            case .participant: "参加者があなたの返事を待っているとき"
+            case .request: "リクエストがあなたを待っているとき"
+            case .participant: "メンバーがあなたの返事を待っているとき"
             case .blocked: "仕事が止まったとき"
             case .device: "端末が追加を待っているとき"
-            case .decision: "決定に動きがあったとき"
+            case .decision: "決定に変化があったとき"
             }
         }
 

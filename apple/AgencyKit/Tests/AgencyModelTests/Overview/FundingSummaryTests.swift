@@ -66,11 +66,11 @@ struct FundingSummaryTests {
         #expect(JaFormat.dateTime(now, in: utc) == "11月24日 12:00")
     }
 
-    @Test("the overview's words are the web client's, and the glossary's: 参加者, not 人, for the people who work")
+    @Test("the overview's words are the web client's, and the glossary's: メンバー, not 人, for the people who work")
     func words() {
-        #expect(Ja.Overview.lead(requests: 0, teams: 0) == "あなたを待っている依頼は、どのチームにもありません。")
-        #expect(Ja.Overview.lead(requests: 3, teams: 2) == "2 チームで、3 件の依頼があなたを待っています。")
-        #expect(Ja.Overview.working(1, of: 4) == "参加者 4 人のうち 1 人が作業中")
+        #expect(Ja.Overview.lead(requests: 0, teams: 0) == "あなたを待っているリクエストは、どのチームにもありません。")
+        #expect(Ja.Overview.lead(requests: 3, teams: 2) == "2 チームで、3 件のリクエストがあなたを待っています。")
+        #expect(Ja.Overview.working(1, of: 4) == "メンバー 4 人のうち 1 人が作業中")
         #expect(Ja.Overview.tag(.active) == nil)
         #expect(Ja.Overview.tag(.mine) == "あなたの番")
         #expect(Ja.Work.blockedReason(.waitingOnPrevious) == "先行する仕事待ち")

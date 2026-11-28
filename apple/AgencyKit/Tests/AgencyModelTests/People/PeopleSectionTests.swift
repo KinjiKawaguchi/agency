@@ -14,13 +14,13 @@ struct PeopleSectionTests {
         #expect(section.working == 2)
         #expect(section.waitingOnViewer == 1)
         #expect(section.title == "App チーム")
-        #expect(section.summary == "参加者 4 人のうち 2 人が作業中です。 参加者 1 人があなたの返事を待っています。")
+        #expect(section.summary == "メンバー 4 人のうち 2 人が作業中です。 メンバー 1 人があなたの返事を待っています。")
     }
 
     @Test("the summary says nothing of waiting when nobody waits on the viewer")
     func noWaiting() {
         let team = Teams.team(waitingOnViewer: [])
-        #expect(PeopleSection(team: team).summary == "参加者 4 人のうち 2 人が作業中です。")
+        #expect(PeopleSection(team: team).summary == "メンバー 4 人のうち 2 人が作業中です。")
     }
 
     @Test("a participant who waits on the viewer says what for: the first request that stops them")
@@ -52,7 +52,7 @@ struct PeopleSectionTests {
         #expect(doing.etaBasis == "8 finished items with 3 points")
         #expect(doing.blockedText == nil)
         #expect(section.blocked.map(\.ref) == ["app#14", "app#15"])
-        #expect(section.blocked[0].blockedText == "判断待ち 11月23日 から")
+        #expect(section.blocked[0].blockedText == "相談待ち 11月23日 から")
         #expect(section.blocked[0].assigneeLabel == "担当なし")
         #expect(section.blocked[0].etaText == nil)
         #expect(section.blocked[1].blockedText == "先行する仕事待ち 11月24日 から")
@@ -81,7 +81,7 @@ struct PeopleSectionTests {
         #expect(first.count == "1 / 4")
         #expect(first.barLabel == "4 件のうち、完了 1、進行中 1、停止 2")
         #expect(first.meta.hasSuffix("ごろに終わる見込み"))
-        #expect(first.blockedBy == "停止: 判断待ち 1、先行する仕事待ち 1")
+        #expect(first.blockedBy == "停止: 相談待ち 1、先行する仕事待ち 1")
         let second = section.epics[1]
         #expect(second.meta == "No recent throughput to forecast from")
         #expect(second.blockedBy == nil)

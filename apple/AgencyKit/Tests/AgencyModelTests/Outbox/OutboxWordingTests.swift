@@ -13,7 +13,7 @@ struct OutboxWordingTests {
         #expect(Ja.Outbox.waiting(nextInSeconds: 300) == "まだ送れていません。次の再送は 5 分後 です。")
         #expect(Ja.Outbox.failed("the team's node refused: not yours") == "送れませんでした: the team's node refused: not yours")
         #expect(Ja.Outbox.sendAgain == "もう一度送る" && Ja.Outbox.discard == "破棄")
-        #expect(Ja.Outbox.discardExplain == "破棄すると、書いた内容つきで依頼が山に戻ります。")
+        #expect(Ja.Outbox.discardExplain == "破棄すると、書いた内容つきでリクエストが山に戻ります。")
         #expect(Ja.Outbox.more(2) == "ほか 2 件" && Ja.Outbox.shown == 4)
         #expect(Ja.Outbox.notKept == "この端末に決定を残せなかったため、送っていません。もう一度お試しください。")
         #expect(Ja.Outbox.signInEnded == "サインインが切れています。サインインし直すと、続きを送ります。")

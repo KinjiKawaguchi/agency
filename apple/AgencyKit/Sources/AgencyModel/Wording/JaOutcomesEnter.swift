@@ -39,7 +39,7 @@ extension Ja.Outcomes {
         public static let problemNote = "メモは 200 文字までで、制御文字を含めないでください。"
 
         public static let full = "この指標には、ノードが保てる上限の 5,000 件の数値がすでにあります。"
-        public static let forbidden = "数値を入れられるのはオーナーだけです。"
+        public static let forbidden = "数値を入れられるのはノードの管理者だけです。"
         public static func refused(_ message: String) -> String { "ノードが受け付けませんでした: \(message)" }
     }
 

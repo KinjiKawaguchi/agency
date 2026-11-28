@@ -6,9 +6,9 @@ extension Ja {
     /// moved a number: a reading is a correlation, and its line says so.
     public enum Outcomes {
         /// The page's name; the tab it sits in is `Ja.Tabs.results`.
-        public static let title = "成果の指標"
+        public static let title = "KPI"
         /// Said once on the page: what the numbers are for.
-        public static let note = "数値は、指標の動きを読むためのものです。会計用ではありません。"
+        public static let note = "数値は、指標の変化を読むためのものです。会計用ではありません。"
         public static let readingsHeading = "読み取り"
         public static let noAims = "この組織のチームには、まだ狙いがありません。"
         public static let noKpis = "この組織には、まだ指標がありません。"

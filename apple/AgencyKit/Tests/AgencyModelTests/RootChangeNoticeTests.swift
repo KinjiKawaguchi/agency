@@ -61,8 +61,8 @@ struct RootChangeNoticeTests {
     @Test("the title counts what waits, and each line gives the org's label and how long ago it was asked")
     func lines() throws {
         let notice = try #require(RootChangeNotice(me: try me([change(#","what":"add member carol (Carol)""#, id: "a"), change(#","what":"add device iPhone for bob""#, id: "b", at: "2026-11-24T09:00:00Z")])))
-        #expect(notice.title == "ルート鍵の署名を待っている変更が 2 件あります。")
-        #expect(notice.lines(now: now) == ["add member carol (Carol)（アクミ、3 時間前に依頼）", "add device iPhone for bob（アクミ、2 日前に依頼）"])
+        #expect(notice.title == "ルートキーの署名を待つ変更が 2 件あります。")
+        #expect(notice.lines(now: now) == ["add member carol (Carol)（アクミ、3 時間前にリクエスト）", "add device iPhone for bob（アクミ、2 日前にリクエスト）"])
     }
 
     @Test("an org the account does not list is named by its id, and a time that cannot be read is left out")
@@ -75,7 +75,7 @@ struct RootChangeNoticeTests {
     func command() throws {
         let notice = try #require(RootChangeNotice(me: try me([change(#","what":"agency root-sign --everything""#)])))
         let parts = notice.signTogether
-        #expect(parts.before + parts.command + parts.after == "まとめて署名するには、ルート鍵のノードで agency root-sign を実行してください。")
-        #expect(RootChangeNotice.approvedHere == "ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
+        #expect(parts.before + parts.command + parts.after == "まとめて署名するには、組織のルートキーのノードで agency root-sign を実行してください。")
+        #expect(RootChangeNotice.approvedHere == "ここでは承認しました。組織のルートキーのノードが署名すると有効になります。そのノードで agency root-sign を実行してください。")
     }
 }

@@ -33,7 +33,7 @@ extension Ja {
         public static let notRead = "まだ読み込んでいません"
         public static let readFailed = "読み込めませんでした"
         public static let staleNote = "最新の数を読み込めませんでした。前に読み込んだときの数です"
-        public static let nothingWaiting = "あなたを待っている依頼はありません"
+        public static let nothingWaiting = "あなたを待っているリクエストはありません"
         public static func waiting(_ count: Int) -> String { "\(count) 件があなたを待っています" }
 
         /// The text of the item's label beside its symbol: the number when something waits, nothing otherwise.

@@ -4,10 +4,10 @@ import Foundation
 extension Ja {
     /// The participants and work screen, from the web client's Japanese (`people` in `ja/people.ts`).
     public enum People {
-        public static let title = "参加者と仕事"
-        public static let roleLead = "リード"
+        public static let title = "メンバーの作業状況"
+        public static let roleLead = "リーダー"
         public static let holding = "担当"
-        public static let openDecisions = "決めることを開く"
+        public static let openDecisions = "あなた宛てのリクエストを開く"
         public static let waitingForAnswer = "あなたの返事を待っています"
         public static let workTitle = "進行中の仕事"
         public static let noWork = "進行中の仕事はありません。"
@@ -24,8 +24,8 @@ extension Ja {
         public static let legendRest = "未着手"
 
         public static func team(_ label: String) -> String { "\(label) チーム" }
-        public static func summary(working: Int, of total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
-        public static func waitingOnYou(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
+        public static func summary(working: Int, of total: Int) -> String { "メンバー \(total) 人のうち \(working) 人が作業中です。" }
+        public static func waitingOnYou(_ count: Int) -> String { "メンバー \(count) 人があなたの返事を待っています。" }
         public static func since(_ when: String) -> String { "\(when) から" }
         public static func moreHeld(_ count: Int) -> String { "ほか \(count) 件" }
         public static func moreWork(_ count: Int) -> String { "あと \(count) 件を表示" }

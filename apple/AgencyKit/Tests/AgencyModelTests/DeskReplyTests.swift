@@ -246,7 +246,7 @@ struct UnknownKindRequestTests {
     func shown() throws {
         let item = try item()
         #expect(item.request.kind == .unknown && item.isMine && item.group == .unrecognized)
-        #expect(Ja.Desk.kind(.unknown) == "依頼" && Ja.Desk.group(.unrecognized) == "このアプリが知らない種類の依頼")
+        #expect(Ja.Desk.kind(.unknown) == "リクエスト" && Ja.Desk.group(.unrecognized) == "このアプリが知らない種類のリクエスト")
     }
 
     @Test("when the node says how to answer it in a way the app knows, it is answered as any request is")

@@ -7,10 +7,10 @@ import Foundation
 /// Nothing here describes keys or shortcuts: the phone has no keyboard to explain.
 public enum Ja {
     public enum Desk {
-        public static let title = "決めること"
+        public static let title = "あなた宛てのリクエスト"
         public static let pileLabel = "届いている書類"
-        public static let empty = "待っているものはありません。チームからの新しい依頼は、ここに出ます。"
-        public static let nothingToDecide = "今、決めることはありません。"
+        public static let empty = "待っているものはありません。チームからの新しいリクエストは、ここに出ます。"
+        public static let nothingToDecide = "今、あなた宛てのリクエストはありません。"
         public static let recentHead = "最近決めたもの"
         public static let loading = "読み込み中…"
         public static let reload = "再読み込み"
@@ -26,8 +26,8 @@ public enum Ja {
             switch group {
             case .proposal: "決裁する稟議"
             case .question: "あなたへの質問"
-            case .pendingDecision: "ボードで判断待ちのもの"
-            case .unrecognized: "このアプリが知らない種類の依頼"
+            case .pendingDecision: "ボードで相談待ちのもの"
+            case .unrecognized: "このアプリが知らない種類のリクエスト"
             case .others: "ほかの人の返事待ち"
             }
         }
@@ -36,18 +36,18 @@ public enum Ja {
             switch kind {
             case .proposal: "稟議"
             case .question: "質問"
-            case .pendingDecision: "判断待ち"
-            case .unknown: "依頼"
+            case .pendingDecision: "相談"
+            case .unknown: "リクエスト"
             }
         }
 
         public static func itemsOnDesk(_ count: Int) -> String { "机の上に \(count) 件あります。" }
-        public static func someoneWaiting(_ count: Int) -> String { "参加者 \(count) 人があなたの返事を待っています。" }
-        public static func peopleWorking(working: Int, total: Int) -> String { "参加者 \(total) 人のうち \(working) 人が作業中です。" }
-        public static func blocking(_ count: Int) -> String { "参加者 \(count) 人が待機" }
+        public static func someoneWaiting(_ count: Int) -> String { "メンバー \(count) 人があなたの返事を待っています。" }
+        public static func peopleWorking(working: Int, total: Int) -> String { "メンバー \(total) 人のうち \(working) 人が作業中です。" }
+        public static func blocking(_ count: Int) -> String { "メンバー \(count) 人が待機" }
         public static func drafter(_ name: String) -> String { "起案: \(name)" }
         /// A request addressed to a seat or an external party that the viewer answers for: whom it is for (the web's words).
-        public static func answerFor(_ label: String) -> String { "\(label) の代理で答える" }
+        public static func answerFor(_ label: String) -> String { "\(label) の代理回答" }
         public static func unreadableTeam(_ team: String, reason: String) -> String { "\(team) を読み込めませんでした: \(reason)" }
         public static func loadFailed(_ reason: String) -> String { "ノードに接続できません: \(reason)" }
 
@@ -78,14 +78,14 @@ public enum Ja {
         public static let needAnswer = "答えを書いてください。"
         public static let needDecision = "判断を書いてください。"
         public static let queued = "保存しました。チームのノードが休止中なので、起動したときに届きます。"
-        public static let cannotAnswerHere = "この依頼には、このアプリではまだ答えられません。アプリを新しくするか、ほかの端末で答えてください。"
+        public static let cannotAnswerHere = "このリクエストには、このアプリではまだ答えられません。アプリを新しくするか、ほかの端末で答えてください。"
 
         public static func type(_ kind: Request.Kind) -> String {
             switch kind {
             case .proposal: "稟議"
             case .question: "質問"
-            case .pendingDecision: "判断待ち"
-            case .unknown: "依頼"
+            case .pendingDecision: "相談"
+            case .unknown: "リクエスト"
             }
         }
 
@@ -106,7 +106,7 @@ public enum Ja {
 
         public static func sendWith(_ verb: String, choice: String) -> String { "「\(choice)」で\(verb)" }
         public static func stoppedBy(_ names: String) -> String { "\(names) は、これが決まるまで先に進めません" }
-        public static func waitingOn(_ name: String) -> String { "\(name) さんの判断待ちです。ここで読むことはできますが、答えることはできません。" }
+        public static func waitingOn(_ name: String) -> String { "\(name) さんへの相談です。ここで読むことはできますが、答えることはできません。" }
         public static func readDocument(characters: Int) -> String { "本文を読む (約 \(characters) 文字)" }
         public static func sendFailed(_ reason: String) -> String { "送れませんでした: \(reason)" }
         public static func team(org: String, team: String) -> String { "\(org) / \(team)" }

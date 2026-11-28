@@ -5,7 +5,7 @@ extension Ja {
     /// ルートの区分, ノード内の読み取り, 目標. A percentile is always 「以下」: it is the upper bound of its bucket.
     public enum NodeSpeed {
         public static let title = "このノードの応答時間"
-        public static let lead = "このノードが答えるまでにかかった時間と、このノードが行う呼び出しにかかった時間を、ルートの区分ごとに示します。読めるのはオーナーだけで、数字はこのノードの外には出ません。p50、p95、p99 の時間は、リクエストが入った区間の上限なので「以下」です。それより細かい時間は分かりません。"
+        public static let lead = "このノードが答えるまでにかかった時間と、このノードが行う呼び出しにかかった時間を、ルートの区分ごとに示します。読めるのはノードの管理者だけで、数字はこのノードの外には出ません。p50、p95、p99 の時間は、リクエストが入った区間の上限なので「以下」です。それより細かい時間は分かりません。"
         public static let period = "期間"
         public static func days(_ count: Int) -> String { count == 1 ? "直近 1 日" : "直近 \(count) 日" }
         public static let loading = "計測を読み込んでいます…"
@@ -56,7 +56,7 @@ extension Ja {
             public static let errors = "エラー"
             public static let inNodeRead = "ノード内の読み取り"
             static let names = [
-                "desk": "デスク", "teams": "チーム", "usage": "使用量", "evaluation": "評価", "outcomes": "成果の指標", "devices": "端末",
+                "desk": "デスク", "teams": "チーム", "usage": "使用量", "evaluation": "評価", "outcomes": "KPI", "devices": "端末",
                 "push": "プッシュ通知", "federation": "連合", "metrics": "計測", "unmatched": "このノードのルートではないもの", "other": "その他",
                 "runtime": "チームのランタイム", "peer": "別のノード", "github": "GitHub",
             ]
