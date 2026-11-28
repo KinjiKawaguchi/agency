@@ -26,6 +26,13 @@ pub async fn with_guest() -> (Running, AccountKey) {
 /// `with_guest`, with the state of the team's runtime, to add requests to.
 pub async fn with_guest_and_runtime() -> (Running, AccountKey, Runtime) {
     let (alice, memory) = behind_access_with_runtime(Some("ABCDE12345.dev.example.agency")).await;
+    let laptop = add_carol(&alice, &memory);
+    (alice, laptop, memory)
+}
+
+/// Gives alice's node the org, team and request of `with_guest`, and carol's guest record, whatever signs
+/// people in. Returns carol's device key.
+pub fn add_carol(alice: &Running, memory: &Runtime) -> AccountKey {
     {
         let mut state = memory.lock().unwrap();
         state
@@ -62,7 +69,7 @@ pub async fn with_guest_and_runtime() -> (Running, AccountKey, Runtime) {
     })
     .unwrap();
     guests::keep(node, &Guest::new(CAROL, id("acme"), id("carol"))).unwrap();
-    (alice, laptop, memory)
+    laptop
 }
 
 pub async fn call(

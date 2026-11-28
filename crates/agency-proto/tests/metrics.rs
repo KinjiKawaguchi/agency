@@ -258,6 +258,7 @@ fn a_route_is_in_the_group_of_its_template_and_a_call_in_the_group_of_its_first_
         ("GET /api/orgs/{org}/teams/{team}/activity", "teams"),
         ("POST /api/orgs/{org}/teams/{team}/envelopes", "teams"),
         ("GET /api/orgs/{org}/teams/{team}/usage", "usage"),
+        ("GET /api/orgs/{org}/teams/{team}/budget", "usage"),
         ("GET /api/orgs/{org}/evaluation", "evaluation"),
         ("GET /api/orgs/{org}/effort", "evaluation"),
         ("GET /api/orgs/{org}/outcomes", "outcomes"),
@@ -327,6 +328,7 @@ fn the_budget_applies_to_the_reads_a_node_answers_from_its_own_state_and_to_no_o
     }
     for name in [
         "GET /api/orgs/{org}/teams/{team}/usage",
+        "GET /api/orgs/{org}/teams/{team}/budget",
         "GET /api/orgs/{org}/teams/{team}/activity",
         "GET /api/orgs/{org}/evaluation",
         "GET /fed/v1/teams/{org}/{team}/usage",

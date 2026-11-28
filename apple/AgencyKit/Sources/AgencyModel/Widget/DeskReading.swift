@@ -35,9 +35,9 @@ public struct DeskWaitingCount {
         self.source = source
     }
 
-    /// The count, or `nil` when the desk could not be read in full.
-    public func run() async -> Int? {
-        await DeskReading.complete(from: source).map { Desk.waitingCount($0.teams) }
+    /// The count without the items the owner has decided and the node has not taken yet, or `nil` when the desk could not be read in full.
+    public func run(excluding decided: Set<String>) async -> Int? {
+        await DeskReading.complete(from: source).map { Desk.waitingCount($0.teams, excluding: decided) }
     }
 }
 

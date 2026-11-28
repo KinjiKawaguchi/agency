@@ -2,15 +2,16 @@ import { Loading, Skeleton } from '../shared/Skeleton'
 import type { TeamEffort, TeamPlan } from '../api/evaluationApi'
 import { useI18n } from '../i18n'
 import { AllocationRows } from './AllocationRows'
-import { BudgetMeter } from './BudgetMeter'
+import { TeamBudget } from './TeamBudget'
 import { Columns } from './Columns'
-import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, shownShare, totalCost, weekSpend } from './effort'
+import { EFFORT_COLORS, EFFORT_TYPES, pointsFromPlan, sharesOf, shownShare, totalCost } from './effort'
 import { daysEnding, niceMax } from './series'
 
 /** What is known of the team's plan: the org definition it is in is still being read (`loading`), could not be read, or states it (or does not). */
 export type PlanState = { kind: 'stated'; plan: TeamPlan } | { kind: 'none' } | { kind: 'loading' } | { kind: 'unreadable' }
 
 interface Props {
+  org: string
   label: string
   effort: TeamEffort
   plan: PlanState
@@ -18,7 +19,7 @@ interface Props {
 }
 
 /** One team's effort: its cost by work type against the plan, its weekly budget, and its cost by day. */
-export function TeamEffortView({ label, effort, plan, days }: Props) {
+export function TeamEffortView({ org, label, effort, plan, days }: Props) {
   const { t, fmt } = useI18n()
   const text = t.evaluation.effort
   const stated = plan.kind === 'stated' ? plan.plan : undefined
@@ -42,7 +43,7 @@ export function TeamEffortView({ label, effort, plan, days }: Props) {
         {plan.kind === 'unreadable' ? <p className="muted ev-plan-note">{text.planUnreadable}</p> : null}
         <AllocationRows effort={effort} plan={stated} />
         <p className="muted ev-plan-note">{text.allocation.unclassifiedNote}</p>
-        {stated === undefined ? null : <BudgetMeter spent={weekSpend(effort.byDay, last)} budget={stated.weeklyBudgetUsd} />}
+        <TeamBudget org={org} team={effort.team} planned={stated?.weeklyBudgetUsd} />
       </div>
       <div className="card">
         <p className="card-head">

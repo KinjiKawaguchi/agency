@@ -18,4 +18,10 @@ target: string, title?: string, text: string, choice?: string, choiceLabel?: str
  * Whom the decision was made for, when it answered for a seat or an external party. The node worked
  * it out from the org and the team when it applied the decision; no client says it.
  */
-relayedFor?: RelayedFor, decidedAt: Timestamp, state: DecisionState, };
+relayedFor?: RelayedFor, 
+/**
+ * The id of the device that signed the decision (`Device.id`), as the node verified it on the envelope; no
+ * client says it. Left out for a decision logged before the node kept it: a client says "signer not
+ * recorded" for those, and counts them for no device.
+ */
+signer?: Id, decidedAt: Timestamp, state: DecisionState, };

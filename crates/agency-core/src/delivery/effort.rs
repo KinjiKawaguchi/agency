@@ -6,6 +6,7 @@ use super::kinds::{classify, Kind};
 use super::period::Period;
 use agency_proto::effort::{ByWorkType, DayEffort, TeamEffort, TypeUsage};
 use agency_proto::usage::TokenCounts;
+use agency_proto::view::WorkType;
 use agency_proto::{Date, Id};
 use std::collections::BTreeMap;
 
@@ -22,23 +23,29 @@ pub struct EffortInput<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Slot {
     NewFeature,
+    Improvement,
     Maintenance,
     Debt,
+    Incident,
     Unclassified,
 }
 
-const SLOTS: [Slot; 4] = [
+const SLOTS: [Slot; 6] = [
     Slot::NewFeature,
+    Slot::Improvement,
     Slot::Maintenance,
     Slot::Debt,
+    Slot::Incident,
     Slot::Unclassified,
 ];
 
 fn get<T>(by: &ByWorkType<T>, slot: Slot) -> &T {
     match slot {
         Slot::NewFeature => &by.new_feature,
+        Slot::Improvement => &by.improvement,
         Slot::Maintenance => &by.maintenance,
         Slot::Debt => &by.debt,
+        Slot::Incident => &by.incident,
         Slot::Unclassified => &by.unclassified,
     }
 }
@@ -46,17 +53,34 @@ fn get<T>(by: &ByWorkType<T>, slot: Slot) -> &T {
 fn get_mut<T>(by: &mut ByWorkType<T>, slot: Slot) -> &mut T {
     match slot {
         Slot::NewFeature => &mut by.new_feature,
+        Slot::Improvement => &mut by.improvement,
         Slot::Maintenance => &mut by.maintenance,
         Slot::Debt => &mut by.debt,
+        Slot::Incident => &mut by.incident,
         Slot::Unclassified => &mut by.unclassified,
     }
 }
 
-/// The work type a merged pull request's title gives it. A revert and a title of no known type are
-/// unclassified.
+/// The work type of a merged pull request: the board's, when the issue it closes has one, and otherwise its
+/// title's type, with incident for a fix of an issue labeled `incident`. A revert is unclassified whatever
+/// the board says, and so is a title of no known type.
 fn slot_of(pull_request: &MergedPullRequest) -> Slot {
-    match classify(&pull_request.title, &pull_request.body) {
+    let kind = classify(&pull_request.title, &pull_request.body);
+    if kind == Kind::Revert {
+        return Slot::Unclassified;
+    }
+    if let Some(work_type) = pull_request.work_type {
+        return match work_type {
+            WorkType::NewFeature => Slot::NewFeature,
+            WorkType::Improvement => Slot::Improvement,
+            WorkType::Maintenance => Slot::Maintenance,
+            WorkType::Debt => Slot::Debt,
+            WorkType::Incident => Slot::Incident,
+        };
+    }
+    match kind {
         Kind::Feat => Slot::NewFeature,
+        Kind::Fix if pull_request.closes_incident => Slot::Incident,
         Kind::Refactor => Slot::Debt,
         Kind::Fix | Kind::Docs | Kind::Test | Kind::Chore => Slot::Maintenance,
         Kind::Other | Kind::Revert => Slot::Unclassified,

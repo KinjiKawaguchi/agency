@@ -11,6 +11,17 @@ use ts_rs::TS;
 
 pub const RUNTIME_VERSION: &str = "agency-runtime/1";
 
+/// Names a team runtime gives meaning of its own: `owner` is the team's owner (see "agency-runtime/1"), and
+/// `board` and `unverified` are participants of the reference runtime that are no org member. The node passes
+/// a member's id to the runtime as `by`, so no member, seat, or external party may newly take one of these
+/// as its id: a runtime would read a decision by it as one by that name.
+pub const RESERVED_NAMES: [&str; 3] = ["owner", "board", "unverified"];
+
+/// Whether `id` is one of `RESERVED_NAMES`.
+pub fn is_reserved_name(id: &Id) -> bool {
+    RESERVED_NAMES.contains(&id.as_str())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -108,9 +119,28 @@ pub struct Describe {
     /// Operation names. Unknown names are ignored, so a newer runtime still describes itself.
     pub ops: Vec<String>,
     pub label: String,
+    /// The harness release that runs the team, as a short text. Optional: a runtime without it is read as
+    /// before. Read it through `release`, which leaves out a value beyond `MOST_RELEASE_CHARS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub version: Option<String>,
 }
 
+/// The most characters of a runtime's `version` that a node takes.
+pub const MOST_RELEASE_CHARS: usize = 64;
+
 impl Describe {
+    /// The harness release the runtime reported, or `None` when it reported none or a text that is empty,
+    /// longer than `MOST_RELEASE_CHARS` characters, or holds a control character or one that reorders or hides
+    /// how a line reads (`is_hidden_char`).
+    pub fn release(&self) -> Option<&str> {
+        self.version.as_deref().filter(|text| {
+            !text.is_empty()
+                && text.chars().count() <= MOST_RELEASE_CHARS
+                && !text.chars().any(crate::org::is_hidden_char)
+        })
+    }
+
     pub fn speaks(&self, version: &str) -> bool {
         self.runtimes.iter().any(|one| one == version)
     }

@@ -189,16 +189,34 @@ async fn the_statuses_of_a_redeem_come_through_the_route() {
 #[tokio::test]
 async fn the_owner_and_a_guest_are_never_claimants_and_a_stranger_is_nobody() {
     let (alice, _) = with_a_link().await;
-    // A link made for the owner's own address, and for a hosted member's.
     seats::add_seat(&alice.node, &id("acme"), seat("erin", "Erin")).unwrap();
     seats::add_seat(&alice.node, &id("acme"), seat("gus", "Gus")).unwrap();
-    let for_owner = claims::seat_invite(&alice.node, &id("acme"), id("erin"), OWNER).unwrap();
-    let owners_code = for_owner.link.split("code=").nth(1).unwrap().to_owned();
-    // Redeemed in core (the owner could not do it through the route): the owner's own address then has a claim.
-    let owners_key = AccountKey::from_seed([0x73; 32]).public().encoded();
-    claims::redeem(&alice.node, &owners_code, OWNER, &owners_key, "Phone")
-        .await
+    // The node refuses a link for the owner's own address, so a claim kept under it (a link made before the
+    // address became the owner's) is put in the store as it would have been, already redeemed.
+    let owners_key = AccountKey::from_seed([0x73; 32]).public();
+    let redeemed_at = alice.node.now_text();
+    alice
+        .node
+        .store()
+        .save_claim(
+            "owners-link",
+            &claims::ClaimRecord {
+                org: id("acme"),
+                seat: id("erin"),
+                email: OWNER.to_owned(),
+                expires_at: redeemed_at.clone(),
+                state: claims::ClaimState::Redeemed(claims::Redemption {
+                    public_key: owners_key,
+                    label: "Phone".into(),
+                    redeemed_at,
+                }),
+            },
+        )
         .unwrap();
+    assert!(
+        claims::state(&alice.node, OWNER).is_ok(),
+        "the owner's address has a claim in the store"
+    );
     claims::seat_invite(&alice.node, &id("acme"), id("gus"), "dan@example.com").unwrap();
     let laptop = AccountKey::from_seed([0x81; 32]);
     let device = agency_proto::org::Device {
