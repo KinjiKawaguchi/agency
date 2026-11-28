@@ -15,7 +15,7 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// The routes of the Client API a client may report: those declared `reported`, by `<method> <path>`, sorted.
@@ -72,7 +72,8 @@ fn record(recorder: &Recorder, report: &TelemetryReport) -> Result<TelemetryAnsw
         accepted: 0,
         dropped: 0,
     };
-    let reportable = reportable_routes();
+    static REPORTABLE: OnceLock<Vec<String>> = OnceLock::new();
+    let reportable = REPORTABLE.get_or_init(reportable_routes);
     for sample in &report.samples {
         if reportable.binary_search(&sample.route).is_err()
             || !valid_status(SeriesKind::Client, &sample.status)

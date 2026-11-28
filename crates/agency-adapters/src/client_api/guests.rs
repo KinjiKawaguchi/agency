@@ -4,9 +4,9 @@
 use agency_core::guests::Guest;
 use axum::http::Method;
 
-/// A guest's routes are those declared `for_guests`, where `{org}` must be the guest's own org, `{team}` any
-/// team, and `{token}` or `{id}` any one segment (the handler finds only the guest's own).
-/// Whether `path` fits `pattern`, with `{org}` the guest's org and `{team}` one well-formed segment.
+/// Whether `path` fits `pattern`, the path of a route declared `for_guests`: `{org}` must be the guest's own
+/// org, `{team}` one well-formed segment, and `{token}` or `{id}` any one segment (the handler finds only the
+/// guest's own).
 fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
     let (wanted, given): (Vec<&str>, Vec<&str>) =
         (pattern.split('/').collect(), path.split('/').collect());
