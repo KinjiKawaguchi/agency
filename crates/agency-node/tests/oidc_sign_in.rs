@@ -1,5 +1,6 @@
-//! A node behind an OpenID Connect provider (`oidc`): the same admission as Access, with the provider's issuer,
-//! audience, header, and email claim. The keys come from an in-process source, by the address the node asks for.
+//! A node behind an OpenID Connect provider (`oidc`): the same checks as Access, with the provider's issuer,
+//! audience, and header. The owner is the issuer's subject the setting names; a guest is matched by an email the
+//! provider says it verified. The keys come from an in-process source, by the address the node asks for.
 mod common;
 
 use agency_adapters::access::CertSource;
@@ -19,6 +20,7 @@ const ISSUER: &str = "https://login.example.com/tenant/v2.0";
 const AUDIENCE: &str = "agency-client";
 const KEYS: &str = "https://login.example.com/tenant/keys";
 const OWNER: &str = "alice@example.com";
+const OWNER_SUBJECT: &str = "sub-alice";
 const GUEST: &str = "carol@example.com";
 /// 2026-11-24T12:00:00Z, the tests' clock.
 const T0: i64 = 1_795_521_600;
@@ -65,7 +67,7 @@ fn provider_saying(issuer: &str, jwks_uri: &str) -> Arc<Provider> {
 }
 
 fn setting() -> OidcConfig {
-    OidcConfig::new(HOST, ISSUER, AUDIENCE, OWNER)
+    OidcConfig::new(HOST, ISSUER, AUDIENCE, OWNER_SUBJECT)
 }
 
 /// alice's node behind `oidc`, with carol a guest of org acme.
@@ -95,12 +97,25 @@ async fn behind_oidc(oidc: OidcConfig, source: Arc<Provider>) -> Running {
     running
 }
 
-/// A token for `email`, signed by the provider's key, valid around T0 unless `edit` changes its claims.
-fn token(email: &str, edit: impl FnOnce(&mut Value)) -> String {
-    let mut claims =
-        json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "nbf": T0 - 60, "email": email });
+/// A token of subject `sub` naming `email`, signed by the provider's key, valid around T0 unless `edit` changes
+/// its claims.
+fn token(sub: &str, email: &str, edit: impl FnOnce(&mut Value)) -> String {
+    let mut claims = json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "nbf": T0 - 60, "sub": sub, "email": email });
     edit(&mut claims);
     sign(&claims, "k1")
+}
+
+/// The owner's token: its subject, and its email, which the provider does not say it verified.
+fn owner(edit: impl FnOnce(&mut Value)) -> String {
+    token(OWNER_SUBJECT, OWNER, edit)
+}
+
+/// carol's token, with an email the provider says it verified.
+fn guest(edit: impl FnOnce(&mut Value)) -> String {
+    token("sub-carol", GUEST, |c| {
+        c["email_verified"] = json!(true);
+        edit(c);
+    })
 }
 
 fn sign(claims: &Value, kid: &str) -> String {
@@ -130,80 +145,111 @@ async fn me(running: &Running, token: String) -> u16 {
 }
 
 #[tokio::test]
-async fn the_owner_and_a_guest_are_admitted() {
+async fn the_owner_is_its_subject_and_a_guest_its_verified_email() {
     let running = behind_oidc(setting().with_keys_url(KEYS), provider(KEYS)).await;
-    assert_eq!(me(&running, token(OWNER, |_| {})).await, 200, "the owner");
-    assert_eq!(
-        me(&running, token("Alice@Example.com", |_| {})).await,
-        200,
-        "its case"
-    );
-    assert_eq!(me(&running, token(GUEST, |_| {})).await, 200, "a guest");
+    assert_eq!(me(&running, owner(|_| {})).await, 200, "the owner");
     assert_eq!(
         me(
             &running,
-            token(OWNER, |c| c["aud"] = json!(["other", AUDIENCE]))
+            token(OWNER_SUBJECT, "mallory@example.com", |_| {})
         )
         .await,
         200,
-        "one of several audiences"
+        "the owner's subject, whatever email it names"
     );
-    for verified in [json!(true), json!("true")] {
+    assert_eq!(
+        me(
+            &running,
+            token(OWNER_SUBJECT, OWNER, |c| {
+                c.as_object_mut().unwrap().remove("email");
+            })
+        )
+        .await,
+        200,
+        "the owner's subject with no email"
+    );
+    assert_eq!(
+        me(
+            &running,
+            token("sub-mallory", OWNER, |c| c["email_verified"] = json!(true))
+        )
+        .await,
+        403,
+        "the owner's verified email under another subject"
+    );
+    assert_eq!(me(&running, guest(|_| {})).await, 200, "a guest");
+    assert_eq!(
+        me(&running, guest(|c| c["email_verified"] = json!("true"))).await,
+        200,
+        "a guest whose provider writes true as text"
+    );
+    for (case, unverified) in [
+        ("absent", None),
+        ("false", Some(json!(false))),
+        ("\"false\"", Some(json!("false"))),
+        ("null", Some(json!(null))),
+        ("0", Some(json!(0))),
+    ] {
+        let edit = |c: &mut Value| match unverified {
+            Some(value) => c["email_verified"] = value,
+            None => {
+                c.as_object_mut().unwrap().remove("email_verified");
+            }
+        };
         assert_eq!(
-            me(
-                &running,
-                token(OWNER, |c| c["email_verified"] = verified.clone())
-            )
-            .await,
-            200,
-            "an email the provider verified: {verified}"
+            me(&running, guest(edit)).await,
+            403,
+            "a guest whose email_verified is {case}"
         );
     }
+    assert_eq!(
+        me(&running, owner(|c| c["aud"] = json!(["other", AUDIENCE]))).await,
+        200,
+        "one of several audiences"
+    );
 }
 
 #[tokio::test]
 async fn a_token_that_fails_any_check_is_refused() {
     let running = behind_oidc(setting().with_keys_url(KEYS), provider(KEYS)).await;
-    let cases: [(&str, String); 9] = [
-        ("another email", token("mallory@example.com", |_| {})),
+    let cases: [(&str, String); 10] = [
         (
-            "no email",
-            token(OWNER, |c| {
-                c.as_object_mut().unwrap().remove("email");
+            "another subject and email",
+            token("sub-mallory", "mallory@example.com", |c| {
+                c["email_verified"] = json!(true)
             }),
         ),
         (
-            "a wrong audience",
-            token(OWNER, |c| c["aud"] = json!("other")),
+            "no subject",
+            owner(|c| {
+                c.as_object_mut().unwrap().remove("sub");
+            }),
         ),
+        ("a subject that is not text", owner(|c| c["sub"] = json!(1))),
+        ("a wrong audience", owner(|c| c["aud"] = json!("other"))),
         (
             "a wrong issuer",
-            token(OWNER, |c| {
-                c["iss"] = json!("https://login.example.com/other")
-            }),
+            owner(|c| c["iss"] = json!("https://login.example.com/other")),
         ),
-        (
-            "an expired token",
-            token(OWNER, |c| c["exp"] = json!(T0 - 61)),
-        ),
+        ("an expired token", owner(|c| c["exp"] = json!(T0 - 61))),
         (
             "a token not valid yet",
-            token(OWNER, |c| c["nbf"] = json!(T0 + 61)),
+            owner(|c| c["nbf"] = json!(T0 + 61)),
         ),
         (
             "no expiry",
-            token(OWNER, |c| {
+            owner(|c| {
                 c.as_object_mut().unwrap().remove("exp");
             }),
         ),
         (
             "an expiry that is a string",
-            token(OWNER, |c| c["exp"] = json!((T0 + 600).to_string())),
+            owner(|c| c["exp"] = json!((T0 + 600).to_string())),
         ),
         (
             "an unknown key",
             sign(
-                &json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "email": OWNER }),
+                &json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "sub": OWNER_SUBJECT }),
                 "k2",
             ),
         ),
@@ -216,60 +262,48 @@ async fn a_token_that_fails_any_check_is_refused() {
             kid: Some("k1".into()),
             ..jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256)
         },
-        &json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "email": OWNER }),
+        &json!({ "aud": AUDIENCE, "iss": ISSUER, "exp": T0 + 600, "sub": OWNER_SUBJECT }),
         &jsonwebtoken::EncodingKey::from_secret(TEST_KEY_N.as_bytes()),
     )
     .unwrap();
     assert_eq!(me(&running, hs256).await, 403, "a token that is not RS256");
-    for unverified in [json!(false), json!("false"), json!(null), json!(0)] {
-        assert_eq!(
-            me(
-                &running,
-                token(OWNER, |c| c["email_verified"] = unverified.clone())
-            )
-            .await,
-            403,
-            "an email the provider did not verify: {unverified}"
-        );
-    }
     assert_eq!(me_with(&running, None).await, 403, "no token");
     assert_eq!(
         me_with(
             &running,
-            Some(("authorization", format!("Basic {}", token(OWNER, |_| {}))))
+            Some(("authorization", format!("Basic {}", owner(|_| {}))))
         )
         .await,
         403,
         "another scheme"
     );
     assert_eq!(
-        me_with(
-            &running,
-            Some(("cf-access-jwt-assertion", token(OWNER, |_| {})))
-        )
-        .await,
+        me_with(&running, Some(("cf-access-jwt-assertion", owner(|_| {})))).await,
         403,
         "the token in Access's header"
     );
 }
 
 #[tokio::test]
-async fn the_email_and_the_token_come_from_where_the_setting_says() {
+async fn the_guest_email_and_the_token_come_from_where_the_setting_says() {
     let oidc = setting()
         .with_keys_url(KEYS)
         .with_email_claim("upn")
         .with_token_header("X-Auth-Token");
     let running = behind_oidc(oidc, provider(KEYS)).await;
-    let as_upn = token("mallory@example.com", |c| c["upn"] = json!(OWNER));
+    let as_upn = guest(|c| {
+        c["email"] = json!("mallory@example.com");
+        c["upn"] = json!(GUEST);
+    });
     assert_eq!(
         me_with(&running, Some(("x-auth-token", as_upn.clone()))).await,
         200,
-        "the owner in upn, the token alone in its header"
+        "the guest in upn, the token alone in its header"
     );
     assert_eq!(
-        me_with(&running, Some(("x-auth-token", token(OWNER, |_| {})))).await,
+        me_with(&running, Some(("x-auth-token", guest(|_| {})))).await,
         403,
-        "the owner in email only"
+        "the guest in email only"
     );
     assert_eq!(
         me_with(
@@ -286,7 +320,7 @@ async fn the_email_and_the_token_come_from_where_the_setting_says() {
 async fn the_key_set_is_found_through_discovery_and_must_be_https() {
     let source = provider(KEYS);
     let running = behind_oidc(setting(), source.clone()).await;
-    assert_eq!(me(&running, token(OWNER, |_| {})).await, 200);
+    assert_eq!(me(&running, owner(|_| {})).await, 200);
     assert_eq!(
         *source.asked.lock().unwrap(),
         [
@@ -297,11 +331,7 @@ async fn the_key_set_is_found_through_discovery_and_must_be_https() {
 
     let source = provider("http://login.example.com/tenant/keys");
     let running = behind_oidc(setting(), source.clone()).await;
-    assert_eq!(
-        me(&running, token(OWNER, |_| {})).await,
-        403,
-        "an http jwks_uri"
-    );
+    assert_eq!(me(&running, owner(|_| {})).await, 403, "an http jwks_uri");
     assert!(
         !source
             .asked
@@ -314,7 +344,7 @@ async fn the_key_set_is_found_through_discovery_and_must_be_https() {
     let source = provider_saying("https://login.example.com/other", KEYS);
     let running = behind_oidc(setting(), source.clone()).await;
     assert_eq!(
-        me(&running, token(OWNER, |_| {})).await,
+        me(&running, owner(|_| {})).await,
         403,
         "a discovery document of another issuer"
     );
@@ -342,7 +372,7 @@ async fn a_local_write_is_refused_while_oidc_is_set_and_a_malformed_setting_admi
     let running = behind_oidc(malformed, provider(KEYS)).await;
     // A malformed setting is no provider: the public host is then no host of this node (421), as with Access.
     assert_eq!(
-        me(&running, token(OWNER, |_| {})).await,
+        me(&running, owner(|_| {})).await,
         421,
         "the owner, through a malformed setting"
     );

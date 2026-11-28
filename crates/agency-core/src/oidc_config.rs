@@ -17,8 +17,10 @@ pub struct OidcConfig {
     pub issuer: String,
     /// The audience the tokens must name (`aud`): the client id the node is registered under.
     pub audience: String,
-    /// Only this signed-in email may write: writes act for the node's account.
-    pub owner_email: String,
+    /// The owner's subject at the issuer (`sub`): only a token of this issuer and this subject is the owner's,
+    /// and may write as the node's account. An email names no owner here, since a provider may let people
+    /// type their own.
+    pub owner_subject: String,
     /// Where the provider's signing keys are (a JWKS document). Left out, it is read from the issuer's
     /// `/.well-known/openid-configuration` (`jwks_uri`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,13 +39,13 @@ impl OidcConfig {
         public_host: impl Into<String>,
         issuer: impl Into<String>,
         audience: impl Into<String>,
-        owner_email: impl Into<String>,
+        owner_subject: impl Into<String>,
     ) -> Self {
         Self {
             public_host: public_host.into(),
             issuer: issuer.into(),
             audience: audience.into(),
-            owner_email: owner_email.into(),
+            owner_subject: owner_subject.into(),
             keys_url: None,
             token_header: None,
             email_claim: None,
@@ -101,8 +103,11 @@ impl OidcConfig {
                 "is empty or holds a space or a control character",
             );
         }
-        if !is_email(&self.owner_email) {
-            return field("ownerEmail", "is not an email address");
+        if !is_token_text(&self.owner_subject) {
+            return field(
+                "ownerSubject",
+                "is empty or holds a space or a control character",
+            );
         }
         if self
             .keys_url
@@ -183,12 +188,6 @@ fn is_header_name(name: &str) -> bool {
         && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
-fn is_email(email: &str) -> bool {
-    email
-        .split_once('@')
-        .is_some_and(|(user, domain)| !user.is_empty() && domain.contains('.') && is_host(domain))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,7 +197,7 @@ mod tests {
             "agency.example.com",
             "https://login.example.com/tenant/v2.0",
             "app-client-id",
-            "alice@example.com",
+            "00000000-0000-0000-0000-00000000a11c",
         )
     }
 
@@ -256,8 +255,8 @@ mod tests {
         config.audience = String::new();
         assert!(named(config).starts_with("oidc.audience"));
         let mut config = valid();
-        config.owner_email = "alice".into();
-        assert!(named(config).starts_with("oidc.ownerEmail"));
+        config.owner_subject = "a b".into();
+        assert!(named(config).starts_with("oidc.ownerSubject"));
         assert!(named(valid().with_keys_url("http://keys")).starts_with("oidc.keysUrl"));
         assert!(named(valid().with_token_header("x auth")).starts_with("oidc.tokenHeader"));
         assert!(named(valid().with_email_claim("")).starts_with("oidc.emailClaim"));
@@ -265,7 +264,7 @@ mod tests {
 
     #[test]
     fn an_unknown_field_is_refused() {
-        let text = r#"{"publicHost":"a.example.com","issuer":"https://l.example.com","audience":"x","ownerEmail":"a@example.com","secret":"s"}"#;
+        let text = r#"{"publicHost":"a.example.com","issuer":"https://l.example.com","audience":"x","ownerSubject":"s-1","secret":"s"}"#;
         assert!(serde_json::from_str::<OidcConfig>(text).is_err());
     }
 }
