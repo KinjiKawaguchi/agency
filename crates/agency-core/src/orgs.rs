@@ -373,6 +373,18 @@ pub fn amend(
     org: &Id,
     edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
 ) -> Result<SignedOrg> {
+    amend_with(node, org, edit, |_| Ok(()))
+}
+
+/// `amend`, and `before_publish` runs on the signed version before it is kept and queued: what must go with the
+/// version (a record that belongs to it) is written only once the root has signed, and a refusal of `before_publish`
+/// publishes nothing.
+pub(crate) fn amend_with(
+    node: &Node,
+    org: &Id,
+    edit: impl FnOnce(&mut OrgDefinition) -> Result<()>,
+    before_publish: impl FnOnce(&SignedOrg) -> Result<()>,
+) -> Result<SignedOrg> {
     let current = load(node, org)?;
     if !is_root(node, &current) {
         return Err(Error::new(
@@ -384,6 +396,7 @@ pub fn amend(
     edit(&mut body)?;
     capabilities::check_before_signing(node, &current.body, &body)?;
     let doc = sign(node, body)?;
+    before_publish(&doc)?;
     publish(node, &doc)?;
     forget_cancelled_root(node, &current, &doc);
     tell_removed(node, &current.body, &doc)?;
@@ -524,6 +537,11 @@ pub fn read_definition(
 /// root key this node knows for the org (the current one, or the trusted one) is refused like an
 /// unknown org (see `unseen`), so only the root's node learns which version this node has.
 pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
+    // Anyone can send a definition, so nobody waits for the write lock for one that no key this node
+    // accepts signed. What is read here may change before the lock is taken, so it is checked again under it.
+    if !is_taken(node, &doc) {
+        refuse_unsigned(node, node.store().load_org(&doc.body.org).as_ref(), &doc)?;
+    }
     let _guard = node.write_lock().lock().await;
     let org = doc.body.org.clone();
     let Some(current) = node.store().load_org(&org) else {
@@ -532,23 +550,10 @@ pub async fn receive(node: &Node, doc: SignedOrg) -> Result<()> {
     // A version this node already took, byte for byte, is answered as taken. It is checked by its
     // digest against this node's own history before any signature: a version that named a new root is
     // signed by the old one, which is no longer the root of the copy here.
-    let kept = node.store().load_org_version(&org, doc.body.version);
-    if kept.is_some_and(|kept| kept.digest() == doc.digest()) {
+    if is_taken(node, &doc) {
         return Ok(());
     }
-    let root = &current.body.root;
-    let key = (doc.signer == root.account).then_some(&root.public_key);
-    let recovery = root
-        .recovery
-        .as_ref()
-        .filter(|_| doc.signer == root.account);
-    let is_by_recovery = || recovery.is_some_and(|key| doc.verify(Kind::Org, key));
-    if !unseen::check(&doc, Kind::Org, key) && !is_by_recovery() {
-        return Err(unseen::refused(format!(
-            "a definition of {org} signed as {}, not with the root key of this node's copy",
-            doc.signer
-        )));
-    }
+    refuse_unsigned(node, Some(&current), &doc)?;
     if current.body.version >= doc.body.version {
         let is_same = current.body.version == doc.body.version && current.digest() == doc.digest();
         return if is_same {
@@ -605,7 +610,37 @@ fn refuse_an_early_finish(node: &Node, start: &SignedOrg) -> Result<()> {
     }
 }
 
-fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
+/// Whether this node took this version already, byte for byte.
+fn is_taken(node: &Node, doc: &SignedOrg) -> bool {
+    node.store()
+        .load_org_version(&doc.body.org, doc.body.version)
+        .is_some_and(|kept| kept.digest() == doc.digest())
+}
+
+/// Refuses a definition that is not signed by a key this node accepts for the org: against the copy it has, the root
+/// key or the recovery key of that copy; without one, the root key it trusts.
+fn refuse_unsigned(node: &Node, current: Option<&SignedOrg>, doc: &SignedOrg) -> Result<()> {
+    let org = &doc.body.org;
+    let Some(current) = current else {
+        return refuse_untrusted_first(node, doc);
+    };
+    let root = &current.body.root;
+    let key = (doc.signer == root.account).then_some(&root.public_key);
+    let recovery = root
+        .recovery
+        .as_ref()
+        .filter(|_| doc.signer == root.account);
+    let is_by_recovery = || recovery.is_some_and(|key| doc.verify(Kind::Org, key));
+    if !unseen::check(doc, Kind::Org, key) && !is_by_recovery() {
+        return Err(unseen::refused(format!(
+            "a definition of {org} signed as {}, not with the root key of this node's copy",
+            doc.signer
+        )));
+    }
+    Ok(())
+}
+
+fn refuse_untrusted_first(node: &Node, doc: &SignedOrg) -> Result<()> {
     let root = &doc.body.root;
     let trusted = node
         .config()
@@ -613,15 +648,20 @@ fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
         .map(str::to_owned);
     let is_trusted_root =
         trusted == Some(root.public_key.fingerprint()) && doc.signer == root.account;
-    if !unseen::check(&doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
-        let org = &doc.body.org;
-        return Err(unseen::refused(match trusted {
-            None => format!("a first definition of {org}, an org this node does not trust"),
-            Some(_) => {
-                format!("a first definition of {org} not signed by the root key this node trusts")
-            }
-        }));
+    if unseen::check(doc, Kind::Org, is_trusted_root.then_some(&root.public_key)) {
+        return Ok(());
     }
+    let org = &doc.body.org;
+    Err(unseen::refused(match trusted {
+        None => format!("a first definition of {org}, an org this node does not trust"),
+        Some(_) => {
+            format!("a first definition of {org} not signed by the root key this node trusts")
+        }
+    }))
+}
+
+fn receive_first(node: &Node, doc: SignedOrg) -> Result<()> {
+    refuse_untrusted_first(node, &doc)?;
     if doc.body.version == 1 {
         verify_genesis(&doc).map_err(Error::bad_request)?;
     }

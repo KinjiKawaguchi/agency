@@ -13,6 +13,8 @@ pub enum ErrorKind {
     NotFound,
     /// It conflicts with what this node already has.
     Conflict,
+    /// It was there and is not any more (a link that expired).
+    Gone,
     /// A team runtime or another node cannot act now. Retried.
     Unavailable,
     /// Storage or another failure inside this node.

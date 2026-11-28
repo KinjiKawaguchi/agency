@@ -141,13 +141,14 @@ pub fn addressed_party<'a>(
 }
 
 /// The seat or external party a request is addressed to on a team elsewhere, as the team's node said the
-/// reader answers for it, with its id and its label as `definition` has it. When the definition has no such
-/// seat or external party yet (this node has not read the version that added it), the label is the id: the
-/// request is still the reader's to answer, and what it is for can still be said. `None` when `to` names no
-/// party the reader answers for, or a seat the reader took: the request is their own, and answers for no one.
+/// reader answers for it, with its id and label as `definition` has it. Only what this node's own definition
+/// confirms is said: a seat or external party the org has and whose `relays` name the reader (or a seat with
+/// none). `None` otherwise, when `to` names no party the reader answers for, or a seat the reader took. The
+/// request may still be the reader's to answer (the team's node decides that); it is then said to be for no one.
 pub fn remote_addressed_party<'a>(
     definition: &'a OrgDefinition,
-    answers_for: &'a [AnswersFor],
+    answers_for: &[AnswersFor],
+    reader: &Id,
     to: Option<&str>,
 ) -> Option<(&'a Id, &'a str)> {
     let answered = answers_for
@@ -156,14 +157,22 @@ pub fn remote_addressed_party<'a>(
     if is_taken_seat(definition, &answered.id) {
         return None;
     }
-    let seat = definition.seats.iter().find(|one| one.id == answered.id);
-    let external = definition
-        .externals
+    // Only what this node's own definition says: a seat or external party of the org that the reader answers
+    // for. A seat with no relays is answered by the team's owner, whom only the team's node knows.
+    let seat = definition
+        .seats
         .iter()
-        .find(|one| one.id == answered.id);
-    seat.map(|one| (&one.id, one.label.as_str()))
-        .or_else(|| external.map(|one| (&one.id, one.label.as_str())))
-        .or(Some((&answered.id, answered.id.as_str())))
+        .find(|one| one.id == answered.id)
+        .filter(|one| one.relays.is_empty() || one.relays.contains(reader))
+        .map(|one| (&one.id, one.label.as_str()));
+    let external = || {
+        definition
+            .externals
+            .iter()
+            .find(|one| one.id == answered.id && one.relays.contains(reader))
+            .map(|one| (&one.id, one.label.as_str()))
+    };
+    seat.or_else(external)
 }
 
 /// The one rule for which requests are the reader's to decide (docs/protocol.md, "Requests"): on a team

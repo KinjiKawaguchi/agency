@@ -34,21 +34,25 @@ final class ShellModel {
         self.nodes = nodes
     }
 
-    /// What the desk says is wrong with this device's key or with the sign-in, if anything.
+    /// What the desk says is wrong with the versions, this device's key or the sign-in, if anything.
     var notice: String? {
         guard let session else { return nil }
-        return [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem].compactMap { $0 }.first
+        return DeskNotice.first(
+            compatibility: session.compatibility, isGuest: session.desk.standing.isGuest,
+            then: [session.keyProblem.map { _ in Ja.Key.noKey(.platform) }, session.signInProblem]
+        )
     }
 
     // MARK: Start
 
-    func start() {
+    /// - Parameter standing: what the node said the viewer is, when this session replaces one of the same node and account.
+    func start(standing: Standing = .loading) {
         guard session == nil else { return }
         let tokens = AccessTokenStore(host: homeNode.host)
         let flow = AccessSignInFlow(homeNode: homeNode, tokens: tokens)
         self.flow = flow
         let key = SecureEnclaveVault.loader.load(host: homeNode.host)
-        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key)
+        session = NativeSession(homeNode: homeNode, tokens: tokens, signIn: flow, deviceLabel: deviceLabel, key: key, standing: standing)
         takeLink()
     }
 
@@ -58,10 +62,13 @@ final class ShellModel {
         switch loading {
         case .loaded:
             push.noteSignedIn()
+            checkNodeVersion()
             registerPush()
             publishWidgets()
             noteHomeNodes()
         case .failed:
+            // A node whose answers this app cannot read may be one it no longer fits: the versions are compared whether or not the desk loaded.
+            checkNodeVersion()
             // The first launch has no token: ask for the sign-in once, without waiting for a tap.
             if session.desk.needsSignIn, !triedSignIn {
                 triedSignIn = true
@@ -70,6 +77,12 @@ final class ShellModel {
         default:
             break
         }
+    }
+
+    /// Asks the home node what it serves and compares it with this app, for the desk to say when one of them is to be updated.
+    private func checkNodeVersion() {
+        guard let session else { return }
+        Task { await session.checkNodeVersion() }
     }
 
     /// The desk's requests changed, or were read: the widgets show them.
@@ -137,12 +150,20 @@ final class ShellModel {
     /// the latest every 30 seconds.
     func watchOutbox() async {
         guard let outbox = session?.desk.outbox else { return }
+        // Another run (a wake that sent some while the app was suspended) may have changed what is kept.
+        outbox.reload()
         while !Task.isCancelled {
             await outbox.flush()
             var seconds = 30.0
             if let due = outbox.nextDue { seconds = min(max(1, due.timeIntervalSinceNow), 30) }
             try? await Task.sleep(for: .seconds(seconds))
         }
+    }
+
+    /// The app has left the screen: what is due is sent in the time the system gives, and a later run is asked for what still waits.
+    func keepSending() {
+        guard let outbox = session?.desk.outbox else { return }
+        OutboxBackground.finish(outbox)
     }
 
     /// A banner stays a few seconds, long enough to read and not long enough to be in the way.
@@ -188,8 +209,11 @@ final class ShellModel {
         showsSettings = false
         // This device is no longer trusted with the home node: nothing of its desk stays on a widget.
         session?.widgets.clear()
+        // The same node and the same account: what the node said the viewer is stays, so that an owner's open screen is not closed to the desk
+        // while the new session asks again.
+        let standing = session?.desk.standing ?? .loading
         session = nil
-        start()
+        start(standing: standing)
     }
 
     /// Asks the node to stop sending to this device's push token, before the sign-in goes: the node's alerts would otherwise

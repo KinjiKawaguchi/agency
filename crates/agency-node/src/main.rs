@@ -1,10 +1,13 @@
 //! `agency`: the CLI of Agency's node. Creates a node and orgs, invites, joins, adds devices, decides, and serves.
+mod audit_cli;
+mod claim_cli;
 mod dept_cli;
 mod device_cli;
 mod directory_cli;
 mod funding_cli;
 mod kpi_cli;
 mod logs_cli;
+mod member_cli;
 mod metrics_cli;
 mod outcome_cli;
 mod peer_cli;
@@ -30,7 +33,6 @@ use agency_proto::{EnvelopeKind, Id, Payload, Role};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use device_cli::{device_add, CliDevice};
-use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -104,7 +106,24 @@ enum Command {
     SeatAdd(seat_cli::SeatAdd),
     SeatSet(seat_cli::SeatSet),
     SeatRemove(seat_cli::SeatRemove),
+    Audit(audit_cli::Audit),
+    MemberRemove(member_cli::MemberRemove),
+    GuestRemove(member_cli::GuestRemove),
+    Guests(member_cli::Guests),
     SeatMerge(seat_cli::SeatMerge),
+    /// Makes a seven-day claim link for one seat and one email (on the root key's node)
+    SeatInvite {
+        #[arg(long)]
+        org: String,
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        email: String,
+    },
+    /// Lists the claims of seats that a person's browser redeemed and that wait for you to confirm
+    Claims,
+    ClaimConfirm(claim_cli::ClaimConfirm),
+    ClaimReject(claim_cli::ClaimReject),
     ExternalAdd(seat_cli::ExternalAdd),
     ExternalSet(seat_cli::ExternalSet),
     ExternalRemove(seat_cli::ExternalRemove),
@@ -201,6 +220,7 @@ enum Command {
     Logs(logs_cli::LogsArgs),
     /// Prints the node's own measurements (how long routes and calls take) as a table, from the files in the data directory; reads no key and needs no running node
     Metrics(metrics_cli::MetricsArgs),
+    Export(agency_node::export::ExportArgs),
     /// Runs the node: serves the federation routes, the Client API, and the web client, and keeps replicas and the outbox moving
     Serve,
 }
@@ -256,6 +276,7 @@ fn owner_of(account: &str, label: &str) -> Result<Account> {
 }
 
 fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
+    data.check_format()?;
     if data.config_path().exists() {
         bail!("{} already exists", data.config_path().display());
     }
@@ -272,6 +293,7 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     let account = config.account.id.clone();
     let admits_local_clients = config.local_clients;
     data.save_config(&config)?;
+    data.ensure_format()?;
     println!(
         "Created the node in {}\nFingerprint of account {account}'s key: {}",
         data.root().display(),
@@ -283,12 +305,19 @@ fn init(data: &DataDir, config: NodeConfig) -> Result<()> {
     Ok(())
 }
 
+/// What `team-move` says after it moved a team: the team's node takes no decision made before the move, unless the
+/// move only spelled the same origin another way or renamed this node's own origin.
+const TEAM_MOVE_NOTE: &str = "Decisions made for this team before this version and not yet delivered are not taken by its node now: \
+whoever made one is told it was refused, and makes it again. A version that only writes the same origin another way (the host's case, \
+the default port), or that renames this node's own origin to one it was configured with, changes nothing.";
+
 /// What `init` says when the node admits local clients, as every node does unless told otherwise.
 const LOCAL_CLIENTS_HINT: &str = "Every process on this machine that reaches 127.0.0.1 is admitted as the node's owner. \
 If other accounts log in to this machine, set \"localClients\": false in config.json (or run init with \
 --no-local-clients): the Client API and the web client then refuse local requests, and federation keeps working.";
 
-fn status(node: &Node) {
+fn status(node: &Node, data: &DataDir) {
+    let releases = agency_adapters::runtime_releases::read(data);
     let config = node.config();
     println!(
         "Account: {} ({}), key fingerprint {}",
@@ -302,6 +331,13 @@ fn status(node: &Node) {
     }
     for line in agency_core::read_auth::status_lines(node) {
         println!("{line}");
+    }
+    if let Err(error) = node.store().own_origins() {
+        println!("{}", agency_core::node::own_origins_unreadable_line(&error));
+    }
+    let waiting = agency_core::claims::pending(node).len();
+    if waiting > 0 {
+        println!("Claims waiting for you: {waiting} (agency claims)");
     }
     if !config.local_clients {
         println!("Local clients: refused (localClients is false); reach this node through federation or Access");
@@ -386,11 +422,12 @@ fn status(node: &Node) {
     }
     for team in &config.teams {
         println!(
-            "Team on this node: {}/{} (owner {}) runs {}",
+            "Team on this node: {}/{} (owner {}) runs {}; {}",
             team.org,
             team.team,
             team.owner,
-            team.runtime.command.join(" ")
+            team.runtime.command.join(" "),
+            agency_adapters::runtime_releases::say(&releases, &team.org, &team.team)
         );
     }
     warn_misplaced(node, |line| println!("{line}"));
@@ -499,42 +536,10 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     Ok(())
 }
 
-/// Prints the budget report without making one unavailable team's runtime prevent the report. A missing
-/// report becomes `partial`, as calculated by `agency_core::budget::status`.
-async fn budget_status(node: &Node, org: Id, team: Id) -> Result<()> {
-    let definition = agency_core::client::org_definition(node, &org)?;
-    if definition.team(&team).is_none() {
-        bail!("not found");
-    }
-    let now = node.now();
-    let offset = node.utc_offset();
-    let start = agency_core::budget::week_start(now, offset);
-    let today = agency_proto::Date::parse(&now.to_offset(offset).date().to_string())
-        .expect("a time date is a valid protocol date");
-    let mut teams = definition
-        .teams
-        .iter()
-        .filter(|place| place.plan.is_some())
-        .map(|place| place.id.clone())
-        .collect::<BTreeSet<_>>();
-    teams.insert(team.clone());
-    let reads = teams.into_iter().map(|id| async {
-        let spend = tokio::time::timeout(
-            Duration::from_secs(8),
-            agency_core::usage::team_usage(node, &org, &id, Some(7)),
-        )
-        .await
-        .ok()
-        .and_then(|answer| answer.ok())
-        .map(|usage| agency_node::budget::week_spend(&usage, &start, &today));
-        (id, spend)
-    });
-    let mut spends = BTreeMap::new();
-    for (id, spend) in futures_util::future::join_all(reads).await {
-        spends.insert(id, spend);
-    }
-    let report = agency_core::budget::status(&definition, start, &team, &spends)
-        .expect("the selected team was checked in the signed definition");
+/// Prints the budget status, which the Client API answers too: an unavailable team's runtime makes the
+/// report `partial` and does not prevent it.
+async fn print_budget_status(node: &Node, org: &Id, team: &Id) -> Result<()> {
+    let report = agency_adapters::budget::budget_status(node, org, team).await?;
     println!("{}", agency_node::budget::json_line(&report)?);
     Ok(())
 }
@@ -559,6 +564,7 @@ async fn run(cli: Cli) -> Result<()> {
         .with_local_clients(!no_local_clients);
         return init(&data, config);
     }
+    data.check_format()?;
     if let Command::Funding { command } = &cli.command {
         let none = funding_cli::run(&data, command)?;
         std::process::exit(if none { 3 } else { 0 });
@@ -569,6 +575,11 @@ async fn run(cli: Cli) -> Result<()> {
     if let Command::Metrics(args) = &cli.command {
         return metrics_cli::run(&data, args);
     }
+    if let Command::Export(args) = &cli.command {
+        if let Some(dir) = args.only_verifies() {
+            return agency_node::export::verify_dir(dir);
+        }
+    }
     let cli_data = data.clone();
     let opened = agency_node::open(data, Overrides::default())?;
     let node = opened.node.clone();
@@ -578,7 +589,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Budget { command } => match command {
             BudgetCommand::Status { org, team } => {
-                budget_status(&node, id(&org)?, id(&team)?).await?
+                print_budget_status(&node, &id(&org)?, &id(&team)?).await?
             }
         },
         Command::OrgCreate { org, label } => {
@@ -641,7 +652,25 @@ async fn run(cli: Cli) -> Result<()> {
         Command::SeatAdd(args) => seat_cli::seat_add(&node, args)?,
         Command::SeatSet(args) => seat_cli::seat_set(&node, args)?,
         Command::SeatRemove(args) => seat_cli::seat_remove(&node, args)?,
+        Command::Audit(args) => audit_cli::audit(&node, args)?,
+        Command::MemberRemove(args) => member_cli::member_remove(&node, args)?,
+        Command::GuestRemove(args) => member_cli::guest_remove(&node, args)?,
+        Command::Guests(args) => member_cli::guests(&node, args)?,
         Command::SeatMerge(args) => seat_cli::seat_merge(&node, args)?,
+        Command::Claims => claim_cli::list(&node),
+        Command::ClaimConfirm(args) => claim_cli::confirm(&node, args).await?,
+        Command::ClaimReject(args) => claim_cli::reject(&node, args).await?,
+        Command::SeatInvite { org, seat, email } => {
+            let invite = agency_core::claims::seat_invite(&node, &id(&org)?, id(&seat)?, &email)?;
+            println!("{}", invite.link);
+            println!(
+                "Add {} to the Access policy by hand; the node does not change Access.",
+                invite.email
+            );
+            if invite.local_only {
+                println!("This link works on this machine only.");
+            }
+        }
         Command::ExternalAdd(args) => seat_cli::external_add(&node, args)?,
         Command::ExternalSet(args) => seat_cli::external_set(&node, args)?,
         Command::ExternalRemove(args) => seat_cli::external_remove(&node, args)?,
@@ -681,6 +710,7 @@ async fn run(cli: Cli) -> Result<()> {
                 "Moved team {team} of org {org} to {origin} (version {})",
                 doc.body.version
             );
+            println!("{TEAM_MOVE_NOTE}");
         }
         Command::Invite {
             org,
@@ -760,7 +790,8 @@ async fn run(cli: Cli) -> Result<()> {
                 outcomes.len()
             );
         }
-        Command::Status => status(&node),
+        Command::Status => status(&node, &cli_data),
+        Command::Export(args) => agency_node::export::run(&node, args)?,
         Command::Serve => serve(opened).await?,
     }
     Ok(())

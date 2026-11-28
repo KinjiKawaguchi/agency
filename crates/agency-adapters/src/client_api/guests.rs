@@ -6,7 +6,7 @@ use axum::http::Method;
 
 /// A guest's routes: `(method, path)`, where `{org}` must be the guest's own org, `{team}` any team, and
 /// `{token}` or `{id}` any one segment (the handler finds only the guest's own).
-pub(super) const GUEST_ROUTES: [(&str, &str); 15] = [
+pub(super) const GUEST_ROUTES: [(&str, &str); 16] = [
     ("GET", "/api/about"),
     ("GET", "/api/me"),
     ("GET", "/api/session"),
@@ -15,6 +15,7 @@ pub(super) const GUEST_ROUTES: [(&str, &str); 15] = [
     ("GET", "/api/orgs/{org}/teams/{team}/view"),
     ("POST", "/api/orgs/{org}/teams/{team}/envelopes"),
     ("POST", "/api/devices/changes"),
+    ("POST", "/api/devices/requests"),
     ("GET", "/api/push/tokens"),
     ("POST", "/api/push/tokens"),
     ("DELETE", "/api/push/tokens/{token}"),
@@ -39,7 +40,7 @@ fn fits(pattern: &str, path: &str, guest: &Guest) -> bool {
 
 /// Whether `path` is the web client itself (its page and files), which holds none of the node's data: not
 /// under `/api`, not the node's own measurements (`/metrics`), and not the app sign-in (`/app`).
-fn is_the_client(path: &str) -> bool {
+pub(super) fn is_the_client(path: &str) -> bool {
     let reserved = ["/api", "/metrics", "/app"];
     !reserved
         .iter()

@@ -1,5 +1,5 @@
 //! In-memory test doubles: a clock that moves only when told to, counting randomness, and a team runtime.
-use agency_core::config::HostedTeam;
+use agency_core::config::{DeliverySite, HostedTeam};
 use agency_core::delivery::DeliveryFacts;
 use agency_core::ports::{
     Clock, DeliveryError, DeliverySource, Journal, Notifier, Random, TeamRuntime,
@@ -88,8 +88,8 @@ impl Random for CountingRandom {
 pub struct MemoryDeliveryState {
     /// The facts it answers; the reason it fails with; `None` fails as GitHub being unavailable.
     pub facts: Option<Result<DeliveryFacts, String>>,
-    /// The repositories and the start of the period of each read.
-    pub asked: Vec<(Vec<String>, OffsetDateTime)>,
+    /// The site (the host and the repositories) and the start of the period of each read.
+    pub asked: Vec<(DeliverySite, OffsetDateTime)>,
 }
 
 /// A source of delivery facts that answers from memory.
@@ -100,14 +100,14 @@ pub struct MemoryDelivery(pub Arc<Mutex<MemoryDeliveryState>>);
 impl DeliverySource for MemoryDelivery {
     async fn facts(
         &self,
-        repos: &[String],
+        site: &DeliverySite,
         since: OffsetDateTime,
     ) -> Result<DeliveryFacts, DeliveryError> {
         let mut state = self
             .0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.asked.push((repos.to_vec(), since));
+        state.asked.push((site.clone(), since));
         match &state.facts {
             Some(Ok(facts)) => Ok(facts.clone()),
             Some(Err(reason)) => Err(DeliveryError(reason.clone())),
@@ -452,6 +452,13 @@ impl MemoryRootKeys {
     /// Stands for a keychain: keys made here cannot be copied out.
     pub fn need_recovery(&self, is_needing_recovery: bool) {
         self.state.lock().unwrap().is_needing_recovery = is_needing_recovery;
+    }
+
+    /// The secret of every root key made here, as `AccountKey::encoded` writes it: for a test that checks a
+    /// secret is in no file a node writes.
+    pub fn secrets(&self) -> Vec<String> {
+        let state = self.state.lock().unwrap();
+        state.keys.iter().map(|(_, key)| key.encoded()).collect()
     }
 
     /// How many signatures were made.
