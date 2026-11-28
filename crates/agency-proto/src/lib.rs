@@ -31,6 +31,7 @@ pub mod runtime;
 pub mod seat;
 pub mod signed;
 pub mod telemetry;
+pub mod tickets;
 pub mod timestamp;
 pub mod usage;
 pub mod view;

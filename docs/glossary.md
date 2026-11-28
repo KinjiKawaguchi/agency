@@ -79,6 +79,13 @@ Wire and type names (`people`, `Person`, `PersonStatus`, `answerWith`, ...) are 
 - **Comment** (コメント). Text sent with no option picked, on a request that has options. The turn goes back to the team and nothing is decided. In the protocol it is an `answer` envelope with text and no `choice`; the protocol and the node do not name it, and a request without options takes its text as the answer, so the word belongs to the clients.
 - **Mine** and **waiting on the viewer**. Two lists the home node computes for a viewer (`TeamSnapshot.mine`, `TeamSnapshot.waitingOnViewer`); clients show them and never work them out.
 
+## Tickets and their order
+
+- **Ticket** (チケット). One piece of work on a team's board, open or closed, as the team's runtime reports it in `tickets` (an issue, for a board on GitHub). It is named by its item reference. A *work item* (`WorkItem`) is a ticket as a team's view has it: an open one only.
+- **Epic** (エピック). A ticket that holds others, its *children* (子チケット *(proposed)*): the sub-issues of an issue, for a board on GitHub. An epic is answered for by the team whose board Team it has, with every child whatever the child's own Team. A ticket can be in at most one epic; one in none is listed by itself.
+- **Priority** (優先度). The order in which work is handed out, set on an epic or a ticket: highest (最優先), high (高), medium (中), low (低), or deferred (後回し *(proposed)*). Work with no priority, or deferred, is not handed out. On the wire `priority` is a ticket's own value.
+- **Effective priority** (実効優先度 *(proposed)*). What a ticket's work is ordered by: its own priority, else its epic's (`effectivePriority`). The team's runtime works it out, since its dispatch orders work by the same rule; the node and the screens show it and never work it out.
+
 ## How data moves
 
 - **Replica** (写し). A copy of a team's view, or of an org definition, that a node keeps of what another node writes. It is never edited, and says when it was read.

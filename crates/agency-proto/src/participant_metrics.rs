@@ -85,7 +85,7 @@ pub struct PullRequestAuthor {
     pub by: String,
 }
 
-fn valid_repo(repo: &str) -> bool {
+pub(crate) fn valid_repo(repo: &str) -> bool {
     let part = |text: &str| {
         !text.is_empty()
             && text
