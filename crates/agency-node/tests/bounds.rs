@@ -4,7 +4,7 @@ mod common;
 use agency_adapters::peers::{read_headers, MAX_ANSWER_BYTES};
 use agency_core::orgs;
 use agency_core::read_auth::sign_read;
-use agency_core::views::{refresh, Replica};
+use agency_core::views::{refresh, refresh_now, Replica};
 use agency_proto::org::TeamPlace;
 use common::{alice, id, joined_bob, Running};
 use serde_json::{json, Value};
@@ -132,7 +132,8 @@ async fn an_answer_too_long_or_beyond_the_view_limits_is_not_kept() {
     ];
     for (expected, sent) in cases {
         *answer.lock().unwrap() = sent;
-        refresh(&alice.node).await.unwrap();
+        // Read at once: after a failed read, the next pass would wait (see replica_backoff.rs).
+        refresh_now(&alice.node).await.unwrap();
         let now = replica(&alice);
         assert!(
             now.error
