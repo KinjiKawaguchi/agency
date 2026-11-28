@@ -9,6 +9,10 @@ public protocol EvaluationSource: Sendable {
     func effort(org: String, days: Int) async throws -> Effort
     /// What the org intends for each of its teams, from its definition.
     func orgPlans(org: String) async throws -> OrgPlans
+    /// What the node says of itself, for the capabilities it lists.
+    func about() async throws -> About
+    /// Where a team's week stands against its plan's weekly budget, as the node works it out; only a node that lists `budget` is asked.
+    func budget(org: String, team: String) async throws -> BudgetStatus
 }
 
 extension NodeClient: EvaluationSource {}
@@ -84,6 +88,8 @@ public final class EvaluationStore {
     public private(set) var days = EvaluationStore.defaultDays
     public private(set) var state: EvaluationState = .loading
     public private(set) var effort: EffortState = .loading
+    /// How each team's week stands against its weekly budget, by team: what the node says, or why there is none to show.
+    public private(set) var budgets: [String: BudgetRead] = [:]
 
     /// The node's own response times, shown at the end of the screen for the owner; `nil` for a store that has no node to ask.
     public let nodeSpeed: NodeSpeedStore?
@@ -128,6 +134,7 @@ public final class EvaluationStore {
         org = next
         state = .loading
         effort = .loading
+        budgets = [:]
         await readOrg()
     }
 
@@ -178,6 +185,60 @@ public final class EvaluationStore {
         guard id == self.org?.id, days == self.days else { return }
         apply(read, in: org)
         apply(spent, plans: intended, in: org)
+        await readBudgets(in: org, days: days)
+    }
+
+    // MARK: The weekly budget
+
+    /// Asks the node how each team of the effort stands against its weekly budget, once the effort says which teams there are. A node that does not
+    /// list the capability `budget` is not asked, and says only what the plan states; the app works out no week and no threshold of its own.
+    private func readBudgets(in org: OrgRef, days: Int) async {
+        guard case .ready(let reports, _) = effort else { return }
+        for report in reports where budgets[report.team] == nil { budgets[report.team] = .loading }
+        let (id, source, retry) = (org.id, source, retry)
+        let about = await Self.fetch(retry) { try await source.about() }
+        let read: [String: Fetched<BudgetStatus>]
+        switch about {
+        case .answer(let said) where said.has(.budget):
+            read = await Self.budgets(of: reports.map(\.team), in: id, source: source, retry: retry)
+        case .answer, .unavailable:
+            // A node that has no `about`, or does not list the capability, is not asked.
+            read = Dictionary(uniqueKeysWithValues: reports.map { ($0.team, Fetched<BudgetStatus>.unavailable) })
+        case .couldNotAnswer(let reason), .failed(let reason):
+            read = Dictionary(uniqueKeysWithValues: reports.map { ($0.team, Fetched<BudgetStatus>.failed(reason)) })
+        case .cancelled:
+            return
+        }
+        guard id == self.org?.id, days == self.days else { return }
+        for report in reports {
+            guard let one = read[report.team] else { continue }
+            apply(one, to: report)
+        }
+    }
+
+    private static func budgets(
+        of teams: [String], in org: String, source: any EvaluationSource, retry: RetryPolicy
+    ) async -> [String: Fetched<BudgetStatus>] {
+        await withTaskGroup(of: (String, Fetched<BudgetStatus>).self) { group in
+            for team in teams {
+                group.addTask { (team, await Self.fetch(retry) { try await source.budget(org: org, team: team) }) }
+            }
+            var all: [String: Fetched<BudgetStatus>] = [:]
+            for await (team, one) in group { all[team] = one }
+            return all
+        }
+    }
+
+    private func apply(_ read: Fetched<BudgetStatus>, to report: TeamEffortReport) {
+        switch read {
+        case .answer(let status): budgets[report.team] = .reported(BudgetReport(status))
+        case .unavailable: budgets[report.team] = report.plannedBudget.map { .plain(Ja.Effort.budgetPlain(BudgetReport.money(Double($0)))) } ?? BudgetRead.none
+        // What is on screen stays when a refresh fails.
+        case .couldNotAnswer(let reason), .failed(let reason):
+            if case .reported = budgets[report.team] { return }
+            budgets[report.team] = .failed(reason)
+        case .cancelled: return
+        }
     }
 
     private func apply(_ read: Fetched<Evaluation>, in org: OrgRef) {

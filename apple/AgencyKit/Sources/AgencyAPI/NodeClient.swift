@@ -103,6 +103,12 @@ public actor NodeClient {
         try await get("/api/metrics?days=\(days)" + (hourBuckets ? "&hourBuckets=1" : ""))
     }
 
+    /// Where this week's spend of a team stands against its plan's weekly budget, as the node works it out. A node without the capability
+    /// `budget` answers 404; an answerer of the org is told 403.
+    public func budget(org: String, team: String) async throws -> BudgetStatus {
+        try await get("/api/orgs/\(Self.segment(org))/teams/\(Self.segment(team))/budget")
+    }
+
     /// Where each team of an org spent its tokens over the last `days` days (1 to 90), by work type.
     public func effort(org: String, days: Int) async throws -> Effort {
         try await get("/api/orgs/\(Self.segment(org))/effort?days=\(days)")

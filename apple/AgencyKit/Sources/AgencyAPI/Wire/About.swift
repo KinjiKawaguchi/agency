@@ -19,5 +19,7 @@ public struct About: Decodable, Equatable, Sendable {
     public enum Capability: String, Sendable {
         /// A push registration may name its device (`device`), and the node drops the registrations of a device that is removed.
         case pushDevice
+        /// The node serves a team's weekly budget status (`GET /api/orgs/<org>/teams/<team>/budget`).
+        case budget
     }
 }
