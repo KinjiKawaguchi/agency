@@ -33,7 +33,7 @@ fn silent_node() -> (String, TcpListener) {
 /// Places `count` teams of acme on `origin`.
 fn teams_on(alice: &Running, origin: &str, prefix: &str, count: usize) {
     orgs::amend(&alice.node, &id("acme"), |body| {
-        body.teams.extend((0..count).map(|team| {
+        body.teams_mut().extend((0..count).map(|team| {
             let team = id(&format!("{prefix}{team}"));
             TeamPlace::new(team.clone(), team.to_string(), origin.to_owned())
         }));

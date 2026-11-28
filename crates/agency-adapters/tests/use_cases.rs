@@ -802,7 +802,7 @@ async fn of_the_versions_waiting_for_a_node_the_org_no_longer_places_a_team_on_o
 
     // The org removes far: the version that does is queued for far's node as well, to tell it so.
     orgs::amend(&alice.node, &org, |body| {
-        body.teams.retain(|team| team.id != far);
+        body.teams_mut().retain(|team| team.id != far);
         Ok(())
     })
     .unwrap();
@@ -868,7 +868,10 @@ async fn an_origin_written_another_way_is_still_the_node_a_newer_version_places_
     .unwrap();
     // The latest version spells the same node's origin the other way: it is still the node it places the team on.
     orgs::amend(&alice.node, &org, |body| {
-        let team = body.teams.iter_mut().find(|team| team.id == id("far"));
+        let team = body
+            .teams_mut()
+            .iter_mut()
+            .find(|team| team.id == id("far"));
         team.unwrap().node = other.into();
         Ok(())
     })

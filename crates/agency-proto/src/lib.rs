@@ -23,6 +23,7 @@ pub mod metrics;
 pub mod observation;
 pub mod org;
 pub mod org_members;
+pub mod org_model;
 pub mod outcome;
 pub mod participant_metrics;
 pub mod reading;

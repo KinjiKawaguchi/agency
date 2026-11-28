@@ -39,10 +39,9 @@ pub fn me(node: &Node, guest: &Guest) -> Result<Me> {
     let (doc, person) = membership_of(node, &caller, &guest.org)?;
     let teams = doc
         .body
-        .teams
-        .iter()
+        .teams()
         .filter(|place| addresses(node, &doc.body, &place.id, &guest.member))
-        .map(|place| team_ref(node, &doc.body.org, place, &person))
+        .map(|place| team_ref(node, &doc.body.org, &place, &person))
         .collect();
     Ok(Me {
         account: AccountRef {

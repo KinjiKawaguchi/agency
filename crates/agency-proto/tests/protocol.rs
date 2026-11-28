@@ -100,7 +100,9 @@ fn revoked_keys_are_not_members() {
 fn org_shape_is_checked() {
     let root = AccountKey::generate();
     let v1 = genesis(&root);
-    let broken = successor(&v1, &root, |body| body.teams[0].node = "file:///etc".into());
+    let broken = successor(&v1, &root, |body| {
+        body.teams_mut()[0].node = "file:///etc".into()
+    });
     assert!(verify_successor(&v1, &broken).is_err());
     let dangling = successor(&v1, &root, |body| {
         body.people[0].department = Some(id("nowhere"))
@@ -506,7 +508,7 @@ fn root_recovery(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
 /// The next version of `org`, with a plan for its team: how a plan is signed.
 fn org_with_plan(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     let mut body = OrgDefinition::successor_of(org, AT.into());
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: Allocation {
             new_feature: 40,
@@ -625,7 +627,7 @@ fn org_with_outcomes(root: &AccountKey, org: &SignedOrg) -> serde_json::Value {
     lead_time.good_when = GoodWhen::Lower;
     body.kpis = vec![kpi("revenue", "Revenue", yen), activation, lead_time];
     let plan = TeamPlan::new(allocation(), 500).with_aims(vec![aim("app#10", "activation")]);
-    body.teams[0].plan = Some(plan);
+    body.teams_mut()[0].plan = Some(plan);
     let signed = Signed::sign(Kind::Org, body, id("alice"), root).unwrap();
     assert!(verify_successor(org, &signed).is_ok());
     serde_json::json!({ "canonical": canonical_of(&signed.body).unwrap(), "signature": signed.signature, "digest": signed.digest() })
@@ -677,7 +679,7 @@ fn what_an_org_measures_and_aims_at_is_checked_by_every_node() {
     let with = |kpis: Vec<Kpi>, aims: Vec<Aim>| {
         let mut body = genesis(&key).body;
         body.kpis = kpis;
-        body.teams[0].plan = Some(TeamPlan::new(allocation(), 0).with_aims(aims));
+        body.teams_mut()[0].plan = Some(TeamPlan::new(allocation(), 0).with_aims(aims));
         body.validate()
     };
     let count = || kpi("count", "Count", KpiUnit::Count);
@@ -804,21 +806,21 @@ fn a_plan_allocation_adds_up_to_100() {
         debt: 15,
         incident: 5,
     };
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert_eq!(body.validate(), Ok(()));
     allocation.incident = 4;
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation: allocation.clone(),
         weekly_budget_usd: 0,
     });
     assert!(body.validate().is_err(), "99");
     allocation.incident = u32::MAX;
-    body.teams[0].plan = Some(TeamPlan {
+    body.teams_mut()[0].plan = Some(TeamPlan {
         aims: vec![],
         allocation,
         weekly_budget_usd: 0,

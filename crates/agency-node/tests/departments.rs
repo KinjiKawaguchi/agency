@@ -42,8 +42,9 @@ async fn the_root_builds_departments_and_places_teams_in_them() {
 
     let now = body(&alice);
     assert_eq!(now.version, before + 4, "one signed version per change");
-    assert_eq!(now.departments[0].head, Some(id("alice")));
-    assert_eq!(now.departments[1].parent, Some(id("dev")));
+    let departments: Vec<_> = now.groups().collect();
+    assert_eq!(departments[0].head, Some(id("alice")));
+    assert_eq!(departments[1].parent, Some(id("dev")));
     let team_of = |team: &str| now.team(&id(team)).unwrap().department.clone();
     assert_eq!(
         (team_of("app"), team_of("web")),
@@ -56,7 +57,7 @@ async fn the_root_builds_departments_and_places_teams_in_them() {
         ..Change::default()
     };
     departments::change(&alice.node, &org, &id("dev"), renamed).unwrap();
-    let dev = body(&alice).departments[0].clone();
+    let dev = body(&alice).groups().next().unwrap();
     assert_eq!((dev.label.as_str(), dev.head), ("Agency development", None));
 
     departments::place_team(&alice.node, &org, &id("app"), None).unwrap();
@@ -158,7 +159,7 @@ async fn departments_stay_a_tree_with_real_links() {
 
     departments::remove(&alice.node, &org, &id("clients")).unwrap();
     departments::remove(&alice.node, &org, &id("dev")).unwrap();
-    assert!(body(&alice).departments.is_empty());
+    assert!(body(&alice).groups().next().is_none());
 }
 
 #[tokio::test]

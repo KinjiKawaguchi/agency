@@ -144,14 +144,12 @@ pub fn team_dept(node: &Node, args: TeamDept) -> Result<()> {
 
 /// The lines `agency status` shows for an org's departments, parents first.
 pub fn department_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
-    body.departments
-        .iter()
+    body.groups()
         .map(|department| {
-            let teams: Vec<&str> = body
-                .teams
-                .iter()
+            let teams: Vec<String> = body
+                .teams()
                 .filter(|team| team.department.as_ref() == Some(&department.id))
-                .map(|team| team.id.as_str())
+                .map(|team| team.id.to_string())
                 .collect();
             format!(
                 "  Department {} ({}), under {}, head {}, teams: {}",
@@ -222,15 +220,14 @@ pub fn team_plan(node: &Node, args: TeamPlanArgs) -> Result<()> {
 /// The lines `agency status` shows for the teams that have a plan.
 pub fn plan_lines(body: &agency_proto::OrgDefinition) -> Vec<String> {
     let planned = body
-        .teams
-        .iter()
-        .filter_map(|team| team.plan.as_ref().map(|plan| (team, plan)));
+        .teams()
+        .filter_map(|team| team.plan.map(|plan| (team.id, plan)));
     planned
         .map(|(team, plan)| {
             let share = &plan.allocation;
             format!(
                 "  Plan for team {}: new features {}%, improvement {}%, maintenance {}%, debt {}%, incidents {}%, {} USD a week",
-                team.id,
+                team,
                 share.new_feature,
                 share.improvement,
                 share.maintenance,

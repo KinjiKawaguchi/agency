@@ -68,7 +68,7 @@ pub fn status(
     let place = doc.team(team)?;
     let cap = place.plan.as_ref().map(|p| p.weekly_budget_usd);
     let team_spent = spends.get(team).and_then(|v| *v).unwrap_or(0.0);
-    let planned: Vec<_> = doc.teams.iter().filter(|t| t.plan.is_some()).collect();
+    let planned: Vec<_> = doc.teams().filter(|t| t.plan.is_some()).collect();
     let org_cap = (!planned.is_empty()).then(|| {
         planned
             .iter()

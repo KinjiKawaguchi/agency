@@ -162,10 +162,10 @@ pub async fn org_effort(node: &Node, org: &Id, days: Option<u32>) -> Result<Effo
         teams: vec![],
         unavailable: vec![],
     };
-    for place in &doc.body.teams {
+    for place in doc.body.teams() {
         let one = match node.hosted(org, &place.id) {
             Some(hosted) => Ok(effort_of_hosted(node, &hosted, days).await),
-            None => remote_effort(node, org, place, days).await,
+            None => remote_effort(node, org, &place, days).await,
         };
         match one {
             Ok(one) => {

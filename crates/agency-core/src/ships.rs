@@ -31,7 +31,7 @@ pub(crate) async fn aimed_views(
     definition: &OrgDefinition,
 ) -> BTreeMap<Id, Option<TeamView>> {
     let mut views = BTreeMap::new();
-    let aimed = definition.teams.iter().filter(|place| {
+    let aimed = definition.teams().filter(|place| {
         place
             .plan
             .as_ref()
@@ -67,7 +67,7 @@ pub(crate) fn remember(
     views: &BTreeMap<Id, Option<TeamView>>,
 ) -> Result<Shipped> {
     let mut known = remembered(node, &definition.org);
-    for place in &definition.teams {
+    for place in definition.teams() {
         let (Some(plan), Some(Some(view))) = (&place.plan, views.get(&place.id)) else {
             continue;
         };

@@ -16,8 +16,8 @@ use std::collections::BTreeMap;
 
 /// An aim of a team's plan with what is known of its epic.
 struct Planned<'a> {
-    team: &'a Id,
-    aim: &'a PlannedAim,
+    team: Id,
+    aim: PlannedAim,
     title: Option<&'a str>,
     ship: Ship,
 }
@@ -54,7 +54,7 @@ fn planned_aims<'a>(
 ) -> Vec<Planned<'a>> {
     let offset = node.utc_offset();
     let mut planned = vec![];
-    for place in &definition.teams {
+    for place in definition.teams() {
         let Some(plan) = &place.plan else { continue };
         let view = views.get(&place.id).and_then(Option::as_ref);
         for aim in &plan.aims {
@@ -63,8 +63,8 @@ fn planned_aims<'a>(
                 .and_then(|view| view.epics.iter().find(|one| one.reference == aim.epic))
                 .map(|found| found.title.as_str());
             planned.push(Planned {
-                team: &place.id,
-                aim,
+                team: place.id.clone(),
+                aim: aim.clone(),
                 title,
                 ship: ship_of(offset, view, &aim.epic, shipped.get(&key)),
             });
@@ -95,7 +95,7 @@ fn read_one(
         })
         .collect();
     let aim = Aim {
-        team: one.team,
+        team: &one.team,
         epic: &one.aim.epic,
         epic_title: one.title,
         kpi: &one.aim.kpi,
