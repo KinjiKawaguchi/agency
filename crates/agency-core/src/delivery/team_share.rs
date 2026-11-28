@@ -77,6 +77,7 @@ mod tests {
     fn keel() -> DeliveryConfig {
         DeliveryConfig {
             repos: vec!["acme/app".into()],
+            host: None,
             team_field: Some("Team".into()),
             team_value: Some("Keel".into()),
         }

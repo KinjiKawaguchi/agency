@@ -23,6 +23,15 @@ public enum OutboxError: Error, Equatable, Sendable {
     case alreadyDecided
 }
 
+/// What the outbox says of the decisions kept on the device, for a question that is not about sending them.
+public enum KeptDecisions: Equatable, Sendable {
+    case noneKept
+    /// Some are kept and wait to be sent, or to be discarded when the node refused them for good.
+    case kept
+    /// The file of kept decisions cannot be read now, so nothing is known of what is in it.
+    case unreadable
+}
+
 /// The decisions the owner has made and the node has not yet taken (agency#447). A decision is written here, signed, before the desk moves
 /// on; it leaves only when the node has taken it (any 2xx), or when the owner discards a failed one. Sending is the same envelope each
 /// time, so a lost answer and a resend never make two decisions.
@@ -63,11 +72,31 @@ public final class DecisionOutbox {
     /// The desk items that have a decision kept: they do not come back on the pile, and the counts leave them.
     public var decidedItemIDs: Set<String> { Set(entries.map(\.itemID)).union(justTaken) }
 
-    /// Whether a signed decision is kept: the key that signed it must not be taken away (a device is not removed) until it is taken.
+    /// Whether a signed decision is kept and waiting to be sent: something for a send to do.
     public var hasSignedEntries: Bool { !entries.isEmpty }
+
+    /// What a device's removal asks: the key that signed a kept decision must not be taken away until the node has taken it. Kept decisions that
+    /// cannot be read now are not known to be none, and a removal waits for them as well, for a different reason.
+    public var keptDecisions: KeptDecisions {
+        if !isReadable { return .unreadable }
+        return entries.isEmpty ? .noneKept : .kept
+    }
+
+    /// Whether a kept decision was signed by the device `deviceID` (its id in the org, as the decision names it): removing that device would
+    /// make the node refuse the decision for good. After a key reset these are the old device's, which stays listed until it is removed.
+    public func isSigned(by deviceID: String) -> Bool {
+        entries.contains { $0.signer == deviceID }
+    }
 
     /// The entries that wait for the owner to decide what to do with them.
     public var failed: [PendingDecision] { entries.filter(\.isFinallyRefused) }
+
+    /// When a flush is worth running again: now for what is due, or when the next retry is due. `nil` when nothing waits, or when the owner
+    /// has to act first (the sign-in ended, or the decisions stopped for good).
+    public var retryAt: Date? {
+        guard !needsSignIn else { return nil }
+        return entries.filter { !$0.isFinallyRefused }.map { $0.nextAttemptAt ?? now() }.min()
+    }
 
     /// When the next entry that waits for a retry is due, if any: the app wakes a flush then.
     public var nextDue: Date? {
@@ -134,30 +163,31 @@ public final class DecisionOutbox {
             return
         }
         isFlushing = true
-        var tookSome = false
+        var taken: Set<String> = []
         repeat {
             runsAgain = false
-            if await pass() { tookSome = true }
+            taken.formUnion(await pass())
         } while runsAgain
         isFlushing = false
-        if tookSome {
+        if !taken.isEmpty {
             await didTake?()
-            justTaken = []
+            // Only what this flush took: another flush that started meanwhile has its own items to let go of when its desk is read.
+            justTaken.subtract(taken)
         }
         let joined = waiting
         waiting = []
         for continuation in joined { continuation.resume() }
     }
 
-    /// One try of every entry that is due; whether the node took any.
-    private func pass() async -> Bool {
+    /// One try of every entry that is due; the items whose decision the node took.
+    private func pass() async -> Set<String> {
         let due = entries.filter { $0.isDue(at: now()) }.map(\.id)
-        var tookSome = false
+        var taken: Set<String> = []
         for id in due {
             guard !needsSignIn, let entry = entries.first(where: { $0.id == id }), entry.isDue(at: now()) else { continue }
-            if await send(entry) { tookSome = true }
+            if await send(entry) { taken.insert(entry.itemID) }
         }
-        return tookSome
+        return taken
     }
 
     /// Whether the node took it.
@@ -169,6 +199,9 @@ public final class DecisionOutbox {
             took(entry.id)
             return true
         } catch {
+            // Cut short (the app left the screen, or the system's time ran out): the node has said nothing, so no failed try is counted,
+            // and the entry is due again at once.
+            guard !Task.isCancelled else { return false }
             switch SendFailure.of(error) {
             case .taken:
                 took(entry.id)

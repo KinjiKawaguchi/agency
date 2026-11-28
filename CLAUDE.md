@@ -10,6 +10,8 @@ Words follow `docs/glossary.md`, the one place the project's terms are defined: 
 
 User-facing installation docs come in English and Japanese (`docs/install.md` is the source, `docs/install.ja.md` follows it section by section). A change to one changes the other in the same pull request. Japanese text uses the glossary's Japanese names.
 
+`docs/data.md` says what a node keeps, where, for how long, and how to delete it, its keys, and what leaves the machine. It follows `docs/protocol.md`: a change to what a node stores, keeps, or sends changes it in the same pull request (a test checks that every file the store writes is in it).
+
 ## Public repository hygiene
 
 This repository is public. Never write names or details that point at a specific company, customer, person, or internal event: no real organization or product names, customer identifiers, people's names, real issue numbers from other projects, internal tool names, credentials, account IDs, or local paths. Use fictional examples (`acme`, `app`, `alice`, `bob`). Read your diff for this before every push.

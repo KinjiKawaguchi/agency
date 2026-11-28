@@ -1,0 +1,31 @@
+{
+  "url": "http://127.0.0.1:4791",
+  "listen": "127.0.0.1:4791",
+  "account": {
+    "id": "alice",
+    "label": "Alice"
+  },
+  "scrum": "/fixture/runtime.sh",
+  "teams": [
+    {
+      "org": "acme",
+      "team": "app",
+      "owner": "alice",
+      "runtime": {
+        "command": [
+          "/fixture/runtime.sh",
+          "runtime"
+        ],
+        "env": {
+          "SCRUM_STATE_DIR": "/fixture/state"
+        }
+      }
+    }
+  ],
+  "trusted": [
+    {
+      "org": "acme",
+      "rootFingerprint": "2a1973463344bb0d7efdb60a972df362"
+    }
+  ]
+}

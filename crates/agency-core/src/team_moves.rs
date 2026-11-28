@@ -9,7 +9,9 @@ use agency_proto::org::SignedOrg;
 use agency_proto::Id;
 
 /// When the team was placed on the node `current` names for it: the time of the oldest version, going back from
-/// `current`, of the unbroken run that names that same node for it. `None` when the run reaches back further
+/// `current`, of the unbroken run that names that same node for it (the same origin as the node writes one, or
+/// any two of the origins this node has been configured with: it was reached by another one when an earlier version
+/// was made, and a rename of its own origin is no move). `None` when the run reaches back further
 /// than an envelope can be old (every envelope still fresh was made after it), or when a version of the run is
 /// not kept here (nothing can be said, so nothing is refused for it).
 pub(crate) fn placed_at(
@@ -20,6 +22,9 @@ pub(crate) fn placed_at(
 ) -> Option<OffsetDateTime> {
     let org = &current.body.org;
     let place = current.body.team(team)?.node.clone();
+    let own = node.own_origins();
+    let is_own =
+        |origin: &str| home_node_origin(origin).is_some_and(|origin| own.contains(&origin));
     let mut earliest = current.clone();
     loop {
         let at = clock::parse(&earliest.body.at)?;
@@ -32,10 +37,9 @@ pub(crate) fn placed_at(
         let before = node
             .store()
             .load_org_version(org, earliest.body.version - 1)?;
-        let is_same_place = before
-            .body
-            .team(team)
-            .is_some_and(|one| is_same_origin(&one.node, &place));
+        let is_same_place = before.body.team(team).is_some_and(|one| {
+            is_same_origin(&one.node, &place) || (is_own(&one.node) && is_own(&place))
+        });
         if !is_same_place {
             return Some(at);
         }

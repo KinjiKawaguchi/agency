@@ -25,10 +25,7 @@ fn signing_key(byte: u8) -> SigningKey {
 
 /// The 65-byte uncompressed point of `key`.
 fn point(key: &SigningKey) -> Vec<u8> {
-    key.verifying_key()
-        .to_encoded_point(false)
-        .as_bytes()
-        .to_vec()
+    key.verifying_key().to_sec1_point(false).as_bytes().to_vec()
 }
 
 fn public(key: &SigningKey) -> PublicKey {
@@ -49,7 +46,7 @@ fn a_p256_key_has_exactly_one_text() {
     assert_eq!(read.encoded(), text);
     assert!(!read.is_ed25519());
 
-    let compressed = key.verifying_key().to_encoded_point(true);
+    let compressed = key.verifying_key().to_sec1_point(true);
     let mut off_curve = point(&key);
     off_curve[64] ^= 1;
     let mut hybrid = point(&key);
