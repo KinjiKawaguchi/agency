@@ -4,15 +4,19 @@
 mod common;
 
 use agency_adapters::memory::MemoryRuntimeState;
+use agency_core::claims::{seat_invite, CLAIM_DAYS};
 use agency_core::client::team_snapshot;
 use agency_core::decisions::Decided;
 use agency_core::directory::directory;
 use agency_core::invites::{invite, invite_for_seat, join, open_invite, Joined};
+use agency_core::ports::Clock;
 use agency_core::{departments, seats, ErrorKind};
+use agency_proto::clock;
 use agency_proto::invite::Invite;
 use agency_proto::org::{Department, Role, SignedOrg};
 use agency_proto::seat::Seat;
 use common::{alice, answer, decide_as, device, id, joined_bob, memory_runtime, node, Running};
+use std::fs;
 use std::sync::{Arc, Mutex};
 
 type Memory = Arc<Mutex<MemoryRuntimeState>>;
@@ -58,6 +62,54 @@ fn current(alice: &Running) -> SignedOrg {
 
 fn code_of(link: &str) -> String {
     Invite::parse(link).unwrap().code
+}
+
+#[tokio::test]
+async fn a_seat_invite_is_bound_to_its_seat_and_lowercased_email_but_keeps_only_the_code_hash() {
+    let (alice, _) = org_with_a_seat().await;
+    let invite = seat_invite(&alice.node, &id("acme"), id("carol"), "Carol@Example.COM").unwrap();
+    assert!(invite
+        .link
+        .starts_with(&format!("{}/claim#code=", alice.node.url())));
+    assert!(invite.local_only);
+    assert_eq!(invite.email, "carol@example.com");
+    let code = invite.link.split("code=").nth(1).unwrap();
+    let saved: String = fs::read_dir(alice.data_dir().join("claims"))
+        .unwrap()
+        .flat_map(|entry| fs::read_to_string(entry.unwrap().path()))
+        .collect();
+    assert!(!saved.contains(code), "the secret code is never on disk");
+    assert!(saved.contains("carol@example.com"));
+    assert!(saved.contains(&clock::format(
+        alice.clock.now() + agency_proto::clock::Duration::days(CLAIM_DAYS)
+    )));
+}
+
+#[tokio::test]
+async fn a_new_seat_invite_replaces_the_old_link_and_refuses_bad_email_or_missing_seat() {
+    let (alice, _) = org_with_a_seat().await;
+    let first = seat_invite(&alice.node, &id("acme"), id("carol"), "carol@example.com").unwrap();
+    let second = seat_invite(&alice.node, &id("acme"), id("carol"), "carol@example.com").unwrap();
+    let claims: Vec<_> = fs::read_dir(alice.data_dir().join("claims"))
+        .unwrap()
+        .collect();
+    assert_eq!(claims.len(), 1, "one open link remains for this seat");
+    assert_ne!(first.link, second.link);
+    for email in ["", "a", "a@b@c", "@b", "a@", "a\u{0000}@b"] {
+        assert_eq!(
+            seat_invite(&alice.node, &id("acme"), id("carol"), email)
+                .unwrap_err()
+                .kind,
+            ErrorKind::BadRequest,
+            "{email:?}"
+        );
+    }
+    assert_eq!(
+        seat_invite(&alice.node, &id("acme"), id("none"), "a@b")
+            .unwrap_err()
+            .kind,
+        ErrorKind::NotFound
+    );
 }
 
 async fn joined_as_carol(alice: &Running) -> Running {

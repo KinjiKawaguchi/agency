@@ -121,6 +121,39 @@ describe('evaluation: where effort goes', () => {
     expect(rows[5]?.querySelector('.ev-alloc-mark')).toBeNull()
   })
 
+  it('does not ask a node that does not list the effort capability, and says it does not report effort yet', async () => {
+    const node = createMockNode({ evaluation: true, effort: false, now: new Date('2026-11-19T12:00:00Z') })
+    const asked: string[] = []
+    const client = createApiClient((request) => {
+      asked.push(new URL(request.url).pathname)
+      return node.handle(request)
+    })
+    renderApp({ path: '/evaluation', node, client })
+    expect(await screen.findByText('This node does not report effort by work type yet.')).toBeInTheDocument()
+    expect(asked.some((path) => path.endsWith('/effort'))).toBe(false)
+    expect(screen.queryByRole('heading', { level: 3, name: 'App team' })).toBeNull()
+  })
+
+  it('asks a node that lists the effort capability, and shows what it answers', async () => {
+    const node = pinnedNode()
+    const asked: string[] = []
+    const client = createApiClient((request) => {
+      asked.push(new URL(request.url).pathname)
+      return node.handle(request)
+    })
+    renderApp({ path: '/evaluation', node, client })
+    expect(await effortOf('App')).toBeDefined()
+    expect(asked.some((path) => path.endsWith('/effort'))).toBe(true)
+  })
+
+  it('says a failure of the capability read in place, and does not make the section up', async () => {
+    const node = pinnedNode()
+    const client = createApiClient((request) => (new URL(request.url).pathname === '/api/about' ? Promise.resolve(new Response(JSON.stringify({ error: 'The node is busy.' }), { status: 409, headers: { 'content-type': 'application/json' } })) : node.handle(request)))
+    renderApp({ path: '/evaluation', node, client })
+    expect(await screen.findByText(/The node is busy\./)).toBeInTheDocument()
+    expect(screen.queryByText('This node does not report effort by work type yet.')).toBeNull()
+  })
+
   it('says unclassified work is left unclassified, not guessed', async () => {
     renderApp({ path: '/evaluation', node: pinnedNode() })
     expect(await within((await effortOf('App')).getByText(/stays unclassified/).parentElement as HTMLElement).findByText(/It is not guessed\./)).toBeInTheDocument()
