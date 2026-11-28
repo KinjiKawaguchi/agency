@@ -21,7 +21,7 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "ecdh", "std"] }
 # Web Push (RFC 8291): HKDF and AES-128-GCM, from the RustCrypto family p256 belongs to.
 hkdf = "0.12"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 # Sending to several browsers at once, bounded: already in the tree through reqwest.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
