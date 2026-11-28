@@ -20,8 +20,10 @@ use std::time::Duration;
 
 /// The routes of the Client API a client may report, written in `testdata/route-templates.json` for the
 /// clients to name theirs from. A test holds the file to this table and this table to the router.
-pub const REPORTABLE_ROUTES: [&str; 29] = [
+pub const REPORTABLE_ROUTES: [&str; 31] = [
     "GET /api/about",
+    "GET /api/claim",
+    "POST /api/claim",
     "GET /api/me",
     "GET /api/session",
     "GET /api/decisions",

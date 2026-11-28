@@ -1,6 +1,8 @@
 {
   "routes": [
     "GET /api/about",
+    "GET /api/claim",
+    "POST /api/claim",
     "GET /api/me",
     "GET /api/session",
     "GET /api/decisions",

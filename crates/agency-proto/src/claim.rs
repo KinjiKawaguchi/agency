@@ -3,6 +3,17 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// What a browser sends to redeem a claim link: the code of the link, the device key it just made (as text, Ed25519
+/// or P-256), and what it calls itself. An unknown field is refused.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export)]
+pub struct ClaimInput {
+    pub code: String,
+    pub public_key: String,
+    pub label: String,
+}
+
 /// Whether the owner has confirmed the claim yet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

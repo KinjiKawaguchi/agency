@@ -171,6 +171,7 @@ Names start at what came after the first release: every node has what the first 
 | `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
 | `history` | feature | An org's change history for the node's owner: `GET /api/orgs/<org>/history`, the entries of `agency audit --json`. |
 | `members` | feature | The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`. |
+| `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
 
 ## Checks in CI
 

@@ -160,10 +160,12 @@ pub enum Capability {
     History,
     /// The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`.
     Members,
+    /// A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim`.
+    ClaimLinks,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 16] = [
+    pub const ALL: [Capability; 17] = [
         Capability::OrgPlan,
         Capability::OrgAims,
         Capability::OrgKpis,
@@ -180,6 +182,7 @@ impl Capability {
         Capability::Budget,
         Capability::History,
         Capability::Members,
+        Capability::ClaimLinks,
     ];
 
     pub fn name(self) -> &'static str {
@@ -200,6 +203,7 @@ impl Capability {
             Capability::Budget => "budget",
             Capability::History => "history",
             Capability::Members => "members",
+            Capability::ClaimLinks => "claimLinks",
         }
     }
 

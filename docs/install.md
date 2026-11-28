@@ -713,7 +713,7 @@ The node's answers, in the browser or with `curl`, say what went wrong in their 
 | `403` `the Client API is local only` | A request from another machine reached the node without Cloudflare. |
 | `403` `missing or wrong write token` | The page is older than the node's last start. Reload it. |
 | `403` `only the node's owner may decide` | Signed in to Access with an email other than `ownerEmail`, or through an OpenID Connect provider with a `sub` other than `ownerSubject`. |
-| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail` nor a guest's, or with a service token; or through an OpenID Connect provider with a `sub` that is not `ownerSubject` and an email that is not a guest's or that the token does not mark verified. |
+| `403` `this sign-in is not the node's owner or a guest of it` | Signed in to Access with an email that is neither `ownerEmail`, nor a guest's, nor the address of a claim link that can still be used, or with a service token; or through an OpenID Connect provider with a `sub` that is not `ownerSubject` and an email that is not a guest's or that the token does not mark verified. |
 
 ## The team runtime
 
