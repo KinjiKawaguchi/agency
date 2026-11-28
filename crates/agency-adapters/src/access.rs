@@ -283,7 +283,7 @@ impl SignInVerifier {
     }
 
     /// The key set's address: the one the setting names, else the `jwks_uri` of the issuer's discovery
-    /// document, which must be `https` as the issuer is.
+    /// document, which must name that same issuer and an `https` key set as the issuer is.
     async fn keys_url(&self) -> Result<String, String> {
         if let Some(url) = &self.provider.keys_url {
             return Ok(url.clone());
@@ -293,6 +293,10 @@ impl SignInVerifier {
             self.provider.issuer.trim_end_matches('/')
         );
         let document = self.source.certs(&discovery).await?;
+        // OpenID Connect Discovery 1.0, 4.3: the document names the issuer it was asked for, exactly.
+        if document["issuer"].as_str() != Some(self.provider.issuer.as_str()) {
+            return Err("the discovery document names another issuer".into());
+        }
         let url = document["jwks_uri"]
             .as_str()
             .ok_or("the discovery document names no jwks_uri")?;

@@ -47,11 +47,16 @@ fn key_set() -> Value {
 
 /// A provider that publishes discovery (naming `jwks_uri`) and the key set at `KEYS`.
 fn provider(jwks_uri: &str) -> Arc<Provider> {
+    provider_saying(ISSUER, jwks_uri)
+}
+
+/// `provider`, whose discovery document names `issuer`.
+fn provider_saying(issuer: &str, jwks_uri: &str) -> Arc<Provider> {
     Arc::new(Provider {
         documents: vec![
             (
                 format!("{ISSUER}/.well-known/openid-configuration"),
-                json!({ "issuer": ISSUER, "jwks_uri": jwks_uri }),
+                json!({ "issuer": issuer, "jwks_uri": jwks_uri }),
             ),
             (KEYS.to_owned(), key_set()),
         ],
@@ -283,6 +288,17 @@ async fn the_key_set_is_found_through_discovery_and_must_be_https() {
             .iter()
             .any(|url| url.starts_with("http:")),
         "the http address is never read"
+    );
+    let source = provider_saying("https://login.example.com/other", KEYS);
+    let running = behind_oidc(setting(), source.clone()).await;
+    assert_eq!(
+        me(&running, token(OWNER, |_| {})).await,
+        403,
+        "a discovery document of another issuer"
+    );
+    assert!(
+        !source.asked.lock().unwrap().iter().any(|url| url == KEYS),
+        "its key set is never read"
     );
 }
 
