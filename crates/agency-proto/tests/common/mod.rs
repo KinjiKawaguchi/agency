@@ -79,6 +79,19 @@ pub fn envelope(at: &str) -> Envelope {
     }
 }
 
+/// A decision that sets a ticket's priority: the ticket's target, the priority as the choice, and no text.
+pub fn prioritize_envelope() -> Envelope {
+    let mut body = envelope(AT);
+    body.id = EnvelopeId::try_from("0f1e2d3c4b5a69788796a5b4c3d2e1f0".to_owned()).unwrap();
+    body.kind = EnvelopeKind::Prioritize;
+    body.target = "app#12".into();
+    body.payload = Payload {
+        text: String::new(),
+        choice: Some("high".into()),
+    };
+    body
+}
+
 /// A comment: text and no choice.
 pub fn comment_envelope() -> Envelope {
     let mut body = envelope(AT);

@@ -2,7 +2,8 @@
 //! CLI device. The home node checks each one as the team's node will, then applies or sends it. It never
 //! signs them itself.
 use crate::decisions::{
-    accept_envelope_for, send_envelope, Accepted, Decided, DecisionNote, DecisionRecord,
+    accept_envelope_for, refuse_unsupported_kind, send_envelope, Accepted, Decided, DecisionNote,
+    DecisionRecord,
 };
 use crate::devices::DeviceSigner;
 use crate::error::{Error, ErrorKind, Result};
@@ -45,6 +46,7 @@ pub(crate) fn check_signed(
     }
     let doc = orgs::load(node, org).map_err(|_| Error::not_found("not found"))?;
     envelope_signer(&doc.body, signed).map_err(Error::unauthorized)?;
+    refuse_unsupported_kind(envelope.kind)?;
     let place = doc
         .body
         .team(team)

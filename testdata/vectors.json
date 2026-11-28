@@ -145,6 +145,11 @@
     "privateKey": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
     "publicKey": "p256:BCCcMXtjeTXdPaHFT2NJXfsx+X0pPfCFcQMgWVyarLg/3eTGn8F6DHTCDMaSZi8EmJK6N6S6R9LHDNipmYY5H5s="
   },
+  "prioritizeEnvelope": {
+    "canonical": "{\"account\":\"alice\",\"at\":\"2026-11-24T12:00:00Z\",\"id\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f0\",\"kind\":\"prioritize\",\"org\":\"acme\",\"payload\":{\"choice\":\"high\",\"text\":\"\"},\"target\":\"app#12\",\"team\":\"app\"}",
+    "signature": "sLsqCO6X/QZnOR6leHOPnOKffcM1IovYAlcC7rlP5474Z0CH3hafnLQD11Q3/8dQwmCwCzfVz6VY3CjCUcAsBw==",
+    "signer": "laptop"
+  },
   "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
   "rootRecovery": {
     "addingTheRecoveryKey": {

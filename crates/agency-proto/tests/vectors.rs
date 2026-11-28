@@ -35,6 +35,14 @@ fn vectors_match_testdata() {
     let comment = comment_envelope();
     let signed_comment =
         Signed::sign(Kind::Envelope, comment.clone(), id("laptop"), &device_key).unwrap();
+    let prioritize = prioritize_envelope();
+    let signed_prioritize = Signed::sign(
+        Kind::Envelope,
+        prioritize.clone(),
+        id("laptop"),
+        &device_key,
+    )
+    .unwrap();
     let actual = serde_json::json!({
         "seed": "0707070707070707070707070707070707070707070707070707070707070707",
         "publicKey": key.public().encoded(),
@@ -48,6 +56,7 @@ fn vectors_match_testdata() {
         "deviceChange": { "canonical": canonical_of(&first_device).unwrap(), "signer": "alice", "signature": change.signature },
         "org": { "canonical": canonical_of(&org.body).unwrap(), "signature": org.signature, "digest": org.digest() },
         "commentEnvelope": { "canonical": canonical_of(&comment).unwrap(), "signer": "laptop", "signature": signed_comment.signature },
+        "prioritizeEnvelope": { "canonical": canonical_of(&prioritize).unwrap(), "signer": "laptop", "signature": signed_prioritize.signature },
         "canonical": canonical_cases(),
         "p256Device": p256_device(&canonical_of(&comment).unwrap()),
         "orgWithPlan": org_with_plan(&key, &org),

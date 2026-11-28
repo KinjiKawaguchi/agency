@@ -123,6 +123,16 @@ pub enum Accepted {
     Duplicate,
 }
 
+/// What this node does with an envelope of `kind`. A `prioritize` is a signed word that this node reads but does
+/// not apply yet, so it is refused rather than passed to `decide`, which a harness reads only for answers and
+/// judgments.
+pub(crate) fn refuse_unsupported_kind(kind: EnvelopeKind) -> Result<()> {
+    match kind {
+        EnvelopeKind::Answer | EnvelopeKind::Judge => Ok(()),
+        EnvelopeKind::Prioritize => Err(Error::bad_request("this node does not take priorities")),
+    }
+}
+
 /// A runtime's 400 and 404 are refusals; everything else means the runtime cannot act now.
 fn runtime_refusal(error: RuntimeError) -> Error {
     let kind = match error.status {
@@ -257,6 +267,7 @@ pub(crate) async fn accept_envelope_for(
             "an envelope from {account} for {org}/{team}, which does not run on this node"
         )));
     };
+    refuse_unsupported_kind(envelope.kind)?;
     if !envelope.is_fresh(node.now()) {
         return Err(Error::bad_request(
             "the envelope expired, or its time is too far ahead",

@@ -1,6 +1,7 @@
 //! Decision envelopes. Signed with one of the decider's device keys; the team's node checks them before applying.
 use crate::clock;
 use crate::ids::{EnvelopeId, Id};
+use crate::prioritize::PriorityChoice;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -22,6 +23,10 @@ pub enum EnvelopeKind {
     Answer,
     /// Decides a board item waiting for a decision (`target` is the item's reference).
     Judge,
+    /// Sets or clears a ticket's priority (`target` is the ticket's `prioritizeWith`, `payload.choice` a
+    /// `PriorityChoice`). It answers no request: a view never offers it (`AnswerWith`), and it goes to the
+    /// team's runtime through the `prioritize` op, never through `decide`.
+    Prioritize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -63,6 +68,17 @@ impl Envelope {
         if !is_target(&self.target) {
             return Err("malformed target".into());
         }
+        match self.kind {
+            EnvelopeKind::Prioritize => self.validate_priority()?,
+            EnvelopeKind::Answer | EnvelopeKind::Judge => self.validate_answer()?,
+        }
+        clock::parse(&self.at)
+            .map(|_| ())
+            .ok_or_else(|| "malformed time".into())
+    }
+
+    /// The payload of an `answer` or a `judge`: a text, a choice, or both.
+    fn validate_answer(&self) -> Result<(), String> {
         if self.payload.text.chars().count() > MAX_TEXT {
             return Err(format!("the answer text is at most {MAX_TEXT} characters"));
         }
@@ -74,9 +90,20 @@ impl Envelope {
         if self.payload.text.trim().is_empty() && self.payload.choice.is_none() {
             return Err("a choice or an answer text is required".into());
         }
-        clock::parse(&self.at)
-            .map(|_| ())
-            .ok_or_else(|| "malformed time".into())
+        Ok(())
+    }
+
+    /// The payload of a `prioritize`: one `PriorityChoice` as the choice, and no text.
+    fn validate_priority(&self) -> Result<(), String> {
+        let is_choice = self
+            .payload
+            .choice
+            .as_deref()
+            .is_some_and(|choice| PriorityChoice::parse(choice).is_some());
+        if !is_choice || !self.payload.text.is_empty() {
+            return Err("malformed priority".into());
+        }
+        Ok(())
     }
 
     /// Whether it is older than it can be accepted: more than 7 days old. One that is too far ahead is not expired

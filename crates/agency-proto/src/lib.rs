@@ -27,6 +27,7 @@ pub mod org_members;
 pub mod org_model;
 pub mod outcome;
 pub mod participant_metrics;
+pub mod prioritize;
 pub mod reading;
 pub mod root_change;
 pub mod runtime;
