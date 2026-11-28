@@ -372,6 +372,17 @@ impl ClaimStore for DataDir {
             &digest,
         )
     }
+
+    fn remove_claim_for_seat(&self, org: &Id, seat: &Id) -> Result<()> {
+        if let Some(digest) = self.claim_for_seat(org, seat) {
+            self.remove_claim(&digest)?;
+        }
+        remove(&self.dir("claims-by-seat").join(format!(
+            "{}-{}.json",
+            sha256_hex(org.as_str().as_bytes()),
+            sha256_hex(seat.as_str().as_bytes())
+        )))
+    }
 }
 
 impl AppliedLog for DataDir {
@@ -446,6 +457,10 @@ impl GuestStore for DataDir {
 
     fn save_guest_notified(&self, guest: &GuestRef, keys: &[String]) -> Result<()> {
         write_json(&self.guest_notified_path(guest), &keys)
+    }
+
+    fn remove_guest_notified(&self, guest: &GuestRef) -> Result<()> {
+        remove(&self.guest_notified_path(guest))
     }
 }
 
