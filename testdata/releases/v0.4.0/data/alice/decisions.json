@@ -1,0 +1,17 @@
+[
+  {
+    "id": "4ab4d31aa53bfc409c86a0251b10e390",
+    "org": "acme",
+    "team": "app",
+    "kind": "answer",
+    "target": "r-1",
+    "payload": {
+      "text": "",
+      "choice": "yes"
+    },
+    "at": "2026-11-28T08:04:13Z",
+    "isLocal": true,
+    "by": "alice",
+    "signer": "d-eafb25c93790"
+  }
+]

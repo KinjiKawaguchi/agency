@@ -1,0 +1,37 @@
+{
+  "fetchedAt": "2026-11-28T08:04:13Z",
+  "triedAt": "2026-11-28T08:04:13Z",
+  "error": null,
+  "view": {
+    "org": "acme",
+    "team": "app",
+    "label": "App",
+    "generatedAt": "2026-11-24T12:00:00Z",
+    "people": [],
+    "requests": [
+      {
+        "id": "r-1",
+        "kind": "question",
+        "title": "Ship it?",
+        "context": "",
+        "from": "agent",
+        "createdAt": "2026-11-24T12:00:00Z",
+        "blocks": [],
+        "options": [
+          {
+            "key": "yes",
+            "text": "Yes",
+            "isRecommended": true
+          }
+        ],
+        "answerWith": {
+          "kind": "answer",
+          "target": "r-1"
+        }
+      }
+    ],
+    "work": [],
+    "epics": []
+  },
+  "tag": "ff4fc948c0ccb09a958a434aa19d2f4b997eccad5650f6418287d743db743db0"
+}
