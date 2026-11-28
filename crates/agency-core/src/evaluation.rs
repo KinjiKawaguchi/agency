@@ -46,14 +46,26 @@ fn generated_at(node: &Node) -> Timestamp {
 /// The cost of each day's tokens, if the team's runtime reports usage. Without it the costs are zero:
 /// delivery numbers do not wait for them.
 async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, f64)> {
-    let Ok(usage) = node.runtime().token_usage(hosted, days).await else {
-        return vec![];
-    };
-    usage
-        .by_day
-        .into_iter()
-        .map(|day| (day.date, day.cost_usd.values().sum()))
-        .collect()
+    known_daily_costs(node, hosted, days)
+        .await
+        .unwrap_or_default()
+}
+
+/// The cost of each day's tokens when the team's runtime reports usage, and nothing when it does not: a
+/// cost that is zero because it is unknown is not a cost of zero.
+pub(crate) async fn known_daily_costs(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+) -> Option<Vec<(Date, f64)>> {
+    let usage = node.runtime().token_usage(hosted, days).await.ok()?;
+    Some(
+        usage
+            .by_day
+            .into_iter()
+            .map(|day| (day.date, day.cost_usd.values().sum()))
+            .collect(),
+    )
 }
 
 /// The team's participants over the period, if its runtime reports them and what it reports is what was

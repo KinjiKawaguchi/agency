@@ -519,6 +519,7 @@ async fn serve(opened: agency_node::Opened) -> Result<()> {
     }
     println!("Web client: http://127.0.0.1:{port}/");
     opened.start_usage_collector();
+    opened.start_delivery_connectors();
     agency_node::background::start(
         node.clone(),
         logger.clone(),

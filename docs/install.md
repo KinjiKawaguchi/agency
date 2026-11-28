@@ -589,6 +589,15 @@ The org states what it measures (its KPIs) in its definition, with no number. Th
 
 - **Back this directory up, and keep it out of anything shared.** A backup of the data directory holds the numbers, so treat it like the account key.
 - The numbers are for reading how a measure moves, not for accounting.
+- **Numbers the node works out itself.** A KPI of the delivery of a team that runs on this node can take its daily number from the node's delivery numbers instead of being typed in. List it in `config.json` and restart the node:
+
+  ```json
+  "outcomes": { "connectors": [
+    { "org": "acme", "team": "app", "kpi": "features-merged", "metric": "newFeaturesMerged" }
+  ] }
+  ```
+
+  `metric` is one of `newFeaturesMerged` (a count), `newFeaturePrLeadMedianSeconds`, `prLeadMedianSeconds` and `mainRedSeconds` (seconds), and `costPerMergedPrUsd` (money in USD); the KPI's unit must be that one, and the node refuses to start, naming `outcomes.connectors[n].metric`, when it is not. The team must run on this node and have `delivery` set (see "Delivery metrics"), and a KPI has one connector. Once a day is over (in the node's time zone) the node enters that day's number with the source `connector` named `delivery`, for the last 30 days at most when it first starts. It never enters a day that already has a number of any kind, so a number entered by hand stays, and it enters a day once: when GitHub's facts are corrected later, the number is not written again (enter a corrected one by hand to replace it, as for any number). A day with nothing to compute a median or a cost from has no number, which is not 0; a KPI that the org's definition does not list yet waits until it does. What the node could not read (GitHub not answering, a runtime that gives no token usage for the cost) is tried again after ten minutes and said once in the node's log.
 - **The readings.** `GET /api/orgs/<org>/outcomes/readings` (the owner only, like the numbers) says how each KPI a team's plan aims an epic at stood around the day the epic shipped. A team's view keeps a finished epic for a limited time (30 days for the scrum harness), so the node writes the day it first sees an aimed epic finished into `outcomes/<org>.ships.jsonl` (the same directory, the file `0600`; it holds a team, an epic and a time, and no number) and never changes it. Keep it with the numbers, and back it up the same way: without it, a reading of an epic that left the team's view cannot be made.
 
 ## Updating a node

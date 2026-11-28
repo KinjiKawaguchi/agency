@@ -2,6 +2,7 @@
 //! its default branch's CI was red, how many merges were reverts, and what its tokens cost for each
 //! merged pull request. The facts come from an adapter (GitHub); this module only works them out, so it
 //! needs no network, clock, or time zone of its own.
+mod day_numbers;
 mod effort;
 mod evaluate;
 mod facts;
@@ -11,6 +12,7 @@ mod period;
 mod red;
 mod team_share;
 
+pub use day_numbers::{day_numbers, DayNumbers};
 pub use effort::{effort, EffortInput};
 pub use evaluate::{evaluate, Input};
 pub use facts::{BoardValue, DeliveryFacts, MainRun, MergedPullRequest, Verdict};

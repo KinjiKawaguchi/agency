@@ -532,6 +532,79 @@ fn a_board_option_names_a_work_type_by_its_name_alone() {
     }
 }
 
+#[test]
+fn each_day_has_its_own_numbers_the_empty_ones_a_zero_count_and_no_median() {
+    let found = vec![
+        pull_request(
+            "feat: a",
+            "",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T09:00:00Z",
+            None,
+            false,
+            None,
+        ),
+        pull_request(
+            "feat: b",
+            "",
+            "2026-11-23T06:00:00Z",
+            "2026-11-23T09:30:00Z",
+            None,
+            false,
+            None,
+        ),
+        pull_request(
+            "fix: c",
+            "",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T08:30:00Z",
+            None,
+            false,
+            None,
+        ),
+    ];
+    let runs = [
+        run("a", "2026-11-23T10:00:00Z", Verdict::Failed),
+        run("b", "2026-11-23T12:00:00Z", Verdict::Passed),
+    ];
+    let costs = [(date("2026-11-23"), 9.0)];
+    let input = Input {
+        now: at("2026-11-24T12:00:00Z"),
+        offset: UtcOffset::UTC,
+        days: 3,
+        pull_requests: &found,
+        runs: &runs,
+        cost_by_day: &costs,
+    };
+    let days = day_numbers(&input);
+    let dates: Vec<&str> = days.iter().map(|day| day.date.as_str()).collect();
+    assert_eq!(dates, ["2026-11-22", "2026-11-23", "2026-11-24"]);
+    let (empty, busy) = (&days[0], &days[1]);
+    assert_eq!(
+        (empty.new_features_merged, empty.main_red_seconds),
+        (0, 0),
+        "a day with nothing has a count of 0"
+    );
+    assert_eq!(
+        (
+            empty.new_feature_pr_lead_median_seconds,
+            empty.pr_lead_median_seconds,
+            empty.cost_per_merged_pr_usd
+        ),
+        (None, None, None),
+        "and no median or cost, which is no number and not 0"
+    );
+    assert_eq!(busy.new_features_merged, 2);
+    assert_eq!(
+        busy.new_feature_pr_lead_median_seconds,
+        Some(8_100),
+        "the mean of an hour and three and a half"
+    );
+    assert_eq!(busy.pr_lead_median_seconds, Some(3_600));
+    assert_eq!(busy.main_red_seconds, 7_200);
+    assert_eq!(busy.cost_per_merged_pr_usd, Some(3.0), "9 over three");
+}
+
 fn in_repo(mut one: MergedPullRequest, repo: &str) -> MergedPullRequest {
     one.repo = repo.into();
     one
