@@ -609,7 +609,7 @@ impl OrgDefinition {
     /// to each other correctly. A definition written in units (shape 2) is not taken by this release yet: its move
     /// from departments and teams comes with the rules that check it (agency#678).
     pub fn validate(&self) -> Result<(), String> {
-        if self.shape.is_some() {
+        if self.shape == Some(crate::org_units::UNIT_SHAPE) {
             return Err(
                 "the definition is written in units, which this release does not take yet".into(),
             );

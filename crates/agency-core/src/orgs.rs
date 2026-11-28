@@ -78,6 +78,8 @@ fn labels(body: &OrgDefinition) -> Vec<(String, String)> {
     all.extend(externals.map(|one| (format!("external party {}", one.id), one.label.clone())));
     let kpis = body.kpis.iter();
     all.extend(kpis.map(|one| (format!("KPI {}", one.id), one.label.clone())));
+    let agents = body.agents().iter();
+    all.extend(agents.map(|one| (format!("agent {}", one.id), one.label.clone())));
     all
 }
 
@@ -728,5 +730,32 @@ pub async fn catch_up(node: &Node, origin: &str, org: &Id, target: u64) -> Resul
                 format!("{origin} sent no version of {org} after {current}"),
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::labels;
+    use agency_proto::keys::AccountKey;
+    use agency_proto::org::Root;
+    use agency_proto::org_units::Agent;
+    use agency_proto::{Id, OrgDefinition};
+
+    #[test]
+    fn an_agent_s_label_is_checked_like_every_other_label() {
+        let id = |raw: &str| Id::parse(raw).unwrap();
+        let root = Root::new(id("alice"), AccountKey::from_seed([1; 32]).public());
+        let body = OrgDefinition::new(
+            id("acme"),
+            "Acme".into(),
+            root,
+            "2026-11-28T00:00:00Z".into(),
+        )
+        .with_agents(vec![Agent::new(id("lead"), "Lead\u{202e}", None)]);
+        let found = labels(&body);
+        assert!(
+            found.contains(&("agent lead".to_owned(), "Lead\u{202e}".to_owned())),
+            "{found:?}"
+        );
     }
 }

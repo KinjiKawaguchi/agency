@@ -262,6 +262,7 @@ fn a_head_is_a_person_or_an_agent_and_never_a_seat_or_a_node_account() {
         .contains("is not a person or an agent"));
     let node_head = edited(&|org| {
         org.people[1].kind = Some(MemberKind::Node);
+        org.people[1].unit = None;
         org.units[1].head = Some(id("bob"));
     });
     assert!(node_head
@@ -325,4 +326,67 @@ fn the_model_reads_a_definition_in_units() {
         Some(id("dev-lead")),
         "the root is no longer the head"
     );
+}
+
+#[test]
+fn a_node_account_acts_for_no_one() {
+    let as_node = |edit: &dyn Fn(&mut OrgDefinition)| {
+        let mut org = acme();
+        org.people[1].kind = Some(MemberKind::Node);
+        org.people[1].unit = None;
+        edit(&mut org);
+        org.validate_any_shape()
+    };
+    assert_eq!(
+        as_node(&|_| {}),
+        Ok(()),
+        "bob as a node account, in no unit"
+    );
+    let device = crate::org::Device {
+        id: id("d-1"),
+        label: "Laptop".into(),
+        public_key: AccountKey::from_seed([9; 32]).public(),
+        added_at: crate::Timestamp::parse("2026-11-28T00:00:00Z").unwrap(),
+    };
+    let cases: [Case; 5] = [
+        ("a device", &|org| {
+            org.people[1].devices = vec![device.clone()]
+        }),
+        ("a unit", &|org| org.people[1].unit = Some(id("dev"))),
+        ("a seat it took", &|org| {
+            org.people[1].formerly = vec![id("designer")]
+        }),
+        ("what to ask it", &|org| {
+            org.people[1].ask_about = vec!["builds".into()]
+        }),
+        ("the root's account", &|org| org.root.account = id("bob")),
+    ];
+    for (what, edit) in cases {
+        let error = as_node(edit).unwrap_err();
+        assert!(error.contains("is a node account"), "{what}: {error}");
+    }
+    let relay = as_node(&|org| {
+        let mut one = seat("designer", Some("app"));
+        one.relays = vec![id("bob")];
+        org.seats = vec![one];
+    });
+    assert!(relay.unwrap_err().contains("answers for a seat"));
+    let external = as_node(&|org| {
+        org.externals = vec![crate::seat::External {
+            id: id("counsel"),
+            label: "Counsel".into(),
+            ask_about: vec![],
+            relays: vec![id("bob")],
+        }];
+    });
+    assert!(external
+        .unwrap_err()
+        .contains("answers for a seat or an external party"));
+}
+
+#[test]
+fn a_shape_other_than_two_is_named_as_unknown_by_validate() {
+    let mut org = acme();
+    org.shape = Some(3);
+    assert_eq!(org.validate(), Err("unknown shape 3".into()));
 }

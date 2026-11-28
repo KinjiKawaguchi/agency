@@ -109,6 +109,12 @@ impl OrgDefinition {
         groups.chain(teams).chain(in_units)
     }
 
+    /// The same definition with these agents. They are read only in a definition written in units, which refuses
+    /// them otherwise.
+    pub fn with_agents(self, agents: Vec<Agent>) -> Self {
+        Self { agents, ..self }
+    }
+
     /// The agents of the org, in a definition written in units (none otherwise).
     pub fn agents(&self) -> &[Agent] {
         &self.agents

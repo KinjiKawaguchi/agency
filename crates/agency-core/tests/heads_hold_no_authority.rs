@@ -1,30 +1,74 @@
-//! A head of a unit or of the org holds no authority (agency#674): the code that decides who may sign, write,
-//! read, join, claim, add a device or decide never reads a head. This test reads those sources and fails when one
-//! of them names `head`, so that authority can't come to depend on a head without this test being changed and
-//! read for it.
+//! A head of a unit or of the org holds no authority (agency#674): no code that decides who may sign, write, read,
+//! join, claim, add a device, decide, or be addressed reads a head. This test reads every source of the crates and
+//! fails when a file not listed below names `head`, so that a new reader of a head is added here on purpose, with
+//! why, and is read for it.
 use std::path::Path;
 
-/// The sources that decide authority, from the workspace root.
-const DECIDE_AUTHORITY: [&str; 15] = [
-    "crates/agency-core/src/decisions.rs",
-    "crates/agency-core/src/signed_decisions.rs",
-    "crates/agency-core/src/read_auth.rs",
-    "crates/agency-core/src/invites.rs",
-    "crates/agency-core/src/devices.rs",
-    "crates/agency-core/src/claims.rs",
-    "crates/agency-core/src/guests.rs",
-    "crates/agency-core/src/kept.rs",
-    "crates/agency-core/src/pending_root.rs",
-    "crates/agency-adapters/src/client_api/admission.rs",
-    "crates/agency-adapters/src/client_api/guests.rs",
-    "crates/agency-adapters/src/client_api/claimants.rs",
-    "crates/agency-adapters/src/server.rs",
-    "crates/agency-proto/src/signed.rs",
-    "crates/agency-proto/src/envelope.rs",
+/// The sources that may name `head`, and why none of them decides authority.
+const MAY_NAME_A_HEAD: [(&str, &str); 15] = [
+    (
+        "crates/agency-proto/src/org.rs",
+        "the definition's fields, and the shape-1 checks of a department's head",
+    ),
+    (
+        "crates/agency-proto/src/org_model.rs",
+        "the model: who heads a unit and whom one reports to",
+    ),
+    (
+        "crates/agency-proto/src/org_model/tests.rs",
+        "the model's tests",
+    ),
+    (
+        "crates/agency-proto/src/org_units.rs",
+        "the shape-2 types and their checks",
+    ),
+    (
+        "crates/agency-proto/src/org_units/tests.rs",
+        "the shape-2 tests",
+    ),
+    (
+        "crates/agency-proto/src/about.rs",
+        "the field guard names the path departments[].head",
+    ),
+    (
+        "crates/agency-proto/src/seat.rs",
+        "a test builds a department with no head",
+    ),
+    (
+        "crates/agency-proto/src/directory.rs",
+        "the directory a client shows: a department's head, for people to read",
+    ),
+    (
+        "crates/agency-core/src/directory.rs",
+        "builds that directory",
+    ),
+    (
+        "crates/agency-core/src/departments.rs",
+        "the command that sets a department's head",
+    ),
+    (
+        "crates/agency-core/src/members.rs",
+        "says a member heads a department when it is removed",
+    ),
+    (
+        "crates/agency-node/src/dept_cli.rs",
+        "prints a department's head",
+    ),
+    (
+        "crates/agency-core/src/delivery/kinds.rs",
+        "another meaning: the head of a pull request's title",
+    ),
+    (
+        "crates/agency-node/src/logs_cli.rs",
+        "another meaning: `| head` in a comment",
+    ),
+    (
+        "crates/agency-node/src/metrics_cli.rs",
+        "another meaning: `| head` in a comment",
+    ),
 ];
 
-/// Whether `source` names a head: the word `head` in code (`.head`, `head()`, `head:`), not as part of another
-/// word such as `header` or `ahead`.
+/// Whether `source` names a head: the word `head`, not as part of another word such as `header` or `ahead`.
 fn names_a_head(source: &str) -> bool {
     let bytes = source.as_bytes();
     source.match_indices("head").any(|(at, _)| {
@@ -35,15 +79,49 @@ fn names_a_head(source: &str) -> bool {
     })
 }
 
+fn sources(dir: &Path, found: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            sources(&path, found);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            found.push(path);
+        }
+    }
+}
+
 #[test]
-fn no_source_that_decides_authority_reads_a_head() {
+fn only_the_listed_sources_name_a_head() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for file in DECIDE_AUTHORITY {
-        let source = std::fs::read_to_string(root.join(file))
-            .unwrap_or_else(|error| panic!("{file}: {error}; update the list if it moved"));
+    let mut found = vec![];
+    for krate in [
+        "agency-proto",
+        "agency-core",
+        "agency-adapters",
+        "agency-node",
+    ] {
+        sources(&root.join("crates").join(krate).join("src"), &mut found);
+    }
+    assert!(found.len() > 100, "the sources are read");
+    for path in found {
+        let relative = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let is_listed = MAY_NAME_A_HEAD.iter().any(|(file, _)| *file == relative);
+        if !is_listed {
+            let source = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                !names_a_head(&source),
+                "{relative} names a head. A head holds no authority (#674): if this file must read one, list it in MAY_NAME_A_HEAD with why"
+            );
+        }
+    }
+    for (file, _) in MAY_NAME_A_HEAD {
         assert!(
-            !names_a_head(&source),
-            "{file} names a head. A head holds no authority (#674): if this file must read one, say why here"
+            root.join(file).exists(),
+            "{file} is listed and gone: take it out of the list"
         );
     }
 }

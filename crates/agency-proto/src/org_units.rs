@@ -189,6 +189,7 @@ pub(crate) fn validate(definition: &crate::org::OrgDefinition) -> Result<(), Str
     if let Some(person) = definition.people.iter().find(|p| !is_unit(&p.unit)) {
         return Err(format!("{} is in a unit the org does not have", person.id));
     }
+    check_node_accounts(definition)?;
     let may_head: HashSet<&Id> = definition
         .people
         .iter()
@@ -205,6 +206,50 @@ pub(crate) fn validate(definition: &crate::org::OrgDefinition) -> Result<(), Str
         if !may_head.contains(head) {
             return Err(format!(
                 "{head} heads a unit or the org, and is not a person or an agent of it"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// An account that only hosts teams (`kind: node`) is no one on the org's chart and acts for no one: it has no
+/// devices, so it never signs a decision (nor is it a hosted member, which has a device and no account key); it sits
+/// in no unit and took no seat; no seat or external party names it to answer for them; and it is not the
+/// root's account, whose person heads the org when no head is named.
+fn check_node_accounts(definition: &crate::org::OrgDefinition) -> Result<(), String> {
+    let nodes: Vec<&crate::org::Person> = definition
+        .people
+        .iter()
+        .filter(|person| person.kind.is_some())
+        .collect();
+    for node in &nodes {
+        let acts_as_a_person = !node.devices.is_empty()
+            || node.unit.is_some()
+            || !node.formerly.is_empty()
+            || !node.ask_about.is_empty();
+        if acts_as_a_person {
+            return Err(format!(
+                "{} is a node account and has a device, a unit, or a seat it took",
+                node.id
+            ));
+        }
+        if node.account == definition.root.account {
+            return Err(format!(
+                "{} is a node account and the root's account",
+                node.id
+            ));
+        }
+    }
+    let relays = definition.seats.iter().flat_map(|seat| &seat.relays).chain(
+        definition
+            .externals
+            .iter()
+            .flat_map(|external| &external.relays),
+    );
+    for relay in relays {
+        if nodes.iter().any(|node| &node.id == relay) {
+            return Err(format!(
+                "{relay} is a node account and answers for a seat or an external party"
             ));
         }
     }
