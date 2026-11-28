@@ -141,6 +141,35 @@ fn on(alice: &Running, kpi: &str, date: &str) -> Option<Observation> {
         .find(|one| one.date.as_str() == date)
 }
 
+/// A team on a GitHub Enterprise Server: the connectors read its delivery numbers from its own host, as the
+/// evaluation does, and never from github.com.
+#[tokio::test]
+async fn the_connectors_read_a_team_on_its_own_github_host() {
+    let (alice, _) = alice_with_connectors().await;
+    alice
+        .node
+        .update_config(|config| {
+            let team = config
+                .teams
+                .remove(0)
+                .with_delivery_on("git.example.test", vec!["acme/app".into()]);
+            config.teams.insert(0, team);
+        })
+        .unwrap();
+    let pass = write_finished_days(&alice.node).await;
+    assert!(
+        pass.failures.is_empty() && pass.refused.is_empty(),
+        "{pass:?}"
+    );
+    let asked = alice.delivery.0.lock().unwrap().asked.clone();
+    assert!(!asked.is_empty(), "the connectors read the team's numbers");
+    for (site, _) in &asked {
+        assert_eq!(site.host.as_deref(), Some("git.example.test"), "{site:?}");
+        assert_eq!(site.repos, ["acme/app"]);
+    }
+    assert_eq!(of(&alice, "features").len(), 30, "and wrote what they read");
+}
+
 #[tokio::test]
 async fn a_connected_kpi_gets_one_number_for_each_finished_day_from_the_connector() {
     let (alice, _) = alice_with_connectors().await;
