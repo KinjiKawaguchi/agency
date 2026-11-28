@@ -164,7 +164,7 @@ describe('where the node sends notices', () => {
     const user = userEvent.setup()
     const node = await nodeWith(['old-ipad'])
     renderApp({ path: '/devices', node, enrolled: true, locale: 'ja' })
-    const card = within(await screen.findByRole('region', { name: '通知の送り先' }))
+    const card = within(await screen.findByRole('region', { name: '通知の送信先' }))
     expect(await card.findByText('どの端末にも紐づいていません。止めるまで残ります。')).toBeInTheDocument()
     await user.click(card.getByRole('button', { name: 'Old iPadへの通知を止める' }))
     await user.click(await screen.findByRole('button', { name: '通知を止める' }))

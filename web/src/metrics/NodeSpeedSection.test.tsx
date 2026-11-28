@@ -235,7 +235,7 @@ describe('the node’s own response time, on the evaluation page', () => {
   it('reads in Japanese, with the words of the glossary', async () => {
     open({ metrics: 'usual' }, { locale: 'ja' })
     const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
-    expect(await found.findByText(/予算の内です: p95 は 50 ミリ秒 以下。/)).toBeInTheDocument()
+    expect(await found.findByText(/上限の内です: p95 は 50 ミリ秒 以下。/)).toBeInTheDocument()
     expect(found.getByRole('rowheader', { name: 'デスク' })).toBeInTheDocument()
     expect(found.getAllByText('ルートの区分')).toHaveLength(2)
   })
@@ -296,7 +296,7 @@ describe('the node’s own response time, on the evaluation page', () => {
       open({ metrics: 'usual', metricsWithoutHourBuckets: true }, { locale: 'ja' })
       const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
       expect((await found.findAllByText(/1 点は、いちばん遅いルートの p95 です/)).length).toBeGreaterThan(1)
-      expect(found.getByText(/予算の線より上にある点は、予算を破ったことを言いません/)).toBeInTheDocument()
+      expect(found.getByText(/上限の線より上にある点は、上限を破ったことを言いません/)).toBeInTheDocument()
     })
 
     it('asks for the buckets of the hours with the hours, for 1 and 7 days, and not for 30, which has no hours', async () => {
@@ -367,7 +367,7 @@ describe('the node’s own response time, on the evaluation page', () => {
       const found = within((await screen.findByRole('heading', { level: 2, name: 'このノードの応答時間' })).closest('section') as HTMLElement)
       expect(await found.findByText('時間ごとの推移')).toBeInTheDocument()
       expect(found.getAllByRole('figure')[0]?.querySelector('figcaption')).toHaveTextContent('ノード内の読み取り')
-      expect(found.getAllByText(/予算 100 ミリ秒/)).toHaveLength(1)
+      expect(found.getAllByText(/上限 100 ミリ秒/)).toHaveLength(1)
     })
   })
 })

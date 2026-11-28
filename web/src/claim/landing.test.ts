@@ -57,7 +57,7 @@ describe('the public landing page of a claim link', () => {
 
   it('is in Japanese for a browser that asks for it, and in English otherwise', () => {
     load(`/claim#code=${CODE}`, 'ja-JP')
-    expect(document.getElementById('title')?.textContent).toBe('席を受け取る')
+    expect(document.getElementById('title')?.textContent).toBe('ポジションを受け取る')
     expect(document.documentElement.lang).toBe('ja')
     load(`/claim#code=${CODE}`, 'fr-FR')
     expect(document.getElementById('title')?.textContent).toBe('Take your seat')

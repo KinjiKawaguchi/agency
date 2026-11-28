@@ -96,15 +96,15 @@ describe('the participants of a team', () => {
     const japanese = document.querySelector('.ev-participants .ev-note')?.textContent ?? ''
     expect(japanese).toContain('重なったセッションは 1 回として数えます')
     expect(japanese).toContain('別のセッションが待っていても作業に数えます')
-    expect(japanese).toContain('ほかのエージェントを待っているセッションは待機に数えます')
+    expect(japanese).toContain('ほかの AI エージェントを待っているセッションは待機に数えます')
     expect(japanese).toContain('下限')
   })
 
   it('reads in Japanese', () => {
     draw([person()], 2, 'ja')
-    expect(screen.getByText('参加者')).toBeInTheDocument()
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '作業 8.5時間、判断待ち 40分 以上、待機 1.3時間')
-    expect(screen.getByText(/参加者が分からないマージ: 2 件/)).toBeInTheDocument()
+    expect(screen.getByText('メンバー')).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '作業 8.5時間、相談待ち 40分 以上、待機 1.3時間')
+    expect(screen.getByText(/メンバーが分からないマージ: 2 件/)).toBeInTheDocument()
   })
 })
 

@@ -159,7 +159,7 @@ describe('the owner’s history page', () => {
 
   it('says it in Japanese', async () => {
     renderApp({ path: '/history', node: createTestNode({ history: 3 }), enrolled: true, locale: 'ja' })
-    expect(await screen.findByRole('heading', { level: 1, name: '履歴' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '組織の変更履歴' })).toBeInTheDocument()
     expect(await screen.findByText('版 3')).toBeInTheDocument()
     expect(screen.getByText('このノードは、この版を保管していません。')).toBeInTheDocument()
     expect(within(document.body).getByText(/^署名は確かめていません/)).toBeInTheDocument()

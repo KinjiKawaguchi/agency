@@ -72,8 +72,8 @@ describe('overview', () => {
 
   it('reads in Japanese', async () => {
     renderApp({ path: '/overview', moreOrgs: true, locale: 'ja' })
-    expect(await screen.findByRole('heading', { level: 1, name: '全体の状況' })).toBeInTheDocument()
-    expect(await (await card('club', 'garden')).findByText('参加者 3 人のうち 2 人が作業中')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'チームの状況' })).toBeInTheDocument()
+    expect(await (await card('club', 'garden')).findByText('メンバー 3 人のうち 2 人が作業中')).toBeInTheDocument()
     expect(await (await card('club', 'shop')).findByText(/^このチームを読み込めませんでした: /)).toBeInTheDocument()
   })
 })

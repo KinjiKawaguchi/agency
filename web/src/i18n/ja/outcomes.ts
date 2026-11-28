@@ -2,9 +2,9 @@
 import type { Messages } from '../en'
 
 export const outcomes: Messages['outcomes'] = {
-  title: '成果の指標',
+  title: 'KPI',
   lead: '組織の仕事が何を生んでいるかを示す数値と、それぞれの仕事が完了した日の前後で数値がどう動いたかです。このページが見えるのはあなただけで、数値はこのノードの外に出ません。',
-  note: '数値は、指標の動きを読むためのものです。会計用ではありません。',
+  note: '数値は、指標の変化を読むためのものです。会計用ではありません。',
   org: '組織',
   period: '期間',
   days: (count) => `${count} 日`,
@@ -64,7 +64,7 @@ export const outcomes: Messages['outcomes'] = {
       note: 'メモは 200 文字までで、制御文字を含めないでください。',
     },
     full: 'この指標には、ノードが保てる上限の 5,000 件の数値がすでにあります。',
-    forbidden: '数値を入れられるのはオーナーだけです。',
+    forbidden: '数値を入れられるのはノードの管理者だけです。',
     refused: (message) => `ノードが受け付けませんでした: ${message}`,
   },
   history: {
@@ -79,7 +79,7 @@ export const outcomes: Messages['outcomes'] = {
   },
   readings: {
     title: '読み取り',
-    lead: 'チームの計画にある狙いごとに、仕事の完了の前と後で指標がどうだったかです。あなたの数値の計算で、相関であって、原因ではありません。',
+    lead: 'チームのプランにある狙いごとに、仕事の完了の前と後で指標がどうだったかです。あなたの数値の計算で、相関であって、原因ではありません。',
     none: 'この組織のどのチームにも、まだ狙いがないため、読み取るものがありません。',
     team: (label) => `${label} チーム`,
     shipped: (date) => `${date} 完了`,

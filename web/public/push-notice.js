@@ -28,12 +28,12 @@
     },
     ja: {
       app: 'Agency',
-      request: 'あなたを待っている依頼があります',
+      request: 'あなたを待っているリクエストがあります',
       device: (label) => (label === undefined ? '端末が追加を待っています' : '端末\u300c' + label + '\u300d\u304c追加を待っています'),
       decision: (title) => (title === undefined ? '決定が断られました' : '\u300c' + title + '\u300d\u306e決定は断られました'),
       recovery: (org, at) =>
-        (org === undefined ? '組織のルート鍵の回復が始まりました' : org + ' のルート鍵の回復が始まりました') + (at.started ? '（' + at.started + '）' : '') + '。' + (at.finishes ? at.finishes + ' に有効になります。' : '') + '机で確認してください。',
-      root: (org, n) => (org === undefined ? '' : org + ' の') + '変更' + (n > 1 ? ' ' + n + ' 件が' : 'が') + '、ルート鍵の署名を待っています。机で確認してください。',
+        (org === undefined ? '組織のルートキーの回復が始まりました' : org + ' のルートキーの回復が始まりました') + (at.started ? '（' + at.started + '）' : '') + '。' + (at.finishes ? at.finishes + ' に有効になります。' : '') + '机で確認してください。',
+      root: (org, n) => (org === undefined ? '' : org + ' の') + '変更' + (n > 1 ? ' ' + n + ' 件が' : 'が') + '、組織のルートキーの署名を待っています。机で確認してください。',
     },
   }
 

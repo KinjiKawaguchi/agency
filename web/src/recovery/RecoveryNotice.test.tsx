@@ -16,9 +16,9 @@ const heldByOthers = (node: ReturnType<typeof createMockNode>, ...orgs: string[]
     const me = (await reply.json()) as { orgs: Array<{ id: string; isRoot: boolean }> }
     return new Response(JSON.stringify({ ...me, orgs: me.orgs.map((org) => (orgs.includes(org.id) ? { ...org, isRoot: false } : org)) }), { headers: { 'content-type': 'application/json' } })
   })
-const note = () => screen.findByRole('status', { name: /Recovery of an org|組織のルート鍵の回復/ })
-const notice = () => screen.findByRole('alert', { name: /Recovery of an org|組織のルート鍵の回復/ })
-const noticeOf = async (text: string) => (await screen.findAllByRole('alert', { name: /Recovery of an org|組織のルート鍵の回復/ })).find((one) => one.textContent?.includes(text))
+const note = () => screen.findByRole('status', { name: /Recovery of an org|組織のルートキーの回復/ })
+const notice = () => screen.findByRole('alert', { name: /Recovery of an org|組織のルートキーの回復/ })
+const noticeOf = async (text: string) => (await screen.findAllByRole('alert', { name: /Recovery of an org|組織のルートキーの回復/ })).find((one) => one.textContent?.includes(text))
 
 describe('a recovery of an org that waits', () => {
   it('is at the top of the desk, says when it takes effect, and gives the command that cancels it with the org’s id', async () => {
@@ -92,10 +92,10 @@ describe('a recovery of an org that waits', () => {
     renderApp({ node: createMockNode({ recoveries: { acme: STARTED } }), path: '/desk', enrolled: true, locale: 'ja' })
     const one = await notice()
     const time = createFormatters('ja').dateTime(AT)
-    expect(one).toHaveTextContent(`Acme のルート鍵の回復が始まりました。${time} に有効になります。`)
-    expect(one).toHaveTextContent('新しいルート鍵: b7c8d9e0f1a2')
-    expect(one).toHaveTextContent('回復用の鍵も取り替えます。')
-    expect(one).toHaveTextContent('心当たりがないときは、ルート鍵のノードで取り消してください: agency root-cancel-recovery --org acme')
+    expect(one).toHaveTextContent(`Acme のルートキーの回復が始まりました。${time} に有効になります。`)
+    expect(one).toHaveTextContent('新しいルートキー: b7c8d9e0f1a2')
+    expect(one).toHaveTextContent('リカバリーキーも取り替えます。')
+    expect(one).toHaveTextContent('心当たりがないときは、組織のルートキーのノードで取り消してください: agency root-cancel-recovery --org acme')
   })
 })
 
@@ -127,7 +127,7 @@ describe('the command that cancels it', () => {
   it('says the same in Japanese, with the command’s name and no id', async () => {
     rendered('$(id)', 'ja')
     const one = await notice()
-    expect(one).toHaveTextContent('心当たりがないときは、ルート鍵のノードで、この組織を指定して agency root-cancel-recovery を実行し、取り消してください。')
+    expect(one).toHaveTextContent('心当たりがないときは、組織のルートキーのノードで、この組織を指定して agency root-cancel-recovery を実行し、取り消してください。')
     expect(one.textContent).not.toContain('$(id)')
   })
 
@@ -177,8 +177,8 @@ describe('a recovery of an org whose root key is on another node', () => {
     renderApp({ node, client: heldByOthers(node, 'acme'), path: '/desk', enrolled: true, locale: 'ja' })
     const one = await note()
     const time = createFormatters('ja').dateTime(AT)
-    expect(one).toHaveTextContent(`Acme のルート鍵の回復が進んでいます。${time} に有効になります。`)
-    expect(one).toHaveTextContent('取り消せるのは、そのルート鍵の持ち主です。')
+    expect(one).toHaveTextContent(`Acme のルートキーの回復が進んでいます。${time} に有効になります。`)
+    expect(one).toHaveTextContent('取り消せるのは、その組織のルートキーのノードの管理者です。')
     expect(one.textContent).not.toMatch(/root-cancel-recovery|心当たり/)
   })
 })

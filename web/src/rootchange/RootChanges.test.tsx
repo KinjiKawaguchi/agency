@@ -21,8 +21,8 @@ const STRUCTURED = [
   { id: 's3', org: 'acme', what: 'remove device d-1234 of bob', receivedAt: AGO(10), kind: 'removeDevice', member: 'bob', device: 'd-1234' },
 ]
 const PENDING_EN = 'Approved here; it takes effect once the root key’s node signs it: run agency root-sign there.'
-const PENDING_JA = 'ここでは承認しました。ルート鍵のノードが署名すると有効になります。そのノードで agency root-sign を実行してください。'
-const item = () => screen.findByRole('status', { name: /Changes waiting for the root key|ルート鍵の署名を待っている変更/ })
+const PENDING_JA = 'ここでは承認しました。組織のルートキーのノードが署名すると有効になります。そのノードで agency root-sign を実行してください。'
+const item = () => screen.findByRole('status', { name: /Changes waiting for the root key|組織のルートキーの署名を待っている変更/ })
 
 describe('the changes that wait for the root key’s signature, on the desk', () => {
   it('is one item: how many, what each changes and for which org, and the command that signs them together', async () => {
@@ -116,9 +116,9 @@ describe('the changes that wait for the root key’s signature, on the desk', ()
   it('names an org the viewer does not list by its id, and says it all in Japanese', async () => {
     renderApp({ node: createTestNode({ rootChanges: [{ ...WAITING[0]!, org: 'elsewhere' }] }), path: '/desk', enrolled: true, locale: 'ja' })
     const one = await item()
-    expect(one).toHaveTextContent('ルート鍵の署名を待っている変更が 1 件あります。')
+    expect(one).toHaveTextContent('組織のルートキーの署名を待っている変更が 1 件あります。')
     expect(one).toHaveTextContent('add member carol (Carol)（elsewhere、')
-    expect(one).toHaveTextContent('まとめて署名するには、ルート鍵のノードで agency root-sign を実行してください。')
+    expect(one).toHaveTextContent('まとめて署名するには、組織のルートキーのノードで agency root-sign を実行してください。')
   })
 })
 

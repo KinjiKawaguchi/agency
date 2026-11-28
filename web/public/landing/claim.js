@@ -14,8 +14,8 @@
       none: 'This page needs the link you were sent. Open that link again.',
     },
     ja: {
-      title: '席を受け取る',
-      lead: '席を受け取るよう招かれています。',
+      title: 'ポジションを受け取る',
+      lead: 'ポジションを受け取るよう招かれています。',
       go: 'サインインして続ける',
       none: 'このページには、送られたリンクが必要です。そのリンクを開き直してください。',
     },

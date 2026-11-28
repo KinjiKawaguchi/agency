@@ -3,13 +3,13 @@ import type { Messages } from '../en'
 
 export const notices: Messages['notices'] = {
   // The words of the iPhone app's banner (apple/AgencyKit/Sources/AgencyModel/Wording/JaNews.swift), so both clients say the same.
-  request: (count, title, team) => (count === 1 ? `${team}: 「${title}」があなたを待っています` : `${count} 件の依頼があなたを待っています`),
-  participant: (count, label) => (count === 1 ? `${label} があなたの返事を待っています` : `参加者 ${count} 人があなたの返事を待っています`),
+  request: (count, title, team) => (count === 1 ? `${team}: 「${title}」があなたを待っています` : `${count} 件のリクエストがあなたを待っています`),
+  participant: (count, label) => (count === 1 ? `${label} があなたの返事を待っています` : `メンバー ${count} 人があなたの返事を待っています`),
   blocked: (count, title, team, reason) => (count === 1 ? `${team}: 「${title}」が止まりました${reason === undefined ? '' : ` (${reason})`}` : `${count} 件の仕事が止まりました`),
   aDevice: '端末',
   device: (count, label) => (count === 1 ? `端末「${label}」が追加を待っています` : `${count} 台の端末が追加を待っています`),
   decision: (state, count, title, reason) => {
-    if (count > 1) return `${count} 件の決定に動きがありました`
+    if (count > 1) return `${count} 件の決定に変化がありました`
     const named = title === '' ? '決定' : `「${title}」の決定`
     if (state === 'refused') return `${named}は断られました${reason === undefined ? '' : `: ${reason}`}`
     if (state === 'queued') return `${named}は保存済みですが、まだ届いていません`
@@ -18,20 +18,20 @@ export const notices: Messages['notices'] = {
   more: (count) => `ほかにも新しいことが ${count} 件あります。`,
   // The iPhone's words for a push whose titles are hidden (apple/Shared/ja.lproj), and the same for the kinds it has no push for.
   hidden: {
-    request: 'あなたを待っている依頼があります',
-    participant: '参加者があなたの返事を待っています',
+    request: 'あなたを待っているリクエストがあります',
+    participant: 'メンバーがあなたの返事を待っています',
     blocked: '止まった仕事があります',
     device: '端末が追加を待っています',
     decisionRefused: '決定が断られました',
   },
   devicesMark: (count) => `承認待ち ${count} 件`,
   destinations: {
-    title: '通知の送り先',
+    title: '通知の送信先',
     lead: 'このノードが通知を送るブラウザとアプリの一覧です。端末を削除すると、その端末への通知は自動で止まります。どの端末にも紐づかない登録は、ここで止めるか、そのブラウザやアプリで通知をオフにするまで残ります。',
     thisBrowser: 'このブラウザ',
     turnOffHere: 'このブラウザの通知をオフにする',
     loading: 'ノードに問い合わせています…',
-    failed: (reason) => `通知の送り先を読めませんでした: ${reason}`,
+    failed: (reason) => `通知の送信先を読めませんでした: ${reason}`,
     none: 'このノードは、どこにも通知を送っていません。',
     kinds: { browser: 'ブラウザ', app: 'iPhone / Mac のアプリ' },
     registered: (when) => `${when}に登録`,

@@ -39,7 +39,7 @@ describe('the menus', () => {
   it('reads in Japanese', async () => {
     renderApp({ path: '/org', locale: 'ja' })
     const main = await screen.findByRole('navigation', { name: 'メインメニュー' })
-    expect(labels(main).map((text) => text?.replace(/\d+$/, ''))).toEqual(['決めること', '全体', '組織', '成果'])
-    expect(labels(screen.getByRole('navigation', { name: '組織のページ' }))).toEqual(['組織図', '参加者と仕事'])
+    expect(labels(main).map((text) => text?.replace(/\d+$/, ''))).toEqual(['あなた宛てのリクエスト', 'チームの状況', '組織', '成果'])
+    expect(labels(screen.getByRole('navigation', { name: '組織のページ' }))).toEqual(['組織図', 'メンバーの作業状況'])
   })
 })
