@@ -14,9 +14,41 @@ struct RouteTemplatesTests {
 
     private struct Listing: Decodable { let routes: [String] }
 
+    /// `AGENCY_WRITE_FIXTURES=1` writes the app's table from the node's list instead of comparing, the way the node's own fixtures are written.
+    private func writeTable(_ routes: [String], from file: String = #filePath) throws {
+        // Tests/AgencyAPITests/Telemetry/RouteTemplatesTests.swift: four levels up is the package.
+        var url = URL(fileURLWithPath: file)
+        for _ in 0..<4 { url.deleteLastPathComponent() }
+        url.appendPathComponent("Sources/AgencyAPI/Telemetry/RouteTemplatesList.swift")
+        try Self.tableSource(of: routes).write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static func tableSource(of routes: [String]) -> String {
+        let lines = routes.map { "        \"\($0)\",\n" }.joined()
+        return """
+        // Written by RouteTemplatesTests from testdata/route-templates.json: run `AGENCY_WRITE_FIXTURES=1 swift test --filter RouteTemplatesTests` in
+        // apple/AgencyKit after the node's routes change, and commit the file. Do not edit it by hand.
+
+        extension RouteTemplates {
+            /// The routes a client may name, in the order of `testdata/route-templates.json`.
+            public static let all: [String] = [
+        \(lines)    ]
+        }
+
+        """
+    }
+
     @Test("the app's table is the node's list, in the same order")
     func sameAsTheFile() throws {
-        #expect(RouteTemplates.all == (try listed()))
+        let routes = try listed()
+        if ProcessInfo.processInfo.environment["AGENCY_WRITE_FIXTURES"] == "1" {
+            try writeTable(routes)
+            return
+        }
+        #expect(
+            RouteTemplates.all == routes,
+            "the app's table is not testdata/route-templates.json; run AGENCY_WRITE_FIXTURES=1 swift test --filter RouteTemplatesTests in apple/AgencyKit and commit RouteTemplatesList.swift"
+        )
     }
 
     @Test("a call is named by its template, whatever its ids and query")
