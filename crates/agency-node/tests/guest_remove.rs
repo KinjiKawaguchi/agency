@@ -7,9 +7,9 @@ use agency_core::claims::seat_invite;
 use agency_core::client::team_snapshot;
 use agency_core::decisions::accept_envelope;
 use agency_core::members::{remove_member, remove_member_to_seat};
-use agency_core::{guests, seats, ErrorKind};
+use agency_core::{departments, guests, seats, ErrorKind};
 use agency_proto::client::GuestRef;
-use agency_proto::org::SignedOrg;
+use agency_proto::org::{Department, SignedOrg};
 use agency_proto::seat::Seat;
 use agency_proto::{AccountKey, Envelope, EnvelopeId, EnvelopeKind, Id, Kind, Payload, Signed};
 use common::guests::{call, with_guest, CAROL};
@@ -132,7 +132,9 @@ async fn a_member_turned_into_a_seat_keeps_the_requests_addressed_to_it_in_one_v
         "the team still addresses carol: {refused:?}"
     );
 
-    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[]).unwrap();
+    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[])
+        .unwrap()
+        .doc;
 
     assert_eq!(doc.body.version, before.version + 1, "a single version");
     assert!(doc.body.member(&id("carol")).is_none());
@@ -180,7 +182,9 @@ async fn the_members_named_to_answer_for_the_seat_get_the_requests_and_the_owner
     let bob = joined_bob(&alice).await;
     drop(bob);
 
-    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[id("bob")]).unwrap();
+    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[id("bob")])
+        .unwrap()
+        .doc;
 
     let seat = doc
         .body
@@ -202,10 +206,17 @@ async fn the_members_named_to_answer_for_the_seat_get_the_requests_and_the_owner
 #[tokio::test]
 async fn the_seats_a_member_took_come_back_and_a_pending_claim_of_one_is_dropped() {
     let (alice, _) = with_guest().await;
+    let tax = Department {
+        id: id("tax"),
+        label: "Tax".into(),
+        parent: None,
+        head: None,
+    };
+    departments::add(&alice.node, &acme(), tax).unwrap();
     let dan = Seat {
         id: id("dan"),
         label: "Dan (tax)".into(),
-        department: None,
+        department: Some(id("tax")),
         ask_about: vec!["tax".into()],
         relays: vec![],
     };
@@ -229,7 +240,9 @@ async fn the_seats_a_member_took_come_back_and_a_pending_claim_of_one_is_dropped
         })
         .unwrap();
 
-    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[]).unwrap();
+    let done = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[]).unwrap();
+    let doc = done.doc;
+    assert!(done.from_the_member.is_empty(), "the history had the seat");
 
     let ids: Vec<&str> = doc.body.seats.iter().map(|seat| seat.id.as_str()).collect();
     assert_eq!(
@@ -244,9 +257,23 @@ async fn the_seats_a_member_took_come_back_and_a_pending_claim_of_one_is_dropped
         .find(|seat| seat.id == id("dan"))
         .unwrap();
     assert_eq!(
-        dan.ask_about,
-        ["tax"],
-        "what to ask about came with the member"
+        (
+            dan.label.as_str(),
+            dan.department.as_ref(),
+            dan.ask_about.as_slice()
+        ),
+        ("Dan (tax)", Some(&id("tax")), ["tax".to_owned()].as_slice()),
+        "the seat comes back as it was, not as the member is"
+    );
+    let carol = doc
+        .body
+        .seats
+        .iter()
+        .find(|seat| seat.id == id("carol"))
+        .unwrap();
+    assert_eq!(
+        carol.label, "Carol",
+        "the member's own seat is the member's"
     );
     assert!(
         alice
@@ -256,6 +283,96 @@ async fn the_seats_a_member_took_come_back_and_a_pending_claim_of_one_is_dropped
             .is_none()
             && !record.exists(),
         "a link made before cannot take the seat back"
+    );
+}
+
+#[tokio::test]
+async fn a_seat_comes_back_with_the_answerers_asked_for_and_without_a_department_the_org_lost() {
+    let (alice, _) = with_guest().await;
+    joined_bob(&alice).await;
+    let tax = Department {
+        id: id("tax"),
+        label: "Tax".into(),
+        parent: None,
+        head: None,
+    };
+    departments::add(&alice.node, &acme(), tax).unwrap();
+    let dan = Seat {
+        id: id("dan"),
+        label: "Dan (tax)".into(),
+        department: Some(id("tax")),
+        ask_about: vec![],
+        relays: vec![id("bob")],
+    };
+    seats::add_seat(&alice.node, &acme(), dan).unwrap();
+    seats::merge_seat(&alice.node, &acme(), &id("dan"), &id("carol")).unwrap();
+    departments::remove(&alice.node, &acme(), &id("tax")).unwrap();
+    alice
+        .node
+        .update_config(|config| {
+            config.teams[0].people.insert("tax".into(), id("dan"));
+        })
+        .unwrap();
+
+    let doc = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[])
+        .unwrap()
+        .doc;
+
+    let dan = doc
+        .body
+        .seats
+        .iter()
+        .find(|seat| seat.id == id("dan"))
+        .unwrap();
+    assert_eq!(dan.department, None, "the department is gone from the org");
+    assert!(
+        dan.relays.is_empty(),
+        "answered by those asked for now, not by those of the old seat: {:?}",
+        dan.relays
+    );
+}
+
+#[tokio::test]
+async fn a_seat_no_kept_version_has_comes_back_as_the_member_is_and_is_said() {
+    let (alice, _) = with_guest().await;
+    let dan = Seat {
+        id: id("dan"),
+        label: "Dan (tax)".into(),
+        department: None,
+        ask_about: vec![],
+        relays: vec![],
+    };
+    seats::add_seat(&alice.node, &acme(), dan).unwrap();
+    seats::merge_seat(&alice.node, &acme(), &id("dan"), &id("carol")).unwrap();
+    alice
+        .node
+        .update_config(|config| {
+            config.teams[0].people.insert("tax".into(), id("dan"));
+        })
+        .unwrap();
+    // The versions that still had the seat are not kept on this node.
+    let history = alice.data_dir().join("orgs").join("acme.history");
+    for version in 1..=current(&alice).body.version {
+        let path = history.join(format!("{version:06}.json"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        if text.contains("\"dan\"") && !text.contains("formerly") {
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+
+    let done = remove_member_to_seat(&alice.node, &acme(), &id("carol"), &[]).unwrap();
+
+    assert_eq!(done.from_the_member, [id("dan")]);
+    let dan = done
+        .doc
+        .body
+        .seats
+        .iter()
+        .find(|seat| seat.id == id("dan"))
+        .unwrap();
+    assert_eq!(
+        dan.label, "Carol",
+        "the member's data, as there is nothing else"
     );
 }
 

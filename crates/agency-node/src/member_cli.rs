@@ -58,24 +58,31 @@ pub fn guest_remove(node: &Node, args: GuestRemove) -> Result<()> {
     {
         bail!("{member} is not a hosted member of {org}; `agency member-remove` removes any other member");
     }
-    let removed = if args.to_seat {
+    let (version, note) = if args.to_seat {
         let answered_by = args
             .answered_by
             .iter()
             .map(|raw| Id::parse(raw).map_err(anyhow::Error::msg))
             .collect::<Result<Vec<_>>>()?;
-        members::remove_member_to_seat(node, &org, &member, &answered_by)?
+        let done = members::remove_member_to_seat(node, &org, &member, &answered_by)?;
+        let unknown: Vec<String> = done.from_the_member.iter().map(Id::to_string).collect();
+        let note = match unknown.is_empty() {
+            true => String::new(),
+            false => format!(
+                "; no kept version has the seat {} as it was, so it carries {member}'s label and department",
+                unknown.join(", ")
+            ),
+        };
+        (
+            done.doc.body.version,
+            format!("; a seat of its id stands in its place{note}"),
+        )
     } else {
-        members::remove_member(node, &org, &member)?
-    };
-    let now = if args.to_seat {
-        "; a seat of its id stands in its place"
-    } else {
-        ""
+        let doc = members::remove_member(node, &org, &member)?;
+        (doc.body.version, String::new())
     };
     println!(
-        "Ended {member}'s access in org {org} (version {}); its devices' keys are revoked{now}",
-        removed.body.version
+        "Ended {member}'s access in org {org} (version {version}); its devices' keys are revoked{note}"
     );
     Ok(())
 }

@@ -325,7 +325,7 @@ agency guest-remove --org acme --member carol
 
 One signed version takes the member out of the org and revokes the keys of their devices, so nothing they signed is taken on any node of the org. The node drops their sign-in, their push registrations and its list of the requests they were told of. The decision log keeps what they decided.
 
-The command is refused while something still names the member: a team on this node that addresses them, a seat they answer for, a department they head. To end a person's access without losing the requests addressed to them, add `--to-seat`: a seat of the member's id takes their place in the same version (with their label, department and what to ask about, and one seat for each seat they had taken), and a claim link made before for one of those seats stops working.
+The command is refused while something still names the member: a team on this node that addresses them, a seat they answer for, a department they head. To end a person's access without losing the requests addressed to them, add `--to-seat`: a seat of the member's id takes their place in the same version (with their label, department and what to ask about), and so does one seat for each seat they had taken, as it was in the node's last kept version that still had it (the command says when none does and the seat takes the member's label instead), and a claim link made before for one of those seats stops working.
 
 ```sh
 agency guest-remove --org acme --member carol --to-seat --answered-by bob

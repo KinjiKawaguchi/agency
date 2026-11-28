@@ -56,25 +56,45 @@ fn still_named(node: &Node, org: &OrgDefinition, member: &Id, becomes_seat: bool
 /// `revoked`, and then drops what this node kept for it as a hosted member. Refused for the root's own account
 /// (403), for a member the org does not have (404), and while something still names it (409, naming each place).
 pub fn remove_member(node: &Node, org: &Id, member: &Id) -> Result<SignedOrg> {
-    remove(node, org, member, None)
+    remove(node, org, member, None).map(|(doc, _)| doc)
+}
+
+/// What `remove_member_to_seat` did.
+#[derive(Debug)]
+pub struct ToSeat {
+    pub doc: SignedOrg,
+    /// The seats the member had taken that the org's kept versions no longer hold, so that they came back with the
+    /// member's own label, department and what to ask about.
+    pub from_the_member: Vec<Id>,
 }
 
 /// `remove_member`, and in the same version a seat of the member's id in its place, and one for each seat the member
-/// took (a team may address those ids). Each seat keeps the member's label, department and what to ask about, and is
-/// answered by `answered_by` (members of the org, in order of preference), or by the team's owner when that is empty.
-/// A claim link made earlier for one of those seats is dropped, so that it cannot take the seat back. The requests
-/// addressed to those ids stay addressed to the seats, which is why a team that addresses them no longer stops it.
+/// took (a team may address those ids). The member's seat has their label, department and what to ask about; a seat
+/// they took comes back as it was in the last version the node keeps that still had it (`from_the_member` names the
+/// ones no kept version has, which take the member's). Each is answered by `answered_by` (members of the org, in order
+/// of preference), or by the team's owner when that is empty. A claim link made earlier for one of those seats is
+/// dropped, so that it cannot take the seat back. The requests addressed to those ids stay addressed to the seats,
+/// which is why a team that addresses them no longer stops it.
 pub fn remove_member_to_seat(
     node: &Node,
     org: &Id,
     member: &Id,
     answered_by: &[Id],
-) -> Result<SignedOrg> {
-    remove(node, org, member, Some(answered_by))
+) -> Result<ToSeat> {
+    let (doc, seats) = remove(node, org, member, Some(answered_by))?;
+    Ok(ToSeat {
+        doc,
+        from_the_member: seats.from_the_member,
+    })
 }
 
 /// `Some(answered_by)` turns the member into seats, `None` removes them.
-fn remove(node: &Node, org: &Id, member: &Id, answered_by: Option<&[Id]>) -> Result<SignedOrg> {
+fn remove(
+    node: &Node,
+    org: &Id,
+    member: &Id,
+    answered_by: Option<&[Id]>,
+) -> Result<(SignedOrg, Replacement)> {
     let current = load(node, org)?;
     if &current.body.root.account == member {
         return Err(Error::new(
@@ -102,9 +122,9 @@ fn remove(node: &Node, org: &Id, member: &Id, answered_by: Option<&[Id]>) -> Res
             ),
         ));
     }
-    let seats = match answered_by {
-        Some(answered_by) => seats_for(&current.body, person, answered_by)?,
-        None => vec![],
+    let replacement = match answered_by {
+        Some(answered_by) => seats_for(node, &current.body, person, answered_by)?,
+        None => Replacement::default(),
     };
     let doc = amend(node, org, |body| {
         let keys: Vec<_> = body
@@ -126,19 +146,41 @@ fn remove(node: &Node, org: &Id, member: &Id, answered_by: Option<&[Id]>) -> Res
             .cloned()
             .collect();
         body.revoked = body.revoked.iter().cloned().chain(keys).collect();
-        body.seats.extend(seats.iter().cloned());
+        body.seats.extend(replacement.seats.iter().cloned());
         Ok(())
     })?;
     forget_hosted(node, org, member)?;
-    for seat in &seats {
+    for seat in &replacement.seats {
         node.store().remove_claim_for_seat(org, &seat.id)?;
     }
-    Ok(doc)
+    Ok((doc, replacement))
 }
 
-/// The seats that stand in `person`'s place: one of their id and one of each seat they took, with their label,
-/// department and what to ask about, answered by `answered_by`, who must be other members of the org.
-fn seats_for(org: &OrgDefinition, person: &Person, answered_by: &[Id]) -> Result<Vec<Seat>> {
+/// The seats that stand in a removed member's place, and which of them took the member's own data.
+#[derive(Default)]
+struct Replacement {
+    seats: Vec<Seat>,
+    from_the_member: Vec<Id>,
+}
+
+/// The seat `id` as the last version this node keeps that still had it held it, walking back from the version
+/// before the one that took it (and so removed it).
+fn seat_as_it_was(node: &Node, org: &OrgDefinition, id: &Id) -> Option<Seat> {
+    (1..=org.version)
+        .rev()
+        .filter_map(|version| node.store().load_org_version(&org.org, version))
+        .find_map(|doc| doc.body.seats.into_iter().find(|seat| &seat.id == id))
+}
+
+/// The seats that stand in `person`'s place: one of their id, with their label, department and what to ask about,
+/// and one of each seat they took, as it was (or, when no kept version has it, with the member's data), answered by
+/// `answered_by`, who must be other members of the org.
+fn seats_for(
+    node: &Node,
+    org: &OrgDefinition,
+    person: &Person,
+    answered_by: &[Id],
+) -> Result<Replacement> {
     for relay in answered_by {
         let is_other_member = relay != &person.id && org.people.iter().any(|one| &one.id == relay);
         if !is_other_member {
@@ -148,16 +190,36 @@ fn seats_for(org: &OrgDefinition, person: &Person, answered_by: &[Id]) -> Result
             )));
         }
     }
-    let ids = std::iter::once(&person.id).chain(&person.formerly);
-    Ok(ids
-        .map(|id| Seat {
-            id: id.clone(),
-            label: person.label.clone(),
-            department: person.department.clone(),
-            ask_about: person.ask_about.clone(),
-            relays: answered_by.to_vec(),
-        })
-        .collect())
+    let of_the_member = |id: &Id| Seat {
+        id: id.clone(),
+        label: person.label.clone(),
+        department: person.department.clone(),
+        ask_about: person.ask_about.clone(),
+        relays: answered_by.to_vec(),
+    };
+    let mut replacement = Replacement {
+        seats: vec![of_the_member(&person.id)],
+        from_the_member: vec![],
+    };
+    for id in &person.formerly {
+        match seat_as_it_was(node, org, id) {
+            Some(was) => replacement.seats.push(Seat {
+                // A department the org no longer has cannot be named by a seat.
+                department: was.department.filter(|one| {
+                    org.departments
+                        .iter()
+                        .any(|department| &department.id == one)
+                }),
+                relays: answered_by.to_vec(),
+                ..was
+            }),
+            None => {
+                replacement.seats.push(of_the_member(id));
+                replacement.from_the_member.push(id.clone());
+            }
+        }
+    }
+    Ok(replacement)
 }
 
 /// Drops the sign-in records, the list of requests told of and the push registrations this node kept for `member` of
