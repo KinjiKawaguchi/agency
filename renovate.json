@@ -3,7 +3,7 @@
   "description": [
     "Dependency updates for this repository (Cargo, npm, GitHub Actions, Swift packages, XcodeGen packages).",
     "Ordinary updates wait 3 days after a release and come grouped by ecosystem. For Cargo and npm an update whose registry gives no release time waits to be offered, instead of skipping the wait.",
-    "A patch or minor update merges by itself once the required checks pass (GitHub's auto-merge, which goes through the merge queue). A person reads and merges the rest: a major update, a minor update of a crate before 1.0 (it may break its interface), the build tools that write the web page, the rust-toolchain action, the actions the release workflows use, and the weekly lock file refresh.",
+    "A patch or minor update is merged by Renovate itself once the required checks pass (not GitHub's auto-merge, which this repository does not enable). A person reads and merges the rest: a major update, a minor update of a crate before 1.0 (it may break its interface), the build tools that write the web page, the rust-toolchain action, the actions the release workflows use, and the weekly lock file refresh.",
     "The RustCrypto crates come in one pull request, since they move to the same traits together and fail to build one by one.",
     "A security fix skips the wait and is labeled security, but a person reads it before it merges; none merges by itself.",
     "Every GitHub Action stays pinned to a commit SHA with its tag in a comment. A branch is rebased when it falls behind main, so an up-to-date rule does not leave it behind."
@@ -22,7 +22,7 @@
   "minimumReleaseAge": "3 days",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "automergeStrategy": "squash",
-  "platformAutomerge": true,
+  "platformAutomerge": false,
   "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 6,
   "osvVulnerabilityAlerts": true,
