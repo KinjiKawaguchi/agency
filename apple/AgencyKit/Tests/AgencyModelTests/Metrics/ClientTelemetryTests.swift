@@ -114,6 +114,17 @@ struct ClientTelemetryTests {
         #expect(await later.sender.reports.isEmpty)
     }
 
+    @Test("nothing of a guest's calls is kept: when the viewer is a member later, those samples are not sent")
+    func guestSamplesAreNotKept() async {
+        let scene = Scene()
+        scene.standing = .guest(GuestRef(member: "alice", org: "acme"))
+        scene.telemetry.record(scene.sample(1))
+        scene.standing = .member
+        scene.telemetry.record(scene.sample(2))
+        await scene.telemetry.leftForeground()
+        #expect(await scene.sender.reports.map { $0.samples.map(\.ms) } == [[2]], "only what was seen as a member")
+    }
+
     @Test("until the node has said what the viewer is, what was seen waits, and the first calls are in the first report")
     func untilKnown() async {
         let scene = Scene()
