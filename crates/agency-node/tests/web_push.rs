@@ -8,7 +8,7 @@ use agency_proto::client::VapidKey;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine;
 use common::{alice, body, get, id, post, Running, TOKEN};
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
@@ -213,7 +213,7 @@ async fn keys_labels_and_the_number_of_subscriptions_are_checked() {
             json!(B64.encode(
                 <p256::PublicKey>::from_sec1_bytes(&B64.decode(P256DH).unwrap())
                     .unwrap()
-                    .to_encoded_point(true)
+                    .to_sec1_point(true)
                     .as_bytes()
             )),
         ),

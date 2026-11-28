@@ -12,22 +12,23 @@ publish = false
 anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
-# RS256 (Access) and ES256 (APNs), through ring (already used by rustls); no PEM parsing.
+base64 = "0.23"
+# RS256 (Access) and ES256 (APNs), through aws-lc-rs (also the TLS provider of reqwest); no PEM parsing.
 jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
 clap = { version = "4", features = ["derive"] }
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = "2"
 # P-256 device keys (ECDSA with SHA-256): the only curve some phones keep keys in hardware for.
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "ecdh", "std"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "ecdh", "std", "getrandom"] }
 # Web Push (RFC 8291): HKDF and AES-128-GCM, from the RustCrypto family p256 belongs to.
 hkdf = "0.12"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 # Sending to several browsers at once, bounded: already in the tree through reqwest.
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
+# The operating system's random bytes.
+getrandom = "0.4"
 rust-embed = "8"
 # http2: APNs accepts only HTTP/2.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "http2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

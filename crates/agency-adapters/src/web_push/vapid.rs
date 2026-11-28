@@ -4,6 +4,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine;
 use p256::ecdsa::signature::Signer;
 use p256::ecdsa::{Signature, SigningKey};
+use p256::elliptic_curve::Generate;
 use p256::SecretKey;
 use sha2::{Digest, Sha256};
 use std::io::Write;
@@ -23,7 +24,7 @@ impl Vapid {
     /// Reads the key in `path`, or makes one (readable by this account only) when there is none.
     pub fn load_or_create(path: &Path) -> Result<Self, String> {
         if !path.exists() {
-            let secret = SecretKey::random(&mut rand_core::OsRng);
+            let secret = SecretKey::generate();
             let mut file = std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)

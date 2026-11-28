@@ -252,7 +252,7 @@ fn p256_device(comment: &str) -> serde_json::Value {
 fn p256_key(byte: u8) -> (p256::ecdsa::SigningKey, agency_proto::PublicKey) {
     use base64::Engine;
     let key = p256::ecdsa::SigningKey::from_slice(&[byte; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let encoded = base64::engine::general_purpose::STANDARD.encode(point.as_bytes());
     let public = agency_proto::PublicKey::try_from(format!("p256:{encoded}")).unwrap();
     (key, public)

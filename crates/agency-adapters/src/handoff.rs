@@ -145,7 +145,7 @@ impl Codes {
             return None;
         }
         let mut bytes = [0u8; 32];
-        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+        getrandom::fill(&mut bytes).expect("the operating system gives random bytes");
         let code = URL_SAFE_NO_PAD.encode(bytes);
         pool.pending.insert(
             code.clone(),
@@ -341,4 +341,24 @@ pub(crate) async fn association(State(api): Shared) -> Response {
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
     ];
     (StatusCode::OK, headers, body.to_string()).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_code_is_made_from_fresh_random_bytes() {
+        let codes = Codes::default();
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let first = codes.mint(now, "token", "challenge").unwrap();
+        let second = codes.mint(now, "token", "challenge").unwrap();
+        assert!(is_secret(&first) && is_secret(&second));
+        assert_ne!(first, second, "two codes are never the same");
+        assert_ne!(
+            first,
+            URL_SAFE_NO_PAD.encode([0u8; 32]),
+            "a code is not all zeros"
+        );
+    }
 }

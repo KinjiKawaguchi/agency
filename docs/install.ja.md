@@ -14,8 +14,8 @@ ID に使えるのは英小文字、数字、ハイフンです（`[a-z0-9][a-z0
 ## 必要なもの
 
 - macOS（Apple シリコンでも Intel でもかまいません）、または glibc 2.34 以降の Linux（x86_64 か arm64）。ノードをサービスとして動かすには systemd も要ります。
-- macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラと `curl`。たとえば `sudo apt install build-essential curl` で入ります。
-- Rust の stable 版、1.87 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
+- macOS では Xcode Command Line Tools。`xcode-select --install` で入ります。Linux では C コンパイラ、`curl`、`ca-certificates` パッケージ（ノードは通信先の証明書を、システムが信頼するルート証明書で確かめます）。たとえば `sudo apt install build-essential curl ca-certificates` で入ります。
+- Rust の stable 版、1.89 以降。[rustup](https://rustup.rs) で入れ、`rustc --version` で確かめます。
 - Web クライアントのビルドに使う Node.js 24 と npm。`node --version` で確かめます。
 - チームのハーネスと、ハーネスが使うツール（[チームランタイム](#チームランタイム)を参照）。
 
