@@ -198,6 +198,7 @@ public final class EvaluationStore {
     /// Starts asking the node how each team of the effort stands against its weekly budget, in a task of its own: the screen does not wait for
     /// it, and every team already says it is loading. The budget is the node's current week and does not depend on the period, so only a read
     /// of the whole screen and a choice of org ask for it (each team's read is a call to its runtime or node).
+    /// A team that only another period's effort lists has no budget on screen until the next read of the whole screen.
     private func startReadingBudgets() {
         budgetTask?.cancel()
         guard let org else { return }
