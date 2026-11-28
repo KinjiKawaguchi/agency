@@ -97,6 +97,10 @@ public final class EvaluationStore {
     @ObservationIgnored private let source: any EvaluationSource
     @ObservationIgnored private let retry: RetryPolicy
     @ObservationIgnored private var chosenOrg: String?
+    /// The read of the budgets, which goes on after the screen has its effort, so that a team that is slow to answer does not hold the screen.
+    @ObservationIgnored private var budgetTask: Task<Void, Never>?
+    /// What the node said of itself, asked once: its capabilities do not change while the app is open.
+    @ObservationIgnored private var nodeAbout: About?
 
     public init(source: any EvaluationSource, retry: RetryPolicy = .standard, nodeSpeed: NodeSpeedStore? = nil) {
         self.source = source
@@ -117,6 +121,7 @@ public final class EvaluationStore {
             await readOrg()
             hasAnswered = true
             loading = .loaded
+            startReadingBudgets()
         } catch let error as NodeError where error == .sessionExpired || error == .notSignedIn {
             needsSignIn = true
             loading = .failed(Ja.Desk.signInEnded)
@@ -136,6 +141,7 @@ public final class EvaluationStore {
         effort = .loading
         budgets = [:]
         await readOrg()
+        startReadingBudgets()
     }
 
     public func choose(days: Int) async {
@@ -185,18 +191,33 @@ public final class EvaluationStore {
         guard id == self.org?.id, days == self.days else { return }
         apply(read, in: org)
         apply(spent, plans: intended, in: org)
-        await readBudgets(in: org, days: days)
     }
 
     // MARK: The weekly budget
 
-    /// Asks the node how each team of the effort stands against its weekly budget, once the effort says which teams there are. A node that does not
-    /// list the capability `budget` is not asked, and says only what the plan states; the app works out no week and no threshold of its own.
-    private func readBudgets(in org: OrgRef, days: Int) async {
+    /// Starts asking the node how each team of the effort stands against its weekly budget, in a task of its own: the screen does not wait for
+    /// it, and every team already says it is loading. The budget is the node's current week and does not depend on the period, so only a read
+    /// of the whole screen and a choice of org ask for it (each team's read is a call to its runtime or node).
+    private func startReadingBudgets() {
+        budgetTask?.cancel()
+        guard let org else { return }
+        if case .ready(let reports, _) = effort {
+            for report in reports where budgets[report.team] == nil { budgets[report.team] = .loading }
+        }
+        budgetTask = Task { await readBudgets(in: org) }
+    }
+
+    /// Waits for the read of the budgets that was started.
+    func budgetsSettled() async {
+        await budgetTask?.value
+    }
+
+    /// A node that does not list the capability `budget` is not asked, and says only what the plan states; the app works out no week and no
+    /// threshold of its own.
+    private func readBudgets(in org: OrgRef) async {
         guard case .ready(let reports, _) = effort else { return }
-        for report in reports where budgets[report.team] == nil { budgets[report.team] = .loading }
         let (id, source, retry) = (org.id, source, retry)
-        let about = await Self.fetch(retry) { try await source.about() }
+        let about = await knownAbout()
         let read: [String: Fetched<BudgetStatus>]
         switch about {
         case .answer(let said) where said.has(.budget):
@@ -209,11 +230,24 @@ public final class EvaluationStore {
         case .cancelled:
             return
         }
-        guard id == self.org?.id, days == self.days else { return }
+        guard id == self.org?.id, !Task.isCancelled else { return }
         for report in reports {
             guard let one = read[report.team] else { continue }
             apply(one, to: report)
         }
+    }
+
+    /// What the node says of itself: asked until it has answered, then kept (a node without the route has no capabilities, once and for all).
+    private func knownAbout() async -> Fetched<About> {
+        if let nodeAbout { return .answer(nodeAbout) }
+        let (source, retry) = (source, retry)
+        let read = await Self.fetch(retry) { try await source.about() }
+        switch read {
+        case .answer(let said): nodeAbout = said
+        case .unavailable: nodeAbout = About(capabilities: [])
+        case .couldNotAnswer, .failed, .cancelled: break
+        }
+        return nodeAbout.map { .answer($0) } ?? read
     }
 
     private static func budgets(

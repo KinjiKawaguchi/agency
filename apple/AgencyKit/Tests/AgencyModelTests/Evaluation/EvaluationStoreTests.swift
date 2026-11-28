@@ -66,10 +66,27 @@ private final class FakeEvaluation: EvaluationSource, @unchecked Sendable {
     func set(budget: Result<BudgetStatus, Error>, for team: String) { lock.withLock { budgetAnswers[team] = budget } }
     var budgetAsks: [String] { lock.withLock { budgetAsked } }
 
-    func about() async throws -> About { try lock.withLock { try aboutAnswer.get() } }
+    private var aboutCount = 0
+    private var budgetHeld = false
+    private var budgetGates: [CheckedContinuation<Void, Never>] = []
+    var aboutAsks: Int { lock.withLock { aboutCount } }
+    /// Holds the budget reads until `releaseBudgets()`.
+    func holdBudgets() { lock.withLock { budgetHeld = true } }
+    func releaseBudgets() { lock.withLock { let waiting = budgetGates; budgetGates = []; budgetHeld = false; return waiting }.forEach { $0.resume() } }
+    var heldBudgetReads: Int { lock.withLock { budgetGates.count } }
+
+    func about() async throws -> About {
+        try lock.withLock {
+            aboutCount += 1
+            return try aboutAnswer.get()
+        }
+    }
 
     func budget(org: String, team: String) async throws -> BudgetStatus {
-        try lock.withLock {
+        if lock.withLock({ budgetHeld }) {
+            await withCheckedContinuation { continuation in lock.withLock { budgetGates.append(continuation) } }
+        }
+        return try lock.withLock {
             budgetAsked.append("\(org)/\(team)")
             return try (budgetAnswers[team] ?? .failure(NodeError.http(status: 404, message: nil))).get()
         }
@@ -141,6 +158,7 @@ struct EvaluationStoreTests {
         source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 163.2, state: .warning))), for: "app")
         let store = EvaluationStore(source: source, retry: .never)
         await store.refresh()
+        await store.budgetsSettled()
         #expect(source.budgetAsks == ["acme/app"])
         guard case .reported(let report)? = store.budgets["app"] else { Issue.record("no report: \(String(describing: store.budgets["app"]))"); return }
         #expect(report.meter?.state == .warning)
@@ -156,6 +174,8 @@ struct EvaluationStoreTests {
             source.set(plans: .success(OrgPlans(byTeam: ["app": TeamPlan(allocation: [.newFeature: 100, .improvement: 0, .maintenance: 0, .debt: 0, .incident: 0], weeklyBudgetUsd: 140)])))
             let store = EvaluationStore(source: source, retry: .never)
             await store.refresh()
+            await store.budgetsSettled()
+        await store.budgetsSettled()
             #expect(source.budgetAsks.isEmpty, "not asked")
             #expect(store.budgets["app"] == .plain("週の予算は $140 です。このノードは、今週の使用額をまだ返しません。"))
         }
@@ -166,6 +186,7 @@ struct EvaluationStoreTests {
         let source = FakeEvaluation(me: .success(twoOrgs))
         let store = EvaluationStore(source: source, retry: .never)
         await store.refresh()
+        await store.budgetsSettled()
         #expect(store.budgets["app"] == BudgetRead.none)
     }
 
@@ -175,13 +196,18 @@ struct EvaluationStoreTests {
         source.set(about: .success(About(capabilities: ["budget"])))
         let store = EvaluationStore(source: source, retry: .never)
         await store.refresh()
+        await store.budgetsSettled()
         #expect(store.budgets["app"] == BudgetRead.none, "the team's route answered 404")
         source.set(budget: .failure(NodeError.http(status: 500, message: "boom")), for: "app")
         await store.refresh()
+        await store.budgetsSettled()
         #expect(store.budgets["app"] == .failed("boom"))
-        source.set(about: .failure(NodeError.http(status: 500, message: "no about")))
-        await store.refresh()
-        #expect(store.budgets["app"] == .failed("no about"))
+        let later = FakeEvaluation(me: .success(twoOrgs))
+        later.set(about: .failure(NodeError.http(status: 500, message: "no about")))
+        let unsaid = EvaluationStore(source: later, retry: .never)
+        await unsaid.refresh()
+        await unsaid.budgetsSettled()
+        #expect(unsaid.budgets["app"] == .failed("no about"))
     }
 
     @Test("what was said of a team's week stays on screen when a later read fails")
@@ -191,9 +217,11 @@ struct EvaluationStoreTests {
         source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))), for: "app")
         let store = EvaluationStore(source: source, retry: .never)
         await store.refresh()
+        await store.budgetsSettled()
         let before = store.budgets["app"]
         source.set(budget: .failure(NodeError.http(status: 500, message: "boom")), for: "app")
         await store.refresh()
+        await store.budgetsSettled()
         #expect(store.budgets["app"] == before)
     }
 
@@ -204,10 +232,65 @@ struct EvaluationStoreTests {
         source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))), for: "app")
         let store = EvaluationStore(source: source, retry: .never)
         await store.refresh()
+        await store.budgetsSettled()
         #expect(store.budgets["app"] != nil)
         source.set(effort: .failure(NodeError.http(status: 404, message: nil)), for: "zed")
         await store.choose(org: "zed")
+        await store.budgetsSettled()
         #expect(store.budgets.isEmpty)
+    }
+
+    @Test("the screen is loaded when the effort is on it, and a team that is slow to answer about its budget does not hold it")
+    func budgetsDoNotHoldTheScreen() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))), for: "app")
+        source.holdBudgets()
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        #expect(store.loading == .loaded)
+        guard case .ready = store.effort else { Issue.record("the effort is not on screen"); return }
+        #expect(store.budgets["app"] == .loading, "the team says it is loading while the node answers")
+        while source.heldBudgetReads == 0 { await Task.yield() }
+        source.releaseBudgets()
+        await store.budgetsSettled()
+        guard case .reported? = store.budgets["app"] else { Issue.record("no report: \(String(describing: store.budgets["app"]))"); return }
+    }
+
+    @Test("the budget is the node's current week: a period chosen does not ask for it again, and what the node said of itself is asked once")
+    func budgetsAreNotAskedForAPeriod() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .success(About(capabilities: ["budget"])))
+        source.set(budget: .success(status(BudgetPart(capUsd: 200, spentUsd: 10, state: .ok))), for: "app")
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        await store.budgetsSettled()
+        await store.choose(days: 30)
+        await store.choose(days: 90)
+        await store.budgetsSettled()
+        #expect(source.budgetAsks == ["acme/app"], "asked once, not for each period")
+        await store.refresh()
+        await store.budgetsSettled()
+        #expect(source.budgetAsks == ["acme/app", "acme/app"], "a read of the whole screen asks again")
+        #expect(source.aboutAsks == 1, "the node's capabilities are asked once")
+    }
+
+    @Test("a node that could not say what it is is asked again at the next read, and a node without the route is not")
+    func aboutIsKeptOnlyOnceAnswered() async {
+        let source = FakeEvaluation(me: .success(twoOrgs))
+        source.set(about: .failure(NodeError.http(status: 500, message: "boom")))
+        let store = EvaluationStore(source: source, retry: .never)
+        await store.refresh()
+        await store.budgetsSettled()
+        await store.refresh()
+        await store.budgetsSettled()
+        #expect(source.aboutAsks == 2)
+        source.set(about: .failure(NodeError.http(status: 404, message: nil)))
+        await store.refresh()
+        await store.budgetsSettled()
+        await store.refresh()
+        await store.budgetsSettled()
+        #expect(source.aboutAsks == 3, "a 404 is an answer: no capabilities, once and for all")
     }
 
     @Test("404 on the effort route means not served yet, and 503 that the team could not answer; the evaluation is not affected")
