@@ -3,6 +3,7 @@ use crate::federation_config::FederationConfig;
 use crate::logging_config::LoggingConfig;
 use crate::metrics_config::MetricsConfig;
 use agency_proto::client::FundingKind;
+use agency_proto::evaluation::{is_repository, MAX_REPOSITORIES};
 use agency_proto::Id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -260,6 +261,31 @@ pub struct WebPushConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryConfig {
     pub repos: Vec<String>,
+}
+
+impl DeliveryConfig {
+    /// Why these settings cannot be used, in words that name the setting; `at` is where they sit
+    /// (`teams[0].delivery`). The repositories are what a report names, so they have its limits: at most
+    /// `MAX_REPOSITORIES`, each written `owner/name`, none twice (GitHub names ignore case).
+    pub fn check(&self, at: &str) -> Result<(), String> {
+        if self.repos.len() > MAX_REPOSITORIES {
+            return Err(format!(
+                "{at}.repos has more than {MAX_REPOSITORIES} entries"
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for (index, repo) in self.repos.iter().enumerate() {
+            if !is_repository(repo) {
+                return Err(format!("{at}.repos[{index}] is not written owner/name"));
+            }
+            if !seen.insert(repo.to_ascii_lowercase()) {
+                return Err(format!(
+                    "{at}.repos[{index}] names a repository twice (names ignore case)"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The APNs provider key (token-based authentication) and the app it sends to. The key file stays
@@ -558,6 +584,49 @@ mod tests {
             serde_json::from_str::<HostedTeam>(&unknown).is_err(),
             "no other key, a token least of all"
         );
+    }
+
+    #[test]
+    fn the_repositories_of_a_team_are_few_written_owner_name_and_none_twice() {
+        let delivery = |repos: &[&str]| DeliveryConfig {
+            repos: repos.iter().map(|one| (*one).to_owned()).collect(),
+        };
+        let at = "teams[1].delivery";
+        assert_eq!(delivery(&["acme/app", "acme/web"]).check(at), Ok(()));
+        assert_eq!(
+            delivery(&[]).check(at),
+            Ok(()),
+            "none is the team having no numbers, which is not this check's"
+        );
+        for (repos, wanted) in [
+            (
+                vec!["acme"],
+                "teams[1].delivery.repos[0] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "acme/web/x"],
+                "teams[1].delivery.repos[1] is not written owner/name",
+            ),
+            (
+                vec!["acme/app", "Acme/App"],
+                "teams[1].delivery.repos[1] names a repository twice",
+            ),
+            (vec!["acme/app", "acme/app"], "names a repository twice"),
+        ] {
+            let error = delivery(&repos).check(at).unwrap_err();
+            assert!(error.contains(wanted), "{error}");
+        }
+        let many: Vec<String> = (0..=MAX_REPOSITORIES)
+            .map(|n| format!("acme/r{n}"))
+            .collect();
+        let many = DeliveryConfig { repos: many };
+        assert!(many.check(at).unwrap_err().contains("more than 50"));
+        let fifty = DeliveryConfig {
+            repos: (0..MAX_REPOSITORIES)
+                .map(|n| format!("acme/r{n}"))
+                .collect(),
+        };
+        assert_eq!(fifty.check(at), Ok(()));
     }
 
     #[test]
