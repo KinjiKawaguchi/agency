@@ -200,6 +200,29 @@ A root key that asks for the owner's presence (the macOS keychain) never signs b
 - **Limits:** at most 5 changes are held for one account in one org (409 beyond). A joiner's label must be 1 to 80 characters with no control character. A held change is dropped 7 days after it came (`PENDING_ROOT_DAYS`), by the node's own loop as well, which frees a held join's invite.
 - **The owner sees them:** `/api/me` gives the owner `rootChanges`, oldest first and absent when none: `{ id, org, kind, member, label?, device?, what, receivedAt }`, where `kind` is `addMember` (`label` the new member's name), `addDevice` (`label` and `device`, the device's id), or `removeDevice` (`device`), and `member` is the joiner or the device's owner. A client words it from `kind` in the screen's language and shows the English `what` only for a kind it does not know, and `agency status` counts them per org.
 
+## Exporting an org's records
+
+A company that adopts Agency asks how to get its data out: for an audit, for an archive when a project ends, or to leave. `agency export` writes an org's records out of a node, in files that check on their own.
+
+```
+agency export --org <org> --to <dir>
+agency export --verify <dir>
+```
+
+- **What it writes**, into a directory that is absent or empty (a directory that holds anything is refused and left as it is; the files and directories are readable by their owner only):
+  - `versions/000001.json`, `versions/000002.json`, and so on: every signed version of the org this node kept, each as it was signed, so that nothing is removed. A node that joined the org later keeps the versions from the one it joined at, and its export starts there.
+  - `decisions.json`: this node's decision log for the org, oldest first (the records of the Client API's decision log, including those of a hosted member, and the `signer` device id of each).
+  - `outcomes.json`: the numbers entered for the org's KPIs, in the order they were entered, when this node keeps any. They are kept on the owner's node only, so no other node's export has the file.
+  - `manifest.json`: `format` (1), the org, the `release` of the node that made it, `exportedAt`, the fingerprint of the root key of the last version (`rootFingerprint`), the first and last version, and for each other file its path, its `sha256` and its size in bytes.
+- **What it never writes:** a key or a secret. The account key, the CLI device's key and the org's root key are in no record it reads; the versions hold public keys only. What people typed in a decision's text is written as it was.
+- **`--verify`** needs no node and no key. It checks that the manifest is of a format it reads (a higher number is refused: it was made by a newer node), that every listed file is there with its size and SHA-256 and that no other file is, that the versions are the ones the manifest names, in order, that each version after the first is signed as the one before it allows (`verify_successor`), that the first is well formed and signed by its own root key (an export of a member's node starts at the version it joined at), that the last version's root key is the one the manifest names, and that the decisions and numbers read. It prints the root key fingerprint of the last version, and, when the root moved within the versions (a rotation or a recovery), the version it moved at and the fingerprint of the first version's root key.
+- **What verification proves, and what it does not.**
+  - It proves that the files are the ones the manifest lists and that the versions are a chain, each signed as the one before it allows. The first version vouches only for itself: anyone can make a version 1 under a key of their own, so that the chain is this org's is told only by comparing a fingerprint it prints with the one you know the org by (after a rotation, the first version's, or the last's, whichever you know).
+  - The manifest is not signed, so someone who changes a file and the manifest together is caught only where a signature stands in the way: in the versions. The decisions and the numbers are the node's own records, which no one else signed.
+  - A recovery's finish is checked as signed and formed, not for its wait of 72 hours: each node counts the wait from when it took the start, and an export does not carry that.
+  - To fix an export in time, keep the SHA-256 of `manifest.json` somewhere else.
+- **A history with a version missing** (a version between the first and the last that this node does not hold) is not exported: the export would not be a chain, so the gap is a fault to look at first.
+
 ## Federation routes
 
 | Method | Path | Checked |
