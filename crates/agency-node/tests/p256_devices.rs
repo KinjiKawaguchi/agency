@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 fn phone_key() -> (SigningKey, PublicKey) {
     let key = SigningKey::from_slice(&[0x0b; 32]).unwrap();
-    let point = key.verifying_key().to_encoded_point(false);
+    let point = key.verifying_key().to_sec1_point(false);
     let public =
         PublicKey::try_from(format!("p256:{}", STANDARD.encode(point.as_bytes()))).unwrap();
     (key, public)

@@ -104,3 +104,194 @@ async fn one_answer_ends_the_wait_and_sync_reads_at_once() {
     );
     assert!(waiting_lines(&alice.node).is_empty());
 }
+
+/// Bob hosts team b0 of acme, which alice places on his node; bob is then stopped and alice's read of b0 fails once.
+async fn bob_hosts_b0_and_is_down(alice: &Running) -> Running {
+    let mut bob = joined_bob(alice).await;
+    bob.node
+        .update_config(|config| {
+            let runtime = RuntimeCommand::of(vec!["/nonexistent".into()]);
+            config
+                .teams
+                .push(HostedTeam::new(id("acme"), id("b0"), id("alice"), runtime));
+        })
+        .unwrap();
+    place_team(alice, "b0", &bob.url());
+    deliver_due(&alice.node).await.unwrap();
+    bob.stop().await;
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(failures(alice, "b0"), 1);
+    bob
+}
+
+fn publish_a_version(alice: &Running, label: &str) {
+    orgs::amend(&alice.node, &id("acme"), |body| {
+        body.label = label.into();
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// When the last read of `team` was tried, as the replica says.
+fn tried_at(alice: &Running, team: &str) -> String {
+    alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id(team))
+        .map(|replica| replica.tried_at)
+        .unwrap()
+}
+
+/// The replica of `team` as it is kept, as text.
+fn kept(alice: &Running, team: &str) -> String {
+    let replica = alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id(team))
+        .unwrap();
+    serde_json::to_string(&replica).unwrap()
+}
+
+#[tokio::test]
+async fn an_outbox_delivery_to_a_node_that_is_back_has_its_teams_read_at_the_next_pass() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    // A team on another node that also waits is left waiting.
+    place_team(&alice, "gone", &closed_origin());
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(failures(&alice, "gone"), 1);
+    let gone_tried = tried_at(&alice, "gone");
+    let b0_tried = tried_at(&alice, "b0");
+
+    bob.start().await;
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        b0_tried,
+        "bob's wait is not over: not read yet"
+    );
+
+    publish_a_version(&alice, "Acme, Inc.");
+    deliver_due(&alice.node).await.unwrap();
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+
+    let replica = alice
+        .node
+        .store()
+        .load_replica(&id("acme"), &id("b0"))
+        .unwrap();
+    assert_eq!(
+        replica.error, None,
+        "bob took the version, so b0 was read at once"
+    );
+    assert!(replica.view.is_some());
+    assert_eq!(replica.failures, 0);
+    assert_eq!(
+        tried_at(&alice, "gone"),
+        gone_tried,
+        "another node's wait goes on"
+    );
+}
+
+#[tokio::test]
+async fn an_unreachable_delivery_leaves_the_wait_as_it_is() {
+    let (alice, _) = alice().await;
+    let _bob = bob_hosts_b0_and_is_down(&alice).await;
+    let tried = tried_at(&alice, "b0");
+    publish_a_version(&alice, "Acme, Inc.");
+
+    deliver_due(&alice.node).await.unwrap();
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        tried,
+        "bob did not answer: still waiting"
+    );
+}
+
+#[tokio::test]
+async fn a_node_that_refuses_a_parcel_has_answered_and_its_teams_are_read() {
+    use agency_core::outbox::{enqueue, Parcel, ParcelBody};
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    let tried = tried_at(&alice, "b0");
+    // A version bob refuses: signed by no key of the org.
+    let mut forged = alice.node.store().load_org(&id("acme")).unwrap();
+    forged.body.label = "Forged".into();
+    let parcel = Parcel::new(
+        bob.url(),
+        ParcelBody::Org(Box::new(forged)),
+        &alice.node.now_text(),
+    );
+    enqueue(&alice.node, &parcel).unwrap();
+    // The refusal comes after the read that failed, by a second.
+    alice.clock.advance(Duration::seconds(1));
+
+    deliver_due(&alice.node).await.unwrap();
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+
+    assert_ne!(
+        tried_at(&alice, "b0"),
+        tried,
+        "a refusal is an answer: b0 was read"
+    );
+    assert_eq!(failures(&alice, "b0"), 0);
+}
+
+#[tokio::test]
+async fn a_node_that_tells_its_about_again_has_its_teams_read_at_the_next_pass() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    // alice's last read of bob's about failed, so it is read again at the next pass, and he answers it.
+    let mut about = alice.node.store().peer_abouts(&id("acme"));
+    for entry in about.values_mut() {
+        entry.error = Some("did not answer".into());
+        entry.tried_at = agency_proto::clock::format(alice.node.now() - Duration::minutes(11));
+    }
+    alice
+        .node
+        .store()
+        .save_peer_abouts(&id("acme"), &about)
+        .unwrap();
+    let tried = tried_at(&alice, "b0");
+    alice.clock.advance(Duration::seconds(1));
+
+    refresh(&alice.node).await.unwrap();
+    assert_eq!(
+        tried_at(&alice, "b0"),
+        tried,
+        "this pass read bob's about; b0 was skipped"
+    );
+    alice.clock.advance(Duration::seconds(1));
+    refresh(&alice.node).await.unwrap();
+
+    assert_ne!(
+        tried_at(&alice, "b0"),
+        tried,
+        "the next pass read b0: he is there"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_is_noted_without_writing_any_replica() {
+    let (alice, _) = alice().await;
+    let mut bob = bob_hosts_b0_and_is_down(&alice).await;
+    bob.start().await;
+    let before = kept(&alice, "b0");
+
+    publish_a_version(&alice, "Acme, Inc.");
+    deliver_due(&alice.node).await.unwrap();
+
+    assert_eq!(
+        kept(&alice, "b0"),
+        before,
+        "a read's replica is never overwritten by the outbox"
+    );
+}

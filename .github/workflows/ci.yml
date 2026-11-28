@@ -113,6 +113,13 @@ jobs:
         run: scripts/test/systemd-unit.sh
       - name: Test the Debian package script
         run: scripts/test/debian-package.sh
+      - name: Check the release workflow makes the SBOMs and the signed checksums
+        run: scripts/ci/check-release-workflow.sh
+      - name: Test the release scripts that write the SBOMs and the checksums, and the check of the workflow
+        run: |
+          shellcheck -x scripts/test/sbom-and-checksums.sh scripts/test/release-workflow.sh scripts/test/sbom-fakes/*
+          scripts/test/sbom-and-checksums.sh
+          scripts/test/release-workflow.sh
       - name: Test the deploy script, against stand-ins for launchctl and curl
         run: scripts/test/deploy-macos.sh
       - name: Test the macOS release script and the packaging, against stand-ins for gh, cargo, and npm
@@ -169,7 +176,7 @@ jobs:
         working-directory: web
         run: npm ci
       - if: steps.web.outputs.present == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}

@@ -3,7 +3,7 @@
 //! Nothing is stored here; a read of GitHub is kept for a short while by the adapter, not by this module.
 use crate::client::membership;
 use crate::config::HostedTeam;
-use crate::delivery::{attribute, evaluate, Input, Period};
+use crate::delivery::{attribute, evaluate, of_team, Input, Period};
 use crate::error::{Error, ErrorKind, Result};
 use crate::node::Node;
 use crate::ports::{DeliveryError, PeerError};
@@ -46,14 +46,26 @@ fn generated_at(node: &Node) -> Timestamp {
 /// The cost of each day's tokens, if the team's runtime reports usage. Without it the costs are zero:
 /// delivery numbers do not wait for them.
 async fn daily_costs(node: &Node, hosted: &HostedTeam, days: u32) -> Vec<(Date, f64)> {
-    let Ok(usage) = node.runtime().token_usage(hosted, days).await else {
-        return vec![];
-    };
-    usage
-        .by_day
-        .into_iter()
-        .map(|day| (day.date, day.cost_usd.values().sum()))
-        .collect()
+    known_daily_costs(node, hosted, days)
+        .await
+        .unwrap_or_default()
+}
+
+/// The cost of each day's tokens when the team's runtime reports usage, and nothing when it does not: a
+/// cost that is zero because it is unknown is not a cost of zero.
+pub(crate) async fn known_daily_costs(
+    node: &Node,
+    hosted: &HostedTeam,
+    days: u32,
+) -> Option<Vec<(Date, f64)>> {
+    let usage = node.runtime().token_usage(hosted, days).await.ok()?;
+    Some(
+        usage
+            .by_day
+            .into_iter()
+            .map(|day| (day.date, day.cost_usd.values().sum()))
+            .collect(),
+    )
 }
 
 /// The team's participants over the period, if its runtime reports them and what it reports is what was
@@ -76,15 +88,6 @@ async fn participants_of(
     Some(report)
 }
 
-/// The repositories of a hosted team, if its configuration names any.
-fn repositories(hosted: &HostedTeam) -> Option<Vec<String>> {
-    hosted
-        .delivery
-        .as_ref()
-        .map(|delivery| delivery.repos.clone())
-        .filter(|repos| !repos.is_empty())
-}
-
 /// The evaluation of a team on this node over the last `days` days, as the answer of one team: the team
 /// in `teams`, or in `unavailable` with the reason it has no numbers. It does not fail: a team that cannot
 /// be evaluated is a result that a screen shows, not an error that blanks it. What each participant did
@@ -98,14 +101,15 @@ pub async fn evaluate_hosted(
 ) -> Evaluation {
     let now = node.now();
     let period = Period::new(now, node.utc_offset(), days);
-    let Some(repos) = repositories(hosted) else {
+    let Some(source) = hosted.delivery_source() else {
         let reason = "no repositories are configured for this team".to_owned();
         return unavailable(node, hosted, &period, days, reason);
     };
-    let facts = match node.delivery().facts(&repos, period.start()).await {
+    let facts = match node.delivery().facts(&source, period.start()).await {
         Ok(facts) => facts,
         Err(DeliveryError(reason)) => return unavailable(node, hosted, &period, days, reason),
     };
+    let pull_requests = of_team(hosted.delivery.as_ref(), facts.pull_requests);
     let costs = daily_costs(node, hosted, days).await;
     let offset_minutes = i32::from(node.utc_offset().whole_minutes());
     let participants = match reader == &hosted.owner {
@@ -116,14 +120,13 @@ pub async fn evaluate_hosted(
         now,
         offset: node.utc_offset(),
         days,
-        pull_requests: &facts.pull_requests,
+        pull_requests: &pull_requests,
         runs: &facts.runs,
         cost_by_day: &costs,
     };
     let mut team = evaluate(hosted.team.clone(), &input);
     if let Some(report) = &participants {
-        (team.participants, team.unattributed_merged) =
-            attribute(report, &facts.pull_requests, &period);
+        (team.participants, team.unattributed_merged) = attribute(report, &pull_requests, &period);
     }
     Evaluation {
         org: hosted.org.clone(),

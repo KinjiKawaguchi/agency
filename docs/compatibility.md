@@ -38,6 +38,7 @@ Each artifact states which contract versions it speaks, and a node says so throu
 
 May change without a new version:
 - A new route. An older node answers 404, so a caller treats 404 from an older node as "not supported", never as "not found".
+  - A feature that has a capability (the table under "Discovery") is checked before the route is called: when what the caller kept of the node's `about` is no older than 3 days (the age the root's check of signed fields counts) and does not list the capability, the route is not called, and the reason says that the node runs release X, does not have the feature, and needs an update. The reads of a remote team's `activity` and `effort` do this. With nothing kept, or nothing recent, the route is called as before, and a 404 from a node that lists the capability stays "not found" (the team is not there). A refused call is treated like a 404 for the node's `about`: it is read again ten minutes after, so a node that was updated since is asked again, and a 404 from either read marks it the same way. The release in the reason is another node's text and is printed as such (a character that hides or reorders text shows as `?`).
 - A new optional field in an answer. Readers ignore unknown fields in answers (TeamView, TokenUsage, and the rest).
 - Stricter limits on what a node keeps from others, as long as no current node sends beyond them.
 
@@ -87,7 +88,7 @@ The runtime lists what it speaks in `describe` (`runtimes`, `ops`), and the node
 
 May change without a new version:
 - **A new optional op.** The runtime lists it in `ops`; the node calls it only then, and treats its absence as "not reported" (for example `tokenUsage`, `activity`).
-- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer. Both sides ignore unknown fields.
+- **A new optional field**, in a node's input (for example `byParticipant` in `decide`) or in a runtime's answer (for example `version` in `describe`, the harness release). Both sides ignore unknown fields.
 - **A new value of an existing enum.** It is breaking for a reader that does not know it. The node therefore maps an unknown value to a safe default where one exists, and otherwise refuses the view (503) without crashing. The runtime adds such a value only after the node release that knows it.
 
 Breaking, so `agency-runtime/2`:
@@ -95,7 +96,7 @@ Breaking, so `agency-runtime/2`:
 - removing an op;
 - changing an error status's meaning.
 
-Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use.
+Rollout: the node speaks both versions and uses the highest one the runtime lists. A runtime may list both while nodes catch up. The node drops `/1` no sooner than 90 days after the node release that speaks `/2`, and only once the harness release that speaks `/2` is the oldest one in use. The node shows which release each hosted team's runtime says it is (`version` of `describe`) in `agency status`, so the owner can see what is in use and ask a team's owner to update the harness; a runtime that does not say its release is shown as not saying it, which the node cannot judge: that one is checked by hand.
 
 ## Node and apps (the Client API, `clientApi`)
 
@@ -150,7 +151,7 @@ Each node says what it is and what it speaks, in two places.
 
 ### Capabilities
 
-Names start at what came after the first release: every node has what the first release had (for example departments, devices, and P-256 keys). A name is one of two kinds: a **signed field**, which an older node refuses in a definition, so the root checks it before writing it; or a **feature**, which a client or a peer checks before relying on it instead of trying a route and reading a 404. A test keeps this table the same as the list in `agency-proto`, and another fails when an optional field is added to the org definition without a name here.
+Names start at what came after the first release: every node has what the first release had (for example departments, devices, and P-256 keys). A name is one of two kinds: a **signed field**, which an older node refuses in a definition, so the root checks it before writing it; or a **feature**, which a client or a peer checks before relying on it instead of trying a route and reading a 404. A test keeps this table the same as the list in `agency-proto`, and another fails when an optional field is added to the org definition without a name here. A capability is declared once, on one line of `capabilities!` in `agency-proto` (its type name, its wire name and what it is), which gives `Capability`, `Capability::ALL` and `name()`; a node lists them in that order. Adding one is that line, its row in the table below, and `AGENCY_WRITE_FIXTURES=1 cargo test -p agency-proto --lib about`, which writes `testdata/about.sample.json` again.
 
 | Name | Kind | What it is |
 |---|---|---|
@@ -168,6 +169,10 @@ Names start at what came after the first release: every node has what the first 
 | `effort` | feature | Where a team's tokens went, by work type: `GET /api/orgs/<org>/effort` and `GET /fed/v1/teams/<org>/<team>/effort`. |
 | `readAudience` | feature | A signed read that names the node it is made for: the `x-agency-audience` header and the `agency/v2/read` signed text (see "Signed reads" in protocol.md). |
 | `budget` | feature | A team's weekly budget status: `GET /api/orgs/<org>/teams/<team>/budget`. |
+| `history` | feature | An org's change history for the node's owner: `GET /api/orgs/<org>/history`, the entries of `agency audit --json`. |
+| `members` | feature | The org's members, their devices, its open seats and its held changes, for the owner: `GET /api/orgs/<org>/members`. |
+| `claimLinks` | feature | A person with no node of their own redeems a seat's claim link: `GET` and `POST /api/claim` (see "Claim link" in protocol.md). |
+| `viewUnchanged` | feature | A team's view read with a tag: the answer's `ETag`, and `304` with no body for a read whose `If-None-Match` is the tag of the answer (see "TeamView" in protocol.md). A reader sends the tag only to a node that lists it. |
 
 ## Checks in CI
 

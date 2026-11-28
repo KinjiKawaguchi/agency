@@ -2,7 +2,7 @@ import AgencyAPI
 import Foundation
 
 extension Ja {
-    /// The evaluation screen, from the web client's Japanese (`evaluation` in `ja.ts`).
+    /// The evaluation screen, from the web client's Japanese (`evaluation` in `ja/evaluation.ts`).
     public enum Evaluation {
         public static let title = "評価"
         public static let lead = "組織が新機能をどれだけ速く出しているか、その費用はいくらか。数字はノードが返すので、エージェントも同じ数字を引用できます。"
@@ -67,7 +67,7 @@ extension Ja {
 }
 
 extension Ja {
-    /// Where each team's effort goes, from the web client's Japanese (`evaluation.effort` in `ja.ts`).
+    /// Where each team's effort goes, from the web client's Japanese (`evaluation.effort` in `ja/evaluation.ts`).
     public enum Effort {
         public static let title = "労力の行き先"
         public static let lead = "各チームが使った費用を、仕事の種類別に、組織の意図と並べて見ます。費用は API 価格での概算です。"

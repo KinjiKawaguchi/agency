@@ -32,7 +32,7 @@ extension Ja {
         public static func confirmFailed(_ reason: String) -> String { "追加できませんでした: \(reason)" }
         public static func listFailed(_ reason: String) -> String { "端末の一覧を読めませんでした: \(reason)" }
         public static func faceIDReason(_ label: String) -> String { "端末を追加する: \(label)" }
-        /// Removing one of the person's devices, in the web's words (`devices.remove` in `ja.ts`, agency#442) with this phone's own sentence for the
+        /// Removing one of the person's devices, in the web's words (`devices.remove` in `ja/devices.ts`, agency#442) with this phone's own sentence for the
         /// device in use: its key cannot be added again, and the way back is a new key made in the settings.
         public enum Remove {
             public static let button = "削除"
@@ -45,6 +45,9 @@ extension Ja {
             public static let thisDevice = "いま使っている端末です。削除すると、この端末はこの鍵では署名できなくなり、この鍵をもう一度追加することもできません。そのあと端末は新しい鍵を作り、それは新しい端末として追加する必要があります。"
             /// Said after this device's own removal took effect and it made a new key: the removed key cannot sign, and the new one is not added yet.
             public static let thisDeviceRemoved = "この端末を削除しました。この端末は新しい鍵を作りました。まだ追加されていません。また決めるには、この画面で追加を依頼してください。"
+            /// Said instead of the confirmation when the decisions kept on this phone cannot be read now, so that nothing is known of which device
+            /// signed them: there is nothing to send or discard, and the cause is said.
+            public static let keptDecisionsUnreadable = "このアプリに残した決定を、いま読めないため、端末を削除できません。端末のロックを解除し、アプリを開き直してから、もう一度削除してください。"
             /// Said instead of the confirmation when decisions signed with the key of the device to remove still wait to be sent.
             public static let keptDecisions = "まだ届いていない決定が残っています。削除する端末の鍵で署名したものは、削除するとすべて無効になります。送るか破棄してから削除してください。"
             /// Said when the list the node gave just before the removal is not the one the person confirmed.

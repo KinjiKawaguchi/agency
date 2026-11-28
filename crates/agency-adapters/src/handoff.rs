@@ -7,6 +7,7 @@
 //!
 //! Nothing here is logged: the request URL holds only `state`, `challenge` and `via`, the callback holds
 //! a code that is worth nothing alone, and the token appears only in the answer to the redeem.
+use crate::attempts::Attempts;
 use crate::client_api::{
     header_text, is_owner, is_same_secret, page_response, refuse, Admitted, ClientApi, Shared,
 };
@@ -40,10 +41,8 @@ const SECRET_LENGTH: usize = 43;
 const CODE_LIFETIME_SECONDS: i64 = 60;
 /// The most codes waiting to be redeemed: a sign-in is the owner's, so this is generous.
 const MOST_PENDING: usize = 64;
-/// How many redeems one client address may try in a minute, and how many client addresses are remembered (beyond
-/// that, the one that has been quiet the longest is forgotten).
+/// How many redeems one client address may try in a minute (the table of addresses is `attempts`).
 const REDEEMS_PER_MINUTE: usize = 20;
-const MOST_CLIENTS: usize = 1024;
 /// Why `via=scheme` is refused: the answer a browser session shows the person who sees it.
 const SCHEME_REFUSED: &str = "this node signs the app in only through the universal link of its own host; the custom scheme is off (access.allowSchemeSignIn)";
 const CALLBACK_PAGE: &str =
@@ -68,7 +67,7 @@ pub fn app_id(config: &AccessConfig) -> Option<&str> {
 }
 
 fn configured_app(api: &ClientApi) -> Option<(&AccessConfig, &str)> {
-    let config = api.access.as_ref()?.config();
+    let config = api.access.as_ref()?.provider().access_config()?;
     Some((config, app_id(config)?))
 }
 
@@ -118,8 +117,8 @@ struct Pending {
 #[derive(Default)]
 struct Pool {
     pending: HashMap<String, Pending>,
-    /// When each client address last tried to redeem, within the minute.
-    attempts: HashMap<String, Vec<OffsetDateTime>>,
+    /// The tries of each client address to redeem, within the minute.
+    attempts: Attempts,
 }
 
 /// The codes made by `/app/handoff` and waiting to be redeemed, in memory: a restart of the node ends them,
@@ -146,7 +145,7 @@ impl Codes {
             return None;
         }
         let mut bytes = [0u8; 32];
-        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+        getrandom::fill(&mut bytes).expect("the operating system gives random bytes");
         let code = URL_SAFE_NO_PAD.encode(bytes);
         pool.pending.insert(
             code.clone(),
@@ -165,31 +164,9 @@ impl Codes {
         let Ok(mut pool) = self.0.lock() else {
             return Redeemed::Invalid;
         };
-        let window = Duration::seconds(60);
-        pool.attempts.retain(|_, times| {
-            times.retain(|at| now - *at < window);
-            !times.is_empty()
-        });
-        if !pool.attempts.contains_key(client) && pool.attempts.len() >= MOST_CLIENTS {
-            // A full table forgets the address that has been quiet the longest, so that filling it can never
-            // lock the owner out: a forgotten address starts with its full allowance again, and each try still
-            // needs a code that is 256 random bits and is tried once.
-            let quietest = pool
-                .attempts
-                .iter()
-                .min_by_key(|(_, times)| times.iter().max().copied())
-                .map(|(address, _)| address.clone());
-            if let Some(address) = quietest {
-                pool.attempts.remove(&address);
-            }
-        }
-        let times = pool.attempts.entry(client.to_owned()).or_default();
-        if times.len() >= REDEEMS_PER_MINUTE {
-            let oldest = times.iter().min().copied().unwrap_or(now);
-            let wait = (window - (now - oldest)).whole_seconds().max(1);
+        if let Err(wait) = pool.attempts.try_once(now, client, REDEEMS_PER_MINUTE) {
             return Redeemed::Limited(wait);
         }
-        times.push(now);
         pool.pending.retain(|_, one| one.expires > now);
         let (true, true) = (is_secret(code), is_secret(verifier)) else {
             return Redeemed::Invalid;
@@ -297,7 +274,7 @@ struct RedeemInput {
 
 /// The address a redeem is counted against. The node is reached through a tunnel on this machine, so the peer
 /// is the tunnel and Cloudflare says who the client is; a peer that is not on this machine is its own client.
-fn client_of(peer: SocketAddr, headers: &HeaderMap) -> String {
+pub(crate) fn client_of(peer: SocketAddr, headers: &HeaderMap) -> String {
     if peer.ip().is_loopback() {
         let named =
             header_text(headers, "cf-connecting-ip").and_then(|ip| ip.parse::<IpAddr>().ok());
@@ -364,4 +341,24 @@ pub(crate) async fn association(State(api): Shared) -> Response {
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
     ];
     (StatusCode::OK, headers, body.to_string()).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_code_is_made_from_fresh_random_bytes() {
+        let codes = Codes::default();
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let first = codes.mint(now, "token", "challenge").unwrap();
+        let second = codes.mint(now, "token", "challenge").unwrap();
+        assert!(is_secret(&first) && is_secret(&second));
+        assert_ne!(first, second, "two codes are never the same");
+        assert_ne!(
+            first,
+            URL_SAFE_NO_PAD.encode([0u8; 32]),
+            "a code is not all zeros"
+        );
+    }
 }

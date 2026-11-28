@@ -16,6 +16,7 @@ use agency_proto::client::{PushToken, VapidKey};
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine;
+use p256::elliptic_curve::Generate;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -240,8 +241,8 @@ impl WebPush {
             return Err(PushError::Gone);
         };
         let mut salt = [0u8; 16];
-        rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut salt);
-        let secret = p256::SecretKey::random(&mut rand_core::OsRng);
+        getrandom::fill(&mut salt).expect("the operating system gives random bytes");
+        let secret = p256::SecretKey::generate();
         let message = payload(notice).to_string();
         ece::encrypt(message.as_bytes(), &ua_public, &auth, &secret, salt).map_err(|error| {
             match error {

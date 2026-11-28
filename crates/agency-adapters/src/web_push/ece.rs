@@ -71,7 +71,7 @@ pub fn encrypt(
     let mut record = message.to_vec();
     record.push(0x02);
     let sealed = Aes128Gcm::new((&cek).into())
-        .encrypt(Nonce::from_slice(&nonce), record.as_slice())
+        .encrypt(&Nonce::from(nonce), record.as_slice())
         .map_err(|_| EceError::BadSubscriptionKeys)?;
 
     let mut body = Vec::with_capacity(HEADER_LEN + sealed.len());
@@ -88,7 +88,7 @@ mod tests {
     use super::*;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
     use base64::Engine;
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    use p256::elliptic_curve::sec1::ToSec1Point;
 
     fn decode(text: &str) -> Vec<u8> {
         B64.decode(text.split_whitespace().collect::<String>())
@@ -138,7 +138,7 @@ mod tests {
             good(b"x", &[4; 65], &[0; 16]),
             Err(EceError::BadSubscriptionKeys)
         );
-        let compressed = as_secret.public_key().to_encoded_point(true);
+        let compressed = as_secret.public_key().to_sec1_point(true);
         assert_eq!(
             good(b"x", compressed.as_bytes(), &[0; 16]),
             Err(EceError::BadSubscriptionKeys),

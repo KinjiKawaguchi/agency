@@ -33,6 +33,7 @@ fn pull_request(
         issue_started_at: in_progress.map(at),
         closes_incident: false,
         work_type: None,
+        board: vec![],
     }
 }
 
@@ -393,6 +394,122 @@ fn the_same_facts_fall_on_other_days_in_another_time_zone() {
     );
 }
 
+// ── New-feature lead times ──
+
+fn pull_requests_for_lead_times() -> Vec<MergedPullRequest> {
+    let mut found = vec![];
+    // Eight quick docs and chore merges: an hour each (opened to merged), the issue started two hours before.
+    for n in 0..8 {
+        let title = if n % 2 == 0 {
+            "docs: a note"
+        } else {
+            "chore: a bump"
+        };
+        found.push(pull_request(
+            title,
+            "",
+            "2026-11-23T01:00:00Z",
+            "2026-11-23T02:00:00Z",
+            None,
+            true,
+            Some("2026-11-22T23:00:00Z"),
+        ));
+    }
+    // Three new features: 1 day, 2 days, and 3 days from opened to merged; their issues started a day earlier.
+    for (opened, merged, started) in [
+        (
+            "2026-11-20T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-19T00:00:00Z",
+        ),
+        (
+            "2026-11-19T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-18T00:00:00Z",
+        ),
+        (
+            "2026-11-18T00:00:00Z",
+            "2026-11-21T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+        ),
+    ] {
+        found.push(pull_request(
+            "feat(web): a screen",
+            "",
+            opened,
+            merged,
+            None,
+            true,
+            Some(started),
+        ));
+    }
+    found
+}
+
+fn lead_time_evaluation(pull_requests: &[MergedPullRequest]) -> TeamEvaluation {
+    let input = Input {
+        now: at("2026-11-24T12:00:00Z"),
+        offset: UtcOffset::UTC,
+        days: 7,
+        pull_requests,
+        runs: &[],
+        cost_by_day: &[],
+    };
+    evaluate(team(), &input)
+}
+
+#[test]
+fn the_new_features_have_their_own_lead_times_and_the_summarys_are_over_every_pull_request() {
+    let summary = lead_time_evaluation(&pull_requests_for_lead_times()).summary;
+    let features = summary.new_feature.expect("three features merged");
+    assert_eq!(features.merged, 3);
+    assert_eq!(features.pr_lead_median_seconds, Some(2 * 86_400));
+    assert_eq!(features.pr_lead_p90_seconds, Some(3 * 86_400));
+    assert_eq!(features.issue_lead_median_seconds, Some(3 * 86_400));
+    assert_eq!(features.issue_lead_p90_seconds, Some(4 * 86_400));
+    assert_eq!(
+        summary.pr_lead_median_seconds,
+        Some(3600),
+        "eleven pull requests, eight of them quick: the summary's median is the quick one"
+    );
+}
+
+#[test]
+fn only_a_new_feature_by_the_rule_of_work_type_is_one_and_a_revert_is_never() {
+    let day = ("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z");
+    let make = |title: &str, closes_incident: bool| {
+        let mut one = pull_request(title, "", day.0, day.1, None, false, None);
+        one.closes_incident = closes_incident;
+        one
+    };
+    let found = [
+        make("feat: counts", false),
+        make("feat(web)!: counts too", false),
+        make("fix: not one", false),
+        make("fix: an incident is not one", true),
+        make("refactor: not one", false),
+        make("docs: not one", false),
+        make("perf: not one", false),
+        make("Revert \"feat: a screen\"", false),
+    ];
+    let features = lead_time_evaluation(&found).summary.new_feature.unwrap();
+    assert_eq!(features.merged, 2);
+    assert_eq!(
+        features.issue_lead_median_seconds, None,
+        "no issue, no sample"
+    );
+    assert_eq!(features.pr_lead_median_seconds, Some(86_400));
+}
+
+#[test]
+fn a_period_without_a_new_feature_leaves_the_part_out() {
+    let found: Vec<_> = pull_requests_for_lead_times()
+        .into_iter()
+        .filter(|one| !one.title.starts_with("feat"))
+        .collect();
+    assert_eq!(lead_time_evaluation(&found).summary.new_feature, None);
+}
+
 #[test]
 fn a_board_option_names_a_work_type_by_its_name_alone() {
     use agency_proto::view::WorkType::*;
@@ -413,4 +530,286 @@ fn a_board_option_names_a_work_type_by_its_name_alone() {
     ] {
         assert_eq!(board_work_type(option), expected, "{option:?}");
     }
+}
+
+#[test]
+fn each_day_has_its_own_numbers_the_empty_ones_a_zero_count_and_no_median() {
+    let found = vec![
+        pull_request(
+            "feat: a",
+            "",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T09:00:00Z",
+            None,
+            false,
+            None,
+        ),
+        pull_request(
+            "feat: b",
+            "",
+            "2026-11-23T06:00:00Z",
+            "2026-11-23T09:30:00Z",
+            None,
+            false,
+            None,
+        ),
+        pull_request(
+            "fix: c",
+            "",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T08:30:00Z",
+            None,
+            false,
+            None,
+        ),
+    ];
+    let runs = [
+        run("a", "2026-11-23T10:00:00Z", Verdict::Failed),
+        run("b", "2026-11-23T12:00:00Z", Verdict::Passed),
+    ];
+    let costs = [(date("2026-11-23"), 9.0)];
+    let input = Input {
+        now: at("2026-11-24T12:00:00Z"),
+        offset: UtcOffset::UTC,
+        days: 3,
+        pull_requests: &found,
+        runs: &runs,
+        cost_by_day: &costs,
+    };
+    let days = day_numbers(&input);
+    let dates: Vec<&str> = days.iter().map(|day| day.date.as_str()).collect();
+    assert_eq!(dates, ["2026-11-22", "2026-11-23", "2026-11-24"]);
+    let (empty, busy) = (&days[0], &days[1]);
+    assert_eq!(
+        (empty.new_features_merged, empty.main_red_seconds),
+        (0, 0),
+        "a day with nothing has a count of 0"
+    );
+    assert_eq!(
+        (
+            empty.new_feature_pr_lead_median_seconds,
+            empty.pr_lead_median_seconds,
+            empty.cost_per_merged_pr_usd
+        ),
+        (None, None, None),
+        "and no median or cost, which is no number and not 0"
+    );
+    assert_eq!(busy.new_features_merged, 2);
+    assert_eq!(
+        busy.new_feature_pr_lead_median_seconds,
+        Some(8_100),
+        "the mean of an hour and three and a half"
+    );
+    assert_eq!(busy.pr_lead_median_seconds, Some(3_600));
+    assert_eq!(busy.main_red_seconds, 7_200);
+    assert_eq!(busy.cost_per_merged_pr_usd, Some(3.0), "9 over three");
+}
+
+fn in_repo(mut one: MergedPullRequest, repo: &str) -> MergedPullRequest {
+    one.repo = repo.into();
+    one
+}
+
+fn run_in(repo: &str, commit: &str, finished: &str, verdict: Verdict) -> MainRun {
+    MainRun {
+        repo: repo.into(),
+        ..run(commit, finished, verdict)
+    }
+}
+
+/// Two repositories over three days (UTC): `acme/app` had a feature (2 h open) and a fix (1 h) on the 22nd and
+/// main red from 10:00 to 12:00 on the 23rd; `acme/web` had a doc change (4 h), a feature (30 min), and a
+/// revert (10 min), and main always green.
+fn two_repositories() -> (Vec<MergedPullRequest>, Vec<MainRun>) {
+    let make = |title: &str, repo: &str, opened: &str, merged: &str| {
+        in_repo(
+            pull_request(title, "", opened, merged, None, false, None),
+            repo,
+        )
+    };
+    let pull_requests = vec![
+        make(
+            "feat: a",
+            "acme/app",
+            "2026-11-22T08:00:00Z",
+            "2026-11-22T10:00:00Z",
+        ),
+        make(
+            "fix: b",
+            "acme/app",
+            "2026-11-22T09:00:00Z",
+            "2026-11-22T10:00:00Z",
+        ),
+        make(
+            "docs: c",
+            "acme/web",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T12:00:00Z",
+        ),
+        make(
+            "feat: d",
+            "acme/web",
+            "2026-11-23T08:00:00Z",
+            "2026-11-23T08:30:00Z",
+        ),
+        make(
+            "Revert \"feat: d\"",
+            "acme/web",
+            "2026-11-24T08:00:00Z",
+            "2026-11-24T08:10:00Z",
+        ),
+    ];
+    let runs = vec![
+        run_in("acme/app", "a1", "2026-11-23T10:00:00Z", Verdict::Failed),
+        run_in("acme/app", "a2", "2026-11-23T12:00:00Z", Verdict::Passed),
+        run_in("acme/web", "w1", "2026-11-23T09:00:00Z", Verdict::Passed),
+        run_in("acme/web", "w2", "2026-11-24T09:00:00Z", Verdict::Passed),
+    ];
+    (pull_requests, runs)
+}
+
+fn evaluate_three_days(pull_requests: &[MergedPullRequest], runs: &[MainRun]) -> TeamEvaluation {
+    let costs = [(date("2026-11-23"), 9.0)];
+    let input = Input {
+        now: at("2026-11-24T12:00:00Z"),
+        offset: UtcOffset::UTC,
+        days: 3,
+        pull_requests,
+        runs,
+        cost_by_day: &costs,
+    };
+    evaluate(team(), &input)
+}
+
+#[test]
+fn each_repository_has_its_own_counts_lead_times_and_red_time_and_the_teams_are_as_before() {
+    let (pull_requests, runs) = two_repositories();
+    let team = evaluate_three_days(&pull_requests, &runs);
+    let [app, web] = &team.by_repository[..] else {
+        panic!("two repositories: {:?}", team.by_repository);
+    };
+    assert_eq!(
+        (app.repo.as_str(), web.repo.as_str()),
+        ("acme/app", "acme/web")
+    );
+
+    assert_eq!(app.summary.merged, counts(1, 1, 0, 0));
+    assert_eq!(app.summary.reverts, 0);
+    assert_eq!(
+        app.summary.pr_lead_median_seconds,
+        Some(5_400),
+        "2 h and 1 h"
+    );
+    assert_eq!(app.summary.main_red_seconds, 7_200);
+    assert_eq!(app.summary.longest_red_seconds, 7_200);
+
+    assert_eq!(web.summary.merged, counts(1, 0, 1, 0));
+    assert_eq!(web.summary.reverts, 1);
+    assert_eq!(
+        web.summary.pr_lead_median_seconds,
+        Some(1_800),
+        "10 min, 30 min, 4 h"
+    );
+    assert_eq!(web.summary.main_red_seconds, 0, "never red");
+    assert_eq!(web.summary.longest_red_seconds, 0);
+
+    assert_eq!(
+        app.summary.cost_per_merged_pr_usd, None,
+        "tokens are the team's, by day"
+    );
+    assert_eq!(web.summary.cost_per_merged_pr_usd, None);
+
+    let whole = &team.summary;
+    assert_eq!(whole.merged, counts(2, 1, 1, 0));
+    assert_eq!(whole.reverts, 1);
+    assert_eq!(whole.main_red_seconds, 7_200);
+    assert_eq!(
+        whole.pr_lead_median_seconds,
+        Some(3_600),
+        "five pull requests"
+    );
+    assert_eq!(
+        whole.cost_per_merged_pr_usd,
+        Some(1.8),
+        "9 dollars over five"
+    );
+}
+
+#[test]
+fn a_team_with_one_active_repository_or_none_has_no_breakdown_and_a_quiet_one_is_not_listed() {
+    let (pull_requests, runs) = two_repositories();
+    let only_app: Vec<_> = pull_requests
+        .iter()
+        .filter(|one| one.repo == "acme/app")
+        .cloned()
+        .collect();
+    let app_runs: Vec<_> = runs
+        .iter()
+        .filter(|one| one.repo == "acme/app")
+        .cloned()
+        .collect();
+    assert!(evaluate_three_days(&only_app, &app_runs)
+        .by_repository
+        .is_empty());
+    assert!(evaluate_three_days(&[], &[]).by_repository.is_empty());
+
+    // A repository whose only pull request merged before the period has nothing in it.
+    let mut old = pull_requests.clone();
+    for one in old.iter_mut().filter(|one| one.repo == "acme/web") {
+        one.merged_at = at("2026-10-01T00:00:00Z");
+    }
+    let found = evaluate_three_days(&old, &app_runs).by_repository;
+    assert!(found.is_empty(), "{found:?}");
+
+    // A repository with only a CI run is listed.
+    let ci_only = [run_in(
+        "acme/web",
+        "w1",
+        "2026-11-23T09:00:00Z",
+        Verdict::Passed,
+    )];
+    let all_runs: Vec<_> = app_runs.iter().chain(&ci_only).cloned().collect();
+    let found = evaluate_three_days(&only_app, &all_runs).by_repository;
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[1].summary.merged, counts(0, 0, 0, 0));
+}
+
+#[test]
+fn a_repository_that_was_red_through_the_whole_period_is_listed_though_nothing_happened_in_it() {
+    let (pull_requests, mut runs) = two_repositories();
+    // acme/web's main went red before the period began, and no run has finished since: its red time is still
+    // counted in the team's, so the repository has to be listed for the numbers to add up.
+    runs.retain(|one| one.repo != "acme/web");
+    runs.push(run_in(
+        "acme/web",
+        "w0",
+        "2026-11-10T00:00:00Z",
+        Verdict::Failed,
+    ));
+    let only_app: Vec<_> = pull_requests
+        .iter()
+        .filter(|one| one.repo == "acme/app")
+        .cloned()
+        .collect();
+    let team = evaluate_three_days(&only_app, &runs);
+    let [app, web] = &team.by_repository[..] else {
+        panic!("the red repository is listed: {:?}", team.by_repository);
+    };
+    assert_eq!(
+        (app.repo.as_str(), web.repo.as_str()),
+        ("acme/app", "acme/web")
+    );
+    assert_eq!(web.summary.merged, counts(0, 0, 0, 0));
+    let whole = 2 * 86_400 + 12 * 3_600;
+    assert_eq!(
+        web.summary.main_red_seconds, whole,
+        "red from the period's start (the 22nd) to now (the 24th at 12:00): {}",
+        web.summary.main_red_seconds
+    );
+    assert!(
+        team.summary.main_red_seconds >= web.summary.main_red_seconds
+            && team.summary.main_red_seconds
+                <= app.summary.main_red_seconds + web.summary.main_red_seconds,
+        "the team's red time is between the longest and the sum"
+    );
 }
