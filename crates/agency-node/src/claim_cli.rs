@@ -1,12 +1,37 @@
-//! `agency claims`, `claim-confirm` and `claim-reject`: the claims of seats that a person's browser redeemed and that
-//! wait for the owner, who compares the pairing code on the person's screen with the one here (on the root key's
-//! node, at its terminal, where the root key's presence prompt, if it asks, is the owner's own).
+//! `agency seat-invite`, `claims`, `claim-confirm` and `claim-reject`: a seat's claim link, and the claims of
+//! seats that a person's browser redeemed and that wait for the owner, who compares the pairing code on the
+//! person's screen with the one here (on the root key's node, at its terminal, where the root key's presence
+//! prompt, if it asks, is the owner's own).
 use agency_core::claims;
 use agency_core::Node;
 use agency_proto::org::printable;
 use agency_proto::Id;
 use anyhow::Result;
 use clap::Args;
+
+/// Makes a seven-day claim link for one seat and one email (on the root key's node)
+#[derive(Args)]
+pub struct SeatInvite {
+    #[arg(long)]
+    org: String,
+    #[arg(long)]
+    seat: String,
+    #[arg(long)]
+    email: String,
+}
+
+pub fn seat_invite(node: &Node, args: SeatInvite) -> Result<()> {
+    let invite = claims::seat_invite(node, &id(&args.org)?, id(&args.seat)?, &args.email)?;
+    println!("{}", invite.link);
+    println!(
+        "Add {} to the Access policy by hand; the node does not change Access.",
+        invite.email
+    );
+    if invite.local_only {
+        println!("This link works on this machine only.");
+    }
+    Ok(())
+}
 
 fn id(raw: &str) -> Result<Id> {
     Id::parse(raw).map_err(anyhow::Error::msg)
