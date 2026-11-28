@@ -143,7 +143,7 @@ jobs:
       - if: steps.web.outputs.present == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 24
+          node-version: 26
       # On CI vitest runs a failing test twice more and writes down the ones that then pass (vitest.config.ts).
       - if: steps.web.outputs.present == 'true'
         working-directory: web
@@ -170,7 +170,7 @@ jobs:
       - if: steps.web.outputs.present == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 24
+          node-version: 26
       - if: steps.web.outputs.present == 'true'
         name: Install dependencies
         working-directory: web
